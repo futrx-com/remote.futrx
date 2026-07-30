@@ -13,6 +13,7 @@ export function CustomAuthSettings() {
   const [name, setName] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [model, setModel] = useState("");
 
   const authenticated = customAuth.authenticated;
   const loading = customAuth.loading;
@@ -20,9 +21,9 @@ export function CustomAuthSettings() {
   const errorMessage = customAuth.error;
 
   async function submit() {
-    if (!name.trim() || !apiKey.trim() || !baseUrl.trim()) return;
+    if (!name.trim() || !apiKey.trim() || !baseUrl.trim() || !model.trim()) return;
     try {
-      await customAuth.save(name.trim(), apiKey.trim(), baseUrl.trim());
+      await customAuth.save(name.trim(), apiKey.trim(), baseUrl.trim(), model.trim());
       setApiKey("");
       setEditing(false);
     } catch {
@@ -50,7 +51,7 @@ export function CustomAuthSettings() {
             )}
           </div>
           <div class="text-[12px] text-ink-300 mt-1 leading-relaxed">
-            Bring your own AI provider by entering a display name, an API key, and a base URL. The key is
+            Bring your own AI provider by entering a display name, an API key, a base URL, and a model. The key is
             stored on the host and never shown again after saving.
           </div>
         </div>
@@ -61,6 +62,7 @@ export function CustomAuthSettings() {
           <div class="text-[12px] text-ink-300">Connected provider</div>
           <div class="text-[13px] text-ink-100 font-medium">{customAuth.config.name}</div>
           <div class="font-mono text-[12px] text-ink-200 break-all">{customAuth.config.baseUrl}</div>
+          <div class="font-mono text-[12px] text-ink-200 break-all">{customAuth.config.model}</div>
         </div>
       )}
 
@@ -104,11 +106,24 @@ export function CustomAuthSettings() {
               class="w-full rounded-md bg-black/30 border border-white/10 text-ink-100 placeholder:text-ink-300 px-3 py-2 font-mono text-[13px] focus:outline-none focus:border-accent-blue"
             />
           </label>
+          <label class="block space-y-1">
+            <span class="text-[12px] text-ink-200">Model</span>
+            <input
+              type="text"
+              value={model}
+              onInput={(e) => setModel((e.currentTarget as HTMLInputElement).value)}
+              placeholder="gpt-4o"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck={false}
+              class="w-full rounded-md bg-black/30 border border-white/10 text-ink-100 placeholder:text-ink-300 px-3 py-2 font-mono text-[13px] focus:outline-none focus:border-accent-blue"
+            />
+          </label>
           <div class="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void submit()}
-              disabled={saving || !name.trim() || !apiKey.trim() || !baseUrl.trim()}
+              disabled={saving || !name.trim() || !apiKey.trim() || !baseUrl.trim() || !model.trim()}
               class="h-10 px-3 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save"}
@@ -138,6 +153,7 @@ export function CustomAuthSettings() {
               setEditing(true);
               setName(customAuth.config?.name ?? "");
               setBaseUrl(customAuth.config?.baseUrl ?? "");
+              setModel(customAuth.config?.model ?? "");
             }}
             class="h-10 px-3 rounded bg-white/[0.08] hover:bg-white/[0.12] text-ink-100 text-[13px] font-medium"
           >

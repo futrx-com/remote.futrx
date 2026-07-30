@@ -6,17 +6,17 @@ export interface CustomAuthState {
   loading: boolean;
   checked: boolean;
   authenticated: boolean;
-  config?: { name: string; baseUrl: string };
+  config?: { name: string; baseUrl: string; model: string };
   saving: boolean;
   error: string | null;
-  save: (name: string, apiKey: string, baseUrl: string) => Promise<void>;
+  save: (name: string, apiKey: string, baseUrl: string, model: string) => Promise<void>;
 }
 
 export function useCustomAuth(enabled: boolean): CustomAuthState {
   const [loading, setLoading] = useState(false);
   const [checked, setChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  const [config, setConfig] = useState<{ name: string; baseUrl: string } | undefined>(undefined);
+  const [config, setConfig] = useState<{ name: string; baseUrl: string; model: string } | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,11 +28,11 @@ export function useCustomAuth(enabled: boolean): CustomAuthState {
     setChecked(true);
   }
 
-  async function save(name: string, apiKey: string, baseUrl: string) {
+  async function save(name: string, apiKey: string, baseUrl: string, model: string) {
     setSaving(true);
     setError(null);
     try {
-      await customAuthApi.save({ name, apiKey, baseUrl });
+      await customAuthApi.save({ name, apiKey, baseUrl, model });
     } catch (e) {
       setError((e as Error).message);
       throw e;

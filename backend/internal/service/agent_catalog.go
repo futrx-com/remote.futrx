@@ -67,7 +67,7 @@ func agentDefinitions(customStore *filecustomprovider.Store) []agentDefinition {
 		{
 			profile: customagent.Profile,
 			provider: func(projects *serviceproject.Service, containerDeps provisioning.ContainerDependencies) agent.Provider {
-				return customagent.New(projects, containerDeps)
+				return customagent.New(projects, containerDeps, customStore)
 			},
 			authBinding: func() agentauth.Binding {
 				return agentauth.NewAPIKeyBinding(agent.ProviderCustom, customagent.NewAuth(customStore))

@@ -75,13 +75,14 @@ export interface CustomProviderConfig {
   name: string;
   apiKey: string;
   baseUrl: string;
+  model: string;
 }
 
 // CustomAuthStatus mirrors the backend APIKeyStatus. The API key is never
-// included; only the saved display name and base URL are surfaced.
+// included; only the saved display name, base URL, and model are surfaced.
 export interface CustomAuthStatus {
   authenticated: boolean;
-  config?: { name: string; baseUrl: string };
+  config?: { name: string; baseUrl: string; model: string };
 }
 
 export type ClaudeLoginPhase =

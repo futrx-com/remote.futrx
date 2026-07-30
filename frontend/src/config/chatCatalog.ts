@@ -12,6 +12,7 @@ export const CHAT_PROVIDER_OPTIONS = [
   { value: "claude", label: "Claude", validInUserSettings: true },
   { value: "kimi", label: "Kimi", validInUserSettings: false },
   { value: "antigravity", label: "Antigravity", validInUserSettings: false },
+  { value: "custom", label: "Custom", validInUserSettings: false },
 ] as const;
 
 export type ChatProvider = (typeof CHAT_PROVIDER_OPTIONS)[number]["value"];
@@ -75,12 +76,18 @@ const MODEL_OPTIONS_BY_PROVIDER = {
   // agy picks its own Gemini engine; the CLI accepts --model but publishes no
   // stable headless id list, so Auto is the only safe catalog entry.
   antigravity: [{ value: "", label: "Auto", sub: "antigravity default" }],
+  // The custom provider's model is admin-supplied (saved with the API key +
+  // base URL); the chat-level model picker only offers Auto, meaning "use the
+  // admin-configured model". Free-form models are still honored if a chat
+  // already carries one.
+  custom: [{ value: "", label: "Auto", sub: "admin-configured model" }],
 } as const satisfies Record<ChatProvider, readonly ModelOption[]>;
 
 export function modelOptionsForProvider(provider?: ChatProvider): readonly ModelOption[] {
   if (provider === "codex") return MODEL_OPTIONS_BY_PROVIDER.codex;
   if (provider === "kimi") return MODEL_OPTIONS_BY_PROVIDER.kimi;
   if (provider === "antigravity") return MODEL_OPTIONS_BY_PROVIDER.antigravity;
+  if (provider === "custom") return MODEL_OPTIONS_BY_PROVIDER.custom;
   return MODEL_OPTIONS_BY_PROVIDER.claude;
 }
 
@@ -112,6 +119,7 @@ export function modelDisplayLabel(model?: string, provider?: ChatProvider): stri
     const match = MODEL_OPTIONS_BY_PROVIDER.codex.find((option) => option.value === model);
     return match?.label ?? model;
   }
+  if (provider === "custom") return model;
   return matchingClaudeModel(model)?.label ?? model;
 }
 

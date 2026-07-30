@@ -366,6 +366,8 @@ func providerIDFromChatProvider(provider servicechat.Provider) agent.ProviderID 
 		return agent.ProviderKimi
 	case servicechat.ProviderAntigravity:
 		return agent.ProviderAntigravity
+	case servicechat.ProviderCustom:
+		return agent.ProviderCustom
 	default:
 		return agent.ProviderClaude
 	}

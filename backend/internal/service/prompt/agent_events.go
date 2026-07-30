@@ -23,6 +23,9 @@ func (rnr *Service) emitAgentEvent(
 				m.KimiSessionID = ev.SessionID
 			case agent.ProviderAntigravity:
 				m.AntigravitySessionID = ev.SessionID
+			case agent.ProviderCustom:
+				// The custom provider is stateless HTTP; it owns no resumable
+				// session id, so a session-updated event is a no-op here.
 			default:
 				m.ClaudeSessionID = ev.SessionID
 			}
@@ -100,6 +103,8 @@ func chatProviderFromAgentProvider(provider agent.ProviderID) servicechat.Provid
 		return servicechat.ProviderKimi
 	case agent.ProviderAntigravity:
 		return servicechat.ProviderAntigravity
+	case agent.ProviderCustom:
+		return servicechat.ProviderCustom
 	default:
 		return servicechat.ProviderClaude
 	}

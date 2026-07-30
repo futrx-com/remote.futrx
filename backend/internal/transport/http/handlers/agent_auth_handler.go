@@ -134,12 +134,13 @@ func (h *AgentAuthHandler) handleAPIKeySave(binding agentauth.Binding, w http.Re
 		Name    string `json:"name"`
 		APIKey  string `json:"apiKey"`
 		BaseURL string `json:"baseUrl"`
+		Model   string `json:"model"`
 	}
 	if err := readJSONBody(r, &body); err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := binding.Save(r.Context(), agentauth.APIKeyConfig{Name: body.Name, APIKey: body.APIKey, BaseURL: body.BaseURL}); err != nil {
+	if err := binding.Save(r.Context(), agentauth.APIKeyConfig{Name: body.Name, APIKey: body.APIKey, BaseURL: body.BaseURL, Model: body.Model}); err != nil {
 		if errors.Is(err, agentauth.ErrAPIKeyMissing) {
 			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 			return

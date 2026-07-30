@@ -19,6 +19,7 @@ type APIKeyConfig struct {
 	Name    string `json:"name"`
 	APIKey  string `json:"apiKey"`
 	BaseURL string `json:"baseUrl"`
+	Model   string `json:"model"`
 }
 
 // APIKeyStatus is the streamed credential snapshot. Config is nil until a
@@ -33,6 +34,7 @@ type APIKeyStatus struct {
 type APIKeyStatusConfig struct {
 	Name    string `json:"name"`
 	BaseURL string `json:"baseUrl"`
+	Model   string `json:"model"`
 }
 
 // APIKeyStore is the persistence contract the service depends on. The custom
@@ -43,7 +45,7 @@ type APIKeyStore interface {
 }
 
 // ErrAPIKeyMissing is returned by Save when a required field is empty.
-var ErrAPIKeyMissing = errors.New("name, api key, and base url are required")
+var ErrAPIKeyMissing = errors.New("name, api key, base url, and model are required")
 
 type APIKeyService struct {
 	store APIKeyStore
@@ -107,7 +109,8 @@ func (s *APIKeyService) Save(ctx context.Context, cfg APIKeyConfig) error {
 	cfg.Name = strings.TrimSpace(cfg.Name)
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	cfg.BaseURL = strings.TrimSpace(cfg.BaseURL)
-	if cfg.Name == "" || cfg.APIKey == "" || cfg.BaseURL == "" {
+	cfg.Model = strings.TrimSpace(cfg.Model)
+	if cfg.Name == "" || cfg.APIKey == "" || cfg.BaseURL == "" || cfg.Model == "" {
 		return ErrAPIKeyMissing
 	}
 	if s.store == nil {
@@ -118,7 +121,7 @@ func (s *APIKeyService) Save(ctx context.Context, cfg APIKeyConfig) error {
 	}
 	s.mu.Lock()
 	s.authenticated = true
-	s.config = APIKeyStatusConfig{Name: cfg.Name, BaseURL: cfg.BaseURL}
+	s.config = APIKeyStatusConfig{Name: cfg.Name, BaseURL: cfg.BaseURL, Model: cfg.Model}
 	s.broadcastLocked()
 	s.mu.Unlock()
 	return nil
@@ -131,12 +134,12 @@ func (s *APIKeyService) Reload() {
 		return
 	}
 	cfg, err := s.store.Load()
-	if err != nil || strings.TrimSpace(cfg.Name) == "" || strings.TrimSpace(cfg.APIKey) == "" {
+	if err != nil || strings.TrimSpace(cfg.Name) == "" || strings.TrimSpace(cfg.APIKey) == "" || strings.TrimSpace(cfg.Model) == "" {
 		return
 	}
 	s.mu.Lock()
 	s.authenticated = true
-	s.config = APIKeyStatusConfig{Name: cfg.Name, BaseURL: cfg.BaseURL}
+	s.config = APIKeyStatusConfig{Name: cfg.Name, BaseURL: cfg.BaseURL, Model: cfg.Model}
 	s.broadcastLocked()
 	s.mu.Unlock()
 }
