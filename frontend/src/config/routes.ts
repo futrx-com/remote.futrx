@@ -57,6 +57,10 @@ export const API_ROUTES = {
     status: "/api/kimi/auth-status",
     startDeviceLogin: "/api/kimi/login/device",
   },
+  customAuth: {
+    status: "/api/custom/auth-status",
+    save: "/api/custom/login/save",
+  },
   projects: {
     collection: "/api/projects",
     item: (id: string) => `/api/projects/${encodeURIComponent(id)}`,
@@ -106,6 +110,7 @@ export const WEB_SOCKET_ROUTES = {
   claudeAuthStatus: applicationPath("/ws/claude/auth-status"),
   codexAuthStatus: applicationPath("/ws/codex/auth-status"),
   kimiAuthStatus: applicationPath("/ws/kimi/auth-status"),
+  customAuthStatus: applicationPath("/ws/custom/auth-status"),
   chat: (chatId: string, sinceSeq: number): ApplicationPath => {
     const route = applicationPath(`/ws/chat/${encodeURIComponent(chatId)}`);
     return sinceSeq > 0

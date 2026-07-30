@@ -1,6 +1,7 @@
 import { useAuthContext } from "../../state/context/AuthContext";
 import { ClaudeAuthSettings } from "../settings/ClaudeAuthSettings";
 import { CodexAuthSettings } from "../settings/CodexAuthSettings";
+import { CustomAuthSettings } from "../settings/CustomAuthSettings";
 import { KimiAuthSettings } from "../settings/KimiAuthSettings";
 import { Key } from "../primitives/icons";
 
@@ -41,6 +42,7 @@ export function ProviderLoginScreen() {
             error={kimiAuth.error}
             onStartDeviceLogin={kimiAuth.startDeviceLogin}
           />
+          <CustomAuthSettings />
         </div>
       </div>
     </div>

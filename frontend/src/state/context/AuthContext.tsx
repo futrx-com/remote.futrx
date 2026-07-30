@@ -4,6 +4,7 @@ import { useContext } from "preact/hooks";
 import { useAuth, type AuthState } from "../hooks/auth/useAuth";
 import { useClaudeAuth, type ClaudeAuthState } from "../hooks/auth/useClaudeAuth";
 import { useCodexAuth, type CodexAuthState } from "../hooks/auth/useCodexAuth";
+import { useCustomAuth, type CustomAuthState } from "../hooks/auth/useCustomAuth";
 import { useKimiAuth, type KimiAuthState } from "../hooks/auth/useKimiAuth";
 
 interface AuthContextValue {
@@ -11,6 +12,7 @@ interface AuthContextValue {
   claudeAuth: ClaudeAuthState;
   codexAuth: CodexAuthState;
   kimiAuth: KimiAuthState;
+  customAuth: CustomAuthState;
   appAuthOk: boolean;
   providerAuthChecked: boolean;
   providerAuthenticated: boolean;
@@ -27,9 +29,14 @@ export function AuthProvider({ children }: { children: ComponentChildren }) {
   const claudeAuth = useClaudeAuth(providerAuthEnabled);
   const codexAuth = useCodexAuth(providerAuthEnabled);
   const kimiAuth = useKimiAuth(providerAuthEnabled);
-  const providerAuthChecked = claudeAuth.checked && codexAuth.checked && kimiAuth.checked;
+  const customAuth = useCustomAuth(providerAuthEnabled);
+  const providerAuthChecked =
+    claudeAuth.checked && codexAuth.checked && kimiAuth.checked && customAuth.checked;
   const providerAuthenticated =
-    claudeAuth.authenticated || codexAuth.authenticated || kimiAuth.authenticated;
+    claudeAuth.authenticated ||
+    codexAuth.authenticated ||
+    kimiAuth.authenticated ||
+    customAuth.authenticated;
   const gateOpen = providerAuthEnabled && providerAuthChecked && providerAuthenticated;
 
   return (
@@ -39,6 +46,7 @@ export function AuthProvider({ children }: { children: ComponentChildren }) {
         claudeAuth,
         codexAuth,
         kimiAuth,
+        customAuth,
         appAuthOk,
         providerAuthChecked,
         providerAuthenticated,

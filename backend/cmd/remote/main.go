@@ -76,6 +76,7 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
+		CustomProviderStore: storeSet.CustomProvider,
 	})
 	if err != nil {
 		log.Fatalf("init services: %v", err)

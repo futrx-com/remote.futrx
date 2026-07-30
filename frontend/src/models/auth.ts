@@ -71,6 +71,19 @@ export interface KimiDeviceLogin {
   error?: string;
 }
 
+export interface CustomProviderConfig {
+  name: string;
+  apiKey: string;
+  baseUrl: string;
+}
+
+// CustomAuthStatus mirrors the backend APIKeyStatus. The API key is never
+// included; only the saved display name and base URL are surfaced.
+export interface CustomAuthStatus {
+  authenticated: boolean;
+  config?: { name: string; baseUrl: string };
+}
+
 export type ClaudeLoginPhase =
   | "idle"
   | "starting"

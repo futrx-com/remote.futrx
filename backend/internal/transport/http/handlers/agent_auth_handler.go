@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -47,6 +48,10 @@ func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 		case agentauth.FlowDevice:
 			mux.HandleFunc(prefix+"/login/device", func(w http.ResponseWriter, r *http.Request) {
 				h.handleDeviceStart(binding, w, r)
+			})
+		case agentauth.FlowAPIKey:
+			mux.HandleFunc(prefix+"/login/save", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAPIKeySave(binding, w, r)
 			})
 		}
 	}
@@ -119,6 +124,30 @@ func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.R
 		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, state)
+}
+
+func (h *AgentAuthHandler) handleAPIKeySave(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if !h.requireMutationAccess(w, r) {
+		return
+	}
+	var body struct {
+		Name    string `json:"name"`
+		APIKey  string `json:"apiKey"`
+		BaseURL string `json:"baseUrl"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := binding.Save(r.Context(), agentauth.APIKeyConfig{Name: body.Name, APIKey: body.APIKey, BaseURL: body.BaseURL}); err != nil {
+		if errors.Is(err, agentauth.ErrAPIKeyMissing) {
+			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
 func (h *AgentAuthHandler) requireMutationAccess(w http.ResponseWriter, r *http.Request) bool {

@@ -11,6 +11,7 @@ import (
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filecustomprovider"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
@@ -32,6 +33,7 @@ type Stores struct {
 	Auth           AuthStore
 	Users          serviceuser.Repository
 	UserSettings   serviceusersettings.Repository
+	CustomProvider *filecustomprovider.Store
 }
 
 func New(dataDir string) (Stores, error) {
@@ -70,6 +72,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init user settings store: %w", err)
 	}
 
+	customProvider, err := filecustomprovider.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init custom provider store: %w", err)
+	}
+
 	return Stores{
 		Chats:          chats,
 		Projects:       projects,
@@ -79,5 +86,6 @@ func New(dataDir string) (Stores, error) {
 		Auth:           fileauth.New(dataDir),
 		Users:          users,
 		UserSettings:   userSettings,
+		CustomProvider: customProvider,
 	}, nil
 }

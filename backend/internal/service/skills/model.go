@@ -11,6 +11,7 @@ const (
 	ProviderCodex       Provider = "codex"
 	ProviderKimi        Provider = "kimi"
 	ProviderAntigravity Provider = "antigravity"
+	ProviderCustom      Provider = "custom"
 )
 
 type Skill struct {

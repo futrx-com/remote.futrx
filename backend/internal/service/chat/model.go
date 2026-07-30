@@ -16,6 +16,7 @@ const (
 	ProviderCodex       Provider = "codex"
 	ProviderKimi        Provider = "kimi"
 	ProviderAntigravity Provider = "antigravity"
+	ProviderCustom      Provider = "custom"
 )
 
 type Meta struct {
@@ -116,6 +117,8 @@ func NormalizeProvider(provider Provider) Provider {
 		return ProviderKimi
 	case ProviderAntigravity:
 		return ProviderAntigravity
+	case ProviderCustom:
+		return ProviderCustom
 	default:
 		return ProviderCodex
 	}

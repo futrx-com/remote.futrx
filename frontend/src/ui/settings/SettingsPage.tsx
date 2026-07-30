@@ -8,6 +8,7 @@ import { Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primi
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ClaudeAuthSettings } from "./ClaudeAuthSettings";
 import { CodexAuthSettings } from "./CodexAuthSettings";
+import { CustomAuthSettings } from "./CustomAuthSettings";
 import { KimiAuthSettings } from "./KimiAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
@@ -226,6 +227,7 @@ export function SettingsPage({
                       error={kimiError}
                       onStartDeviceLogin={onStartKimiDeviceLogin}
                     />
+                    <CustomAuthSettings />
                   </div>
                 </div>
               ) : (

@@ -86,35 +86,40 @@ func TestNewRejectsPartialAgentContainerDependencies(t *testing.T) {
 
 func TestAgentProfilesComeFromRegistrationCatalog(t *testing.T) {
 	// antigravity's CLI owns its auth (OS keyring / per-home token fallback
-	// with no stable token path), so it is the one profile allowed to ship
-	// without a credential sync policy — sign-in happens in the chat terminal.
-	credentialExempt := map[string]bool{"antigravity": true}
+	// with no stable token path), so it is the one CLI-backed profile allowed
+	// to ship without a credential sync policy — sign-in happens in the chat
+	// terminal. custom has no CLI at all: an admin supplies an API key + base
+	// URL, so it ships without CLI or credential policy.
+	cliExempt := map[string]bool{"custom": true}
+	credentialExempt := map[string]bool{"antigravity": true, "custom": true}
 
 	profiles := AgentProfiles()
 	ids := make([]string, 0, len(profiles))
 	for _, profile := range profiles {
 		ids = append(ids, profile.ID)
-		if profile.CLI.Binary == "" {
-			t.Fatalf("profile %q has incomplete CLI policy: %#v", profile.ID, profile.CLI)
-		}
-		if profile.CLI.InstallMode == provisioning.InstallWithScript {
-			if profile.CLI.InstallScript == "" {
-				t.Fatalf("profile %q uses script install without a script", profile.ID)
+		if !cliExempt[profile.ID] {
+			if profile.CLI.Binary == "" {
+				t.Fatalf("profile %q has incomplete CLI policy: %#v", profile.ID, profile.CLI)
 			}
-		} else if profile.CLI.PackageName == "" {
-			t.Fatalf("profile %q has incomplete CLI policy: %#v", profile.ID, profile.CLI)
+			if profile.CLI.InstallMode == provisioning.InstallWithScript {
+				if profile.CLI.InstallScript == "" {
+					t.Fatalf("profile %q uses script install without a script", profile.ID)
+				}
+			} else if profile.CLI.PackageName == "" {
+				t.Fatalf("profile %q has incomplete CLI policy: %#v", profile.ID, profile.CLI)
+			}
 		}
 		if profile.Credentials.Empty() && !credentialExempt[profile.ID] {
 			t.Fatalf("profile %q has no credential policy", profile.ID)
 		}
 	}
-	if want := []string{"claude", "codex", "kimi", "antigravity"}; !slices.Equal(ids, want) {
+	if want := []string{"claude", "codex", "kimi", "antigravity", "custom"}; !slices.Equal(ids, want) {
 		t.Fatalf("profile IDs = %v, want %v", ids, want)
 	}
 }
 
 func TestAgentAuthBindingsComeFromRegistrationCatalog(t *testing.T) {
-	definitions := agentDefinitions()
+	definitions := agentDefinitions(nil)
 	registry := agentauth.NewRegistry()
 	ids := make([]string, 0, len(definitions))
 	// antigravity deliberately registers a service-less binding: agy's bare
@@ -136,7 +141,7 @@ func TestAgentAuthBindingsComeFromRegistrationCatalog(t *testing.T) {
 		}
 		ids = append(ids, string(binding.ID()))
 	}
-	if want := []string{"claude", "codex", "kimi", "antigravity"}; !slices.Equal(ids, want) {
+	if want := []string{"claude", "codex", "kimi", "antigravity", "custom"}; !slices.Equal(ids, want) {
 		t.Fatalf("auth binding IDs = %v, want %v", ids, want)
 	}
 }

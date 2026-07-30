@@ -22,6 +22,7 @@ import (
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspacehub"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filecustomprovider"
 )
 
 type AuthStore interface {
@@ -33,20 +34,21 @@ type TmuxClient interface {
 }
 
 type Dependencies struct {
-	Chats             servicechat.Repository
-	Projects          serviceproject.Repository
-	ProjectSecrets    serviceproject.SecretsRepository
-	ProjectAccess     serviceproject.AccessRepository
-	Schedules         serviceschedule.Repository
-	Auth              AuthStore
-	Users             serviceuser.Repository
-	UserSettings      serviceusersettings.Repository
-	AuthBaseURL       string
-	ProjectContainers serviceproject.ContainerDependencies
-	AgentContainers   provisioning.ContainerDependencies
-	TmuxClient        TmuxClient
-	ValidTmuxName     func(string) bool
-	ScheduleLimits    ScheduleLimits
+	Chats               servicechat.Repository
+	Projects            serviceproject.Repository
+	ProjectSecrets      serviceproject.SecretsRepository
+	ProjectAccess       serviceproject.AccessRepository
+	Schedules           serviceschedule.Repository
+	Auth                AuthStore
+	Users               serviceuser.Repository
+	UserSettings        serviceusersettings.Repository
+	AuthBaseURL         string
+	ProjectContainers   serviceproject.ContainerDependencies
+	AgentContainers     provisioning.ContainerDependencies
+	TmuxClient          TmuxClient
+	ValidTmuxName       func(string) bool
+	ScheduleLimits      ScheduleLimits
+	CustomProviderStore *filecustomprovider.Store
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -94,7 +96,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		},
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
-	definitions := agentDefinitions()
+	definitions := agentDefinitions(deps.CustomProviderStore)
 	profiles := profilesFromDefinitions(definitions)
 	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
 	projectService.StartAgentBrowserReaper(ctx, 20*time.Minute)
