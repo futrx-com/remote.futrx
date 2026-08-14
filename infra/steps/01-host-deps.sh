@@ -21,9 +21,9 @@ apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base
 
 # ───────────────── version pins ─────────────────
 # infra/versions.env (a symlink to the canonical manifest embedded by the
-# backend) declares the exact versions the host must run. Every section
-# below converges the live box to its pin instead of only checking
-# existence — bump a pin and re-run to upgrade.
+# backend) declares the exact non-agent versions the host must run. Agent CLI
+# releases are resolved, installed, and written back to this manifest later in
+# this step so the backend and container image use exactly what the host got.
 VERSIONS_FILE="$INFRA_DIR/versions.env"
 if [ ! -r "$VERSIONS_FILE" ]; then
     err "missing version manifest: $VERSIONS_FILE"
@@ -31,8 +31,7 @@ if [ ! -r "$VERSIONS_FILE" ]; then
 fi
 # shellcheck source=/dev/null
 . "$VERSIONS_FILE"
-for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION \
-         CLAUDE_CODE_VERSION CODEX_CLI_VERSION KIMI_CODE_VERSION; do
+for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION; do
     if [ -z "${!v:-}" ]; then
         err "version manifest is missing $v: $VERSIONS_FILE"
         exit 1
@@ -101,30 +100,56 @@ fi
 ok "$(caddy version | head -1)"
 
 # ───────────────── agent CLIs (host-side auth/provisioning) ─────────────────
-# Pins come from the same versions.env sourced above (also embedded by the Go
-# container manager). Re-running the installer upgrades stale host binaries
-# instead of only checking existence.
-agent_cli_version() {
-    "$1" --version 2>&1 \
-        | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' \
-        | head -1 || true
-}
+# Resolve the latest upstream releases on every install/update. Once installed,
+# their reported versions are written to versions.env. The exact snapshot is
+# then embedded by the backend and used to build/repair project containers.
+AGENT_CLI_VERSION_LIB="$INFRA_DIR/lib/agent-cli-versions.sh"
+if [ ! -r "$AGENT_CLI_VERSION_LIB" ]; then
+    err "missing agent CLI version helper: $AGENT_CLI_VERSION_LIB"
+    exit 1
+fi
+# shellcheck source=../lib/agent-cli-versions.sh
+. "$AGENT_CLI_VERSION_LIB"
 
-ensure_agent_cli() {
-    local label="$1" binary="$2" package="$3" expected="$4" current=""
+ensure_latest_npm_agent_cli() {
+    local label="$1" binary="$2" package="$3" output_variable="$4"
+    local expected current="" installed
+    expected="$(latest_npm_package_version "$package")" || return 1
     if command -v "$binary" >/dev/null; then
-        current="$(agent_cli_version "$binary")"
+        current="$(agent_cli_semver "$binary")"
     fi
     if [ "$current" != "$expected" ]; then
         log "Installing $label $expected (was ${current:-missing})"
         npm install -g "${package}@${expected}" --silent 2>&1 | tail -3
     fi
+    installed="$(agent_cli_semver "$binary")"
+    require_agent_cli_semver "$label" "$installed" || return 1
+    if [ "$installed" != "$expected" ]; then
+        err "$label reported $installed after installing $expected"
+        return 1
+    fi
+    printf -v "$output_variable" '%s' "$installed"
+    export "$output_variable"
     ok "$label $("$binary" --version 2>&1 | head -1)"
 }
 
-ensure_agent_cli "Claude Code" claude @anthropic-ai/claude-code "$CLAUDE_CODE_VERSION"
-ensure_agent_cli "Codex" codex @openai/codex "$CODEX_CLI_VERSION"
-ensure_agent_cli "Kimi Code" kimi @moonshot-ai/kimi-code "$KIMI_CODE_VERSION"
+ensure_latest_npm_agent_cli \
+    "Claude Code" claude @anthropic-ai/claude-code CLAUDE_CODE_VERSION
+ensure_latest_npm_agent_cli \
+    "Codex" codex @openai/codex CODEX_CLI_VERSION
+ensure_latest_npm_agent_cli \
+    "Kimi Code" kimi @moonshot-ai/kimi-code KIMI_CODE_VERSION
+
+ANTIGRAVITY_CLI_VERSION="$(latest_antigravity_cli_version)"
+export ANTIGRAVITY_CLI_VERSION
+ok "Antigravity CLI $ANTIGRAVITY_CLI_VERSION available for container installation"
+
+write_agent_cli_versions "$VERSIONS_FILE" \
+    "$CLAUDE_CODE_VERSION" \
+    "$CODEX_CLI_VERSION" \
+    "$KIMI_CODE_VERSION" \
+    "$ANTIGRAVITY_CLI_VERSION"
+ok "agent CLI versions recorded in $VERSIONS_FILE"
 
 # ───────────────── LXD (one container per project) ─────────────────
 if ! command -v lxc >/dev/null; then

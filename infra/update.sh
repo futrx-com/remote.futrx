@@ -2,15 +2,15 @@
 # remote.futrx — one-command update for an installed box.
 #
 # The updater deliberately pulls and re-executes itself before doing any
-# convergence. That guarantees newly committed toolchain and agent CLI pins
-# are used on this run, rather than requiring a second run after install.sh
-# updates the checkout.
+# convergence. That guarantees newly committed toolchain pins and installer
+# logic are used on this run. Agent CLI releases are resolved automatically by
+# install.sh and embedded in the backend built during the same run.
 #
 # Default flow:
 #   1. Reset /opt/remote.futrx to origin/main (or the --ref target).
-#   2. Converge host dependencies and all host agent CLIs.
+#   2. Resolve and install current host agent CLIs, recording their versions.
 #   3. Build and restart the application.
-#   4. Rebuild the base image with the pinned agent CLIs.
+#   4. Rebuild the base image with those exact agent CLI versions.
 #   5. Recycle idle workspaces onto the new image (busy ones are skipped).
 #
 # Usage:
