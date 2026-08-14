@@ -53,6 +53,17 @@ EOF
 fi
 cd "$INSTALL_DIR"
 
+# Step 01 resolved and installed the current agent CLI releases. A checkout
+# refresh above can replace its generated manifest, so re-apply the detected
+# values to the target checkout before Go embeds it in the backend binary.
+TARGET_VERSIONS_FILE="$INSTALL_DIR/infra/versions.env"
+write_agent_cli_versions "$TARGET_VERSIONS_FILE" \
+    "$CLAUDE_CODE_VERSION" \
+    "$CODEX_CLI_VERSION" \
+    "$KIMI_CODE_VERSION" \
+    "$ANTIGRAVITY_CLI_VERSION"
+ok "agent CLI versions recorded in $TARGET_VERSIONS_FILE"
+
 # ───────────────── build ─────────────────
 log "Building frontend (frontend/ → backend/public/)"
 (
