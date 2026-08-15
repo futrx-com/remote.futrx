@@ -59,6 +59,17 @@ UNCONN 0      0      127.0.0.53%lo:53       0.0.0.0:*    users:((\"systemd-resol
 [ -z "$(bridge_dns_listener "$BRIDGE_IP")" ] \
     || fail "the resolved stub must not be reported as holding the bridge address"
 
+# dnsmasq on the bridge address and an unrelated resolver on the wildcard is a
+# normal, healthy state — pi-hole and unbound both produce it. Taking whichever
+# line `ss` printed first would report a working bridge as hijacked, and then
+# either rewrite BIND's config or abort the install.
+SS_OUTPUT="$header
+UNCONN 0      0      0.0.0.0:53             0.0.0.0:*    users:((\"unbound\",pid=810,fd=9))
+UNCONN 0      0      ${BRIDGE_IP}:53        0.0.0.0:*    users:((\"dnsmasq\",pid=900,fd=6))"
+[ "$(bridge_dns_listener "$BRIDGE_IP")" = "dnsmasq" ] \
+    || fail "an explicit bind must win over a wildcard one, got '$(bridge_dns_listener "$BRIDGE_IP")'"
+bridge_dns_healthy "$BRIDGE_IP" || fail "dnsmasq on the bridge means healthy, whatever else is bound"
+
 # A DNS listener on some other port is irrelevant.
 SS_OUTPUT="$header
 UNCONN 0      0      ${BRIDGE_IP}:5353      0.0.0.0:*    users:((\"avahi-daemon\",pid=600,fd=12))"
@@ -131,10 +142,32 @@ sleep() { :; }
 # be a real change, and has to land on true.
 : > "$LXC_CALLS"
 restart_bridge_dns lxdbr0 || fail "restart_bridge_dns should have succeeded"
-[ "$(sed -n 1p "$LXC_CALLS")" = "network set lxdbr0 ipv4.nat false" ] \
-    || fail "expected a real config change first, got: $(sed -n 1p "$LXC_CALLS")"
-[ "$(sed -n 2p "$LXC_CALLS")" = "network set lxdbr0 ipv4.nat true" ] \
-    || fail "expected the toggle to land on true, got: $(sed -n 2p "$LXC_CALLS")"
+[ "$(sed -n 1p "$LXC_CALLS")" = "network get lxdbr0 raw.dnsmasq" ] \
+    || fail "expected the previous value to be read first, got: $(sed -n 1p "$LXC_CALLS")"
+[ "$(sed -n 2p "$LXC_CALLS")" = "network set lxdbr0 raw.dnsmasq # remote.futrx: restarting dnsmasq" ] \
+    || fail "expected a real config change, got: $(sed -n 2p "$LXC_CALLS")"
+[ "$(sed -n 3p "$LXC_CALLS")" = "network unset lxdbr0 raw.dnsmasq" ] \
+    || fail "expected the key cleared again, got: $(sed -n 3p "$LXC_CALLS")"
+
+# Nothing it touches may be load-bearing for traffic. Toggling ipv4.nat would
+# also force a re-render, but a run interrupted between the two writes would
+# leave masquerading off — the exact "address but no egress" outage this file
+# exists to diagnose, and worse than the state we started in.
+grep -q "ipv4.nat" "$LXC_CALLS" && fail "the restart nudge must not touch NAT"
+
+# An operator's own raw.dnsmasq must come back, not be cleared.
+: > "$LXC_CALLS"
+lxc() {
+    if [ "$*" = "network get lxdbr0 raw.dnsmasq" ]; then
+        printf 'dhcp-option=6,1.1.1.1\n'
+        return 0
+    fi
+    printf '%s\n' "$*" >> "$LXC_CALLS"
+}
+restart_bridge_dns lxdbr0 || fail "restart_bridge_dns should have succeeded"
+[ "$(sed -n 2p "$LXC_CALLS")" = "network set lxdbr0 raw.dnsmasq dhcp-option=6,1.1.1.1" ] \
+    || fail "an existing raw.dnsmasq must be restored, got: $(sed -n 2p "$LXC_CALLS")"
+lxc() { printf '%s\n' "$*" >> "$LXC_CALLS"; }
 
 # The repair path: BIND holds the address, we exclude it, and dnsmasq takes
 # over. The listener flips only after the restart, which is what proves the

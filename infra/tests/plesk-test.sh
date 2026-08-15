@@ -86,6 +86,28 @@ cert_covers "$STORE/cert-wild" "other.example.org" \
 [ "$(plesk_cert_for "${NEEDED[@]}")" = "$STORE/cert-wild" ] \
     || fail "expected the wildcard certificate to be selected, got: $(plesk_cert_for "${NEEDED[@]}" || true)"
 
+# SANs are exactly the strings that glob. With pathname expansion on, a file in
+# the working directory matching "*.dev.remote.example.com" would replace the
+# SAN mid-comparison, and a certificate that does cover the name would be
+# rejected — leaving the install on HTTP only with a misleading message.
+GLOB_TRAP="$TEST_TMP/globtrap"
+mkdir -p "$GLOB_TRAP"
+: > "$GLOB_TRAP/anything.dev.$HOST"
+: > "$GLOB_TRAP/anything.code.$HOST"
+(
+    cd "$GLOB_TRAP"
+    cert_covers "$STORE/cert-wild" "${NEEDED[@]}" \
+        || { echo "FAIL: SAN comparison was broken by pathname expansion" >&2; exit 1; }
+) || exit 1
+
+# The caller's own globbing setting has to survive the call.
+set -f
+cert_covers "$STORE/cert-wild" "$HOST" >/dev/null || fail "unexpected miss"
+case "$-" in *f*) ;; *) fail "cert_covers turned the caller's noglob off" ;; esac
+set +f
+cert_covers "$STORE/cert-wild" "$HOST" >/dev/null || fail "unexpected miss"
+case "$-" in *f*) fail "cert_covers left noglob on" ;; esac
+
 # An unreadable path is a miss, not a crash.
 cert_covers "$TEST_TMP/nope" "$HOST" && fail "a missing certificate must not be accepted"
 
