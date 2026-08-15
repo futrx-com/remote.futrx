@@ -112,7 +112,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
             exit 1
         fi
         mkdir -p "$TARGET"
-        git clone --depth=1 "$CLONE_URL" "$TARGET"
+        git clone -b feature/adding-plesk-support --depth=1 "$CLONE_URL" "$TARGET"
         chmod 0600 "$TARGET/.git/config"
         if [ -n "$BOOTSTRAP_REF" ]; then
             echo "==> bootstrapping candidate commit $BOOTSTRAP_REF"
@@ -224,13 +224,19 @@ export -f log warn ok err
 # Whitelisted envsubst — only the variables we name get substituted, so
 # stray $-prefixed strings in the template (e.g. Caddy's `{re.host.1}`,
 # regex `\$` anchors) survive untouched.
+#
+# The list MUST stay on one line. Ubuntu's envsubst (gettext-base) stops
+# parsing the shell-format argument at the first newline, so a wrapped list
+# silently substitutes only the variables before the wrap and emits the rest
+# as literal ${NAME} text — which Caddy then rejects as an unrecognized
+# directive, several steps after the real mistake.
+FUTRX_TEMPLATE_VARS='$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE $CADDY_SITE_SCHEME $CADDY_SITE_PORT $CADDY_TLS_BLOCK $CADDY_GLOBAL_EXTRA $CADDY_HTTP_PORT $PLESK_LISTEN $PLESK_TLS $PLESK_HTTP_SERVER'
+
 render_template() {
     local tmpl="$1" dest="$2"
-    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE
-              $CADDY_SITE_SCHEME $CADDY_SITE_PORT $CADDY_TLS_BLOCK $CADDY_GLOBAL_EXTRA
-              $CADDY_HTTP_PORT $PLESK_LISTEN $PLESK_TLS $PLESK_HTTP_SERVER' \
-        < "$tmpl" > "$dest"
+    envsubst "$FUTRX_TEMPLATE_VARS" < "$tmpl" > "$dest"
 }
+export FUTRX_TEMPLATE_VARS
 export -f render_template
 
 # ───────────────── front-end topology ─────────────────
