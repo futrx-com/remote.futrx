@@ -1,0 +1,15 @@
+[Unit]
+Description=Re-apply futrx container FORWARD rules every couple of minutes
+# A boot-time apply is not enough. Docker restarts, `plesk repair`, a fail2ban
+# reload and any `iptables-restore` of a saved ruleset all drop our two ACCEPT
+# rules, and the only symptom is that container builds start failing on
+# IPv4-only hosts some minutes later. Two minutes is short enough that nobody
+# hits that window for long and cheap enough to ignore.
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target
