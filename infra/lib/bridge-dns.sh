@@ -25,13 +25,20 @@ FUTRX_NAMED_INCLUDE_CANDIDATES="${FUTRX_NAMED_INCLUDE_CANDIDATES:-/var/named/run
 # bridge_dns_listener <bridge_ip>
 # Prints the program holding <bridge_ip>:53, or nothing when the address is
 # free. Checks UDP, which is what DHCP and DNS resolution actually need.
+#
+# An explicit bind to the bridge address always wins over a wildcard one, and
+# not merely because it is more specific: the two can coexist (dnsmasq on
+# 10.x.x.1:53 alongside an unrelated resolver on 0.0.0.0:53 is a normal state
+# on a box running pi-hole or unbound), and taking whichever `ss` happened to
+# print first would report a healthy bridge as hijacked — then rewrite BIND's
+# config, or abort the install outright.
 bridge_dns_listener() {
-    local bridge_ip="${1:-}"
+    local bridge_ip="${1:-}" exact wildcard
     [ -n "$bridge_ip" ] || return 1
     command -v ss >/dev/null 2>&1 || return 1
-    # A wildcard listener owns the bridge address too, so match both the
-    # explicit address and 0.0.0.0/*.
-    ss -lnup 2>/dev/null | awk -v ip="$bridge_ip" '
+
+    local parsed
+    parsed="$(ss -lnup 2>/dev/null | awk -v ip="$bridge_ip" '
         NR == 1 { next }
         {
             # State Recv-Q Send-Q Local:Port Peer:Port users:((...))
@@ -39,15 +46,25 @@ bridge_dns_listener() {
             port = a[length(a)]
             if (port != "53") next
             addr = substr($4, 1, length($4) - length(port) - 1)
-            if (addr != ip && addr != "0.0.0.0" && addr != "*" && addr != "[::]") next
+            if (addr == ip) { kind = "exact" }
+            else if (addr == "0.0.0.0" || addr == "*" || addr == "[::]") { kind = "wildcard" }
+            else next
             if (match($0, /users:\(\("[^"]+/)) {
                 s = substr($0, RSTART, RLENGTH)
                 sub(/^users:\(\("/, "", s)
-                print s
-                exit
+                print kind, s
             }
         }
-    '
+    ')"
+
+    exact="$(printf '%s\n' "$parsed" | awk '$1 == "exact" { print $2; exit }')"
+    if [ -n "$exact" ]; then
+        printf '%s\n' "$exact"
+        return 0
+    fi
+    wildcard="$(printf '%s\n' "$parsed" | awk '$1 == "wildcard" { print $2; exit }')"
+    [ -z "$wildcard" ] || printf '%s\n' "$wildcard"
+    return 0
 }
 
 # bridge_dns_healthy <bridge_ip>
@@ -153,15 +170,29 @@ restart_named() {
 # restart_bridge_dns <bridge>
 # Makes LXD re-render the bridge, which re-spawns its dnsmasq. There is no
 # "restart this network" verb, and setting a key to the value it already holds
-# does nothing — LXD short-circuits an update whose config did not change. So
-# this genuinely toggles ipv4.nat and lands on true, which is the value
-# ensure_bridge_nat wants anyway.
+# does nothing — LXD short-circuits an update whose config did not change — so
+# the nudge has to be a real change.
+#
+# raw.dnsmasq is the right key to toggle: it lands in the dnsmasq config file,
+# so LXD definitely restarts the process, and a stray comment left behind by an
+# interrupted run is inert. Toggling ipv4.nat would work too, but a run
+# interrupted between the two writes would leave masquerading *off* — which is
+# the "address but no egress" outage this whole file exists to diagnose, and a
+# worse state than the one we started in. It would also drop NAT for every
+# running container for the duration.
 restart_bridge_dns() {
-    local bridge="${1:-}"
+    local bridge="${1:-}" previous
     [ -n "$bridge" ] || return 1
     command -v lxc >/dev/null 2>&1 || return 1
-    lxc network set "$bridge" ipv4.nat false >/dev/null 2>&1 || return 1
-    lxc network set "$bridge" ipv4.nat true >/dev/null 2>&1 || return 1
+
+    previous="$(lxc network get "$bridge" raw.dnsmasq 2>/dev/null || true)"
+    lxc network set "$bridge" raw.dnsmasq "# remote.futrx: restarting dnsmasq" \
+        >/dev/null 2>&1 || return 1
+    if [ -n "$previous" ]; then
+        lxc network set "$bridge" raw.dnsmasq "$previous" >/dev/null 2>&1 || return 1
+    else
+        lxc network unset "$bridge" raw.dnsmasq >/dev/null 2>&1 || return 1
+    fi
     return 0
 }
 
