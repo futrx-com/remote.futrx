@@ -141,12 +141,51 @@ done
 added="$(ensure_container_forwarding lxdbr0)" || fail "second dual-backend ensure returned non-zero"
 [ -z "$added" ] || fail "expected no changes on dual-backend re-run, got: $added"
 
-# Auto-detection finds every backend that answers, and falls back to plain
-# `iptables` when none of the versioned names resolve.
+# Auto-detection finds every backend that has something worth overriding.
 reset_state DROP 0
 unset FUTRX_IPTABLES_BACKENDS
 [ "$(container_forwarding_backends | tr '\n' ' ')" = "iptables-nft iptables-legacy " ] \
     || fail "expected both backends detected, got: $(container_forwarding_backends | tr '\n' ' ')"
+
+# A genuinely empty backend is skipped. On a stock Ubuntu 24.04 host the
+# legacy tables are unused, and writing to them would load ip_tables and
+# populate the legacy filter table on a box that had neither — flipping the
+# legacy-vs-nft heuristics Docker, ufw and firewalld use to pick a backend.
+_iptables_stub_empty() {
+    local self="$1"; shift
+    case "$1" in
+        -S)
+            case "${2:-}" in
+                FORWARD) printf -- '-P FORWARD ACCEPT\n' ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *) return 1 ;;
+    esac
+}
+iptables-legacy() { _iptables_stub_empty iptables-legacy "$@"; }
+[ "$(container_forwarding_backends | tr '\n' ' ')" = "iptables-nft " ] \
+    || fail "an empty backend must be skipped, got: $(container_forwarding_backends | tr '\n' ' ')"
+
+# ...but an empty-except-for-a-DROP-policy backend is exactly what we must
+# override, so emptiness alone is not the test.
+_iptables_stub_dropping() {
+    local self="$1"; shift
+    case "$1" in
+        -S)
+            case "${2:-}" in
+                FORWARD) printf -- '-P FORWARD DROP\n' ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *) return 1 ;;
+    esac
+}
+iptables-legacy() { _iptables_stub_dropping iptables-legacy "$@"; }
+[ "$(container_forwarding_backends | tr '\n' ' ')" = "iptables-nft iptables-legacy " ] \
+    || fail "a DROP-policy backend must be included, got: $(container_forwarding_backends | tr '\n' ' ')"
+
+iptables-legacy() { _iptables_stub iptables-legacy "$@"; }
 
 # ───────────────── failure surfaces ─────────────────
 

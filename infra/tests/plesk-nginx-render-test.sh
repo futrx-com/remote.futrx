@@ -91,6 +91,19 @@ grep -qF "proxy_buffering off;" "$CONF" || fail "streamed agent output must not 
 # The redirect server only exists when there is a certificate to redirect to.
 grep -qF 'return 301 https://$host$request_uri;' "$CONF" || fail "missing the http redirect"
 
+# Getting the wildcard certificate means adding the hostname as a Plesk
+# domain, so Plesk generates a vhost with the same server_name. conf.d loads
+# first, so ours wins — which is right for application paths and wrong for the
+# ACME challenge, whose disappearance would silently stop renewal.
+grep -qF "location ^~ /.well-known/acme-challenge/" "$CONF" \
+    || fail "ACME challenges must not be proxied into the backend"
+grep -qF "root /var/www/vhosts/remote.example.com/httpdocs;" "$CONF" \
+    || fail "ACME challenges must be served from the domain's document root"
+# The challenge block has to be declared before the catch-all it protects.
+[ "$(grep -n 'acme-challenge' "$CONF" | head -1 | cut -d: -f1)" \
+  -lt "$(grep -n 'location / {' "$CONF" | head -1 | cut -d: -f1)" ] \
+    || fail "the ACME location must precede location /"
+
 # ───────────────── the HTTP-only fallback ─────────────────
 
 # Rendered when no certificate covers the wildcards. Serving :443 with a

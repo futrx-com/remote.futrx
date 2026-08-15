@@ -20,7 +20,14 @@
 #
 # Expects from caller: log / warn / ok / err helpers.
 
-FUTRX_NAMED_INCLUDE_CANDIDATES="${FUTRX_NAMED_INCLUDE_CANDIDATES:-/var/named/run-root/etc/named.user.conf /etc/named.user.conf}"
+# Candidate BIND user-includes, most specific first. The `options:` ones are
+# spliced inside BIND's options statement, so directives go in bare; the
+# `toplevel:` ones need their own wrapping options block.
+FUTRX_NAMED_INCLUDE_CANDIDATES="${FUTRX_NAMED_INCLUDE_CANDIDATES:-\
+options:/var/named/run-root/etc/named.user.options.conf \
+options:/etc/named.user.options.conf \
+toplevel:/var/named/run-root/etc/named.user.conf \
+toplevel:/etc/named.user.conf}"
 
 # bridge_dns_listener <bridge_ip>
 # Prints the program holding <bridge_ip>:53, or nothing when the address is
@@ -78,28 +85,26 @@ bridge_dns_healthy() {
 }
 
 # named_user_include
-# Prints the path of Plesk's supported BIND user-include. Plesk regenerates
-# /etc/named.conf on every DNS change but preserves this include, so it is the
-# only place a change of ours can survive.
+# Prints "<scope> <path>" for Plesk's BIND user-include, or nothing. Plesk
+# regenerates /etc/named.conf on every DNS change but preserves these
+# includes, so they are the only place a change of ours can survive.
 #
-# Whether an `options` statement is legal there depends on where Plesk splices
-# the include: BIND permits exactly one options statement in the whole config,
-# so on a layout that already has one at top level a second is a syntax error.
-# That is why exclude_bridge_from_named validates with named-checkconf and
-# rolls back — and why ensure_bridge_dns has a real remediation message for
-# when it does not take, rather than treating the automatic path as the only
-# one.
+# Scope decides the syntax. BIND permits exactly one `options` statement in a
+# configuration, so an options block in a *top-level* include is a syntax
+# error on any layout where Plesk already has one — which is most of them.
+# An options-scoped include takes the directive bare and always works.
+#
+# A candidate must already exist to be used. Creating one ourselves would
+# write a file nothing includes: named-checkconf would pass, BIND would
+# restart happily, and nothing would have changed — the worst outcome
+# available, since it reports success and fixes nothing.
 named_user_include() {
-    local candidate
+    local candidate scope path
     for candidate in $FUTRX_NAMED_INCLUDE_CANDIDATES; do
-        if [ -e "$candidate" ]; then
-            printf '%s\n' "$candidate"
-            return 0
-        fi
-    done
-    for candidate in $FUTRX_NAMED_INCLUDE_CANDIDATES; do
-        if [ -d "$(dirname "$candidate")" ]; then
-            printf '%s\n' "$candidate"
+        scope="${candidate%%:*}"
+        path="${candidate#*:}"
+        if [ -f "$path" ]; then
+            printf '%s %s\n' "$scope" "$path"
             return 0
         fi
     done
@@ -112,42 +117,48 @@ named_user_include() {
 # a box whose BIND will not start has lost its DNS service, which is a far
 # worse outcome than the container problem we are fixing.
 exclude_bridge_from_named() {
-    local bridge_ip="${1:-}" include backup marker
+    local bridge_ip="${1:-}" resolved scope include backup marker
     [ -n "$bridge_ip" ] || return 1
     command -v named-checkconf >/dev/null 2>&1 || return 1
-    include="$(named_user_include)" || return 1
+    resolved="$(named_user_include)" || return 1
+    scope="${resolved%% *}"
+    include="${resolved#* }"
     marker="# remote.futrx: leave ${bridge_ip} to LXD's dnsmasq"
 
-    if [ -r "$include" ] && grep -qF "$marker" "$include"; then
+    if grep -qF "$marker" "$include" 2>/dev/null; then
         return 0
     fi
 
-    backup=""
-    if [ -e "$include" ]; then
-        backup="${include}.futrx-bak"
-        cp -p "$include" "$backup" || return 1
-    fi
+    backup="${include}.futrx-bak"
+    cp -p "$include" "$backup" || return 1
 
     {
-        [ -e "$include" ] && cat "$include"
+        cat "$include"
         printf '%s\n' \
             "" \
             "$marker" \
             "# BIND's default listen-on { any; } binds every interface address it finds," \
             "# including the bridge, which stops LXD's dnsmasq from serving DHCP there" \
-            "# and leaves containers with IPv6 only." \
-            "options {" \
-            "    listen-on port 53 { !${bridge_ip}; any; };" \
-            "};"
+            "# and leaves containers with IPv6 only."
+        # An options-scoped include is spliced inside BIND's own options
+        # statement, so the directive goes in bare. Wrapping it would be a
+        # nested-options syntax error; not wrapping it in a top-level include
+        # would be a stray directive. Either way named-checkconf catches it and
+        # the rollback below runs, but getting it right is what makes the
+        # automatic path actually work.
+        if [ "$scope" = "options" ]; then
+            printf '%s\n' "listen-on port 53 { !${bridge_ip}; any; };"
+        else
+            printf '%s\n' \
+                "options {" \
+                "    listen-on port 53 { !${bridge_ip}; any; };" \
+                "};"
+        fi
     } > "${include}.futrx-new" || return 1
     mv "${include}.futrx-new" "$include" || return 1
 
     if ! named-checkconf >/dev/null 2>&1; then
-        if [ -n "$backup" ]; then
-            mv "$backup" "$include"
-        else
-            rm -f "$include"
-        fi
+        mv "$backup" "$include"
         return 1
     fi
     rm -f "$backup"

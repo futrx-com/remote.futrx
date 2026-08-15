@@ -58,15 +58,20 @@ container_forwarding_backends() {
         printf '%s\n' $FUTRX_IPTABLES_BACKENDS
         return 0
     fi
-    local found=0 bin
+    local found=0 bin dump
     for bin in iptables-nft iptables-legacy; do
         command -v "$bin" >/dev/null 2>&1 || continue
-        # An empty backend is not worth touching: it has no policy or rule
-        # that could drop anything.
-        if "$bin" -S FORWARD >/dev/null 2>&1; then
-            printf '%s\n' "$bin"
-            found=1
+        dump="$("$bin" -S FORWARD 2>/dev/null)" || continue
+        # Skip a backend that is genuinely empty — policy ACCEPT and no rules.
+        # It cannot drop anything, and writing to it would populate the legacy
+        # filter table on a host that had none, loading ip_tables and flipping
+        # the legacy-vs-nft heuristics Docker, ufw and firewalld all use to
+        # pick a backend.
+        if ! printf '%s\n' "$dump" | grep -qv '^-P FORWARD ACCEPT$'; then
+            continue
         fi
+        printf '%s\n' "$bin"
+        found=1
     done
     [ "$found" -eq 1 ] || printf 'iptables\n'
 }
