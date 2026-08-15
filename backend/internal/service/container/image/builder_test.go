@@ -116,11 +116,69 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 	}
 }
 
+// The probe reports which hop failed, and the three hops have disjoint fixes.
+// Blaming Docker for all of them is what shipped before: on a host without
+// Docker it produced a confident instruction (`iptables -I DOCKER-USER ...`)
+// that fails with "No chain/target/match by that name", and no route to the
+// real cause.
+func TestIPv4EgressHintBranchesOnTheFailingHop(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		probeOut   string
+		want       []string
+		wantAbsent []string
+	}{
+		{
+			name:       "no address is a DHCP failure, not a firewall one",
+			probeOut:   egressNoAddress,
+			want:       []string{"never received an IPv4 address", "port 53", "BIND"},
+			wantAbsent: []string{"DOCKER-USER", "FORWARD"},
+		},
+		{
+			name:       "no route points at the bridge, not the firewall",
+			probeOut:   egressNoRoute,
+			want:       []string{"no default route", "ipv4.nat"},
+			wantAbsent: []string{"DOCKER-USER"},
+		},
+		{
+			name:     "blocked is the forwarding case, where Docker belongs",
+			probeOut: egressBlocked,
+			want:     []string{"cannot reach the internet", "Docker", "ip_forward"},
+		},
+		{
+			name:       "an unreadable probe result must not guess",
+			probeOut:   "some unrelated failure",
+			want:       []string{"could not determine which hop failed"},
+			wantAbsent: []string{"Docker", "BIND"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hint := ipv4EgressHint(tc.probeOut)
+			for _, want := range tc.want {
+				if !strings.Contains(hint, want) {
+					t.Errorf("hint does not mention %q:\n%s", want, hint)
+				}
+			}
+			for _, absent := range tc.wantAbsent {
+				if strings.Contains(hint, absent) {
+					t.Errorf("hint should not mention %q:\n%s", absent, hint)
+				}
+			}
+			// Every branch has to hand the operator somewhere to go next: the
+			// container can see which hop failed but not what on the host is
+			// responsible for it.
+			if !strings.Contains(hint, diagnosePath) {
+				t.Errorf("hint does not point at %s:\n%s", diagnosePath, hint)
+			}
+		})
+	}
+}
+
 func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
 	runtime := &recordingRuntime{
 		available: true,
 		scriptResponses: []runtimeResponse{
-			{output: "", err: errors.New("exit 1")}, // IPv4 egress probe
+			{output: egressBlocked, err: errors.New("exit 1")}, // IPv4 egress probe
 		},
 	}
 	builder := NewBuilder(
@@ -137,8 +195,10 @@ func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
 		t.Fatal("Build succeeded, want an IPv4 egress failure")
 	}
 	// The message has to name the cause, not the probe: this failure used to
-	// surface as a curl timeout against github.com four stages later.
-	for _, want := range []string{"cannot reach any IPv4", "Docker", "DOCKER-USER"} {
+	// surface as a curl timeout against github.com four stages later. The
+	// probe's own output has to reach the hint, or every failure collapses
+	// back to one generic message.
+	for _, want := range []string{"cannot reach the internet", "Docker", diagnosePath} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q does not mention %q", err, want)
 		}

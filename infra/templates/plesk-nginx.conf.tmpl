@@ -1,0 +1,85 @@
+# remote.futrx in front of Plesk — managed by infra/steps/08-plesk-frontend.sh.
+#
+# Installed at /etc/nginx/conf.d/futrx.conf. Plesk includes that directory at
+# the http level and does not regenerate it, unlike /etc/nginx/plesk.conf.d/**
+# which it rewrites on every config apply.
+#
+# Obtaining the wildcard certificate normally means adding ${HOSTNAME} as a
+# Plesk domain, at which point Plesk generates its own vhost for the same
+# server_name. nginx logs "conflicting server name" and keeps one block —
+# ours, because conf.d loads before Plesk's zz010_psa_nginx.conf. That is what
+# we want for every application path, but it would also swallow Plesk's ACME
+# HTTP-01 challenge and stop the certificate renewing, so the challenge path
+# below is served from the domain's own document root instead of proxied.
+#
+# Do not edit by hand: re-running infra/install.sh overwrites this file.
+
+# Uniquely named so it cannot collide with a map Plesk or another conf.d file
+# defines. Without it every WebSocket upgrade is downgraded to a plain request
+# and the chat, terminal and workspace sockets all fail to connect.
+map $http_upgrade $futrx_connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+server {
+${PLESK_LISTEN}
+    server_name ${HOSTNAME} code.${HOSTNAME} *.code.${HOSTNAME} *.dev.${HOSTNAME};
+
+${PLESK_TLS}
+    # Agent output, container file listings and code-server payloads are all
+    # unbounded in practice; nginx's default 1m rejects ordinary uploads.
+    client_max_body_size 0;
+
+    # Let Plesk renew certificates for this domain. ^~ beats the regex
+    # locations nginx would otherwise consider, and a missing docroot simply
+    # 404s, which is what would have happened anyway.
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/vhosts/${HOSTNAME}/httpdocs;
+        try_files $uri =404;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:${CADDY_HTTP_PORT};
+
+        # Host must arrive unmodified and without a port. Caddy selects its
+        # site block from it, its dev-URL and IDE matchers are anchored on the
+        # bare hostname, and the backend gates /__remote_inspector on the raw
+        # Host header. $host is the requested name; $http_host would carry a
+        # port and $proxy_host would substitute the upstream's.
+        proxy_set_header Host $host;
+
+        # nginx is the real edge here, so overwrite rather than append: the
+        # backend keys its login rate limiter on the leftmost X-Forwarded-For
+        # element, and appending would leave that under the client's control.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # TLS ended at this hop. Caddy is configured to trust loopback and
+        # pass this through unchanged; without it Caddy overwrites the header
+        # with its own scheme, the backend then rejects every sign-in
+        # return_to as a non-https redirect target, and the agent browser URL
+        # comes out as http://.
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+
+        # WebSockets: the chat, workspace, terminal and tmux sockets all live
+        # under /ws, and code-server's own connection runs through here too.
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $futrx_connection_upgrade;
+
+        # The chat and workspace sockets ping every 25s, but the terminal and
+        # tmux sockets are silent while idle — nginx's 60s default closes them
+        # mid-session, and the symptom is a terminal that dies about a minute
+        # after you stop typing.
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # Streamed agent output has to reach the browser as it is produced.
+        proxy_buffering off;
+        proxy_request_buffering off;
+    }
+}
+${PLESK_HTTP_SERVER}

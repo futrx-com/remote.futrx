@@ -21,6 +21,23 @@
 #   --google-client-id=...                      optional; can be added in Settings later.
 #   --google-client-secret=...                  optional; can be added in Settings later.
 #
+# Plesk hosts (auto-detected; these only apply when Plesk is present):
+#   --no-plesk-integration                      install as if Plesk were not here. Will fail
+#                                               the 80/443 pre-flight unless you free them.
+#   --plesk-integration                         undo the above (these choices are remembered
+#                                               across re-runs and updates).
+#   --plesk-tls-cert=/path --plesk-tls-key=...  certificate for Plesk's nginx to serve. Must
+#                                               cover the wildcards; auto-detected from
+#                                               Plesk's own store when omitted.
+#   --caddy-port=8080                           loopback port Plesk's nginx proxies to.
+#   --force-ssh-hardening                       disable SSH password auth anyway. Skipped by
+#                                               default on Plesk, where it can lock out
+#                                               panel-managed SFTP users.
+#   --no-force-ssh-hardening                    undo the above.
+#
+# The Plesk choices persist to /etc/remote.futrx/install-options.env, so
+# infra/update.sh does not silently change topology. Delete that file to reset.
+#
 # Environment:
 #   GITHUB_TOKEN                                same as --github-token=.
 
@@ -95,7 +112,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
             exit 1
         fi
         mkdir -p "$TARGET"
-        git clone --depth=1 "$CLONE_URL" "$TARGET"
+        git clone -b feature/adding-plesk-support --depth=1 "$CLONE_URL" "$TARGET"
         chmod 0600 "$TARGET/.git/config"
         if [ -n "$BOOTSTRAP_REF" ]; then
             echo "==> bootstrapping candidate commit $BOOTSTRAP_REF"
@@ -124,6 +141,11 @@ GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 TARGET_REF=""
+NO_PLESK_INTEGRATION=""
+FORCE_SSH_HARDENING=""
+PLESK_TLS_CERT=""
+PLESK_TLS_KEY=""
+CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-}"
 for a in "$@"; do
     case "$a" in
         --skip-dns-check)         SKIP_DNS_CHECK=1 ;;
@@ -131,10 +153,22 @@ for a in "$@"; do
         --google-client-id=*)     GOOGLE_CLIENT_ID="${a#*=}" ;;
         --google-client-secret=*) GOOGLE_CLIENT_SECRET="${a#*=}" ;;
         --github-token=*)         GITHUB_TOKEN="${a#*=}" ;;
+        --no-plesk-integration)   NO_PLESK_INTEGRATION=1 ;;
+        --plesk-integration)      NO_PLESK_INTEGRATION=0 ;;
+        --force-ssh-hardening)    FORCE_SSH_HARDENING=1 ;;
+        --no-force-ssh-hardening) FORCE_SSH_HARDENING=0 ;;
+        --plesk-tls-cert=*)       PLESK_TLS_CERT="${a#*=}" ;;
+        --plesk-tls-key=*)        PLESK_TLS_KEY="${a#*=}" ;;
+        --caddy-port=*)           CADDY_HTTP_PORT="${a#*=}" ;;
         --*) echo "unknown flag: $a" >&2; exit 1 ;;
         *)   [ -z "$HOSTNAME" ] && HOSTNAME="$a" ;;
     esac
 done
+if { [ -n "$PLESK_TLS_CERT" ] && [ -z "$PLESK_TLS_KEY" ]; } || \
+   { [ -z "$PLESK_TLS_CERT" ] && [ -n "$PLESK_TLS_KEY" ]; }; then
+    echo "--plesk-tls-cert and --plesk-tls-key must be given together" >&2
+    exit 1
+fi
 if [ -n "$TARGET_REF" ] && ! printf '%s' "$TARGET_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
     echo "--ref must be a full 40-character commit SHA" >&2
     exit 1
@@ -190,12 +224,62 @@ export -f log warn ok err
 # Whitelisted envsubst — only the variables we name get substituted, so
 # stray $-prefixed strings in the template (e.g. Caddy's `{re.host.1}`,
 # regex `\$` anchors) survive untouched.
+#
+# The list MUST stay on one line. Ubuntu's envsubst (gettext-base) stops
+# parsing the shell-format argument at the first newline, so a wrapped list
+# silently substitutes only the variables before the wrap and emits the rest
+# as literal ${NAME} text — which Caddy then rejects as an unrecognized
+# directive, several steps after the real mistake.
+FUTRX_TEMPLATE_VARS='$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE $CADDY_SITE_SCHEME $CADDY_SITE_PORT $CADDY_TLS_BLOCK $CADDY_GLOBAL_EXTRA $CADDY_HTTP_PORT $PLESK_LISTEN $PLESK_TLS $PLESK_HTTP_SERVER'
+
 render_template() {
     local tmpl="$1" dest="$2"
-    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE' \
-        < "$tmpl" > "$dest"
+    envsubst "$FUTRX_TEMPLATE_VARS" < "$tmpl" > "$dest"
 }
+export FUTRX_TEMPLATE_VARS
 export -f render_template
+
+# ───────────────── front-end topology ─────────────────
+# A Plesk box is not a fresh server: its nginx owns 80 and 443, its BIND owns
+# 53, its firewall module reconciles iptables on its own schedule, and its
+# SFTP users depend on SSH password auth. Decide once which topology we are
+# installing, and let every step below branch on FUTRX_FRONTEND_MODE.
+#
+#   standalone  Caddy owns 80/443 and manages its own certificates. Unchanged.
+#   plesk       Plesk's nginx terminates TLS and proxies to Caddy on loopback.
+#
+# shellcheck source=lib/plesk.sh
+. "$INFRA_DIR/lib/plesk.sh"
+# shellcheck source=lib/frontend-mode.sh
+. "$INFRA_DIR/lib/frontend-mode.sh"
+# shellcheck source=lib/install-options.sh
+. "$INFRA_DIR/lib/install-options.sh"
+
+# infra/update.sh re-invokes this script with only the hostname, so anything
+# the operator chose the first time has to come back from disk or it silently
+# reverts on the next update. An explicit flag still wins.
+load_install_options
+NO_PLESK_INTEGRATION="${NO_PLESK_INTEGRATION:-${FUTRX_SAVED_NO_PLESK_INTEGRATION:-0}}"
+FORCE_SSH_HARDENING="${FORCE_SSH_HARDENING:-${FUTRX_SAVED_FORCE_SSH_HARDENING:-0}}"
+CADDY_HTTP_PORT="${CADDY_HTTP_PORT:-${FUTRX_SAVED_CADDY_HTTP_PORT:-8080}}"
+
+# Validate after resolution, not at parse time: these values can also arrive
+# from the saved options file, and a hand-edited one would otherwise reach an
+# arithmetic test or a rendered config unchecked.
+[ "$NO_PLESK_INTEGRATION" = "1" ] || NO_PLESK_INTEGRATION=0
+[ "$FORCE_SSH_HARDENING" = "1" ] || FORCE_SSH_HARDENING=0
+if ! printf '%s' "$CADDY_HTTP_PORT" | grep -qE '^[0-9]{2,5}$'; then
+    echo "--caddy-port must be a port number (got: $CADDY_HTTP_PORT)" >&2
+    exit 1
+fi
+
+FUTRX_FRONTEND_MODE="$(select_frontend_mode "$NO_PLESK_INTEGRATION")"
+set_caddy_render_vars "$FUTRX_FRONTEND_MODE" "$SERVICE_PORT" "$CADDY_HTTP_PORT"
+
+export FUTRX_FRONTEND_MODE NO_PLESK_INTEGRATION FORCE_SSH_HARDENING
+export CADDY_HTTP_PORT PLESK_TLS_CERT PLESK_TLS_KEY
+
+save_install_options "$NO_PLESK_INTEGRATION" "$CADDY_HTTP_PORT" "$FORCE_SSH_HARDENING"
 
 # ───────────────── pre-rename installation migration ─────────────────
 # shellcheck source=lib/install-migration.sh
@@ -271,6 +355,10 @@ fi
 . "$INFRA_DIR/steps/02-app.sh"
 # shellcheck source=steps/03-caddy.sh
 . "$INFRA_DIR/steps/03-caddy.sh"
+# Plesk's nginx in front of Caddy. No-op on every other host. Runs straight
+# after Caddy so the upstream it proxies to already exists and is valid.
+# shellcheck source=steps/08-plesk-frontend.sh
+. "$INFRA_DIR/steps/08-plesk-frontend.sh"
 # shellcheck source=steps/04-backend-svc.sh
 . "$INFRA_DIR/steps/04-backend-svc.sh"
 # shellcheck source=steps/05-base-image.sh
@@ -281,6 +369,19 @@ fi
 . "$INFRA_DIR/steps/07-lxc-ipv4-heal.sh"
 
 # ───────────────── summary ─────────────────
+if [ "$FUTRX_FRONTEND_MODE" = "plesk" ]; then
+    TOPOLOGY=" ✓ Front end:     Plesk nginx :443 → Caddy 127.0.0.1:${CADDY_HTTP_PORT} → backend
+ ✓ nginx config:  /etc/nginx/conf.d/futrx.conf (managed here; re-run to update)"
+    FIREWALL_NOTE=" Plesk manages this server's firewall, so UFW was left alone. If your
+ provider has its own firewall, 80/443 must be open there."
+    FIRST_HIT_NOTE="Plesk serves the certificate"
+else
+    TOPOLOGY=" ✓ Front end:     Caddy :80/:443 → backend"
+    FIREWALL_NOTE=" If you're on a cloud VPS with its own firewall, open 80/443 in the
+ provider's console as well as UFW."
+    FIRST_HIT_NOTE="Caddy fetches the cert on first hit, ~10s"
+fi
+
 cat <<EOF
 
 ═══════════════════════════════════════════════════════════════
@@ -290,22 +391,25 @@ cat <<EOF
  ✓ Dev URLs:      https://<slug>--<port>.dev.$HOSTNAME
  ✓ DB viewers:    lazy per project at https://<slug>--18080.dev.$HOSTNAME
  ✓ Base image:    futrx-remote-dev-base (project containers launch from this)
+$TOPOLOGY
 
  $AUTH_NOTE
 
  Next:
-   1. Open https://$HOSTNAME (Caddy fetches the cert on first hit, ~10s)
+   1. Open https://$HOSTNAME ($FIRST_HIT_NOTE)
    2. Create the administrator email and password
    3. Connect at least one AI provider: Claude, Codex, or Kimi
    4. Before inviting users, configure Google sign-in in Settings → Users
 
- If you're on a cloud VPS with its own firewall, open 80/443 in the
- provider's console as well as UFW.
+$FIREWALL_NOTE
 
  Manage:
    systemctl status   remote.futrx
    systemctl status   caddy
    journalctl -u      remote.futrx -f
+
+ If containers can't reach the internet:
+   sudo bash $INSTALL_DIR/infra/diagnose-network.sh
 
  Re-run this installer any time to pull latest + rebuild + restart.
 ═══════════════════════════════════════════════════════════════

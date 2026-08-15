@@ -7,21 +7,24 @@
 #
 # All three live behind the same Google admin session — code + dev URLs use
 # forward_auth, the main block hosts the OAuth endpoints themselves.
+#
+# The site addresses and the TLS blocks are rendered, because Caddy is not
+# always the edge. On a Plesk host its nginx already owns 80 and 443, so Caddy
+# moves to http:// on a loopback port and Plesk terminates TLS in front of it.
+# Everything below the address line is identical in both topologies — the
+# public origin stays https://${HOSTNAME} with no port either way, which is
+# what keeps BASE_URL, the preview URLs and the host matchers here working
+# unchanged.
 
 {
     # Email used for Let's Encrypt ACME registration. Set to a real address
     # if you want renewal-failure emails from LE.
     # email you@example.com
 
-    # On-demand TLS for the *.dev.${HOSTNAME} wildcard. Caddy queries the
-    # backend's /internal/tls-ask before issuing each cert so attackers
-    # can't burn through ACME rate limits by hitting random subdomains.
-    on_demand_tls {
-        ask http://127.0.0.1:${SERVICE_PORT}/internal/tls-ask
-    }
+${CADDY_GLOBAL_EXTRA}
 }
 
-${HOSTNAME} {
+${CADDY_SITE_SCHEME}${HOSTNAME}${CADDY_SITE_PORT} {
     encode zstd gzip
     # Defense in depth: /internal/* is reachable only on loopback (Caddy →
     # backend). Reject any external attempt.
@@ -32,7 +35,7 @@ ${HOSTNAME} {
     reverse_proxy 127.0.0.1:${SERVICE_PORT}
 }
 
-code.${HOSTNAME} {
+${CADDY_SITE_SCHEME}code.${HOSTNAME}${CADDY_SITE_PORT} {
     encode zstd gzip
     route {
         # Admin-session gate (same check as the rest of the platform).
@@ -81,13 +84,13 @@ code.${HOSTNAME} {
 # Per-project IDE. <slug>.code.${HOSTNAME} proxies into the project's LXD
 # container at <slug>.lxd:8842, where an on-demand, idle-stopped
 # code-server lives (systemd socket activation inside the container). Same
-# Google admin gate as code.${HOSTNAME}; on-demand TLS is gated by the
-# backend's /internal/tls-ask, which now also allows <slug>.code.${HOSTNAME}.
-*.code.${HOSTNAME} {
+# Google admin gate as code.${HOSTNAME}. When Caddy is the edge it also issues
+# this wildcard's certificates on demand, gated by the backend's ask endpoint
+# so attackers can't burn ACME rate limits on random subdomains; behind Plesk
+# the panel holds the certificate instead and that block is not rendered.
+${CADDY_SITE_SCHEME}*.code.${HOSTNAME}${CADDY_SITE_PORT} {
     encode zstd gzip
-    tls {
-        on_demand
-    }
+${CADDY_TLS_BLOCK}
     forward_auth 127.0.0.1:${SERVICE_PORT} {
         uri /auth/verify
     }
@@ -117,11 +120,9 @@ code.${HOSTNAME} {
 # Per-project dev URLs. <slug>--<port>.dev.${HOSTNAME} proxies into the
 # project's LXD container at <slug>.lxd:<port>. The .lxd resolution
 # depends on the systemd-resolved drop-in installed by infra/steps/01-host-deps.sh.
-*.dev.${HOSTNAME} {
+${CADDY_SITE_SCHEME}*.dev.${HOSTNAME}${CADDY_SITE_PORT} {
     encode zstd gzip
-    tls {
-        on_demand
-    }
+${CADDY_TLS_BLOCK}
     forward_auth 127.0.0.1:${SERVICE_PORT} {
         uri /auth/verify
     }

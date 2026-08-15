@@ -1,15 +1,18 @@
 [Unit]
 Description=Allow futrx container traffic through the FORWARD chain
-# iptables rules do not survive a reboot, and Docker reinstates its FORWARD
-# DROP policy every time it starts — so re-apply once both are up. The script
-# checks whether anything is actually restricting FORWARD and does nothing on
-# hosts where it is not, which is why this unit is installed unconditionally.
+# iptables rules do not survive a reboot, Docker reinstates its FORWARD DROP
+# policy every time it starts, and host firewalls that reconcile their ruleset
+# (Plesk's firewall module and fail2ban both do) remove our rules mid-life
+# without touching anything else. So this runs once at boot and then again on
+# futrx-lxd-forward.timer — the rules are scoped to our own bridge and
+# idempotent, so re-applying costs nothing.
 After=network-online.target docker.service snap.lxd.daemon.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-RemainAfterExit=yes
+# Deliberately not RemainAfterExit: the timer's job is to re-run this, and
+# systemd skips starting a oneshot that it still considers active.
 ExecStart=/bin/bash ${INSTALL_DIR}/infra/lib/container-forwarding.sh --apply ${LXD_BRIDGE}
 
 [Install]

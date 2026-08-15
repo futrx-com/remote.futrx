@@ -77,7 +77,12 @@ if ! complete_legacy_service_migration "$LEGACY_SERVICE_NAME" "$LEGACY_SERVICE_U
 fi
 
 # ───────────────── UFW ─────────────────
-if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
+# Plesk manages this box's firewall through its own module, which reconciles
+# the ruleset on its own schedule. Adding UFW rules alongside it produces two
+# sources of truth and rules that reappear or vanish for no visible reason.
+if [ "${FUTRX_FRONTEND_MODE:-standalone}" = "plesk" ]; then
+    log "Plesk manages the firewall — leaving UFW alone"
+elif command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
     log "Opening UFW for 80 + 443"
     ufw allow 80/tcp  >/dev/null || true
     ufw allow 443/tcp >/dev/null || true

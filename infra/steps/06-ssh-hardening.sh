@@ -12,8 +12,23 @@
 # the very top, so the `10-` prefix guarantees our directives win over any
 # later drop-in (e.g. a cloud-init file) that might re-enable passwords.
 #
+# The "no account carries a usable password hash" premise holds on a fresh
+# server and not on a Plesk one: Plesk creates system users for subscriptions
+# and its customers reach them over SSH and SFTP with passwords the panel
+# issued. Disabling password auth box-wide would lock those people out of
+# hosting accounts that have nothing to do with this platform, so on a Plesk
+# host this is skipped unless the operator explicitly asks for it.
+#
 # Expects from caller: log / ok / warn / err helpers.
 set -euo pipefail
+
+if [ "${FUTRX_FRONTEND_MODE:-standalone}" = "plesk" ] && [ "${FORCE_SSH_HARDENING:-0}" -eq 0 ]; then
+    warn "Plesk detected — leaving SSH password authentication enabled."
+    echo "  Disabling it box-wide would lock out panel-managed SFTP and SSH users." >&2
+    echo "  Port 22 keeps an online brute-force surface; Plesk's fail2ban limits it." >&2
+    echo "  To harden anyway: re-run with --force-ssh-hardening" >&2
+    return 0 2>/dev/null || exit 0
+fi
 
 DROPIN=/etc/ssh/sshd_config.d/10-futrx-hardening.conf
 
