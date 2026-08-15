@@ -117,6 +117,8 @@ else
 
   If this is a control panel that will not release them (Plesk, cPanel),
   the installer can run behind it instead — it detects Plesk automatically.
+  If you previously passed --no-plesk-integration, that choice is remembered
+  in /etc/remote.futrx/install-options.env; undo it with --plesk-integration.
 EOF
                 exit 1
             fi

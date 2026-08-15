@@ -24,6 +24,8 @@
 # Plesk hosts (auto-detected; these only apply when Plesk is present):
 #   --no-plesk-integration                      install as if Plesk were not here. Will fail
 #                                               the 80/443 pre-flight unless you free them.
+#   --plesk-integration                         undo the above (these choices are remembered
+#                                               across re-runs and updates).
 #   --plesk-tls-cert=/path --plesk-tls-key=...  certificate for Plesk's nginx to serve. Must
 #                                               cover the wildcards; auto-detected from
 #                                               Plesk's own store when omitted.
@@ -31,6 +33,10 @@
 #   --force-ssh-hardening                       disable SSH password auth anyway. Skipped by
 #                                               default on Plesk, where it can lock out
 #                                               panel-managed SFTP users.
+#   --no-force-ssh-hardening                    undo the above.
+#
+# The Plesk choices persist to /etc/remote.futrx/install-options.env, so
+# infra/update.sh does not silently change topology. Delete that file to reset.
 #
 # Environment:
 #   GITHUB_TOKEN                                same as --github-token=.
@@ -148,7 +154,9 @@ for a in "$@"; do
         --google-client-secret=*) GOOGLE_CLIENT_SECRET="${a#*=}" ;;
         --github-token=*)         GITHUB_TOKEN="${a#*=}" ;;
         --no-plesk-integration)   NO_PLESK_INTEGRATION=1 ;;
+        --plesk-integration)      NO_PLESK_INTEGRATION=0 ;;
         --force-ssh-hardening)    FORCE_SSH_HARDENING=1 ;;
+        --no-force-ssh-hardening) FORCE_SSH_HARDENING=0 ;;
         --plesk-tls-cert=*)       PLESK_TLS_CERT="${a#*=}" ;;
         --plesk-tls-key=*)        PLESK_TLS_KEY="${a#*=}" ;;
         --caddy-port=*)           CADDY_HTTP_PORT="${a#*=}" ;;
