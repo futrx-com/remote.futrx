@@ -55,9 +55,14 @@ plesk_version() {
 # or certificate problem, not a listen-address problem.
 plesk_listen_ips() {
     [ -d /etc/nginx/plesk.conf.d ] || return 0
-    grep -rhoE '^[[:space:]]*listen[[:space:]]+([0-9]{1,3}\.){3}[0-9]{1,3}:443' \
+    # Both families. A host with AAAA records whose IPv6 listen we miss serves
+    # every IPv6 request from Plesk's default vhost instead of ours — a
+    # wrong-site, wrong-certificate failure that reads as a DNS problem.
+    # IPv6 listen addresses are bracketed, which is also how they must be
+    # emitted, so they pass through with the brackets intact.
+    grep -rhoE '^[[:space:]]*listen[[:space:]]+(([0-9]{1,3}\.){3}[0-9]{1,3}|\[[0-9a-fA-F:]+\]):443' \
         /etc/nginx/plesk.conf.d 2>/dev/null \
-        | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' \
+        | sed -E 's/^[[:space:]]*listen[[:space:]]+//; s/:443$//' \
         | sort -u
 }
 
@@ -76,6 +81,14 @@ cert_covers() {
     sans="$(openssl x509 -in "$cert" -noout -ext subjectAltName 2>/dev/null \
         | tr ',' '\n' | sed -n 's/.*DNS://p' | tr -d ' ' | tr 'A-Z' 'a-z')"
     [ -n "$sans" ] || return 1
+
+    # Pathname expansion off for the duration: SANs are exactly the strings
+    # that glob. An unquoted `for san in $sans` would replace
+    # "*.dev.example.com" with whatever happens to match it in the current
+    # directory, and a certificate that does cover the name would be rejected.
+    local had_noglob=0
+    case "$-" in *f*) had_noglob=1 ;; esac
+    set -f
 
     for name in "$@"; do
         name="$(printf '%s' "$name" | tr 'A-Z' 'a-z')"
@@ -102,8 +115,12 @@ cert_covers() {
                     ;;
             esac
         done
-        [ "$matched" -eq 1 ] || return 1
+        if [ "$matched" -ne 1 ]; then
+            [ "$had_noglob" -eq 1 ] || set +f
+            return 1
+        fi
     done
+    [ "$had_noglob" -eq 1 ] || set +f
     return 0
 }
 
