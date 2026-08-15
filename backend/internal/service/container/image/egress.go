@@ -47,16 +47,23 @@ const (
 )
 
 // ipv4EgressProbe checks the three hops in order and names the first one that
-// fails. Bash's /dev/tcp keeps the reachability test dependency-free, which
-// matters because this runs before the install script has added anything to
-// the rootfs.
-const ipv4EgressProbe = `if ! ip -4 -o addr show scope global 2>/dev/null | grep -q .; then
-    echo "futrx-egress: no-ipv4-address"
-    exit 1
-fi
-if ! ip -4 route show default 2>/dev/null | grep -q .; then
-    echo "futrx-egress: no-default-route"
-    exit 1
+// fails. Bash's /dev/tcp keeps the reachability test itself dependency-free,
+// which matters because this runs before the install script has added anything
+// to the rootfs.
+//
+// The address and route checks need `ip`, so they are skipped rather than
+// trusted when it is absent. Reporting "no address" because the tool that
+// would have found one is missing sends the operator to a DHCP diagnosis for a
+// container whose networking is fine.
+const ipv4EgressProbe = `if command -v ip >/dev/null 2>&1; then
+    if ! ip -4 -o addr show scope global 2>/dev/null | grep -q .; then
+        echo "futrx-egress: no-ipv4-address"
+        exit 1
+    fi
+    if ! ip -4 route show default 2>/dev/null | grep -q .; then
+        echo "futrx-egress: no-default-route"
+        exit 1
+    fi
 fi
 for endpoint in 1.1.1.1 9.9.9.9 8.8.8.8; do
     timeout 8 bash -c "exec 3<>/dev/tcp/${endpoint}/443" 2>/dev/null && exit 0
