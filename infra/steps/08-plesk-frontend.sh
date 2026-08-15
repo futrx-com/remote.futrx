@@ -48,12 +48,24 @@ if [ -z "$PLESK_IPS" ]; then
 else
     PLESK_LISTEN=""
     PLESK_LISTEN_HTTP=""
+    HAS_V6=0
     for ip in $PLESK_IPS; do
+        case "$ip" in \[*\]) HAS_V6=1 ;; esac
         PLESK_LISTEN="${PLESK_LISTEN}${PLESK_LISTEN:+
 }    listen ${ip}:443 ssl;"
         PLESK_LISTEN_HTTP="${PLESK_LISTEN_HTTP}${PLESK_LISTEN_HTTP:+
 }    listen ${ip}:80;"
     done
+    # Plesk's vhost templates do not always spell out an IPv6 listen even on a
+    # dual-stack box. Without one here, every IPv6 request for our hostnames
+    # falls through to Plesk's default vhost — the wrong site with the wrong
+    # certificate, which reads as a DNS fault rather than a listen one.
+    if [ "$HAS_V6" -eq 0 ]; then
+        PLESK_LISTEN="${PLESK_LISTEN}
+    listen [::]:443 ssl;"
+        PLESK_LISTEN_HTTP="${PLESK_LISTEN_HTTP}
+    listen [::]:80;"
+    fi
     ok "binding the addresses Plesk uses: $(printf '%s' "$PLESK_IPS" | tr '\n' ' ')"
 fi
 

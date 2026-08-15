@@ -2,8 +2,15 @@
 #
 # Installed at /etc/nginx/conf.d/futrx.conf. Plesk includes that directory at
 # the http level and does not regenerate it, unlike /etc/nginx/plesk.conf.d/**
-# which it rewrites on every config apply. The server_names below are ones
-# Plesk does not own, so there is no duplicate-vhost conflict either.
+# which it rewrites on every config apply.
+#
+# Obtaining the wildcard certificate normally means adding ${HOSTNAME} as a
+# Plesk domain, at which point Plesk generates its own vhost for the same
+# server_name. nginx logs "conflicting server name" and keeps one block —
+# ours, because conf.d loads before Plesk's zz010_psa_nginx.conf. That is what
+# we want for every application path, but it would also swallow Plesk's ACME
+# HTTP-01 challenge and stop the certificate renewing, so the challenge path
+# below is served from the domain's own document root instead of proxied.
 #
 # Do not edit by hand: re-running infra/install.sh overwrites this file.
 
@@ -23,6 +30,14 @@ ${PLESK_TLS}
     # Agent output, container file listings and code-server payloads are all
     # unbounded in practice; nginx's default 1m rejects ordinary uploads.
     client_max_body_size 0;
+
+    # Let Plesk renew certificates for this domain. ^~ beats the regex
+    # locations nginx would otherwise consider, and a missing docroot simply
+    # 404s, which is what would have happened anyway.
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/vhosts/${HOSTNAME}/httpdocs;
+        try_files $uri =404;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:${CADDY_HTTP_PORT};

@@ -6,7 +6,7 @@ trap 'rm -rf "$TEST_TMP"' EXIT
 
 # Keep the BIND include inside the sandbox — this suite must never be able to
 # write to a real /etc/named.user.conf.
-export FUTRX_NAMED_INCLUDE_CANDIDATES="$TEST_TMP/named.user.conf"
+export FUTRX_NAMED_INCLUDE_CANDIDATES="options:$TEST_TMP/named.user.options.conf toplevel:$TEST_TMP/named.user.conf"
 
 # shellcheck source=../lib/bridge-dns.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib/bridge-dns.sh"
@@ -87,15 +87,43 @@ CHECKCONF_OK=1
 named-checkconf() { [ "$CHECKCONF_OK" -eq 1 ]; }
 
 INCLUDE="$TEST_TMP/named.user.conf"
+OPTIONS_INCLUDE="$TEST_TMP/named.user.options.conf"
 
-# Writes the exclusion, and keeps whatever the operator already had in there.
-rm -f "$INCLUDE"
-printf '%s\n' '// operator settings' 'options { version none; };' > "$INCLUDE"
+# Nothing to write into: creating an include ourselves would produce a file
+# nothing includes. named-checkconf would pass, BIND would restart happily,
+# and nothing would have changed — success reported, problem untouched.
+rm -f "$INCLUDE" "$OPTIONS_INCLUDE"
+if exclude_bridge_from_named "$BRIDGE_IP"; then
+    fail "expected non-zero when no BIND user-include exists to write into"
+fi
+[ ! -e "$INCLUDE" ] || fail "an include that BIND does not read must not be created"
+
+# Top-level include: the directive needs its own options block.
+printf '%s\n' '// operator settings' > "$INCLUDE"
 exclude_bridge_from_named "$BRIDGE_IP" || fail "exclusion should have succeeded"
 grep -q "listen-on port 53 { !${BRIDGE_IP}; any; };" "$INCLUDE" \
     || fail "listen-on exclusion missing from $INCLUDE"
+grep -qF 'options {' "$INCLUDE" || fail "a top-level include needs a wrapping options block"
 grep -q '// operator settings' "$INCLUDE" \
     || fail "pre-existing include content was lost"
+
+# Options-scoped include: spliced inside BIND's own options statement, so the
+# directive goes in bare. Wrapping it there would be a nested-options syntax
+# error, which is the failure that made the automatic path unusable on the
+# Plesk layouts that already have a top-level options statement.
+rm -f "$INCLUDE"
+printf '%s\n' '// plesk options' > "$OPTIONS_INCLUDE"
+exclude_bridge_from_named "$BRIDGE_IP" || fail "options-scoped exclusion should have succeeded"
+grep -q "listen-on port 53 { !${BRIDGE_IP}; any; };" "$OPTIONS_INCLUDE" \
+    || fail "listen-on missing from the options-scoped include"
+grep -qF 'options {' "$OPTIONS_INCLUDE" \
+    && fail "an options-scoped include must not wrap the directive in a second options block"
+[ ! -e "$INCLUDE" ] || fail "the options-scoped include must be preferred"
+rm -f "$OPTIONS_INCLUDE"
+
+# Back to the top-level file for the remaining cases.
+printf '%s\n' '// operator settings' > "$INCLUDE"
+exclude_bridge_from_named "$BRIDGE_IP" || fail "exclusion should have succeeded"
 
 # Idempotent: re-running the installer must not stack a second options block,
 # which would be a config error rather than a no-op.
@@ -172,7 +200,7 @@ lxc() { printf '%s\n' "$*" >> "$LXC_CALLS"; }
 # The repair path: BIND holds the address, we exclude it, and dnsmasq takes
 # over. The listener flips only after the restart, which is what proves the
 # function re-checks rather than assuming.
-rm -f "$INCLUDE"
+printf '%s\n' '// plesk' > "$INCLUDE"
 SS_OUTPUT="$header
 UNCONN 0      0      ${BRIDGE_IP}:53        0.0.0.0:*    users:((\"named\",pid=800,fd=21))"
 restart_bridge_dns() {
@@ -185,10 +213,10 @@ grep -q "listen-on port 53" "$INCLUDE" || fail "repair did not write the exclusi
 
 # An already-healthy bridge is left completely alone.
 : > "$LXC_CALLS"
-rm -f "$INCLUDE"
+printf '%s\n' '// plesk' > "$INCLUDE"
 ensure_bridge_dns lxdbr0 "$BRIDGE_IP" || fail "a healthy bridge should return zero"
 [ ! -s "$LXC_CALLS" ] || fail "a healthy bridge should not be touched: $(cat "$LXC_CALLS")"
-[ ! -e "$INCLUDE" ] || fail "a healthy bridge should not have edited BIND"
+[ "$(cat "$INCLUDE")" = "// plesk" ] || fail "a healthy bridge should not have edited BIND"
 
 # An unrecognised squatter is reported, not silently worked around: guessing
 # at somebody else's DNS server is how you take a production box offline.
