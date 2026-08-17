@@ -32,28 +32,31 @@ export function useAuditLog(enabled: boolean): AuditLog {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(false);
+  // Every request gets a sequence number. A response is applied only if no
+  // newer request started meanwhile, so quickly re-filtering cannot leave the
+  // table showing a superseded page.
+  const requestSeq = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
     try {
       const page = await auditApi.list(filters, { limit: DEFAULT_AUDIT_LOG_LIMIT });
+      if (seq !== requestSeq.current) return;
       setEntries(page.entries);
       setCursor(page.nextCursor ?? "");
     } catch (cause) {
+      if (seq !== requestSeq.current) return;
       setError((cause as Error).message);
     } finally {
-      setLoading(false);
-      inFlight.current = false;
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [filters]);
 
   const loadMore = useCallback(async () => {
-    if (inFlight.current || !cursor) return;
-    inFlight.current = true;
+    if (!cursor || loadingMore) return;
+    const seq = ++requestSeq.current;
     setLoadingMore(true);
     setError(null);
     try {
@@ -61,15 +64,16 @@ export function useAuditLog(enabled: boolean): AuditLog {
         limit: DEFAULT_AUDIT_LOG_LIMIT,
         cursor,
       });
+      if (seq !== requestSeq.current) return;
       setEntries((current) => auditLogState.appendPage(current, page));
       setCursor(page.nextCursor ?? "");
     } catch (cause) {
+      if (seq !== requestSeq.current) return;
       setError((cause as Error).message);
     } finally {
-      setLoadingMore(false);
-      inFlight.current = false;
+      if (seq === requestSeq.current) setLoadingMore(false);
     }
-  }, [cursor, filters]);
+  }, [cursor, filters, loadingMore]);
 
   // Changing a filter restarts paging: a cursor is a position inside one
   // filtered range and means nothing in another.
