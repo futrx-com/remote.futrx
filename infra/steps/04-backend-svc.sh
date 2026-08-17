@@ -10,6 +10,16 @@
 #   - $INFRA_DIR, $INSTALL_DIR, $HOSTNAME, $SERVICE_PORT
 set -euo pipefail
 
+# The snap-packaged `lxc` client places itself in a transient scope of the
+# *user* manager whenever one exists for root (i.e. while an SSH session is
+# open). When that session logs out, systemd stops user@0.service and
+# SIGTERMs every lxc process the backend has in flight — observed as
+# "lxc init: signal: terminated" mid image-unpack. Lingering keeps the user
+# manager alive permanently so backend-owned lxc calls survive logouts.
+if command -v loginctl >/dev/null 2>&1; then
+    loginctl enable-linger root >/dev/null 2>&1 || true
+fi
+
 SERVICE_NAME="remote.futrx.service"
 SERVICE_UNIT_PATH="/etc/systemd/system/$SERVICE_NAME"
 LEGACY_SERVICE_NAME="remote.futrx.dev.service"
