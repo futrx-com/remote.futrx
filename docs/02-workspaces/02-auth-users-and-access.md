@@ -134,7 +134,7 @@ Project access is enforced independently on project/chat HTTP resources, chat so
 
 ## Preview and IDE authentication
 
-Caddy calls `/auth/verify` before forwarding IDE or preview traffic. For a preview host, the backend extracts the project slug and checks membership. IDE hosts currently receive the registered-user check but not a per-project membership check. After verification, Caddy strips platform session cookies before the request enters project-controlled code.
+Caddy calls `/auth/verify` before forwarding IDE or preview traffic. For a preview host, the backend extracts the project slug and checks membership; failing that, it accepts a valid [public share link](../03-platform/06-previews-and-browser.md#public-share-links) for that exact slug and port, which is the one path that authorizes a caller with no platform account. IDE hosts currently receive the registered-user check but not a per-project membership check, and never accept share links. After verification, Caddy strips platform session and share cookies before the request enters project-controlled code.
 
 ```mermaid
 sequenceDiagram

@@ -43,7 +43,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **No 2FA, no password reset flow, no session revocation.** Recovering a lost owner password requires manually deleting `local-admin.json` on the host. Individual sessions cannot be revoked (30-day stateless tokens); the only levers are deleting the user or rotating the global session key.
 - **Flat admin/member roles.** There is no per-project "owner" tier. Any project member can read and change that project's secrets and edit its membership. Sharing a project shares its secrets.
 - **The per-project IDE is reachable by any invited user.** `<slug>.code.<host>` authenticates the registered user but does **not** check project membership, so any invited user can open any project's code editor. This is documented in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md) and analyzed in the [threat model](threat-model.md).
-- **No public/anonymous sharing.** Every preview URL sits behind the platform session, so showing a prototype to an outside stakeholder means inviting them as a user first.
+- **Public sharing covers app previews only, and is bearer-token access.** A project member can hand out a time-boxed public link to one `<slug>--<port>.dev.<host>` preview (default 24h, max 30 days, revocable, SHA-256-hashed at rest). Everything else — the IDE, the Agent Browser on port 6080, and the main application — still requires an invited account, and there is still no way to give an outsider read-only access to chats or files. Anyone who obtains a link is the viewer: there is no per-recipient identity, no password on the link, and no audit trail of who opened it. *(`backend/internal/service/share/`)*
 
 ## Agents
 

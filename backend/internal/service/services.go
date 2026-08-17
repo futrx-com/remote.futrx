@@ -17,6 +17,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
@@ -37,6 +38,7 @@ type Dependencies struct {
 	Projects          serviceproject.Repository
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
+	ProjectShares     serviceshare.Repository
 	Schedules         serviceschedule.Repository
 	Auth              AuthStore
 	Users             serviceuser.Repository
@@ -62,6 +64,7 @@ type Services struct {
 	Chats        *servicechat.Service
 	ChatAccess   *servicechat.AccessService
 	Projects     *serviceproject.Service
+	Shares       *serviceshare.Service
 	Prompt       *prompt.Service
 	Schedules    *serviceschedule.Service
 	ScheduleCaps *schedulecapability.Registry
@@ -173,6 +176,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if authService != nil {
 		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
 	}
+	var shareService *serviceshare.Service
+	if deps.ProjectShares != nil {
+		shareService = serviceshare.New(deps.ProjectShares, projectService)
+	}
 	var tmuxService *servicetmux.Service
 	if deps.TmuxClient != nil {
 		tmuxService = servicetmux.NewSessions(deps.TmuxClient)
@@ -182,6 +189,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Chats:        chatService,
 		ChatAccess:   chatAccessService,
 		Projects:     projectService,
+		Shares:       shareService,
 		Prompt:       promptService,
 		Schedules:    scheduleService,
 		ScheduleCaps: scheduleCaps,

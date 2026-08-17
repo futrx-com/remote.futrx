@@ -79,6 +79,9 @@ export const API_ROUTES = {
       `/api/projects/${encodeURIComponent(id)}/secrets`,
     secret: (id: string, key: string) =>
       `/api/projects/${encodeURIComponent(id)}/secrets/${encodeURIComponent(key)}`,
+    shares: (id: string) => `/api/projects/${encodeURIComponent(id)}/shares`,
+    share: (id: string, shareId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`,
     access: (id: string) => `/api/projects/${encodeURIComponent(id)}/access`,
     accessMember: (id: string, email: string) =>
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,

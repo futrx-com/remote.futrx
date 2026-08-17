@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/shared/projectPreviewUrls.test.ts src/state/auth/returnUrlPolicy.test.ts src/state/chat/chatAttachmentState.test.ts src/state/chat/chatBrowserState.test.ts src/state/chat/chatEventStateProjector.test.ts src/state/chat/chatPreferenceState.test.ts src/state/chat/composerSessionStore.test.ts src/state/chat/promptQueueState.test.ts src/state/chat/workspaceFileBrowserState.test.ts src/state/workspace/workspaceState.test.ts src/ui/chat/files/fileMeta.test.ts src/ui/chat/ideLinks.test.ts src/ui/chat/history/diffModel.test.ts src/ui/chat/schedules/scheduledTaskView.test.ts",
+    "test": "node --experimental-strip-types --test src/shared/projectPreviewUrls.test.ts src/state/auth/returnUrlPolicy.test.ts src/state/chat/chatAttachmentState.test.ts src/state/chat/chatBrowserState.test.ts src/state/chat/chatEventStateProjector.test.ts src/state/chat/chatPreferenceState.test.ts src/state/chat/composerSessionStore.test.ts src/state/chat/promptQueueState.test.ts src/state/chat/workspaceFileBrowserState.test.ts src/state/projects/projectShareState.test.ts src/state/workspace/workspaceState.test.ts src/ui/chat/files/fileMeta.test.ts src/ui/chat/ideLinks.test.ts src/ui/chat/history/diffModel.test.ts src/ui/chat/schedules/scheduledTaskView.test.ts",
     "test:project-preview-urls": "node --experimental-strip-types --test src/shared/projectPreviewUrls.test.ts"
   },
   "dependencies": {

@@ -1,4 +1,9 @@
-import type { ProjectContainerInfo, ProjectSecret } from "../../models/project";
+import type {
+  ContainerApp,
+  ProjectContainerInfo,
+  ProjectSecret,
+  ProjectShare,
+} from "../../models/project";
 
 export interface ProjectDataLoadSignal {
   cancelled: boolean;
@@ -14,6 +19,14 @@ export interface ProjectContainerRecord {
 export interface SecretsRecord {
   loading: boolean;
   data?: ProjectSecret[];
+  error?: string;
+}
+
+export interface SharesRecord {
+  loading: boolean;
+  data?: ProjectShare[];
+  /** Listening ports discovered in the container, used to offer share targets. */
+  apps?: ContainerApp[];
   error?: string;
 }
 

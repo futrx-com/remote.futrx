@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 )
 
 // AuthHandler composes the independent authentication HTTP flows behind the
@@ -24,6 +25,15 @@ func NewAuthHandler(auth *serviceauth.Service, access *serviceauth.AccessVerifie
 		verify:       &authVerifyHandler{auth: auth, access: access},
 		googleConfig: &googleConfigHandler{auth: auth},
 	}
+}
+
+// WithShares lets public preview links authorize <slug>--<port>.dev.<host>
+// requests at /auth/verify. Without it the edge stays session-only.
+func (h *AuthHandler) WithShares(shares *serviceshare.Service) *AuthHandler {
+	if shares != nil {
+		h.verify.shares = shares
+	}
+	return h
 }
 
 func (h *AuthHandler) RegisterRoutes(mux *http.ServeMux) {

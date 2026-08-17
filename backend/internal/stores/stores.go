@@ -7,6 +7,7 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
@@ -14,6 +15,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectshares"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
@@ -28,6 +30,7 @@ type Stores struct {
 	Projects       serviceproject.Repository
 	ProjectSecrets serviceproject.SecretsRepository
 	ProjectAccess  serviceproject.AccessRepository
+	ProjectShares  serviceshare.Repository
 	Schedules      serviceschedule.Repository
 	Auth           AuthStore
 	Users          serviceuser.Repository
@@ -55,6 +58,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init project access store: %w", err)
 	}
 
+	projectShares, err := fileprojectshares.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init project shares store: %w", err)
+	}
+
 	schedules, err := fileschedule.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init scheduled tasks store: %w", err)
@@ -75,6 +83,7 @@ func New(dataDir string) (Stores, error) {
 		Projects:       projects,
 		ProjectSecrets: projectSecrets,
 		ProjectAccess:  projectAccess,
+		ProjectShares:  projectShares,
 		Schedules:      schedules,
 		Auth:           fileauth.New(dataDir),
 		Users:          users,

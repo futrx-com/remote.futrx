@@ -38,6 +38,7 @@ type Service struct {
 	baseURL      string
 	cookieDomain string
 	sessions     *SessionCodec
+	sharePasses  *sharePassCodec
 }
 
 func NormalizeBaseURL(baseURL string) (string, error) {
@@ -95,6 +96,7 @@ func New(
 		baseURL:      baseURL,
 		cookieDomain: cookieDomain,
 		sessions:     newSessionCodec(sessionKey),
+		sharePasses:  newSharePassCodec(sessionKey),
 	}
 	return service, nil
 }
@@ -145,6 +147,19 @@ func (s *Service) IsLocalAdmin(email string) bool {
 
 func (s *Service) SignSession(user User) string {
 	return s.sessions.sign(user)
+}
+
+// SignSharePass mints the value for ShareCookieName. Callers must already
+// have validated the underlying share token for this slug and port.
+func (s *Service) SignSharePass(pass SharePass) string {
+	return s.sharePasses.sign(pass)
+}
+
+// VerifySharePass authenticates a ShareCookieName value. A valid pass proves
+// only that a share link once granted this slug/port; whether that link is
+// still live is the share service's question.
+func (s *Service) VerifySharePass(cookieValue string) (*SharePass, error) {
+	return s.sharePasses.verify(cookieValue)
 }
 
 func (s *Service) CurrentSession(cookieValue string) (*Session, error) {

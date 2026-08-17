@@ -15,6 +15,7 @@ import (
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -23,6 +24,8 @@ type ProjectHandler struct {
 	projects           *serviceproject.Service
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
+	shares             *serviceshare.Service
+	publicHostname     string
 	projectHostPattern *regexp.Regexp
 	codeHostPattern    *regexp.Regexp
 }
@@ -36,9 +39,10 @@ func NewProjectHandler(
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
 	escapedHostname := regexp.QuoteMeta(publicHostname)
 	return &ProjectHandler{
-		projects: projects,
-		users:    users,
-		auth:     auth,
+		projects:       projects,
+		users:          users,
+		auth:           auth,
+		publicHostname: publicHostname,
 		projectHostPattern: regexp.MustCompile(
 			`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.` + escapedHostname + `$`,
 		),
@@ -46,6 +50,13 @@ func NewProjectHandler(
 			`^([a-z0-9][a-z0-9-]*)\.code\.` + escapedHostname + `$`,
 		),
 	}
+}
+
+// WithShares enables the public preview link routes under
+// /api/projects/{id}/shares. Without it those routes report 503.
+func (h *ProjectHandler) WithShares(shares *serviceshare.Service) *ProjectHandler {
+	h.shares = shares
+	return h
 }
 
 func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -179,6 +190,11 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 
 	if len(parts) >= 2 && parts[1] == "agent-browser" {
 		h.handleAgentBrowser(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "shares" {
+		h.handleShares(w, r, id, parts)
 		return
 	}
 
