@@ -241,5 +241,13 @@ func (c Config) Apply(input UpdateInput) Config {
 	case strings.TrimSpace(input.Webhook.Secret) != "":
 		next.Webhook.Secret = strings.TrimSpace(input.Webhook.Secret)
 	}
+	// A retained secret is meaningless without its destination, and would
+	// otherwise make "clear the webhook URL" fail validation forever.
+	if next.Webhook.URL == "" && strings.TrimSpace(input.Webhook.Secret) == "" {
+		next.Webhook.Secret = ""
+	}
+	if next.Telegram.ChatID == "" && strings.TrimSpace(input.Telegram.BotToken) == "" {
+		next.Telegram.BotToken = ""
+	}
 	return next
 }
