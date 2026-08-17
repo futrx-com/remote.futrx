@@ -65,6 +65,20 @@ type ContainerBrowser interface {
 	Port() int
 }
 
+// ContainerTemplates is the project service's stack-preset port. It answers
+// which templates exist (create-time validation) and how far one project's
+// one-time provisioning has got (status payload).
+type ContainerTemplates interface {
+	// Has reports whether name is a known template.
+	Has(name string) bool
+	// DefaultName is the template assigned when a caller requests none.
+	DefaultName() string
+	// TemplateStatus reports the provisioning state of one container.
+	TemplateStatus(ctx context.Context, containerName, template string) TemplateStatus
+	// ForgetTemplateState drops any cached state for a deleted container.
+	ForgetTemplateState(containerName string)
+}
+
 // ContainerDependencies groups the independently replaceable container
 // capabilities used by Service. A nil capability preserves the behavior of a
 // nil container manager for the operations that consume it.
@@ -75,4 +89,5 @@ type ContainerDependencies struct {
 	Network     ContainerNetwork
 	Listeners   ContainerListeners
 	Browser     ContainerBrowser
+	Templates   ContainerTemplates
 }

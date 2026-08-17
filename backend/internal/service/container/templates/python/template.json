@@ -1,0 +1,12 @@
+{
+  "name": "python",
+  "title": "Python",
+  "description": "Python 3.12 with venv and pip, a ready-made /workspace/.venv, and the uv package manager. Poetry is left out on purpose; install it with pipx when a project needs it.",
+  "icon": "python",
+  "provisionScript": "provision.sh",
+  "agentInstructions": "AGENTS.md",
+  "seedFiles": [
+    { "source": "README.md", "target": "/workspace/README.md" }
+  ],
+  "defaultPorts": [8000]
+}

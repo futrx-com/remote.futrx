@@ -29,6 +29,15 @@ export function formatUnixTime(unix?: number): string {
   }
 }
 
+export function formatEpochMillis(millis?: number): string {
+  if (!millis) return "—";
+  try {
+    return new Date(millis).toLocaleString();
+  } catch {
+    return String(millis);
+  }
+}
+
 export function formatDuration(seconds: number): string {
   if (!seconds || seconds < 0) return "—";
   const days = Math.floor(seconds / 86400);

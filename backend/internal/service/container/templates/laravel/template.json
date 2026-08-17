@@ -1,0 +1,10 @@
+{
+  "name": "laravel",
+  "title": "Laravel",
+  "description": "PHP 8.3 with the Laravel extension set, Composer, a local MariaDB, and a fresh laravel/laravel skeleton in /workspace/app wired to the database. Node 22 for Vite comes from the base image.",
+  "icon": "laravel",
+  "provisionScript": "provision.sh",
+  "agentInstructions": "AGENTS.md",
+  "defaultPorts": [8000, 5173],
+  "prebuiltImage": true
+}

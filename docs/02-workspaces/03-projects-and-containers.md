@@ -16,18 +16,26 @@ sequenceDiagram
     participant LXD
     participant Provision as Launch provisioners
 
-    User->>API: Create project with a name
-    API->>Store: Create ID, unique slug, metadata
+    User->>API: Create project with a name and a template
+    API->>Store: Create ID, unique slug, metadata (including the template)
     API->>Access: Add creator as a member
     API->>Files: Prepare durable workspace and agent-home directories
-    API->>LXD: Launch from futrx-remote-dev-base
+    API->>LXD: Launch from the template image if published, else futrx-remote-dev-base
     LXD->>LXD: Attach workspace and provider homes
     API->>Provision: Credentials, skills, browser assets, code-server
+    API->>Provision: Template stack (background, marker-gated)
     API->>Store: Mark running or error
     Store-->>User: Workspace WebSocket project update
 ```
 
 The slug becomes the container name and is used in IDE and preview hostnames. Duplicate names receive a unique slug.
+
+The template is chosen at creation and never changes. It selects the image the
+container is created from and a one-time provisioning step that installs a
+stack (WordPress, Laravel, Node, Python) inside it. Projects created before
+templates existed, and projects created without choosing one, use `blank` — the
+plain base image, which is the pre-template behaviour. See
+[Project templates](08-project-templates.md).
 
 ## Durable and replaceable parts
 

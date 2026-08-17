@@ -50,28 +50,76 @@ type LaunchProvisioner interface {
 	Provision(ctx context.Context, containerName, displayName string)
 }
 
+// TemplateProvisioner applies a project's stack preset. It is optional: a
+// deployment without a template catalog behaves exactly as before templates
+// existed.
+type TemplateProvisioner interface {
+	// ImageFor returns the dedicated pre-built image alias to launch a
+	// template's containers from, or "" to use the shared base image and
+	// provision the stack in-container instead.
+	ImageFor(ctx context.Context, template string) string
+	// Ensure runs the template's one-time provisioning unless the container's
+	// marker file says it already ran. The returned channel closes once any
+	// background work has settled.
+	Ensure(ctx context.Context, containerName, template string) <-chan struct{}
+}
+
 type Service struct {
 	runtime     Runtime
 	image       string
 	workspace   WorkspacePreparer
 	resources   ResourceEnsurer
 	provisioner LaunchProvisioner
+	templates   TemplateProvisioner
 }
 
+// NewService wires the lifecycle. templates is variadic so callers that do
+// not offer stack presets keep the original five-argument construction.
 func NewService(
 	runtime Runtime,
 	image string,
 	workspace WorkspacePreparer,
 	resources ResourceEnsurer,
 	provisioner LaunchProvisioner,
+	templates ...TemplateProvisioner,
 ) *Service {
-	return &Service{
+	service := &Service{
 		runtime:     runtime,
 		image:       image,
 		workspace:   workspace,
 		resources:   resources,
 		provisioner: provisioner,
 	}
+	if len(templates) > 0 {
+		service.templates = templates[0]
+	}
+	return service
+}
+
+// imageFor resolves the image a project's container is created from: the
+// template's dedicated pre-built alias when this host has published one, and
+// the shared base image otherwise.
+func (s *Service) imageFor(ctx context.Context, project serviceproject.Meta) string {
+	if s.templates == nil {
+		return s.image
+	}
+	if alias := s.templates.ImageFor(ctx, project.TemplateName()); alias != "" {
+		return alias
+	}
+	return s.image
+}
+
+// provisionTemplate applies the project's stack preset. It runs on every
+// convergence, not only on creation, because it is gated by a marker file in
+// the disposable rootfs: a replaced container (workspace upgrade) must be
+// re-provisioned, and an interrupted run must be retried. When the container
+// was launched from a pre-built template image the marker is already baked in
+// and this costs one probe.
+func (s *Service) provisionTemplate(ctx context.Context, project serviceproject.Meta) {
+	if s.templates == nil {
+		return
+	}
+	s.templates.Ensure(ctx, project.ContainerName, project.TemplateName())
 }
 
 func (s *Service) Available() bool {
@@ -128,7 +176,7 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 				return fmt.Errorf("prepare %s: %w", mount.device, err)
 			}
 		}
-		if err := s.runtime.Init(ctx, s.image, project.ContainerName); err != nil {
+		if err := s.runtime.Init(ctx, s.imageFor(ctx, project), project.ContainerName); err != nil {
 			// A canceled or failed `lxc init` may still have created the instance.
 			return s.rollbackNewContainer(ctx, project.ContainerName, err)
 		}
@@ -255,6 +303,7 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 	if created || len(changes) > 0 {
 		s.provisioner.Provision(ctx, project.ContainerName, project.Name)
 	}
+	s.provisionTemplate(ctx, project)
 	return nil
 }
 

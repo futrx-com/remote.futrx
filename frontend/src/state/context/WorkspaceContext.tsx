@@ -5,6 +5,7 @@ import type { ChatMeta, CreateChatInput } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
 import { chatApi } from "../../api/chatApi";
 import { projectApi } from "../../api/projectApi";
+import { templateApi } from "../../api/templateApi";
 import { useWorkspaceData } from "../hooks/workspace/useWorkspaceData";
 import { useUserSettingsContext } from "./UserSettingsContext";
 import {
@@ -12,6 +13,10 @@ import {
   type WorkspaceUiState,
 } from "../workspace/workspaceUiState";
 import { workspaceSidebarState } from "../workspace/workspaceSidebarState";
+import {
+  newProjectState,
+  type NewProjectState,
+} from "../projects/newProjectState";
 
 interface WorkspaceContextValue {
   chats: ChatMeta[];
@@ -24,7 +29,12 @@ interface WorkspaceContextValue {
   showChat: () => void;
   showSettings: () => void;
   showProjectContainers: (projectId: string | null) => void;
-  createProject: (name: string) => Promise<ProjectMeta>;
+  newProject: NewProjectState;
+  openNewProject: () => void;
+  closeNewProject: () => void;
+  setNewProjectName: (name: string) => void;
+  selectNewProjectTemplate: (template: string) => void;
+  submitNewProject: () => Promise<void>;
   createChat: (projectId?: string) => Promise<ChatMeta>;
   deleteChat: (chatId: string) => Promise<void>;
   forkChat: (chatId: string) => Promise<ChatMeta>;
@@ -46,6 +56,10 @@ export function WorkspaceProvider({
   const data = useWorkspaceData(enabled);
   const { settings } = useUserSettingsContext();
   const [ui, dispatch] = useReducer(workspaceUiState.reduce, workspaceUiState.createInitial());
+  const [newProject, dispatchNewProject] = useReducer(
+    newProjectState.reduce,
+    newProjectState.createInitial()
+  );
   const activeChat = workspaceSidebarState.activeChat(data.chats, ui.activeChatId);
 
   useEffect(() => {
@@ -59,9 +73,30 @@ export function WorkspaceProvider({
     }
   }, [data.chats, ui.activeChatId]);
 
-  async function createProject(name: string): Promise<ProjectMeta> {
-    const project = await projectApi.create(name);
-    return project;
+  // The template catalog is fetched once the dialog is first opened, not on
+  // mount: it is a static list only this dialog needs.
+  function openNewProject() {
+    dispatchNewProject({ type: "open" });
+    if (newProject.templates.length > 0 || newProject.templatesLoading) return;
+    dispatchNewProject({ type: "templates-loading" });
+    templateApi
+      .list()
+      .then((templates) => dispatchNewProject({ type: "templates-loaded", templates }))
+      .catch((error: Error) =>
+        dispatchNewProject({ type: "templates-failed", error: error.message })
+      );
+  }
+
+  async function submitNewProject(): Promise<void> {
+    const name = newProjectState.submittedName(newProject);
+    if (!name) return;
+    dispatchNewProject({ type: "submit" });
+    try {
+      await projectApi.create(name, newProject.template);
+      dispatchNewProject({ type: "close" });
+    } catch (error) {
+      dispatchNewProject({ type: "submit-failed", error: (error as Error).message });
+    }
   }
 
   async function createChat(projectId?: string): Promise<ChatMeta> {
@@ -118,7 +153,13 @@ export function WorkspaceProvider({
         showSettings: () => dispatch({ type: "show-settings" }),
         showProjectContainers: (projectId) =>
           dispatch({ type: "show-project-containers", projectId }),
-        createProject,
+        newProject,
+        openNewProject,
+        closeNewProject: () => dispatchNewProject({ type: "close" }),
+        setNewProjectName: (name) => dispatchNewProject({ type: "set-name", name }),
+        selectNewProjectTemplate: (template) =>
+          dispatchNewProject({ type: "select-template", template }),
+        submitNewProject,
         createChat,
         deleteChat,
         forkChat,

@@ -1,3 +1,5 @@
+import type { ProjectTemplateStatus } from "./template";
+
 export type ProjectStatus =
   | ""
   | "provisioning"
@@ -20,11 +22,22 @@ export interface ProjectMeta {
   cwd: string;
   containerName: string;
   status: ProjectStatus;
+  /**
+   * Stack preset the container was created from. Absent on projects created
+   * before templates existed, which behave like "blank"; read it through
+   * projectTemplateName().
+   */
+  template?: string;
   order?: number;
   errorMsg?: string;
   resourceLimits?: ContainerLimits;
   createdAt: number;
   updatedAt: number;
+}
+
+/** Backward-compatible read of ProjectMeta.template. */
+export function projectTemplateName(project: Pick<ProjectMeta, "template">): string {
+  return project.template || "blank";
 }
 
 export interface WorkspaceInfo {
@@ -124,6 +137,7 @@ export interface ProjectContainerInfo {
   claude: ClaudeContainerStatus;
   codex: CodexContainerStatus;
   authBundles: AuthBundleStatus[];
+  template?: ProjectTemplateStatus;
 }
 
 export interface ProjectSecret {

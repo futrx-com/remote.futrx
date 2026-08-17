@@ -45,11 +45,15 @@ type buildStageResult struct {
 	err    error
 }
 
-func (b *Builder) runBuildStage(stage int, description string, run func() (string, error)) (string, error) {
+func (b *Builder) runBuildStage(
+	stage, stageCount int,
+	description string,
+	run func() (string, error),
+) (string, error) {
 	started := time.Now()
 	b.reportProgress(Progress{
 		Stage:       stage,
-		StageCount:  baseImageBuildStageCount,
+		StageCount:  stageCount,
 		Description: description,
 		State:       ProgressStarted,
 	})
@@ -69,7 +73,7 @@ func (b *Builder) runBuildStage(stage int, description string, run func() (strin
 			if result.err != nil {
 				b.reportProgress(Progress{
 					Stage:       stage,
-					StageCount:  baseImageBuildStageCount,
+					StageCount:  stageCount,
 					Description: description,
 					State:       ProgressFailed,
 					Elapsed:     elapsed,
@@ -77,7 +81,7 @@ func (b *Builder) runBuildStage(stage int, description string, run func() (strin
 			} else {
 				b.reportProgress(Progress{
 					Stage:       stage,
-					StageCount:  baseImageBuildStageCount,
+					StageCount:  stageCount,
 					Description: description,
 					State:       ProgressSucceeded,
 					Elapsed:     elapsed,
@@ -88,7 +92,7 @@ func (b *Builder) runBuildStage(stage int, description string, run func() (strin
 			elapsed := time.Since(started).Round(time.Second)
 			b.reportProgress(Progress{
 				Stage:       stage,
-				StageCount:  baseImageBuildStageCount,
+				StageCount:  stageCount,
 				Description: description,
 				State:       ProgressRunning,
 				Elapsed:     elapsed,
@@ -112,6 +116,8 @@ type Builder struct {
 	codeServerInstallScript []byte
 	networkWarmup           time.Duration
 	progress                ProgressReporter
+	buildTimeout            time.Duration
+	publishTimeout          time.Duration
 }
 
 // NewBuilder returns an image builder configured with the feature install
@@ -130,6 +136,25 @@ func NewBuilder(
 		codeServerInstallScript: codeServerInstallScript,
 		networkWarmup:           baseImageNetworkWarmup,
 		progress:                progress,
+		buildTimeout:            baseImageBuildTimeout,
+		publishTimeout:          baseImagePublishTimeout,
+	}
+}
+
+// SetBuildTimeout overrides the budget for the install stages. A slow or
+// contended host needs more than the default; zero keeps the default.
+func (b *Builder) SetBuildTimeout(timeout time.Duration) {
+	if timeout > 0 {
+		b.buildTimeout = timeout
+	}
+}
+
+// SetPublishTimeout overrides the budget for the publish stage. Publishing
+// compresses the whole rootfs, which on a 1 vCPU host regularly exceeds the
+// default; zero keeps the default.
+func (b *Builder) SetPublishTimeout(timeout time.Duration) {
+	if timeout > 0 {
+		b.publishTimeout = timeout
 	}
 }
 
@@ -158,7 +183,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 	_, _ = b.runtime.DeleteContainer(cleanCtx, baseImageBuilderName)
 	cleanCancel()
 
-	bctx, bcancel := context.WithTimeout(ctx, baseImageBuildTimeout)
+	bctx, bcancel := context.WithTimeout(ctx, b.buildTimeout)
 	defer bcancel()
 
 	// Cleanup deliberately outlives a canceled caller so interrupted builds do
@@ -169,7 +194,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		_, _ = b.runtime.DeleteContainer(dctx, baseImageBuilderName)
 	}()
 
-	out, err := b.runBuildStage(1, "Downloading Ubuntu 24.04 and starting the builder", func() (string, error) {
+	out, err := b.runBuildStage(1, baseImageBuildStageCount, "Downloading Ubuntu 24.04 and starting the builder", func() (string, error) {
 		return b.runtime.LaunchContainer(bctx, SourceImage, baseImageBuilderName)
 	})
 	if err != nil {
@@ -189,37 +214,37 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return errors.New(ipv4EgressHint)
 	}
 
-	out, err = b.runBuildStage(2, "Installing system tools, Node.js, and agent CLIs", func() (string, error) {
+	out, err = b.runBuildStage(2, baseImageBuildStageCount, "Installing system tools, Node.js, and agent CLIs", func() (string, error) {
 		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, installScript)
 	})
 	if err != nil {
 		return fmt.Errorf("install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(3, "Installing the agent browser and Chromium", func() (string, error) {
+	out, err = b.runBuildStage(3, baseImageBuildStageCount, "Installing the agent browser and Chromium", func() (string, error) {
 		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, b.browserInstallScript)
 	})
 	if err != nil {
 		return fmt.Errorf("agent browser install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(4, "Installing the browser IDE", func() (string, error) {
+	out, err = b.runBuildStage(4, baseImageBuildStageCount, "Installing the browser IDE", func() (string, error) {
 		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, string(b.codeServerInstallScript))
 	})
 	if err != nil {
 		return fmt.Errorf("code-server install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(5, "Finalizing the builder container", func() (string, error) {
+	out, err = b.runBuildStage(5, baseImageBuildStageCount, "Finalizing the builder container", func() (string, error) {
 		return b.runtime.StopContainer(bctx, baseImageBuilderName)
 	})
 	if err != nil {
 		return fmt.Errorf("stop builder: %w; output: %s", err, out)
 	}
 
-	pctx, pcancel := context.WithTimeout(ctx, baseImagePublishTimeout)
+	pctx, pcancel := context.WithTimeout(ctx, b.publishTimeout)
 	defer pcancel()
-	out, err = b.runBuildStage(6, "Publishing the reusable workspace image", func() (string, error) {
+	out, err = b.runBuildStage(6, baseImageBuildStageCount, "Publishing the reusable workspace image", func() (string, error) {
 		return b.runtime.PublishImage(
 			pctx,
 			baseImageBuilderName,

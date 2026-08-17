@@ -6,14 +6,10 @@ import { chatApi } from "../../../api/chatApi";
 export function useWorkspaceCommands() {
   const workspace = useWorkspaceContext();
 
-  async function newProject() {
-    const name = prompt("Project name?", "");
-    if (!name || !name.trim()) return;
-    try {
-      await workspace.createProject(name.trim());
-    } catch (error) {
-      alert("create project failed: " + (error as Error).message);
-    }
+  // Opens the new-project dialog, which owns the name field and the template
+  // picker. Errors surface inside the dialog rather than in an alert().
+  function newProject() {
+    workspace.openNewProject();
   }
 
   async function newChatInProject(projectId?: string) {

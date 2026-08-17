@@ -640,7 +640,8 @@ func sendProjectError(w http.ResponseWriter, err error) {
 	case errors.Is(err, serviceproject.ErrNameRequired),
 		errors.Is(err, serviceproject.ErrInvalidID),
 		errors.Is(err, serviceproject.ErrInvalidSecretKey),
-		errors.Is(err, serviceproject.ErrInvalidLimits):
+		errors.Is(err, serviceproject.ErrInvalidLimits),
+		errors.Is(err, serviceproject.ErrUnknownTemplate):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, serviceproject.ErrSecretsUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())

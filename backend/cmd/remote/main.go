@@ -114,6 +114,7 @@ func main() {
 		Files:          workspaceFileService,
 		GitHistory:     gitHistoryService,
 		IDE:            workspaceIDEService,
+		Templates:      containerStack.Templates,
 	})
 	if err != nil {
 		log.Fatalf("init http handler: %v", err)

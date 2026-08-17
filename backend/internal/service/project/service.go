@@ -19,6 +19,7 @@ type Service struct {
 	containerNetwork     ContainerNetwork
 	containerListeners   ContainerListeners
 	containerBrowser     ContainerBrowser
+	containerTemplates   ContainerTemplates
 	secrets              SecretsRepository
 	access               AccessRepository
 
@@ -51,6 +52,7 @@ func New(
 		containerNetwork:     containers.Network,
 		containerListeners:   containers.Listeners,
 		containerBrowser:     containers.Browser,
+		containerTemplates:   containers.Templates,
 		secrets:              secrets,
 		access:               access,
 		agentBrowserInfo:     make(map[ID]AgentBrowserInfo),
@@ -196,11 +198,16 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 	if name == "" {
 		return Meta{}, ErrNameRequired
 	}
+	template, err := s.resolveTemplate(in.Template)
+	if err != nil {
+		return Meta{}, err
+	}
 
 	m, err := s.repo.Create(ctx, Meta{
-		Name:   name,
-		Slug:   Slugify(name),
-		Status: StatusProvisioning,
+		Name:     name,
+		Slug:     Slugify(name),
+		Status:   StatusProvisioning,
+		Template: template,
 	})
 	if err != nil {
 		return Meta{}, err
@@ -228,6 +235,27 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 		}
 	}
 	return s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
+}
+
+// resolveTemplate validates a requested template name against the catalog.
+// The template is fixed at creation, so this is the only place it is chosen.
+func (s *Service) resolveTemplate(requested string) (string, error) {
+	requested = strings.ToLower(strings.TrimSpace(requested))
+	if s.containerTemplates == nil {
+		// No catalog wired (tests, and any build without container support):
+		// only the default template exists, and it installs nothing.
+		if requested == "" || requested == DefaultTemplate {
+			return DefaultTemplate, nil
+		}
+		return "", ErrUnknownTemplate
+	}
+	if requested == "" {
+		return s.containerTemplates.DefaultName(), nil
+	}
+	if !s.containerTemplates.Has(requested) {
+		return "", ErrUnknownTemplate
+	}
+	return requested, nil
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
@@ -357,6 +385,9 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 		return err
 	}
 	s.clearAgentBrowserState(id)
+	if s.containerTemplates != nil && m.ContainerName != "" {
+		s.containerTemplates.ForgetTemplateState(m.ContainerName)
+	}
 	if s.containerLifecycle != nil && m.ContainerName != "" {
 		if err := s.containerLifecycle.Delete(ctx, m.ContainerName); err != nil {
 			log.Printf("projects: delete container %s: %v", m.ContainerName, err)
@@ -569,7 +600,23 @@ func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect
 		return ContainerInspect{}, err
 	}
 	info.LimitOverrides = m.ResourceLimits
+	s.describeTemplate(ctx, m, &info)
 	return info, nil
+}
+
+// describeTemplate annotates an inspection with the project's stack preset and
+// its provisioning progress. Best-effort: a project must remain inspectable
+// when the template catalog is unavailable.
+func (s *Service) describeTemplate(ctx context.Context, m Meta, info *ContainerInspect) {
+	if s.containerTemplates == nil {
+		info.Template = &TemplateStatus{
+			Name:   m.TemplateName(),
+			Status: TemplateProvisioningNone,
+		}
+		return
+	}
+	status := s.containerTemplates.TemplateStatus(ctx, m.ContainerName, m.TemplateName())
+	info.Template = &status
 }
 
 // RepairNetwork re-runs eth0 configuration inside the project's container

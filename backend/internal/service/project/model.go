@@ -30,13 +30,26 @@ const (
 	AgentBrowserStatusStopped   AgentBrowserStatus = "stopped"
 )
 
+// DefaultTemplate is the stack preset assigned to a project that requests
+// none, and the value assumed for metadata written before templates existed.
+const DefaultTemplate = "blank"
+
 type Meta struct {
-	ID             ID               `json:"id"`
-	Name           string           `json:"name"`
-	Slug           string           `json:"slug"`
-	Cwd            string           `json:"cwd"`
-	ContainerName  string           `json:"containerName"`
-	Status         Status           `json:"status"`
+	ID            ID     `json:"id"`
+	Name          string `json:"name"`
+	Slug          string `json:"slug"`
+	Cwd           string `json:"cwd"`
+	ContainerName string `json:"containerName"`
+	Status        Status `json:"status"`
+	// Template is the stack preset the container was created from. It is set
+	// once at creation and never changes: the provisioning it drives is
+	// applied to the container rootfs and to /workspace, and neither can be
+	// rolled back to another stack without destroying the project. Recreate
+	// the project to change stacks.
+	//
+	// Empty means "written before templates existed"; read it through
+	// TemplateName, which maps that to DefaultTemplate.
+	Template       string           `json:"template,omitempty"`
 	ResourceLimits *ContainerLimits `json:"resourceLimits,omitempty"`
 	Order          int64            `json:"order,omitempty"`
 	ErrorMsg       string           `json:"errorMsg,omitempty"`
@@ -44,10 +57,24 @@ type Meta struct {
 	UpdatedAt      int64            `json:"updatedAt"`
 }
 
-type CreateInput struct {
-	Name string `json:"name"`
+// TemplateName is the backward-compatible accessor for Meta.Template: project
+// metadata written before templates existed has no field at all, and those
+// projects behave exactly like the default template.
+func (m Meta) TemplateName() string {
+	if m.Template == "" {
+		return DefaultTemplate
+	}
+	return m.Template
 }
 
+type CreateInput struct {
+	Name string `json:"name"`
+	// Template selects the stack preset. Empty means the default.
+	Template string `json:"template,omitempty"`
+}
+
+// UpdateInput deliberately has no Template field: the template is immutable
+// after creation (see Meta.Template).
 type UpdateInput struct {
 	Name *string `json:"name,omitempty"`
 }
@@ -89,6 +116,25 @@ type ContainerInspect struct {
 	Claude         ClaudeContainerStatus `json:"claude"`
 	Codex          CodexContainerStatus  `json:"codex"`
 	AuthBundles    []AuthBundleStatus    `json:"authBundles"`
+	// Template reports the project's stack preset and how far its one-time
+	// in-container provisioning has got.
+	Template *TemplateStatus `json:"template,omitempty"`
+}
+
+// TemplateProvisioningNone is the status reported when a project's template
+// installs nothing, so its container is ready as soon as it boots.
+const TemplateProvisioningNone = "none"
+
+// TemplateStatus is the project-facing view of template provisioning.
+// Status is one of "none", "pending", "running", "done", or "failed".
+type TemplateStatus struct {
+	Name       string `json:"name"`
+	Title      string `json:"title,omitempty"`
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+	LogPath    string `json:"logPath,omitempty"`
+	StartedAt  int64  `json:"startedAt,omitempty"`
+	FinishedAt int64  `json:"finishedAt,omitempty"`
 }
 
 type WorkspaceInfo struct {

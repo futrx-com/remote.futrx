@@ -16,6 +16,7 @@ import (
 	containernetwork "github.com/futrx-com/remote.futrx.com/internal/integration/containers/network"
 	containerresources "github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
 	containerscheduletools "github.com/futrx-com/remote.futrx.com/internal/integration/containers/scheduletools"
+	containertemplates "github.com/futrx-com/remote.futrx.com/internal/integration/containers/templates"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	servicebrowser "github.com/futrx-com/remote.futrx.com/internal/service/container/browser"
@@ -26,6 +27,7 @@ import (
 	containerlaunch "github.com/futrx-com/remote.futrx.com/internal/service/container/launch"
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	servicetemplates "github.com/futrx-com/remote.futrx.com/internal/service/container/templates"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -45,6 +47,7 @@ type ContainerStack struct {
 	Network       *containernetwork.Repairer
 	Workspace     *containerworkspace.Provisioner
 	Images        *serviceimage.Builder
+	Templates     *servicetemplates.Service
 }
 
 // ContainerStackOptions supplies presentation and installation-specific
@@ -65,6 +68,7 @@ func (s ContainerStack) ProjectDependencies() serviceproject.ContainerDependenci
 		Network:     s.Network,
 		Listeners:   s.Listeners,
 		Browser:     s.Browser,
+		Templates:   s.Templates,
 	}
 }
 
@@ -116,6 +120,10 @@ func NewContainerStack(
 		containercodeserver.InstallScript(),
 		options.ImageBuildProgress,
 	)
+	templates := servicetemplates.NewService(
+		servicetemplates.MustLoad(),
+		containertemplates.NewAdapter(runner),
+	)
 	launchProvisioner := containerlaunch.NewProvisioner(
 		credentials,
 		workspace,
@@ -130,6 +138,7 @@ func NewContainerStack(
 		hostfs.NewWorkspacePreparer(hostMappedUID, hostMappedUID),
 		resources,
 		launchProvisioner,
+		templates,
 	)
 	inspectionAdapter := containerinspection.NewAdapter(
 		runner,
@@ -157,5 +166,6 @@ func NewContainerStack(
 		Network:       network,
 		Workspace:     workspace,
 		Images:        images,
+		Templates:     templates,
 	}
 }
