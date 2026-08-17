@@ -1,0 +1,6 @@
+{
+  "name": "blank",
+  "title": "Blank",
+  "description": "The plain workspace: Ubuntu 24.04, Node 22, Python 3, git, gh, and the agent CLIs. Nothing else is installed, and the container starts immediately.",
+  "icon": "blank"
+}

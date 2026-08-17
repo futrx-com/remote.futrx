@@ -14,6 +14,7 @@ import type {
 import type { ProjectContainerRecord } from "../../../state/projects/projectContainerRecords";
 import { AlertCircle } from "../../primitives/icons";
 import { Field, Grid, Loading, Panel } from "./ProjectContainerPrimitives";
+import { TemplatePanel } from "./ProjectTemplateSection";
 import {
   formatBytes,
   formatDate,
@@ -64,6 +65,7 @@ export function ProjectInfoSection({
           <Field label="Last used" value={formatDate(info.lastUsedAt)} mono />
         </Grid>
       </Panel>
+      {info.template && <TemplatePanel template={info.template} />}
       {info.os && <OSPanel os={info.os} />}
       {info.resources && <ResourcesPanel res={info.resources} />}
       {info.disks && info.disks.length > 0 && <DisksPanel disks={info.disks} />}

@@ -51,6 +51,7 @@ All `/api/*` and `/ws*` requests require a signed session for a registered user.
 | POST | `/api/codex/login/device` | Start Codex device login; admin only |
 | POST | `/api/kimi/login/device` | Start Kimi device login; admin only |
 | GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
+| GET | `/api/templates` | List project templates and whether each has a pre-built image on this host |
 
 `{provider}` can also be `antigravity` for the generic status binding, but
 Antigravity has no host login route. Its status is unavailable by design
@@ -60,13 +61,13 @@ because users authenticate `agy` inside each project.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET, POST | `/api/projects` | List visible projects or create a project |
+| GET, POST | `/api/projects` | List visible projects or create a project (`{"name","template"}`; an unknown template is a 400) |
 | POST | `/api/projects/reorder` | Update project ordering |
 | GET, PATCH, DELETE | `/api/projects/{id}` | Read, rename, or admin-delete a project |
 | POST | `/api/projects/{id}/start` | Start or relaunch a project |
 | POST | `/api/projects/{id}/stop` | Stop a project |
 | POST | `/api/projects/{id}/restart` | Force restart or relaunch a project |
-| GET | `/api/projects/{id}/container` | Detailed container inspection |
+| GET | `/api/projects/{id}/container` | Detailed container inspection, including `template` provisioning status |
 | PUT | `/api/projects/{id}/limits` | Set CPU, memory, and disk overrides; admin only |
 | POST | `/api/projects/{id}/repair-network` | Reconfigure container networking and reinspect |
 | GET | `/api/projects/{id}/apps` | List externally reachable container listeners |

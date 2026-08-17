@@ -5,6 +5,9 @@
 # Flow:
 #   1. Rebake futrx-remote-dev-base from the recipe (skip with --no-rebake,
 #      e.g. when you just rebaked by hand).
+#   1b. Optionally rebake every published project-template image
+#      (futrx-remote-<template>-base) on top of the fresh base. Off by
+#      default because each one costs another full build.
 #   2. Delegate replacement to the Go lifecycle. It migrates agent homes,
 #      replaces each idle container, attaches every durable mount, and
 #      validates the result before reporting success.
@@ -20,9 +23,10 @@
 #   sudo bash /opt/remote.futrx/infra/upgrade-workspaces.sh [flags]
 #
 # Flags:
-#   --dry-run        show what would happen, change nothing
-#   --no-rebake      skip step 1, only recycle containers
-#   --include-busy   also replace containers with an active agent process
+#   --dry-run           show what would happen, change nothing
+#   --no-rebake         skip step 1, only recycle containers
+#   --rebake-templates  also rebuild every published template image
+#   --include-busy      also replace containers with an active agent process
 set -euo pipefail
 
 INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
@@ -36,12 +40,14 @@ err()  { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; }
 
 DRY_RUN=0
 REBAKE=1
+REBAKE_TEMPLATES=0
 INCLUDE_BUSY=0
 for a in "$@"; do
     case "$a" in
-        --dry-run)      DRY_RUN=1 ;;
-        --no-rebake)    REBAKE=0 ;;
-        --include-busy) INCLUDE_BUSY=1 ;;
+        --dry-run)           DRY_RUN=1 ;;
+        --no-rebake)         REBAKE=0 ;;
+        --rebake-templates)  REBAKE_TEMPLATES=1 ;;
+        --include-busy)      INCLUDE_BUSY=1 ;;
         *) err "unknown flag: $a"; exit 1 ;;
     esac
 done
@@ -65,6 +71,37 @@ if [ "$REBAKE" -eq 1 ]; then
     fi
 else
     log "Skipping rebake (--no-rebake) — recycling containers onto the existing image"
+fi
+
+# ───────── 1b. project-template images ─────────
+# Projects created from a template that has a published image launch from that
+# image, NOT from futrx-remote-dev-base. Rebaking the base alone therefore
+# leaves them on the old base layer.
+TEMPLATE_ALIASES="$(lxc image list --format csv --columns l 2>/dev/null \
+    | tr ',' '\n' \
+    | grep -E '^futrx-remote-.+-base$' \
+    | grep -v '^futrx-remote-dev-base$' \
+    | sort -u || true)"
+if [ -n "$TEMPLATE_ALIASES" ]; then
+    if [ "$REBAKE_TEMPLATES" -eq 1 ] && [ "$REBAKE" -eq 1 ]; then
+        log "Rebaking published project-template images"
+        for ALIAS in $TEMPLATE_ALIASES; do
+            TEMPLATE="${ALIAS#futrx-remote-}"
+            TEMPLATE="${TEMPLATE%-base}"
+            if [ "$DRY_RUN" -eq 1 ]; then
+                log "[dry-run] would rebuild $ALIAS (template $TEMPLATE)"
+                continue
+            fi
+            (
+                cd "$INFRA_DIR/../backend"
+                go run ./cmd/build-template-image -template "$TEMPLATE" -overwrite
+            )
+            ok "$ALIAS rebaked"
+        done
+    else
+        warn "published template images are NOT rebaked: $(echo $TEMPLATE_ALIASES)"
+        warn "projects on those templates keep the old base layer until you rerun with --rebake-templates"
+    fi
 fi
 
 # ───────────────── 2. migrate + replace through Go ─────────────────

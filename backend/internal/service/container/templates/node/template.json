@@ -1,0 +1,12 @@
+{
+  "name": "node",
+  "title": "Node.js",
+  "description": "Node 22 (already in the base image) with pnpm and yarn enabled through corepack, plus a workspace README. Light: nothing is downloaded from apt.",
+  "icon": "node",
+  "provisionScript": "provision.sh",
+  "agentInstructions": "AGENTS.md",
+  "seedFiles": [
+    { "source": "README.md", "target": "/workspace/README.md" }
+  ],
+  "defaultPorts": [3000, 5173]
+}

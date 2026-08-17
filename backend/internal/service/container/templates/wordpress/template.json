@@ -1,0 +1,10 @@
+{
+  "name": "wordpress",
+  "title": "WordPress",
+  "description": "PHP 8.3 with the WordPress extension set, a local MariaDB (root over the unix socket, no password), WP-CLI, Composer, and WordPress core downloaded into /workspace/public and served on port 8080.",
+  "icon": "wordpress",
+  "provisionScript": "provision.sh",
+  "agentInstructions": "AGENTS.md",
+  "defaultPorts": [8080],
+  "prebuiltImage": true
+}

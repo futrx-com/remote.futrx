@@ -62,3 +62,6 @@ export const Cpu = (p: P) => (<svg {...base} {...p}><rect x="6" y="6" width="12"
 export const MemoryStick = (p: P) => (<svg {...base} {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h2v4H6zM11 10h2v4h-2zM16 10h2v4h-2zM6 18v2M10 18v2M14 18v2M18 18v2"/></svg>);
 export const HardDrive = (p: P) => (<svg {...base} {...p}><path d="M22 12H2l3-7h14l3 7Z"/><rect x="2" y="12" width="20" height="7" rx="1"/><path d="M6 15.5h.01M10 15.5h.01"/></svg>);
 export const Network = (p: P) => (<svg {...base} {...p}><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>);
+export const Globe = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10Z"/></svg>);
+export const Layers = (p: P) => (<svg {...base} {...p}><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5M3 17l9 5 9-5"/></svg>);
+export const Package = (p: P) => (<svg {...base} {...p}><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z"/><path d="m3 7 9 5 9-5M12 12v10"/></svg>);

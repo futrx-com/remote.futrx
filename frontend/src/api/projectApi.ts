@@ -8,8 +8,11 @@ import { API_ROUTES } from "../config/routes";
 
 export const projectApi = {
   list: () => requestJson<ProjectMeta[]>("GET", API_ROUTES.projects.collection),
-  create: (name: string) =>
-    requestJson<ProjectMeta>("POST", API_ROUTES.projects.collection, { name }),
+  create: (name: string, template?: string) =>
+    requestJson<ProjectMeta>("POST", API_ROUTES.projects.collection, {
+      name,
+      ...(template ? { template } : {}),
+    }),
   fetch: (id: string) =>
     requestJson<ProjectMeta>("GET", API_ROUTES.projects.item(id)),
   update: (id: string, body: { name?: string }) =>

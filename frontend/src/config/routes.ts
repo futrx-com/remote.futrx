@@ -91,6 +91,7 @@ export const API_ROUTES = {
     apply: "/api/admin/update/apply",
   },
   skills: (query: string) => `/api/skills?${query}`,
+  templates: "/api/templates",
   uploads: "/api/uploads",
   users: {
     collection: "/api/admin/users",
