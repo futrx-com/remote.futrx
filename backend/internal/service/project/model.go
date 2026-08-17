@@ -140,6 +140,51 @@ type ContainerLimits struct {
 	Disk   string `json:"disk,omitempty"`
 }
 
+// ContainerPolicySnapshot is the fleet-wide policy a project is measured
+// against, as supplied by the resource service.
+type ContainerPolicySnapshot struct {
+	Defaults             ContainerLimits  `json:"defaults"`
+	MaxOverride          ContainerLimits  `json:"maxOverride"`
+	MaxRunningContainers int              `json:"maxRunningContainers"`
+	Host                 HostCapacity     `json:"host"`
+	DiskQuota            DiskQuotaSupport `json:"diskQuota"`
+}
+
+// HostCapacity is the host-side arithmetic behind the aggregate guard.
+type HostCapacity struct {
+	MemoryBytes        uint64 `json:"memoryBytes"`
+	CPUs               int    `json:"cpus"`
+	DiskBytes          uint64 `json:"diskBytes"`
+	ReserveMemoryBytes uint64 `json:"reserveMemoryBytes"`
+	BudgetMemoryBytes  uint64 `json:"budgetMemoryBytes"`
+	CommittedBytes     uint64 `json:"committedMemoryBytes"`
+	RunningContainers  int    `json:"runningContainers"`
+}
+
+// DiskQuotaSupport reports whether the LXD storage pool can enforce a root
+// disk quota. `dir` pools cannot, and saying so beats failing every launch.
+type DiskQuotaSupport struct {
+	Supported bool   `json:"supported"`
+	Pool      string `json:"pool,omitempty"`
+	Driver    string `json:"driver,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+}
+
+// ProjectResources is the payload of GET/PUT /api/projects/{id}/resources: the
+// project's own overrides, what LXD actually enforces after inheritance, the
+// fleet policy the form is bounded by, and a live usage snapshot when the
+// container is running.
+type ProjectResources struct {
+	Policy       ContainerPolicySnapshot `json:"policy"`
+	Overrides    *ContainerLimits        `json:"overrides,omitempty"`
+	Effective    ContainerLimits         `json:"effective"`
+	State        ContainerState          `json:"state"`
+	Usage        *ResourceInfo           `json:"usage,omitempty"`
+	Editable     bool                    `json:"editable"`
+	AppliedNow   bool                    `json:"appliedNow"`
+	NeedsRestart bool                    `json:"needsRestart"`
+}
+
 type ClaudeContainerStatus struct {
 	Installed         bool   `json:"installed"`
 	Version           string `json:"version,omitempty"`

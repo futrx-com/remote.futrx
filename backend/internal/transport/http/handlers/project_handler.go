@@ -15,6 +15,7 @@ import (
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	serviceresources "github.com/futrx-com/remote.futrx.com/internal/service/resources"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -189,7 +190,10 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 				httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 				return
 			}
-			m, err := h.projects.Start(r.Context(), id)
+			// ?force=1 skips the aggregate memory guard. Admin-only: it is the
+			// lever that lets an operator oversubscribe the host on purpose.
+			force := isAffirmative(r.URL.Query().Get("force")) && isAdmin
+			m, err := h.projects.StartWithOptions(r.Context(), id, serviceproject.StartOptions{Force: force})
 			if err != nil {
 				sendProjectError(w, err)
 				return
@@ -239,26 +243,8 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			httptransport.SendJSON(w, http.StatusOK, info)
-		case "limits":
-			if r.Method != http.MethodPut {
-				httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
-				return
-			}
-			if !isAdmin {
-				httptransport.SendErr(w, http.StatusForbidden, "admin only")
-				return
-			}
-			var body serviceproject.ContainerLimits
-			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
-				httptransport.SendErr(w, http.StatusBadRequest, "invalid json")
-				return
-			}
-			info, err := h.projects.SetContainerLimits(r.Context(), id, body)
-			if err != nil {
-				sendProjectError(w, err)
-				return
-			}
-			httptransport.SendJSON(w, http.StatusOK, info)
+		case "resources":
+			h.handleResources(w, r, id, isAdmin)
 		case "apps":
 			if r.Method != http.MethodGet {
 				httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -314,6 +300,50 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 
 	default:
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+// handleResources serves the per-project resource envelope. Any project
+// member may read it; only an admin may change it, because raising one
+// project's ceiling spends host capacity every other project shares.
+func (h *ProjectHandler) handleResources(w http.ResponseWriter, r *http.Request, id serviceproject.ID, isAdmin bool) {
+	switch r.Method {
+	case http.MethodGet:
+		info, err := h.projects.Resources(r.Context(), id, isAdmin)
+		if err != nil {
+			sendProjectError(w, err)
+			return
+		}
+		httptransport.SendJSON(w, http.StatusOK, info)
+
+	case http.MethodPut:
+		if !isAdmin {
+			httptransport.SendErr(w, http.StatusForbidden, "admin only")
+			return
+		}
+		var body serviceproject.ContainerLimits
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+			httptransport.SendErr(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		info, err := h.projects.SetResources(r.Context(), id, body)
+		if err != nil {
+			sendProjectError(w, err)
+			return
+		}
+		httptransport.SendJSON(w, http.StatusOK, info)
+
+	default:
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
+func isAffirmative(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -640,8 +670,15 @@ func sendProjectError(w http.ResponseWriter, err error) {
 	case errors.Is(err, serviceproject.ErrNameRequired),
 		errors.Is(err, serviceproject.ErrInvalidID),
 		errors.Is(err, serviceproject.ErrInvalidSecretKey),
-		errors.Is(err, serviceproject.ErrInvalidLimits):
+		errors.Is(err, serviceproject.ErrInvalidLimits),
+		errors.Is(err, serviceresources.ErrInvalidSettings),
+		errors.Is(err, serviceresources.ErrOverrideTooLarge):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+	// The aggregate guard refused a start: the request is well formed, the
+	// host simply has no room. 409 tells the UI to offer the force option.
+	case errors.Is(err, serviceresources.ErrHostMemoryExhausted),
+		errors.Is(err, serviceresources.ErrTooManyRunning):
+		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, serviceproject.ErrSecretsUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, serviceproject.ErrNotFound):

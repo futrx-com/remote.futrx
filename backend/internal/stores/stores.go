@@ -6,6 +6,7 @@ import (
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	serviceresources "github.com/futrx-com/remote.futrx.com/internal/service/resources"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
@@ -14,6 +15,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileresources"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
@@ -29,6 +31,7 @@ type Stores struct {
 	ProjectSecrets serviceproject.SecretsRepository
 	ProjectAccess  serviceproject.AccessRepository
 	Schedules      serviceschedule.Repository
+	Resources      serviceresources.Repository
 	Auth           AuthStore
 	Users          serviceuser.Repository
 	UserSettings   serviceusersettings.Repository
@@ -60,6 +63,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init scheduled tasks store: %w", err)
 	}
 
+	resources, err := fileresources.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init resource settings store: %w", err)
+	}
+
 	users, err := fileusers.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init users store: %w", err)
@@ -76,6 +84,7 @@ func New(dataDir string) (Stores, error) {
 		ProjectSecrets: projectSecrets,
 		ProjectAccess:  projectAccess,
 		Schedules:      schedules,
+		Resources:      resources,
 		Auth:           fileauth.New(dataDir),
 		Users:          users,
 		UserSettings:   userSettings,

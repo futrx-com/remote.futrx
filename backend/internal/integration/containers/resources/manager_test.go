@@ -55,8 +55,8 @@ func TestEnsureCreatesProfileAndAttaches(t *testing.T) {
 	if got := runner.called("profile create"); len(got) != 1 {
 		t.Fatalf("expected one profile create, got %v", got)
 	}
-	if got := runner.called("profile set"); len(got) != len(profileConfig) {
-		t.Fatalf("expected %d profile set calls, got %v", len(profileConfig), got)
+	if want := len(NewManager(runner).profileEntries()); len(runner.called("profile set")) != want {
+		t.Fatalf("expected %d profile set calls, got %v", want, runner.called("profile set"))
 	}
 	if got := runner.called("profile add c1"); len(got) != 1 {
 		t.Fatalf("expected profile add, got %v", got)
@@ -68,7 +68,7 @@ func TestEnsureConvergedIsReadOnly(t *testing.T) {
 		"profile show " + ProfileName: {out: "name: " + ProfileName},
 		"config show c1":              {out: "profiles:\n- default\n- " + ProfileName + "\n"},
 	}
-	for _, kv := range profileConfig {
+	for _, kv := range NewManager(&fakeRunner{}).profileEntries() {
 		responses["profile get "+ProfileName+" "+kv[0]] = fakeResponse{out: kv[1] + "\n"}
 	}
 	runner := &fakeRunner{responses: responses}
@@ -89,7 +89,7 @@ func TestEnsureRepairsDriftedKey(t *testing.T) {
 		"profile show " + ProfileName: {out: "name: " + ProfileName},
 		"config show c1":              {out: "profiles:\n- default\n- " + ProfileName + "\n"},
 	}
-	for _, kv := range profileConfig {
+	for _, kv := range NewManager(&fakeRunner{}).profileEntries() {
 		responses["profile get "+ProfileName+" "+kv[0]] = fakeResponse{out: kv[1] + "\n"}
 	}
 	// One key drifted (hand-edited profile).
@@ -107,7 +107,10 @@ func TestEnsureRepairsDriftedKey(t *testing.T) {
 }
 
 func TestSetLimitsAppliesContainerOverrides(t *testing.T) {
-	runner := &fakeRunner{responses: map[string]fakeResponse{}}
+	runner := &fakeRunner{responses: map[string]fakeResponse{
+		"profile device get default root pool": {out: "tank\n"},
+		"storage show tank":                    {out: "name: tank\ndriver: zfs\n"},
+	}}
 
 	if err := NewManager(runner).SetLimits(context.Background(), "c1", "4", "8GiB", "40GiB"); err != nil {
 		t.Fatalf("SetLimits: %v", err)
@@ -116,6 +119,8 @@ func TestSetLimitsAppliesContainerOverrides(t *testing.T) {
 	want := []string{
 		"config set c1 limits.cpu 4",
 		"config set c1 limits.memory 8GiB",
+		"profile device get default root pool",
+		"storage show tank",
 		"config device override c1 root size=40GiB",
 	}
 	if !slices.Equal(runner.calls, want) {

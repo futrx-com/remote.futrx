@@ -1,6 +1,6 @@
 import { useCallback, useState } from "preact/hooks";
 import { projectApi } from "../../../api/projectApi";
-import type { ContainerLimits, ProjectMeta } from "../../../models/project";
+import type { ProjectMeta } from "../../../models/project";
 import type {
   ProjectContainerRecord,
   ProjectDataLoadSignal,
@@ -38,15 +38,11 @@ export function useProjectContainerInfo(project: ProjectMeta | null) {
     setRecord({ loading: false, data, refreshedAt: Date.now() });
   }, [project]);
 
-  const setLimits = useCallback(async (limits: ContainerLimits) => {
+  // force skips the aggregate host-memory guard; the server still rejects it
+  // for a non-admin caller.
+  const start = useCallback(async (force = false) => {
     if (!project) return;
-    const data = await projectApi.setContainerLimits(project.id, limits);
-    setRecord({ loading: false, data, refreshedAt: Date.now() });
-  }, [project]);
-
-  const start = useCallback(async () => {
-    if (!project) return;
-    await projectApi.start(project.id);
+    await projectApi.start(project.id, force);
     await load();
   }, [project, load]);
 
@@ -62,5 +58,5 @@ export function useProjectContainerInfo(project: ProjectMeta | null) {
     await load();
   }, [project, load]);
 
-  return { record, load, repairNetwork, setLimits, start, stop, restart };
+  return { record, load, repairNetwork, start, stop, restart };
 }

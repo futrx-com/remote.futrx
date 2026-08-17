@@ -35,6 +35,7 @@ const hostMappedUID = 1000000
 // and their LXD/host-filesystem adapters.
 type ContainerStack struct {
 	Lifecycle     *servicelifecycle.Service
+	Resources     *containerresources.Manager
 	Inspection    *serviceinspection.Service
 	Credentials   *servicecredentials.Service
 	Environment   *containerenvironment.Client
@@ -147,6 +148,7 @@ func NewContainerStack(
 
 	return ContainerStack{
 		Lifecycle:     lifecycle,
+		Resources:     resources,
 		Inspection:    inspection,
 		Credentials:   credentials,
 		Environment:   environment,

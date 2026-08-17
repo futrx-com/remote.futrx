@@ -119,10 +119,51 @@ When the backend starts, it:
 2. builds the agent and container service graph;
 3. compares project metadata with LXD state;
 4. updates stored project status;
-5. reapplies the fleet resource profile and project overrides;
+5. loads the fleet resource policy (deriving it from host capacity on first run) and reapplies the managed profile plus project overrides;
 6. starts the Agent Browser idle reaper;
 7. starts the scheduled-task loop and restores persisted deadlines/claims;
 8. begins serving the embedded SPA, API, and WebSockets.
+
+## Container resource guardrails
+
+The per-container envelope is operator policy, not a compile-time constant. It
+lives in `DATA_DIR/resources.json`, is derived from this host's real capacity
+on the first start that finds no such file, and is edited from
+**Settings → Resources** or `PUT /api/admin/resources`. Full reference:
+[Resource limits](../02-workspaces/11-resource-limits.md).
+
+| Policy field | Default on first run | Meaning |
+| --- | --- | --- |
+| `defaults.memory` | host memory minus reserve, clamped to `[1GiB, 4GiB]` | Per-container memory ceiling |
+| `defaults.cpu` | whole cores after the reserve, minimum 1 | Per-container core count |
+| `defaults.processes` | `2000` | Fork-bomb guard |
+| `defaults.disk` | a quarter of the filesystem, clamped to `[5GiB, 20GiB]` | Root-disk quota |
+| `hostReserve.memory` | `768MiB` | Memory held back for the backend, LXD, Caddy, and sshd |
+| `maxProjectOverride.*` | host capacity | Ceiling for a per-project override |
+| `maxRunningContainers` | `0` (unlimited) | Cap on simultaneously running containers |
+
+Two guardrails follow from this policy:
+
+- **Aggregate admission.** Before a container is created or started, the sum of
+  the memory ceilings of running containers plus the candidate is compared to
+  host memory minus the reserve. A start that would exceed it is refused with
+  `409`, which is what stops a host reboot from autostarting every workspace
+  into an OOM. An admin can proceed with
+  `POST /api/projects/{id}/start?force=1`. The guard fails open when LXD is
+  unreachable.
+- **Disk quotas need a capable pool.** LXD enforces a root-disk `size` only on
+  `btrfs`, `zfs`, `lvm`, or `ceph`. On the `dir` pool that `lxd init --auto`
+  often selects, the platform reports "unsupported on this pool" and skips the
+  quota rather than failing the launch. Check with:
+
+```bash
+lxc profile device get default root pool
+lxc storage show "$(lxc profile device get default root pool)"
+```
+
+To re-derive the policy after growing the host, stop the backend, delete
+`DATA_DIR/resources.json`, and start it again. Editing the file by hand works
+too; the backend reads it at startup and normalizes anything out of range.
 
 ## Scheduled-task guardrails
 
@@ -176,7 +217,7 @@ flowchart LR
     Reconfigure --> Inspect["Reinspect for IPv4 up to five times"]
 ```
 
-The server-info settings page reports host, CPU, memory, storage, network, and Go-process metrics. The project page reports the corresponding per-container diagnostics.
+The server-info settings page reports host, CPU, memory, storage, network, and Go-process metrics. The project page reports the corresponding per-container diagnostics, and its Resources panel pairs them with the limits actually enforced.
 
 ## Security controls
 

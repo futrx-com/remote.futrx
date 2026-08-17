@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"strconv"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
@@ -14,9 +16,11 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
+	serviceresources "github.com/futrx-com/remote.futrx.com/internal/service/resources"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
+	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
@@ -41,6 +45,9 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	ResourceSettings  serviceresources.Repository
+	ResourceFleet     serviceresources.Fleet
+	HostCollector     serviceserverinfo.Collector
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -74,6 +81,7 @@ type Services struct {
 	Skills       *serviceskills.Catalog
 	Tmux         *servicetmux.Service
 	Access       *serviceauth.AccessVerifier
+	Resources    *serviceresources.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -96,6 +104,24 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	definitions := agentDefinitions()
 	profiles := profilesFromDefinitions(definitions)
+
+	// The fleet resource policy is loaded (or derived from host capacity on
+	// first run) before any project can launch, so the very first container
+	// of a fresh install already lands inside a host-aware envelope.
+	resourceService := serviceresources.New(
+		deps.ResourceSettings,
+		hostFactsAdapter{collector: deps.HostCollector},
+		deps.ResourceFleet,
+	)
+	if deps.ResourceSettings != nil {
+		if err := resourceService.Ensure(ctx); err != nil {
+			log.Printf("resources: converge fleet defaults: %v", err)
+		}
+		policy := resourcePolicyAdapter{resources: resourceService}
+		deps.ProjectContainers.Policy = policy
+		deps.ProjectContainers.Admission = policy
+	}
+
 	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
 	projectService.StartAgentBrowserReaper(ctx, 20*time.Minute)
 	runs = runhub.New(chats)
@@ -194,7 +220,82 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Skills:       skillCatalog,
 		Tmux:         tmuxService,
 		Access:       accessVerifier,
+		Resources:    resourceService,
 	}, nil
+}
+
+// hostFactsAdapter narrows the server-info collector to the capacity facts the
+// resource policy needs, so the numbers an admin reads on the Info page and
+// the numbers the aggregate guard enforces come from one source.
+type hostFactsAdapter struct {
+	collector serviceserverinfo.Collector
+}
+
+func (a hostFactsAdapter) Facts(ctx context.Context) serviceresources.HostFacts {
+	if a.collector == nil {
+		return serviceresources.HostFacts{}
+	}
+	snapshot := a.collector.Collect(ctx, time.Now())
+	return serviceresources.HostFacts{
+		MemoryBytes: snapshot.Memory.TotalBytes,
+		CPUs:        snapshot.CPU.LogicalCores,
+		DiskBytes:   snapshot.Storage.TotalBytes,
+	}
+}
+
+// resourcePolicyAdapter translates between the resource service's own policy
+// vocabulary and the ports the project service declares, keeping neither
+// service dependent on the other's types.
+type resourcePolicyAdapter struct {
+	resources *serviceresources.Service
+}
+
+func (a resourcePolicyAdapter) Policy(ctx context.Context) serviceproject.ContainerPolicySnapshot {
+	view := a.resources.Get(ctx)
+	return serviceproject.ContainerPolicySnapshot{
+		Defaults:             projectLimits(view.Settings.Defaults),
+		MaxOverride:          projectLimits(view.Settings.MaxProjectOverride),
+		MaxRunningContainers: view.Settings.MaxRunningContainers,
+		Host: serviceproject.HostCapacity{
+			MemoryBytes:        view.Host.MemoryBytes,
+			CPUs:               view.Host.CPUs,
+			DiskBytes:          view.Host.DiskBytes,
+			ReserveMemoryBytes: view.Host.ReserveMemoryBytes,
+			BudgetMemoryBytes:  view.Host.BudgetMemoryBytes,
+			CommittedBytes:     view.Host.CommittedBytes,
+			RunningContainers:  view.Host.RunningContainers,
+		},
+		DiskQuota: serviceproject.DiskQuotaSupport{
+			Supported: view.DiskQuota.Supported,
+			Pool:      view.DiskQuota.Pool,
+			Driver:    view.DiskQuota.Driver,
+			Detail:    view.DiskQuota.Detail,
+		},
+	}
+}
+
+func (a resourcePolicyAdapter) Validate(ctx context.Context, limits serviceproject.ContainerLimits) error {
+	cores := 0.0
+	if limits.CPU != "" {
+		parsed, err := strconv.ParseFloat(limits.CPU, 64)
+		if err != nil {
+			return serviceproject.ErrInvalidLimits
+		}
+		cores = parsed
+	}
+	return a.resources.ValidateOverride(ctx, limits.Memory, cores, limits.Disk)
+}
+
+func (a resourcePolicyAdapter) AuthorizeStart(ctx context.Context, containerName, memoryLimit string, force bool) error {
+	return a.resources.AuthorizeStart(ctx, containerName, memoryLimit, force)
+}
+
+func projectLimits(limits serviceresources.Limits) serviceproject.ContainerLimits {
+	return serviceproject.ContainerLimits{
+		CPU:    serviceproject.FormatCores(limits.CPU),
+		Memory: limits.Memory,
+		Disk:   limits.Disk,
+	}
 }
 
 func (s Services) AuthEnabled() bool {

@@ -5,8 +5,7 @@ import {
 } from "../../ui/projects/ProjectContainersPage";
 import type { ProjectMeta } from "../../models/project";
 import { useProjectContainersController } from "../../state/hooks/projects/useProjectContainersController";
-import { useAuthContext } from "../../state/context/AuthContext";
-import { useServerInfo } from "../../state/hooks/server/useServerInfo";
+import { useProjectResources } from "../../state/hooks/projects/useProjectResources";
 
 export function ProjectContainersContainer({
   projects,
@@ -21,11 +20,10 @@ export function ProjectContainersContainer({
   onHamburger: () => void;
   onDeleteProject: (projectId: string) => Promise<void>;
 }) {
-  const { auth } = useAuthContext();
   const controller = useProjectContainersController(projects, selectedProjectId);
   const { selectedProject, info, secrets, access } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
-  const serverInfo = useServerInfo(activeTab === "settings");
+  const resources = useProjectResources(selectedProject, activeTab === "settings");
 
   const deleteSelectedProject = useCallback(async () => {
     if (!selectedProject) return;
@@ -41,9 +39,10 @@ export function ProjectContainersContainer({
       secretsRecord={secrets.record}
       accessRecord={access.record}
       refreshing={controller.refreshing}
-      isAdmin={auth.isAdmin}
-      serverMemoryTotalBytes={serverInfo.info?.memory.totalBytes}
-      serverMemoryLoading={serverInfo.loading}
+      resources={resources.data}
+      resourcesLoading={resources.loading}
+      resourcesSaving={resources.saving}
+      resourcesError={resources.error}
       onRefresh={() => void controller.refresh()}
       onBack={onBack}
       onHamburger={onHamburger}
@@ -53,7 +52,7 @@ export function ProjectContainersContainer({
       onAddMember={access.add}
       onRemoveMember={access.remove}
       onRepairNetwork={info.repairNetwork}
-      onSetResourceLimits={info.setLimits}
+      onSetResourceLimits={resources.save}
       onStartProject={info.start}
       onStopProject={info.stop}
       onRestartProject={info.restart}

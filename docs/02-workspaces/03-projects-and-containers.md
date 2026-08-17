@@ -158,7 +158,7 @@ The project workspace page provides:
 | Control or data | Details |
 | --- | --- |
 | Lifecycle | Start, stop, restart, and admin-only delete |
-| Resource limits | CPU, memory, and root-filesystem disk overrides; admin-only changes |
+| Resources | CPU, memory, and root-disk overrides with live usage bars; admin-only changes, bounded by the fleet ceiling ([Resource limits](11-resource-limits.md)) |
 | Runtime resources | Processes, CPU time, current/peak memory, swap, and disk usage |
 | Container identity | Image, type, architecture, PID, creation, and last use |
 | Network | Interfaces, addresses, traffic, MAC, and MTU |
@@ -166,7 +166,7 @@ The project workspace page provides:
 | Agent state | Installed versions, instructions, and credential-bundle freshness |
 | Recovery | Manual network repair and automatic IPv4 repair timer |
 
-Fleet CPU, memory, and process defaults are reapplied best-effort: an application failure is currently ignored. Explicit project overrides fail the launch when they cannot be applied. The optional disk override limits the container root disk only; the host bind mounts for `/workspace` and provider homes have no project quota.
+Fleet defaults come from the operator-editable policy in `DATA_DIR/resources.json` and are reapplied best-effort: an application failure is currently ignored. Explicit project overrides fail the launch when they cannot be applied. The disk quota limits the container root disk only, and only on a storage pool that can enforce quotas; the host bind mounts for `/workspace` and provider homes have no project quota. Before a container is created or started, an aggregate guard refuses a start that would commit more memory than the host has outside its reserve. See [Resource limits](11-resource-limits.md).
 
 ## Port discovery
 

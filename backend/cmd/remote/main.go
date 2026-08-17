@@ -57,6 +57,9 @@ func main() {
 		},
 	)
 	tmuxClient := tmuxcli.New()
+	// One host collector serves both the server-info page and the resource
+	// policy, so displayed capacity and enforced capacity never disagree.
+	hostCollector := hostinfo.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
 		Projects:          storeSet.Projects,
@@ -66,6 +69,9 @@ func main() {
 		Auth:              storeSet.Auth,
 		Users:             storeSet.Users,
 		UserSettings:      storeSet.UserSettings,
+		ResourceSettings:  storeSet.Resources,
+		ResourceFleet:     containerStack.Resources,
+		HostCollector:     hostCollector,
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
@@ -93,7 +99,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverInfoService := serviceserverinfo.New(hostinfo.New(), version.Version, cfg.DataDir, fileproject.WorkspaceRoot)
+	serverInfoService := serviceserverinfo.New(hostCollector, version.Version, cfg.DataDir, fileproject.WorkspaceRoot)
 	selfUpdateService := serviceselfupdate.New(version.Version, cfg.InstallDir, cfg.DataDir, updatecli.New())
 	workspaceFileService := serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore())
 	gitHistoryService := servicegithistory.New(gitcli.NewHistoryClient())

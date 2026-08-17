@@ -1,83 +1,64 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { ContainerLimits } from "../../../models/project";
+import type { ProjectResources } from "../../../models/resources";
+import {
+  formatSize,
+  usageMeters,
+  validateOverride,
+} from "../../../state/settings/resourcePolicyState";
 import { AlertCircle, Cpu, HardDrive, Loader, MemoryStick, RotateCcw } from "../../primitives/icons";
-import { formatBytes } from "./projectContainerFormat";
+import { Meter } from "../../primitives/Meter";
 
-const sizePattern = /^[1-9][0-9]*(MiB|GiB|TiB)$/;
-
+/**
+ * Per-project resource envelope: what LXD enforces today, live consumption
+ * against those limits, and the admin-only form for overriding the fleet
+ * defaults within the operator's ceiling.
+ */
 export function ProjectResourceLimits({
-  effective,
-  overrides,
+  resources,
   loading,
-  isAdmin,
-  serverMemoryTotalBytes,
-  serverMemoryLoading,
+  saving,
+  error,
   onSave,
 }: {
-  effective?: ContainerLimits;
-  overrides?: ContainerLimits;
+  resources: ProjectResources | null;
   loading: boolean;
-  isAdmin: boolean;
-  serverMemoryTotalBytes?: number;
-  serverMemoryLoading: boolean;
+  saving: boolean;
+  error: string | null;
   onSave: (limits: ContainerLimits) => Promise<void>;
 }) {
   const [cpu, setCPU] = useState("");
   const [memory, setMemory] = useState("");
   const [disk, setDisk] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
 
+  const overrides = resources?.overrides;
   useEffect(() => {
     setCPU(overrides?.cpu ?? "");
     setMemory(overrides?.memory ?? "");
     setDisk(overrides?.disk ?? "");
   }, [overrides?.cpu, overrides?.memory, overrides?.disk]);
 
-  const validationError = useMemo(() => {
-    const trimmedCPU = cpu.trim();
-    if (trimmedCPU) {
-      const cores = Number(trimmedCPU);
-      if (!Number.isInteger(cores) || cores < 1 || cores > 256) {
-        return "CPU must be a whole number from 1 to 256.";
-      }
-    }
-    if (memory.trim() && !sizePattern.test(memory.trim())) {
-      return "Memory must use MiB, GiB, or TiB, for example 8GiB.";
-    }
-    if (disk.trim() && !sizePattern.test(disk.trim())) {
-      return "Disk must use MiB, GiB, or TiB, for example 40GiB.";
-    }
-    return undefined;
-  }, [cpu, memory, disk]);
-
-  const save = async (limits: ContainerLimits) => {
-    setSaving(true);
-    setError(undefined);
-    try {
-      await onSave(limits);
-    } catch (cause) {
-      setError((cause as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const policy = resources?.policy;
+  const effective = resources?.effective ?? {};
+  const validationError = useMemo(
+    () => validateOverride({ cpu, memory, disk }, policy?.maxOverride),
+    [cpu, memory, disk, policy?.maxOverride]
+  );
+  const meters = useMemo(() => usageMeters(resources?.usage, effective), [resources]);
+  const editable = resources?.editable ?? false;
+  const quotaSupported = policy?.diskQuota.supported ?? false;
 
   const submit = (event: Event) => {
     event.preventDefault();
     if (validationError) return;
-    void save({
-      cpu: cpu.trim(),
-      memory: memory.trim(),
-      disk: disk.trim(),
-    });
+    void onSave({ cpu: cpu.trim(), memory: memory.trim(), disk: disk.trim() }).catch(() => {});
   };
 
   const reset = () => {
     setCPU("");
     setMemory("");
     setDisk("");
-    void save({});
+    void onSave({}).catch(() => {});
   };
 
   return (
@@ -87,30 +68,64 @@ export function ProjectResourceLimits({
           <Cpu class="w-4 h-4 text-ink-200" />
         </div>
         <div class="flex-1 min-w-0">
-          <div class="text-[14.5px] font-semibold text-ink-50">Resource limits</div>
+          <div class="text-[14.5px] font-semibold text-ink-50">Resources</div>
           <div class="text-[12.5px] text-ink-300 mt-0.5 leading-snug">
-            Define the CPU, memory, and storage available to this container.
+            Leave a field blank to inherit the fleet default set in Settings → Resources.
           </div>
         </div>
       </header>
 
       <div class="p-4 space-y-4">
-        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <EffectiveLimit Icon={Cpu} label="Effective CPU" value={effective?.cpu || "Inherited"} />
-          <EffectiveLimit Icon={MemoryStick} label="Effective memory" value={effective?.memory || "Inherited"} />
-          <EffectiveLimit Icon={HardDrive} label="Effective disk quota" value={effective?.disk || "No quota"} />
-          <EffectiveLimit
+        <div class="grid gap-2 sm:grid-cols-3">
+          <Effective
+            Icon={Cpu}
+            label="CPU"
+            value={effective.cpu || "—"}
+            note={inheritedNote(overrides?.cpu, policy?.defaults.cpu)}
+          />
+          <Effective
             Icon={MemoryStick}
-            label="Server total memory"
-            value={serverMemoryLoading ? "Loading…" : formatBytes(serverMemoryTotalBytes)}
+            label="Memory"
+            value={effective.memory || "—"}
+            note={inheritedNote(overrides?.memory, policy?.defaults.memory)}
+          />
+          <Effective
+            Icon={HardDrive}
+            label="Disk quota"
+            value={effective.disk || "No quota"}
+            note={
+              quotaSupported
+                ? inheritedNote(overrides?.disk, policy?.defaults.disk)
+                : "not enforced on this pool"
+            }
           />
         </div>
 
-        {loading && !effective ? (
+        {loading && !resources ? (
           <div class="flex items-center gap-2 text-[12.5px] text-ink-300">
             <Loader class="w-4 h-4 animate-spin" /> Loading current limits…
           </div>
-        ) : !isAdmin ? (
+        ) : (
+          <div class="space-y-3 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-3">
+            {meters.map((usage) => (
+              <Meter
+                key={usage.label}
+                label={`${usage.label} usage`}
+                detail={usage.detail}
+                percent={usage.percent}
+              />
+            ))}
+            <div class="text-[11px] text-ink-400">
+              Container is {resources?.state ?? "UNKNOWN"} · host has{" "}
+              {formatSize(policy?.host.budgetMemoryBytes)} for workspaces, of which{" "}
+              {formatSize(policy?.host.committedMemoryBytes)} is committed by{" "}
+              {policy?.host.runningContainers ?? 0} running container
+              {policy?.host.runningContainers === 1 ? "" : "s"}.
+            </div>
+          </div>
+        )}
+
+        {!editable ? (
           <div class="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[12.5px] text-ink-300">
             Only an administrator can change container resources.
           </div>
@@ -120,22 +135,26 @@ export function ProjectResourceLimits({
               <LimitInput
                 label="CPU cores"
                 value={cpu}
-                placeholder={effective?.cpu || "Fleet default"}
-                hint="Whole number from 1–256"
+                placeholder={policy?.defaults.cpu || "Fleet default"}
+                hint={maxHint("Max", policy?.maxOverride.cpu)}
                 onInput={setCPU}
               />
               <LimitInput
                 label="Memory"
                 value={memory}
-                placeholder={effective?.memory || "Fleet default"}
-                hint="For example 8GiB"
+                placeholder={policy?.defaults.memory || "Fleet default"}
+                hint={maxHint("Max", policy?.maxOverride.memory)}
                 onInput={setMemory}
               />
               <LimitInput
                 label="Disk quota"
                 value={disk}
-                placeholder={effective?.disk || "No quota"}
-                hint="For example 40GiB"
+                placeholder={policy?.defaults.disk || "No quota"}
+                hint={
+                  quotaSupported
+                    ? maxHint("Max", policy?.maxOverride.disk)
+                    : "Unsupported on this storage pool"
+                }
                 onInput={setDisk}
               />
             </div>
@@ -143,13 +162,24 @@ export function ProjectResourceLimits({
             <div class="flex items-start gap-2 rounded-md border border-accent-orange/25 bg-accent-orange/[0.07] px-3 py-2.5 text-[12px] leading-relaxed text-ink-200">
               <AlertCircle class="mt-0.5 w-4 h-4 flex-none text-accent-orange" />
               <span>
-                Changes apply live. Lowering memory can stop container processes, and a disk quota cannot be smaller than the data already stored. Leave a field blank to inherit the fleet default.
+                CPU and memory apply live; lowering memory can stop processes inside the
+                container. A disk quota cannot be smaller than the data already stored.
               </span>
             </div>
 
             {(validationError || error) && (
               <div class="rounded-md border border-accent-red/30 bg-accent-red/[0.08] px-3 py-2 text-[12.5px] text-accent-red">
                 {validationError || error}
+              </div>
+            )}
+            {resources?.needsRestart && !error && (
+              <div class="rounded-md border border-accent-orange/30 bg-accent-orange/[0.08] px-3 py-2 text-[12.5px] text-ink-100">
+                The disk quota is recorded but takes effect on the next container restart.
+              </div>
+            )}
+            {resources?.appliedNow && !resources.needsRestart && !error && (
+              <div class="rounded-md border border-accent-blue/30 bg-accent-blue/[0.08] px-3 py-2 text-[12.5px] text-ink-100">
+                Applied to the running container.
               </div>
             )}
 
@@ -178,14 +208,25 @@ export function ProjectResourceLimits({
   );
 }
 
-function EffectiveLimit({
+function inheritedNote(override?: string, fleetDefault?: string): string {
+  if (override && override.trim()) return "project override";
+  return fleetDefault ? `fleet default ${fleetDefault}` : "no fleet default";
+}
+
+function maxHint(prefix: string, ceiling?: string): string {
+  return ceiling ? `${prefix} ${ceiling}` : "No fleet ceiling set";
+}
+
+function Effective({
   Icon,
   label,
   value,
+  note,
 }: {
   Icon: (props: { class?: string }) => preact.JSX.Element;
   label: string;
   value: string;
+  note: string;
 }) {
   return (
     <div class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
@@ -193,6 +234,7 @@ function EffectiveLimit({
         <Icon class="w-3.5 h-3.5" /> {label}
       </div>
       <div class="mt-1 font-mono text-[13px] text-ink-100">{value}</div>
+      <div class="mt-0.5 text-[11px] text-ink-400">{note}</div>
     </div>
   );
 }

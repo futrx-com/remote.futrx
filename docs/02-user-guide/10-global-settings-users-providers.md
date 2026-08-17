@@ -1,6 +1,6 @@
 # Global settings, users, and providers
 
-Open **Settings** from the account footer or the collapsed sidebar gear. The page has four tabs: **Appearance**, **Agents**, **Users**, and **Info**.
+Open **Settings** from the account footer or the collapsed sidebar gear. The page has six tabs: **Appearance**, **Agents**, **Users**, **Resources**, **Updates**, and **Info**.
 
 ## Appearance
 
@@ -134,6 +134,16 @@ The local administrator cannot be removed or demoted. Remote also prevents remov
 3. Confirm that access should end.
 
 Removal blocks future authenticated requests for that email. Sessions are stateless 30-day tokens and have no individual revocation UI; deleting a user is the practical access-control lever.
+
+## Resources
+
+Administrators use **Resources** to set the CPU, memory, process, and disk
+envelope every project container inherits, plus the memory held back for the
+platform itself and the ceiling a per-project override may not pass. The panel
+shows the host's real capacity, how much of it running workspaces already
+commit, and whether the storage pool can enforce disk quotas at all. Saving
+converges the managed LXD profile immediately. Full reference:
+[Resource limits](../02-workspaces/11-resource-limits.md).
 
 ## Info
 

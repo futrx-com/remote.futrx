@@ -15,6 +15,7 @@ import { ProjectSharingSection } from "./project-containers/ProjectSharingSectio
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
 import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
+import type { ProjectResources } from "../../models/resources";
 import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Settings, Users } from "../primitives/icons";
 
 export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
@@ -58,9 +59,10 @@ export function ProjectContainersPage({
   secretsRecord,
   accessRecord,
   refreshing,
-  isAdmin,
-  serverMemoryTotalBytes,
-  serverMemoryLoading,
+  resources,
+  resourcesLoading,
+  resourcesSaving,
+  resourcesError,
   onRefresh,
   onBack,
   onHamburger,
@@ -82,9 +84,10 @@ export function ProjectContainersPage({
   secretsRecord: SecretsRecord;
   accessRecord: AccessRecord;
   refreshing: boolean;
-  isAdmin: boolean;
-  serverMemoryTotalBytes?: number;
-  serverMemoryLoading: boolean;
+  resources: ProjectResources | null;
+  resourcesLoading: boolean;
+  resourcesSaving: boolean;
+  resourcesError: string | null;
   onRefresh: () => void;
   onBack: () => void;
   onHamburger: () => void;
@@ -95,7 +98,7 @@ export function ProjectContainersPage({
   onRemoveMember: (email: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
   onSetResourceLimits: (limits: ContainerLimits) => Promise<void>;
-  onStartProject: () => Promise<void>;
+  onStartProject: (force?: boolean) => Promise<void>;
   onStopProject: () => Promise<void>;
   onRestartProject: () => Promise<void>;
   onDeleteProject: () => Promise<void>;
@@ -188,12 +191,10 @@ export function ProjectContainersPage({
                 {activeTab === "settings" && (
                   <div class="space-y-4">
                     <ProjectResourceLimits
-                      effective={infoRecord.data?.limits}
-                      overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
-                      loading={infoRecord.loading}
-                      isAdmin={isAdmin}
-                      serverMemoryTotalBytes={serverMemoryTotalBytes}
-                      serverMemoryLoading={serverMemoryLoading}
+                      resources={resources}
+                      loading={resourcesLoading}
+                      saving={resourcesSaving}
+                      error={resourcesError}
                       onSave={onSetResourceLimits}
                     />
                     <ProjectSettingsPanel
