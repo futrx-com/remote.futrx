@@ -41,6 +41,7 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	GlobalSkills      serviceskills.GlobalRepository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -72,6 +73,7 @@ type Services struct {
 	Users        *serviceuser.Service
 	UserSettings *serviceusersettings.Service
 	Skills       *serviceskills.Catalog
+	GlobalSkills *serviceskills.GlobalService
 	Tmux         *servicetmux.Service
 	Access       *serviceauth.AccessVerifier
 }
@@ -108,11 +110,20 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxResolver = chatTmuxResolver{client: deps.TmuxClient, validName: deps.ValidTmuxName}
 	}
 
+	globalSkillService := serviceskills.NewGlobalService(deps.GlobalSkills, projectService)
+	chatOptions := []servicechat.Option(nil)
+	if globalSkillService != nil {
+		chatOptions = append(
+			chatOptions,
+			servicechat.WithDefaultSkills(globalSkillDefaults{global: globalSkillService}),
+		)
+	}
 	chatService := servicechat.New(
 		chats,
 		chatProjectResolver{projects: projectService},
 		tmuxResolver,
 		runs,
+		chatOptions...,
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	agents := agent.NewRegistry()
@@ -168,7 +179,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 	userSettingsService := serviceusersettings.New(deps.UserSettings)
 	skillService := serviceskills.New()
-	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
+	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService).
+		WithGlobalLibrary(globalSkillService)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
 		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
@@ -192,6 +204,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Users:        userService,
 		UserSettings: userSettingsService,
 		Skills:       skillCatalog,
+		GlobalSkills: globalSkillService,
 		Tmux:         tmuxService,
 		Access:       accessVerifier,
 	}, nil
@@ -206,6 +219,34 @@ func (s Services) Reconcile(ctx context.Context) error {
 		return nil
 	}
 	return s.Projects.Reconcile(ctx)
+}
+
+// globalSkillDefaults adapts the global skills library to the chat service's
+// default-skill port so an "always on" skill is preselected in every new
+// project chat.
+type globalSkillDefaults struct {
+	global *serviceskills.GlobalService
+}
+
+func (d globalSkillDefaults) DefaultSkills(
+	ctx context.Context,
+	_ servicechat.ProjectID,
+	provider servicechat.Provider,
+) ([]servicechat.SkillRef, error) {
+	defaults, err := d.global.DefaultSkills(ctx, serviceskills.Provider(provider))
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]servicechat.SkillRef, 0, len(defaults))
+	for _, skill := range defaults {
+		refs = append(refs, servicechat.SkillRef{
+			Name:     skill.Name,
+			Command:  skill.Command,
+			Provider: servicechat.Provider(skill.Provider),
+			Source:   skill.Source,
+		})
+	}
+	return refs, nil
 }
 
 type scheduledPromptExecutor struct {

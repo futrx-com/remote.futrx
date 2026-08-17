@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChatProvider } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
 import { useAvailableSkills } from "../../../state/hooks/chat/useAvailableSkills";
+import { globalSkillsState } from "../../../state/settings/globalSkillsState";
 import { ChevronDown, Code, Search } from "../../primitives/icons";
 
 export function SkillPicker({
@@ -49,6 +50,7 @@ export function SkillPicker({
   }, [query, skills]);
 
   function choose(skill: RegisteredSkill) {
+    if (!globalSkillsState.isSelectable(skill)) return;
     onSelect(skill);
     setOpen(false);
     setQuery("");
@@ -107,29 +109,50 @@ export function SkillPicker({
                 {skills.length === 0 ? `No ${providerLabel} skills registered` : "No matching skills"}
               </div>
             ) : (
-              filteredSkills.map((skill) => (
-                <button
-                  key={`${skill.source || "skill"}:${skill.name}`}
-                  type="button"
-                  onClick={() => choose(skill)}
-                  class="w-full text-left px-3 py-2.5 hover:bg-white/[0.07] focus:bg-white/[0.07] focus:outline-none"
-                  role="option"
-                >
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span class="truncate text-[13px] font-medium text-ink-100">{skill.name}</span>
-                    {skill.source && (
-                      <span class="flex-none rounded bg-white/[0.08] px-1.5 py-0.5 text-[10px] uppercase text-ink-400">
-                        {skill.source}
-                      </span>
-                    )}
-                  </div>
-                  {skill.description && (
-                    <div class="mt-1 max-h-8 overflow-hidden text-[12px] leading-4 text-ink-400">
-                      {skill.description}
+              filteredSkills.map((skill) => {
+                const selectable = globalSkillsState.isSelectable(skill);
+                const badge = globalSkillsState.badgeFor(skill);
+                const isGlobal = skill.scope === "global";
+                return (
+                  <button
+                    key={`${skill.source || "skill"}:${skill.name}`}
+                    type="button"
+                    onClick={() => choose(skill)}
+                    disabled={!selectable}
+                    title={
+                      selectable
+                        ? undefined
+                        : `A project skill named "${skill.command || skill.name}" shadows this global skill`
+                    }
+                    class={`w-full text-left px-3 py-2.5 focus:outline-none ${
+                      selectable
+                        ? "hover:bg-white/[0.07] focus:bg-white/[0.07]"
+                        : "cursor-not-allowed opacity-50"
+                    }`}
+                    role="option"
+                  >
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="truncate text-[13px] font-medium text-ink-100">{skill.name}</span>
+                      {badge && (
+                        <span
+                          class={`flex-none rounded px-1.5 py-0.5 text-[10px] uppercase ${
+                            isGlobal && selectable
+                              ? "bg-accent-blue/[0.16] text-accent-blue"
+                              : "bg-white/[0.08] text-ink-400"
+                          }`}
+                        >
+                          {badge}
+                        </span>
+                      )}
                     </div>
-                  )}
-                </button>
-              ))
+                    {skill.description && (
+                      <div class="mt-1 max-h-8 overflow-hidden text-[12px] leading-4 text-ink-400">
+                        {skill.description}
+                      </div>
+                    )}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

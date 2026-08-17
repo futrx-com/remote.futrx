@@ -8,11 +8,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
-const skillFileName = "SKILL.md"
+// SkillFileName is the manifest every skill directory must contain.
+const SkillFileName = "SKILL.md"
 
 type Service struct {
 	agentsHome string
@@ -77,14 +77,7 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	}
 
 	skills = dedupeSkills(skills)
-	sort.Slice(skills, func(i, j int) bool {
-		left := strings.ToLower(skills[i].Name)
-		right := strings.ToLower(skills[j].Name)
-		if left == right {
-			return skills[i].Source < skills[j].Source
-		}
-		return left < right
-	})
+	SortSkills(skills)
 	return skills, nil
 }
 
@@ -172,7 +165,7 @@ func collectSkills(ctx context.Context, provider Provider, root rootSpec, out *[
 		if d.IsDir() && path != root.path && strings.HasPrefix(d.Name(), ".") {
 			return filepath.SkipDir
 		}
-		if d.IsDir() || d.Name() != skillFileName {
+		if d.IsDir() || d.Name() != SkillFileName {
 			return nil
 		}
 

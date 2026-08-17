@@ -8,19 +8,48 @@ import (
 )
 
 type Service struct {
-	repo     Repository
-	projects ProjectResolver
-	tmux     TmuxResolver
-	runs     RunController
+	repo          Repository
+	projects      ProjectResolver
+	tmux          TmuxResolver
+	runs          RunController
+	defaultSkills DefaultSkillResolver
 }
 
-func New(repo Repository, projects ProjectResolver, tmux TmuxResolver, runs RunController) *Service {
-	return &Service{
+// DefaultSkillResolver supplies the skills a new project chat starts with.
+// The global skills library implements it so an admin can pin a skill into
+// every new chat without the chat service knowing what a global skill is.
+type DefaultSkillResolver interface {
+	DefaultSkills(ctx context.Context, projectID ProjectID, provider Provider) ([]SkillRef, error)
+}
+
+// Option customizes the chat service at composition time.
+type Option func(*Service)
+
+// WithDefaultSkills registers the resolver consulted when a project chat is
+// created. A nil resolver leaves chats with only the caller's selection.
+func WithDefaultSkills(resolver DefaultSkillResolver) Option {
+	return func(s *Service) {
+		s.defaultSkills = resolver
+	}
+}
+
+func New(
+	repo Repository,
+	projects ProjectResolver,
+	tmux TmuxResolver,
+	runs RunController,
+	options ...Option,
+) *Service {
+	service := &Service{
 		repo:     repo,
 		projects: projects,
 		tmux:     tmux,
 		runs:     runs,
 	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 func (s *Service) List(ctx context.Context) ([]Meta, error) {
@@ -85,12 +114,26 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 		ReasoningEffort: NormalizeReasoningEffort(in.ReasoningEffort),
 		ServiceTier:     NormalizeServiceTier(in.ServiceTier),
 		ProjectID:       in.ProjectID,
-		SelectedSkills:  NormalizeSelectedSkills(in.SelectedSkills, provider),
+		SelectedSkills:  NormalizeSelectedSkills(s.withDefaultSkills(ctx, in, provider), provider),
 	})
 	if err != nil {
 		return Meta{}, err
 	}
 	return s.withRunning(meta), nil
+}
+
+// withDefaultSkills appends the always-on skills of a project to the caller's
+// selection. Normalization downstream drops anything the caller already
+// picked, so an explicit selection is never duplicated.
+func (s *Service) withDefaultSkills(ctx context.Context, in CreateInput, provider Provider) []SkillRef {
+	if s.defaultSkills == nil || in.ProjectID == "" {
+		return in.SelectedSkills
+	}
+	defaults, err := s.defaultSkills.DefaultSkills(ctx, in.ProjectID, provider)
+	if err != nil || len(defaults) == 0 {
+		return in.SelectedSkills
+	}
+	return append(append([]SkillRef(nil), in.SelectedSkills...), defaults...)
 }
 
 // Fork creates an independent copy of a chat from its latest state: same

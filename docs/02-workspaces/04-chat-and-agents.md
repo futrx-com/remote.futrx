@@ -123,7 +123,7 @@ state, not structured reasoning, tools, or usage.
 
 ```mermaid
 flowchart LR
-    Picker["Skill picker"] --> Catalog["Host and project skill catalog"]
+    Picker["Skill picker"] --> Catalog["Host, project, and global skill catalog"]
     Catalog --> Selected["Selected skill refs in chat metadata"]
     Selected --> Trigger["Provider-specific prompt trigger"]
     Trigger --> Claude["Claude: /skill-name"]
@@ -140,6 +140,23 @@ are implemented for Claude and Codex. Kimi and Antigravity selected-skill
 references normally remain metadata only; **Scheduled Tasks** is the explicit
 exception, injected as the canonical project skill path and accompanied by a
 scoped schedule capability.
+
+### Skill scopes
+
+| Scope | Source | Where it lives | Editable from |
+| --- | --- | --- | --- |
+| Host | `user`, `system` | `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills` on the host | The host filesystem |
+| Project | `project` | `<workspace>/.agents/skills` (legacy `.claude` / `.codex` roots are read-only fallbacks) | The project's file manager, IDE, or agent |
+| Built-in | `remote` | Published into the workspace by the platform (`browser`, `scheduled-tasks`) | Not editable |
+| Global | `global` | `DATA_DIR/skills-global` on the host, published into each container | Settings → Global skills (admin only) |
+
+Project chats receive global skills merged into the same listing, flagged
+`scope: "global"` and `readOnly: true`. A project skill of the same name wins:
+the container never links the global copy into an occupied slot, and the global
+entry is returned `shadowed` so the picker can show it disabled. An admin can
+mark a global skill **always on**, which preselects it in every new project
+chat. Loose chats have no container and therefore no global skills. See
+[Global skills](09-global-skills.md).
 
 ## Conversation controls
 
@@ -182,4 +199,6 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Prompt service: [`backend/internal/service/prompt/service.go`](../../backend/internal/service/prompt/service.go)
 - Run hub: [`backend/internal/service/runhub/hub.go`](../../backend/internal/service/runhub/hub.go)
 - Agent model: [`backend/internal/agent/model.go`](../../backend/internal/agent/model.go)
+- Skill catalog: [`backend/internal/service/skills/catalog.go`](../../backend/internal/service/skills/catalog.go)
+- Global skills library: [`backend/internal/service/skills/global.go`](../../backend/internal/service/skills/global.go)
 - Frontend chat hook: [`frontend/src/state/hooks/chat/useChat.ts`](../../frontend/src/state/hooks/chat/useChat.ts)

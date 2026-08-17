@@ -36,10 +36,22 @@ type Catalog struct {
 	skills   *Service
 	projects ProjectCatalog
 	auth     Authorizer
+	global   *GlobalService
 }
 
 func NewCatalog(skills *Service, projects ProjectCatalog, auth Authorizer) *Catalog {
 	return &Catalog{skills: skills, projects: projects, auth: auth}
+}
+
+// WithGlobalLibrary merges the platform-wide skill library into every project
+// listing. Loose chats have no container to link global skills into, so they
+// keep seeing host and built-in skills only.
+func (c *Catalog) WithGlobalLibrary(global *GlobalService) *Catalog {
+	if c == nil {
+		return nil
+	}
+	c.global = global
+	return c
 }
 
 func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
@@ -78,5 +90,16 @@ func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
 		workspacePath = project.Cwd
 	}
 
-	return c.skills.List(ctx, provider, workspacePath)
+	listed, err := c.skills.List(ctx, provider, workspacePath)
+	if err != nil {
+		return nil, err
+	}
+	if query.ProjectID == "" || c.global == nil {
+		return listed, nil
+	}
+	if global := c.global.CatalogEntries(ctx, provider, listed); len(global) > 0 {
+		listed = append(listed, global...)
+		SortSkills(listed)
+	}
+	return listed, nil
 }

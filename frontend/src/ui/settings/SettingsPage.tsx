@@ -1,10 +1,12 @@
 import type { AppearanceTheme } from "../../models/settings";
 import type { CodexDeviceLogin, KimiDeviceLogin } from "../../models/auth";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
+import type { GlobalSkillLibrary } from "../../state/hooks/settings/useGlobalSkills";
+import type { ProjectMeta } from "../../models/project";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { ComponentType } from "preact";
-import { Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
+import { Bot, ChevronLeft, Code, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ClaudeAuthSettings } from "./ClaudeAuthSettings";
 import { CodexAuthSettings } from "./CodexAuthSettings";
@@ -12,9 +14,16 @@ import { KimiAuthSettings } from "./KimiAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
+import { GlobalSkillsSettings } from "./GlobalSkillsSettings";
 import { UsersPanel } from "../account/UsersPanel";
 
-export type SettingsTab = "appearance" | "agents" | "users" | "updates" | "info";
+export type SettingsTab =
+  | "appearance"
+  | "agents"
+  | "skills"
+  | "users"
+  | "updates"
+  | "info";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -33,6 +42,12 @@ const tabs: Array<{
     label: "Agents",
     description: "Manage host authentication for coding agents.",
     Icon: Bot,
+  },
+  {
+    id: "skills",
+    label: "Global skills",
+    description: "Publish skills that every project can select.",
+    Icon: Code,
   },
   {
     id: "users",
@@ -70,6 +85,8 @@ export function SettingsPage({
   selfUpdateRestarting,
   selfUpdateError,
   userDirectory,
+  globalSkills,
+  projects,
   appearanceTheme,
   appearanceLoading,
   appearanceSaving,
@@ -110,6 +127,8 @@ export function SettingsPage({
   selfUpdateRestarting: boolean;
   selfUpdateError: string | null;
   userDirectory: UserDirectory;
+  globalSkills: GlobalSkillLibrary;
+  projects: ProjectMeta[];
   appearanceTheme: AppearanceTheme;
   appearanceLoading: boolean;
   appearanceSaving: boolean;
@@ -233,6 +252,14 @@ export function SettingsPage({
                   Agent authentication is managed by server administrators.
                 </SettingsNotice>
               )
+            )}
+
+            {activeTab === "skills" && (
+              <GlobalSkillsSettings
+                isAdmin={isAdmin}
+                library={globalSkills}
+                projects={projects}
+              />
             )}
 
             {activeTab === "users" && (

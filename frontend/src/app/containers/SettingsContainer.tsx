@@ -6,6 +6,8 @@ import {
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { useGlobalSkills } from "../../state/hooks/settings/useGlobalSkills";
+import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
 
@@ -19,7 +21,9 @@ export function SettingsContainer({
   const { auth, codexAuth, kimiAuth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
+  const { projects } = useWorkspaceContext();
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+  const globalSkills = useGlobalSkills(activeTab === "skills" && auth.isAdmin);
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
 
@@ -40,6 +44,8 @@ export function SettingsContainer({
       selfUpdateRestarting={selfUpdate.restarting}
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
+      globalSkills={globalSkills}
+      projects={projects}
       appearanceTheme={userSettings.settings.appearance.theme}
       appearanceLoading={userSettings.loading}
       appearanceSaving={userSettings.saving}

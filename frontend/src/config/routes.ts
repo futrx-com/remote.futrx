@@ -91,6 +91,12 @@ export const API_ROUTES = {
     apply: "/api/admin/update/apply",
   },
   skills: (query: string) => `/api/skills?${query}`,
+  globalSkills: {
+    collection: "/api/admin/skills-global",
+    item: (name: string) =>
+      `/api/admin/skills-global/${encodeURIComponent(name)}`,
+    import: "/api/admin/skills-global/import",
+  },
   uploads: "/api/uploads",
   users: {
     collection: "/api/admin/users",

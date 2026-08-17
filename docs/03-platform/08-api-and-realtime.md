@@ -50,7 +50,10 @@ All `/api/*` and `/ws*` requests require a signed session for a registered user.
 | POST | `/api/claude/login/cancel` | Cancel Claude login; admin only |
 | POST | `/api/codex/login/device` | Start Codex device login; admin only |
 | POST | `/api/kimi/login/device` | Start Kimi device login; admin only |
-| GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
+| GET | `/api/skills?provider=...&projectId=...` | List accessible provider, project, and global skills |
+| GET, POST | `/api/admin/skills-global` | List the global skills library, or publish a skill (JSON files map or zip body); admin only |
+| GET, PUT, DELETE | `/api/admin/skills-global/{name}` | Read, replace (files and/or the always-on flag), or delete one global skill; admin only |
+| POST | `/api/admin/skills-global/import` | Copy an existing project skill into the global library; admin only |
 
 `{provider}` can also be `antigravity` for the generic status binding, but
 Antigravity has no host login route. Its status is unavailable by design
