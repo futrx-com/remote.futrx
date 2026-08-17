@@ -83,9 +83,9 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
 
     # Honor --github-token / GITHUB_TOKEN for the bootstrap clone of a private
     # repo.
-    CLONE_URL="https://github.com/futrx-com/remote.futrx.git"
+    CLONE_URL="${FUTRX_REPO_URL:-https://github.com/futrx-com/remote.futrx.git}"
     if [ -n "$BOOTSTRAP_TOKEN" ]; then
-        CLONE_URL="https://x-access-token:${BOOTSTRAP_TOKEN}@github.com/futrx-com/remote.futrx.git"
+        CLONE_URL="${CLONE_URL/https:\/\//https:\/\/x-access-token:${BOOTSTRAP_TOKEN}@}"
     fi
 
     if [ ! -d "$TARGET/.git" ]; then
@@ -170,7 +170,7 @@ fi
 INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
 LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
-REPO_URL="https://github.com/futrx-com/remote.futrx.git"
+REPO_URL="${FUTRX_REPO_URL:-https://github.com/futrx-com/remote.futrx.git}"
 SERVICE_PORT="${SERVICE_PORT:-7682}"
 
 # Escape dots in HOSTNAME for Caddy regex (dots match any char in regex; we
