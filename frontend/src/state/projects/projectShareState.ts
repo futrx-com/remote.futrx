@@ -11,6 +11,8 @@ export const DEFAULT_SHARE_TTL_HOURS = 24;
 
 /** The agent browser's noVNC port is never shareable; the backend refuses it too. */
 export const AGENT_BROWSER_PORT = 6080;
+/** Platform plumbing ports (IDE proxy, code-server, CDP) are never shareable either. */
+export const RESERVED_SHARE_PORTS: ReadonlySet<number> = new Set([AGENT_BROWSER_PORT, 8842, 8081, 9222]);
 
 const MIN_SHARE_PORT = 1024;
 const MAX_SHARE_PORT = 65535;
@@ -27,7 +29,7 @@ export function isShareablePort(port: number): boolean {
     Number.isInteger(port) &&
     port >= MIN_SHARE_PORT &&
     port <= MAX_SHARE_PORT &&
-    port !== AGENT_BROWSER_PORT
+    !RESERVED_SHARE_PORTS.has(port)
   );
 }
 

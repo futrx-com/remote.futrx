@@ -36,11 +36,27 @@ const (
 	// that browser is a signed-in session the project's members and agents
 	// drive together.
 	AgentBrowserPort = 6080
+
+	// IDEProxyPort is the socket-activated code-server proxy and CDPPort the
+	// agent browser's DevTools endpoint. Both are platform plumbing, never a
+	// user application, and a public link to either would bypass edge auth.
+	IDEProxyPort  = 8842
+	IDEDirectPort = 8081
+	CDPPort       = 9222
 )
+
+// reservedPorts are in-container platform listeners that must never be
+// exposed through a public link.
+var reservedPorts = map[int]struct{}{
+	AgentBrowserPort: {},
+	IDEProxyPort:     {},
+	IDEDirectPort:    {},
+	CDPPort:          {},
+}
 
 var (
 	ErrInvalidPort      = errors.New("preview port must be between 1024 and 65535")
-	ErrPortNotShareable = errors.New("the agent browser port cannot be shared publicly")
+	ErrPortNotShareable = errors.New("this port is platform plumbing (agent browser, IDE, or DevTools) and cannot be shared publicly")
 	ErrInvalidTTL       = errors.New("share lifetime must be between 1 hour and 30 days")
 	ErrTooManyShares    = errors.New("this project already has the maximum number of active share links")
 	ErrNotFound         = errors.New("share link not found")
@@ -87,7 +103,7 @@ func ShareablePort(port int) error {
 	if port < MinPort || port > MaxPort {
 		return ErrInvalidPort
 	}
-	if port == AgentBrowserPort {
+	if _, reserved := reservedPorts[port]; reserved {
 		return ErrPortNotShareable
 	}
 	return nil
