@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -16,6 +17,7 @@ import (
 type AgentAuthHandler struct {
 	bindings []agentauth.Binding
 	auth     *serviceauth.Service
+	audit    serviceaudit.Recorder
 }
 
 func NewAgentAuthHandler(bindings []agentauth.Binding, auth *serviceauth.Service) *AgentAuthHandler {
@@ -23,6 +25,30 @@ func NewAgentAuthHandler(bindings []agentauth.Binding, auth *serviceauth.Service
 		bindings: append([]agentauth.Binding(nil), bindings...),
 		auth:     auth,
 	}
+}
+
+// WithAudit records host-wide provider credential changes. These tokens are
+// shared by every project on the box, so who connected one matters.
+func (h *AgentAuthHandler) WithAudit(recorder serviceaudit.Recorder) *AgentAuthHandler {
+	h.audit = recorder
+	return h
+}
+
+// recordAgentAuth writes one provider-credential line. There is no true
+// "disconnect" flow today, so cancelling an in-flight login is the closest
+// thing and is recorded as one.
+func (h *AgentAuthHandler) recordAgentAuth(
+	r *http.Request,
+	binding agentauth.Binding,
+	action, step string,
+	err error,
+) {
+	recordAudit(
+		h.audit, r, action,
+		serviceaudit.Target{Type: serviceaudit.TargetAgent, ID: string(binding.ID()), Name: string(binding.ID())},
+		serviceaudit.Meta{"step": step},
+		err,
+	)
 }
 
 func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -64,6 +90,7 @@ func (h *AgentAuthHandler) handleCodeStart(binding agentauth.Binding, w http.Res
 	}
 
 	result, err := binding.StartCode(r.Context())
+	h.recordAgentAuth(r, binding, serviceaudit.ActionSettingsAgentConnect, "start", err)
 	if err != nil {
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -87,7 +114,9 @@ func (h *AgentAuthHandler) handleCodeSubmit(binding agentauth.Binding, w http.Re
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := binding.SubmitCode(r.Context(), body.Code); err != nil {
+	err := binding.SubmitCode(r.Context(), body.Code)
+	h.recordAgentAuth(r, binding, serviceaudit.ActionSettingsAgentConnect, "code", err)
+	if err != nil {
 		status := http.StatusInternalServerError
 		if binding.IsCodeInputError(err) {
 			status = http.StatusBadRequest
@@ -102,7 +131,9 @@ func (h *AgentAuthHandler) handleCodeCancel(binding agentauth.Binding, w http.Re
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
-	if err := binding.CancelCode(r.Context()); err != nil {
+	err := binding.CancelCode(r.Context())
+	h.recordAgentAuth(r, binding, serviceaudit.ActionSettingsAgentDisconnect, "cancel", err)
+	if err != nil {
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -114,6 +145,7 @@ func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.R
 		return
 	}
 	state, err := binding.StartDevice(r.Context())
+	h.recordAgentAuth(r, binding, serviceaudit.ActionSettingsAgentConnect, "device", err)
 	if err != nil {
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 		return

@@ -384,7 +384,7 @@ Remote has four credential classes, each with a different scope:
 | Project secret | One project | Stored in a host file with mode `0600` but without application-level encryption; passed to agent runs, persisted as container environment when single-line, and mirrored into the managed `.env` file |
 | Browser-session identity | One project browser profile | Created through human login and persisted with the project so the agent can use the authenticated session |
 
-Project secrets are **agent-readable authority**. They are not hidden capabilities: a sufficiently authorized agent process can read its environment and `/workspace/.env`. The correct safety question is not whether the model can see a secret it has been given, but whether that authority is scoped, observable, revocable, and appropriate for the project. Comprehensive audit coverage is a separate hardening requirement.
+Project secrets are **agent-readable authority**. They are not hidden capabilities: a sufficiently authorized agent process can read its environment and `/workspace/.env`. The correct safety question is not whether the model can see a secret it has been given, but whether that authority is scoped, observable, revocable, and appropriate for the project. The [audit log](../04-operations/10-audit-log.md) makes the control-plane half observable — every secret read, write, and delete is recorded — but in-container use of an already-injected secret is not.
 
 Provider identities cross a wider boundary. Because all provider homes are writable and selected credential files synchronize back to the host, project code can potentially mutate authentication state later used by the fleet and other projects. This is a current shared-authority risk, not project-local secret isolation.
 
@@ -456,7 +456,7 @@ The philosophy is also an acceptance test. The following current behaviors narro
 | Durable project mounts have no built-in snapshot or backup layer | Container replacement preserves state, but destructive in-project writes may be unrecoverable without external Git history or operator backups |
 | Same-project chats can execute concurrently against shared files, Git state, ports, and processes | Per-chat locking prevents duplicate runs in one chat but does not prevent cross-chat races or conflicting work |
 | Kimi lacks the selected-skill prompt triggers and per-run browser MCP preparation used by Claude and Codex | Provider-neutral controls do not yet imply provider feature parity |
-| The durable event stream covers provider-emitted run events, not every terminal, IDE, background process, browser, network, or secret action | Remote does not yet provide a comprehensive project audit log |
+| The [audit log](../04-operations/10-audit-log.md) records control-plane actions — including secret reads, terminal and IDE openings, and agent run starts — but stops at the container boundary | Remote records that a session was opened, not the commands, background processes, or network calls inside it |
 | Run ownership and cancellation state are in memory while provider children may survive a backend restart | The control plane may lose visibility and cancellation authority over a surviving process and accept a new concurrent run |
 | Upgrade busy detection does not currently match the argument order used by provider `lxc exec` commands | An active project may be recycled during an upgrade instead of being safely skipped |
 | The Agent Browser runs without its own Chromium sandbox inside the container | Its primary containment boundary is the outer LXD project container |
@@ -476,7 +476,7 @@ The next hardening steps follow directly from the doctrine:
 5. Replace fleet-wide provider credential copying with project-scoped identities or a host-side credential broker where provider support allows it.
 6. Make resource containment fail closed, and quota the host-backed workspace, provider homes, and unbounded event output—not only the replaceable root filesystem.
 7. Add snapshots or documented backup integration for durable project state, with restore tests that do not depend on the current container.
-8. Add platform-enforced approval and comprehensive audit primitives for external, irreversible, public, financial, and identity-bearing actions.
+8. Add platform-enforced approval for external, irreversible, public, financial, and identity-bearing actions, and extend the [audit log](../04-operations/10-audit-log.md) past the container boundary to the actions taken inside a run.
 9. Persist or reconstruct run ownership so a control-plane restart can rediscover, observe, and cancel surviving provider processes.
 10. Correct and test upgrade busy detection before treating active-container recycling as safe.
 11. Continuously test the boundary: mount escape, path traversal, cross-project network access, credential leakage, preview-cookie theft, resource exhaustion, concurrent-run conflicts, and recovery under a wedged container.

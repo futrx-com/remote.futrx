@@ -11,9 +11,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/creack/pty"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
-	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
 
@@ -30,6 +31,7 @@ type ContainerTerminalSocket struct {
 	chats    TerminalChatGetter
 	projects TerminalProjectStarter
 	access   ProjectAccessChecker
+	audit    serviceaudit.Recorder
 }
 
 func NewContainerTerminalSocket(
@@ -41,6 +43,12 @@ func NewContainerTerminalSocket(
 
 func (s *ContainerTerminalSocket) WithAccessChecker(access ProjectAccessChecker) *ContainerTerminalSocket {
 	s.access = access
+	return s
+}
+
+// WithAudit records who opened a root shell inside a project container.
+func (s *ContainerTerminalSocket) WithAudit(recorder serviceaudit.Recorder) *ContainerTerminalSocket {
+	s.audit = recorder
 	return s
 }
 
@@ -75,12 +83,14 @@ func (s *ContainerTerminalSocket) handle(upgrader websocket.Upgrader, w http.Res
 		return
 	}
 
+	callerEmail, callerIsAdmin := "", false
 	if s.access != nil {
 		email, isAdmin, err := s.access.CallerAndAdmin(r.Context(), r)
 		if err != nil || email == "" {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
+		callerEmail, callerIsAdmin = email, isAdmin
 		if !isAdmin {
 			ok, err := s.access.HasAccess(r.Context(), serviceproject.ID(meta.ProjectID), email)
 			if err != nil {
@@ -127,6 +137,15 @@ func (s *ContainerTerminalSocket) handle(upgrader websocket.Upgrader, w http.Res
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
 	ptmx, err := pty.Start(cmd)
+	if s.audit != nil {
+		terminalCtx := serviceaudit.WithCaller(context.Background(), auditCaller(r, callerEmail, callerIsAdmin))
+		s.audit.Record(terminalCtx, serviceaudit.Result(
+			serviceaudit.ActionWorkspaceTerminalOpen,
+			serviceaudit.Target{Type: serviceaudit.TargetProject, ID: string(meta.ProjectID), Name: project.Name},
+			serviceaudit.Meta{"kind": "container", "chatId": string(chatID), "cwd": cwd},
+			err,
+		))
+	}
 	if err != nil {
 		http.Error(w, "pty failed", http.StatusInternalServerError)
 		return

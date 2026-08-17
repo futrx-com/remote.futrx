@@ -3,6 +3,7 @@ package httphandlers
 import (
 	"net/http"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
 
@@ -16,11 +17,15 @@ type AuthHandler struct {
 	googleConfig *googleConfigHandler
 }
 
-func NewAuthHandler(auth *serviceauth.Service, access *serviceauth.AccessVerifier) *AuthHandler {
+func NewAuthHandler(
+	auth *serviceauth.Service,
+	access *serviceauth.AccessVerifier,
+	auditLog serviceaudit.Recorder,
+) *AuthHandler {
 	return &AuthHandler{
 		googleLogin:  &googleLoginHandler{auth: auth},
 		local:        &localAuthHandler{auth: auth, logins: newLocalLoginLimiter()},
-		session:      &authSessionHandler{auth: auth},
+		session:      &authSessionHandler{auth: auth, audit: auditLog},
 		verify:       &authVerifyHandler{auth: auth, access: access},
 		googleConfig: &googleConfigHandler{auth: auth},
 	}

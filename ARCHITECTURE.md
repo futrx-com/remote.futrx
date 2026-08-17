@@ -154,6 +154,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
 | Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
 | Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
+| Audit log | `DATA_DIR/audit/audit-YYYY-MM.jsonl` | JSONL | append-only, one file per month, mode 0600, pruned by retention |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
@@ -231,5 +232,5 @@ These are the boundaries the [threat model](docs/threat-model.md) reasons about:
 - [`docs/01-overview/`](docs/01-overview/) — system overview and the code map
 - [`docs/02-workspaces/`](docs/02-workspaces/) — auth, projects/containers, chat/agents, workspace tools
 - [`docs/03-platform/`](docs/03-platform/) — previews & browser, data & frontend state, API & realtime
-- [`docs/04-operations/`](docs/04-operations/) — deployment and operations
+- [`docs/04-operations/`](docs/04-operations/) — deployment, operations, and the [audit log](docs/04-operations/10-audit-log.md)
 - [Threat model](docs/threat-model.md) · [Known limitations](docs/known-limitations.md)

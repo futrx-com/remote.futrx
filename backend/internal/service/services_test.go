@@ -63,6 +63,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 		fileauth.New(t.TempDir()),
 		nil,
 		"https://remote.example.com",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("newAuth: %v", err)

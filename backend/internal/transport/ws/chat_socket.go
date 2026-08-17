@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceprompt "github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -23,7 +24,7 @@ type ChatLookup interface {
 
 type PromptRunner interface {
 	Start(serviceprompt.StartInput, func(servicechat.Event)) (serviceprompt.RunHandle, error)
-	CancelPrompt(id servicechat.ID) bool
+	CancelPrompt(ctx context.Context, id servicechat.ID) bool
 }
 
 // ProjectAccessChecker is the subset of the auth gate the chat WS needs:
@@ -96,6 +97,11 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 		}
 	}
 
+	// An agent run outlives the HTTP request that started it, so the run
+	// context is rooted in Background. It still carries the audit caller so
+	// the service layer can attribute the run to this session.
+	runCtx := serviceaudit.WithCaller(context.Background(), auditCaller(r, email, isAdmin))
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -156,12 +162,13 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 					Email:   email,
 					IsAdmin: isAdmin,
 				},
+				ParentContext: runCtx,
 			}, sub.SendTransient)
 			if msg.ClientID != "" {
 				sub.SendTransient(promptAckEvent(msg.ClientID, err == nil))
 			}
 		case "cancel":
-			if !s.runner.CancelPrompt(id) {
+			if !s.runner.CancelPrompt(runCtx, id) {
 				sub.SendTransient(servicechat.Event{
 					T:       time.Now().UnixMilli(),
 					Type:    "error",

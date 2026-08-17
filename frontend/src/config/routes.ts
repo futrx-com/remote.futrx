@@ -7,6 +7,12 @@ function applicationPath(path: ApplicationPath): ApplicationPath {
 export const API_ROUTES = {
   authSession: "/auth/me",
   googleOAuth: "/api/admin/auth/google",
+  audit: {
+    collection: (query: string) =>
+      `/api/admin/audit${query ? `?${query}` : ""}`,
+    export: (query: string) =>
+      `/api/admin/audit/export${query ? `?${query}` : ""}`,
+  },
   chats: {
     collection: "/api/chats",
     item: (id: string) => `/api/chats/${encodeURIComponent(id)}`,

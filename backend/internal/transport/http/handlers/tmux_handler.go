@@ -7,16 +7,29 @@ import (
 	"net/http"
 	"strings"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type TmuxHandler struct {
 	sessions *servicetmux.Service
+	audit    serviceaudit.Recorder
 }
 
 func NewTmuxHandler(sessions *servicetmux.Service) *TmuxHandler {
 	return &TmuxHandler{sessions: sessions}
+}
+
+// WithAudit records host tmux session creation, deletion, and uploads. These
+// run outside any project container, so they are host-level actions.
+func (h *TmuxHandler) WithAudit(recorder serviceaudit.Recorder) *TmuxHandler {
+	h.audit = recorder
+	return h
+}
+
+func auditSessionTarget(name string) serviceaudit.Target {
+	return serviceaudit.Target{Type: serviceaudit.TargetSession, ID: name, Name: name}
 }
 
 func (h *TmuxHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -37,6 +50,7 @@ func (h *TmuxHandler) HandleSessionsCollection(w http.ResponseWriter, r *http.Re
 			return
 		}
 		name, err := h.sessions.Create(body.Name)
+		recordAudit(h.audit, r, serviceaudit.ActionWorkspaceTerminalOpen, auditSessionTarget(name), serviceaudit.Meta{"kind": "tmux"}, err)
 		if err != nil {
 			sendTmuxCreateError(w, err)
 			return
@@ -63,6 +77,7 @@ func (h *TmuxHandler) HandleSessionResource(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		cwd, err := h.sessions.UploadTarget(name)
+		recordAudit(h.audit, r, serviceaudit.ActionWorkspaceFileUpload, auditSessionTarget(name), serviceaudit.Meta{"kind": "tmux"}, err)
 		if err != nil {
 			sendTmuxUploadError(w, err)
 			return
@@ -112,7 +127,9 @@ func (h *TmuxHandler) HandleSessionResource(w http.ResponseWriter, r *http.Reque
 			httptransport.SendErr(w, 405, "method not allowed")
 			return
 		}
-		if err := h.sessions.Delete(name); err != nil {
+		err := h.sessions.Delete(name)
+		recordAudit(h.audit, r, serviceaudit.ActionWorkspaceTerminalClose, auditSessionTarget(name), serviceaudit.Meta{"kind": "tmux"}, err)
+		if err != nil {
 			if errors.Is(err, servicetmux.ErrSessionNotFound) {
 				httptransport.SendErr(w, 404, "not found")
 			} else {
