@@ -12,6 +12,7 @@ import (
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicenotify "github.com/futrx-com/remote.futrx.com/internal/service/notify"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -41,6 +42,7 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	Notifications     servicenotify.Store
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -59,21 +61,22 @@ type ScheduleLimits struct {
 }
 
 type Services struct {
-	Chats        *servicechat.Service
-	ChatAccess   *servicechat.AccessService
-	Projects     *serviceproject.Service
-	Prompt       *prompt.Service
-	Schedules    *serviceschedule.Service
-	ScheduleCaps *schedulecapability.Registry
-	AgentAuth    *agentauth.Registry
-	Runs         *runhub.Hub
-	Workspace    *workspacehub.Hub
-	Auth         *serviceauth.Service
-	Users        *serviceuser.Service
-	UserSettings *serviceusersettings.Service
-	Skills       *serviceskills.Catalog
-	Tmux         *servicetmux.Service
-	Access       *serviceauth.AccessVerifier
+	Chats         *servicechat.Service
+	ChatAccess    *servicechat.AccessService
+	Projects      *serviceproject.Service
+	Prompt        *prompt.Service
+	Schedules     *serviceschedule.Service
+	ScheduleCaps  *schedulecapability.Registry
+	AgentAuth     *agentauth.Registry
+	Runs          *runhub.Hub
+	Workspace     *workspacehub.Hub
+	Auth          *serviceauth.Service
+	Users         *serviceuser.Service
+	UserSettings  *serviceusersettings.Service
+	Notifications *servicenotify.Service
+	Skills        *serviceskills.Catalog
+	Tmux          *servicetmux.Service
+	Access        *serviceauth.AccessVerifier
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -145,6 +148,12 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		return Services{}, err
 	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
+	notifications := servicenotify.New(ctx, deps.Notifications, deps.AuthBaseURL)
+	runNotifications := &notifyObserver{
+		notifications: notifications,
+		chats:         chats,
+		projects:      projectService,
+	}
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
@@ -152,6 +161,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		runs,
 		agents,
 		prompt.WithScheduleToolIssuer(scheduleCaps),
+		prompt.WithRunObserver(runNotifications),
 	)
 	scheduleService := serviceschedule.New(
 		deps.Schedules,
@@ -162,6 +172,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		serviceschedule.WithMinInterval(deps.ScheduleLimits.MinInterval),
 		serviceschedule.WithMaxConcurrentRuns(deps.ScheduleLimits.MaxConcurrentRuns),
 		serviceschedule.WithMaxTasksPerProject(deps.ScheduleLimits.MaxTasksPerProject),
+		serviceschedule.WithRunObserver(runNotifications),
 	)
 	if err := scheduleService.Start(ctx); err != nil {
 		return Services{}, fmt.Errorf("start scheduled tasks: %w", err)
@@ -179,21 +190,22 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 
 	return Services{
-		Chats:        chatService,
-		ChatAccess:   chatAccessService,
-		Projects:     projectService,
-		Prompt:       promptService,
-		Schedules:    scheduleService,
-		ScheduleCaps: scheduleCaps,
-		AgentAuth:    agentAuth,
-		Runs:         runs,
-		Workspace:    workspace,
-		Auth:         authService,
-		Users:        userService,
-		UserSettings: userSettingsService,
-		Skills:       skillCatalog,
-		Tmux:         tmuxService,
-		Access:       accessVerifier,
+		Chats:         chatService,
+		ChatAccess:    chatAccessService,
+		Projects:      projectService,
+		Prompt:        promptService,
+		Schedules:     scheduleService,
+		ScheduleCaps:  scheduleCaps,
+		AgentAuth:     agentAuth,
+		Runs:          runs,
+		Workspace:     workspace,
+		Auth:          authService,
+		Users:         userService,
+		UserSettings:  userSettingsService,
+		Notifications: notifications,
+		Skills:        skillCatalog,
+		Tmux:          tmuxService,
+		Access:        accessVerifier,
 	}, nil
 }
 

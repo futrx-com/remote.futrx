@@ -4,17 +4,24 @@ import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { ComponentType } from "preact";
-import { Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
+import { Bell, Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { ClaudeAuthSettings } from "./ClaudeAuthSettings";
 import { CodexAuthSettings } from "./CodexAuthSettings";
 import { KimiAuthSettings } from "./KimiAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
+import { NotificationsSettings } from "./NotificationsSettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsersPanel } from "../account/UsersPanel";
 
-export type SettingsTab = "appearance" | "agents" | "users" | "updates" | "info";
+export type SettingsTab =
+  | "appearance"
+  | "agents"
+  | "users"
+  | "notifications"
+  | "updates"
+  | "info";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -39,6 +46,12 @@ const tabs: Array<{
     label: "Users",
     description: "Control who can access this server.",
     Icon: Users,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Get pinged when an agent finishes, fails, or needs you.",
+    Icon: Bell,
   },
   {
     id: "updates",
@@ -251,6 +264,15 @@ export function SettingsPage({
                 />
               </div>
             )}
+
+            {activeTab === "notifications" &&
+              (isAdmin ? (
+                <NotificationsSettings />
+              ) : (
+                <SettingsNotice>
+                  Notifications are managed by server administrators.
+                </SettingsNotice>
+              ))}
 
             {activeTab === "updates" &&
               (isAdmin ? (

@@ -33,6 +33,10 @@ func (rnr *Service) emitAgentEvent(
 		})
 	}
 
+	if ev.Type == agent.EventToolStarted && rnr.observer != nil {
+		rnr.observer.RunToolStarted(ctx, id, ev.ToolName)
+	}
+
 	chatEvent, ok := chatEventFromAgentEvent(ev)
 	if ok {
 		emit(chatEvent)

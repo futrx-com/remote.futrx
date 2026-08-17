@@ -55,3 +55,10 @@ type Executor interface {
 type CronParser interface {
 	Next(expression string, after time.Time, location *time.Location) (time.Time, error)
 }
+
+// RunObserver receives the outcome of every scheduled run for out-of-band
+// reporting such as outbound notifications. Implementations must not block the
+// scheduler.
+type RunObserver interface {
+	ScheduledRunFinished(ctx context.Context, task Task, result RunResult)
+}

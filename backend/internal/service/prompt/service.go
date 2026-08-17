@@ -76,11 +76,42 @@ type ScheduleToolIssuer interface {
 	IssueScheduleTool(context.Context, ScheduleToolRequest) (ScheduleToolAccess, error)
 }
 
+// RunOutcome describes a settled agent run. Observers use it for out-of-band
+// reporting such as outbound notifications; it never affects the run itself.
+type RunOutcome struct {
+	ChatID servicechat.ID
+	RunID  uint64
+	// Output is the concatenated assistant text produced by the run.
+	Output    string
+	Err       error
+	Cancelled bool
+	// ScheduledTaskID is set when the run was injected by the scheduler, so
+	// observers can leave scheduled reporting to the schedule service.
+	ScheduledTaskID string
+}
+
+// RunObserver receives out-of-band run signals. Implementations must not block:
+// they are called on the run goroutine and on the provider event path.
+type RunObserver interface {
+	// RunSettled fires exactly once per run, after the provider returns.
+	RunSettled(ctx context.Context, outcome RunOutcome)
+	// RunToolStarted fires for every tool call the provider begins. Observers
+	// decide which tool names mean the run is waiting on a human.
+	RunToolStarted(ctx context.Context, chatID servicechat.ID, toolName string)
+}
+
 type Option func(*Service)
 
 func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
 	return func(service *Service) {
 		service.scheduleTools = issuer
+	}
+}
+
+// WithRunObserver installs an out-of-band observer of run lifecycle signals.
+func WithRunObserver(observer RunObserver) Option {
+	return func(service *Service) {
+		service.observer = observer
 	}
 }
 
@@ -91,6 +122,7 @@ type Service struct {
 	hub           *runhub.Hub
 	agents        *agent.Registry
 	scheduleTools ScheduleToolIssuer
+	observer      RunObserver
 }
 
 func New(
@@ -158,9 +190,30 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 			},
 			emitTransient,
 		)
+		rnr.observeSettled(parentCtx, RunOutcome{
+			ChatID:          input.ChatID,
+			RunID:           runID,
+			Output:          output.String(),
+			Err:             err,
+			Cancelled:       errors.Is(ctx.Err(), context.Canceled),
+			ScheduledTaskID: input.ScheduledTaskID,
+		})
 		done <- RunResult{Output: output.String(), Err: err}
 	}()
 	return RunHandle{ID: runID, Done: done}, nil
+}
+
+// observeSettled reports a settled run to the observer, if one is installed.
+// The observer's own context governs its work, so a cancelled run still gets
+// reported.
+func (rnr *Service) observeSettled(ctx context.Context, outcome RunOutcome) {
+	if rnr.observer == nil {
+		return
+	}
+	if ctx == nil || ctx.Err() != nil {
+		ctx = context.Background()
+	}
+	rnr.observer.RunSettled(ctx, outcome)
 }
 
 func (rnr *Service) CancelPrompt(id servicechat.ID) bool {
