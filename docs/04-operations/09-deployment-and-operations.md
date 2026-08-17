@@ -178,6 +178,31 @@ flowchart LR
 
 The server-info settings page reports host, CPU, memory, storage, network, and Go-process metrics. The project page reports the corresponding per-container diagnostics.
 
+## Backups and restore
+
+`infra/steps/08-backup.sh` installs `remote-backup`, `remote-restore` and a nightly `remote-backup.timer` (03:30 UTC, ±20 min). A snapshot lands in `/var/backups/remote/<UTC-timestamp>/`:
+
+| Part | Contents | Consistency |
+| --- | --- | --- |
+| `data.tar.zst` | `DATA_DIR` — users, projects, chats, secrets, session key, scheduled tasks | backend stopped for the seconds it takes to tar (containers, previews and IDEs stay up because of `KillMode=process`) |
+| `projects.tar.zst` | `/var/lib/remote/projects/<slug>/{workspace,agent-home}` | live (agents may be writing; tar tolerates changed/removed files) |
+| `hostcfg.tar.zst` | provider tokens (`/root/.claude*`, `.codex`, `.kimi-code`), Caddyfile, systemd units, LXD profile + container list | live |
+| `containers/*.tar.gz` | `lxc export` of every container — only with `--with-containers` / `WITH_CONTAINERS=1` | live |
+| `manifest.json`, `SHA256SUMS` | metadata + checksums | — |
+
+Retention keeps the newest `KEEP_DAILY` (7) snapshots plus one per ISO week for `KEEP_WEEKLY` (4) weeks. Set `RCLONE_TARGET` in `/etc/remote-backup.env` (after `rclone config` as root) to copy each snapshot offsite; local disk is not a backup of the host itself.
+
+```bash
+remote-backup                       # snapshot now (prints the snapshot dir)
+remote-backup --with-containers     # also export containers (slow, large)
+remote-restore /var/backups/remote/<ts>            # data + projects + provider tokens
+remote-restore /var/backups/remote/<ts> --data     # only DATA_DIR
+```
+
+`remote-restore` verifies checksums, stops the backend, moves the existing `DATA_DIR` / projects dir aside as `*.pre-restore-<ts>`, extracts, re-chowns workspaces to the container idmap (uid 1000000), and restarts. Containers are recreated from the base image on demand; workspaces and agent homes are bind-mounted back in.
+
+`infra/steps/09-host-swap.sh` adds a 4 GiB swapfile (swappiness 10) on hosts with < 8 GiB RAM and no swap, so a busy container degrades instead of OOM-killing the host.
+
 ## Security controls
 
 - The backend listens on loopback by default; Caddy is the public entry point.

@@ -279,6 +279,10 @@ fi
 . "$INFRA_DIR/steps/06-ssh-hardening.sh"
 # shellcheck source=steps/07-lxc-ipv4-heal.sh
 . "$INFRA_DIR/steps/07-lxc-ipv4-heal.sh"
+# shellcheck source=steps/08-backup.sh
+. "$INFRA_DIR/steps/08-backup.sh"
+# shellcheck source=steps/09-host-swap.sh
+. "$INFRA_DIR/steps/09-host-swap.sh"
 
 # ───────────────── summary ─────────────────
 cat <<EOF
@@ -301,6 +305,10 @@ cat <<EOF
 
  If you're on a cloud VPS with its own firewall, open 80/443 in the
  provider's console as well as UFW.
+
+ Backups:
+   remote-backup              (nightly via remote-backup.timer -> /var/backups/remote)
+   remote-restore <snapshot>  (retention / offsite: /etc/remote-backup.env)
 
  Manage:
    systemctl status   remote.futrx
