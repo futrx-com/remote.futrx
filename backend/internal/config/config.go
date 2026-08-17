@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 type Config struct {
@@ -16,6 +18,15 @@ type Config struct {
 	InstallDir string
 	BaseURL    string
 	Schedule   ScheduleLimits
+	Audit      AuditLimits
+}
+
+// AuditLimits are the audit-log housekeeping knobs.
+type AuditLimits struct {
+	// RetentionMonths is how many monthly audit files to keep, including the
+	// current one (AUDIT_RETENTION_MONTHS, default 12). A value below 1
+	// disables the janitor and keeps every file forever.
+	RetentionMonths int
 }
 
 // ScheduleLimits are the scheduled-task guardrails. Zero disables a limit;
@@ -44,6 +55,9 @@ func Load() Config {
 			MinInterval:        envDuration("SCHEDULE_MIN_INTERVAL", 5*time.Minute),
 			MaxConcurrentRuns:  envInt("SCHEDULE_MAX_CONCURRENT", 2),
 			MaxTasksPerProject: envInt("SCHEDULE_MAX_TASKS_PER_PROJECT", 20),
+		},
+		Audit: AuditLimits{
+			RetentionMonths: envInt("AUDIT_RETENTION_MONTHS", audit.DefaultRetentionMonths),
 		},
 	}
 }

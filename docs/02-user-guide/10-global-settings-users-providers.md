@@ -1,6 +1,6 @@
 # Global settings, users, and providers
 
-Open **Settings** from the account footer or the collapsed sidebar gear. The page has four tabs: **Appearance**, **Agents**, **Users**, and **Info**.
+Open **Settings** from the account footer or the collapsed sidebar gear. The page has six tabs: **Appearance**, **Agents**, **Users**, **Audit log**, **Updates**, and **Info**.
 
 ## Appearance
 
@@ -135,6 +135,36 @@ The local administrator cannot be removed or demoted. Remote also prevents remov
 
 Removal blocks future authenticated requests for that email. Sessions are stateless 30-day tokens and have no individual revocation UI; deleting a user is the practical access-control lever.
 
+## Audit log
+
+**Audit log** is admin-only. It lists what people did on this server, newest
+first: sign-ins and sign-outs, project creation, renaming, and deletion,
+membership changes, secret reads and writes, container starts and stops, agent
+runs, scheduled-task changes, settings changes, self-updates, and workspace
+file, terminal, and IDE access.
+
+Each row shows the time, the actor, the action, the target, the caller's IP
+address, and whether the action succeeded. Failed attempts are listed too, with
+the reason.
+
+To narrow the list:
+
+1. Type an email in **Actor** to see one person's activity.
+2. Type an action in **Action**. Matching is by prefix, so `project.` selects
+   every project action and `project.secret.` only the secret ones.
+3. Set **From** and **To** for a date range.
+4. Choose **Apply filters**. **Clear** returns to the full list.
+
+**Load older entries** pages further back. **Export** downloads the matching
+date range as a JSONL file for archiving or offline analysis.
+
+Entries are kept for a retention window the server operator configures
+(twelve months by default), after which whole months are deleted. See
+[Audit log](../04-operations/10-audit-log.md) for the entry format, the full
+action list, and retention configuration.
+
+Members see a notice instead of the table.
+
 ## Info
 
 Use **Info** to inspect the parent host rather than one project container.
@@ -167,5 +197,6 @@ Use the sign-out control in the account footer. This clears the platform session
 | Sign in to Antigravity inside an assigned project | Yes | Yes |
 | Configure Google OAuth | Yes | No |
 | Add, remove, promote, or demote users | Yes | No |
+| Read and export the audit log | Yes | No |
 
 For the full sign-in state machine and proxy checks, see [Authentication, users, and access](../02-workspaces/02-auth-users-and-access.md).

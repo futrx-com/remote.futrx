@@ -1,11 +1,13 @@
 import type { AppearanceTheme } from "../../models/settings";
 import type { CodexDeviceLogin, KimiDeviceLogin } from "../../models/auth";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
+import type { AuditLog } from "../../state/hooks/admin/useAuditLog";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { ComponentType } from "preact";
-import { Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
+import { Activity, Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { AuditLogSettings } from "./AuditLogSettings";
 import { ClaudeAuthSettings } from "./ClaudeAuthSettings";
 import { CodexAuthSettings } from "./CodexAuthSettings";
 import { KimiAuthSettings } from "./KimiAuthSettings";
@@ -14,7 +16,13 @@ import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsersPanel } from "../account/UsersPanel";
 
-export type SettingsTab = "appearance" | "agents" | "users" | "updates" | "info";
+export type SettingsTab =
+  | "appearance"
+  | "agents"
+  | "users"
+  | "audit"
+  | "updates"
+  | "info";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -39,6 +47,12 @@ const tabs: Array<{
     label: "Users",
     description: "Control who can access this server.",
     Icon: Users,
+  },
+  {
+    id: "audit",
+    label: "Audit log",
+    description: "Review who did what on this server.",
+    Icon: Activity,
   },
   {
     id: "updates",
@@ -70,6 +84,7 @@ export function SettingsPage({
   selfUpdateRestarting,
   selfUpdateError,
   userDirectory,
+  auditLog,
   appearanceTheme,
   appearanceLoading,
   appearanceSaving,
@@ -110,6 +125,7 @@ export function SettingsPage({
   selfUpdateRestarting: boolean;
   selfUpdateError: string | null;
   userDirectory: UserDirectory;
+  auditLog: AuditLog;
   appearanceTheme: AppearanceTheme;
   appearanceLoading: boolean;
   appearanceSaving: boolean;
@@ -251,6 +267,26 @@ export function SettingsPage({
                 />
               </div>
             )}
+
+            {activeTab === "audit" &&
+              (isAdmin ? (
+                <AuditLogSettings
+                  entries={auditLog.entries}
+                  filters={auditLog.filters}
+                  loading={auditLog.loading}
+                  loadingMore={auditLog.loadingMore}
+                  hasMore={auditLog.hasMore}
+                  error={auditLog.error}
+                  exportUrl={auditLog.exportUrl}
+                  onFiltersChange={auditLog.setFilters}
+                  onRefresh={auditLog.refresh}
+                  onLoadMore={auditLog.loadMore}
+                />
+              ) : (
+                <SettingsNotice>
+                  The audit log is visible to server administrators only.
+                </SettingsNotice>
+              ))}
 
             {activeTab === "updates" &&
               (isAdmin ? (

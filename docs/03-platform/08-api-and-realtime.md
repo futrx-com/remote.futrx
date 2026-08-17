@@ -37,6 +37,8 @@ All `/api/*` and `/ws*` requests require a signed session for a registered user.
 | GET, POST | `/api/admin/users` | List or add registered users; admin only |
 | DELETE | `/api/admin/users/{email}` | Remove a user; admin only |
 | PUT | `/api/admin/users/{email}/role` | Promote or demote a user; admin only |
+| GET | `/api/admin/audit` | Newest-first page of audit entries, filtered by `actor`, `action` prefix, `target`, `from`, `to`, `limit`, `cursor`; admin only |
+| GET | `/api/admin/audit/export` | Stream the stored audit JSONL for a `from`/`to` range as a download; admin only |
 | GET, PATCH | `/api/me/settings` | Read or update current user's appearance and chat defaults |
 | GET | `/api/server/info` | Host, CPU, memory, storage, network, and process snapshot |
 

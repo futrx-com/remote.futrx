@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 type Service struct {
@@ -12,15 +14,50 @@ type Service struct {
 	projects ProjectResolver
 	tmux     TmuxResolver
 	runs     RunController
+	audit    audit.Recorder
 }
 
-func New(repo Repository, projects ProjectResolver, tmux TmuxResolver, runs RunController) *Service {
-	return &Service{
+// Option configures optional Service collaborators.
+type Option func(*Service)
+
+// WithAudit records chat creation and deletion. Deleting a chat destroys its
+// event log, so it belongs in the trail even though chats hold no secrets.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
+func New(
+	repo Repository,
+	projects ProjectResolver,
+	tmux TmuxResolver,
+	runs RunController,
+	options ...Option,
+) *Service {
+	service := &Service{
 		repo:     repo,
 		projects: projects,
 		tmux:     tmux,
 		runs:     runs,
+		audit:    audit.Nop{},
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
+}
+
+func (s *Service) recordChat(ctx context.Context, action string, meta Meta, id ID, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	target := audit.Target{Type: audit.TargetChat, ID: string(id), Name: meta.Title}
+	entryMeta := audit.Meta{}
+	if meta.ProjectID != "" {
+		entryMeta["projectId"] = string(meta.ProjectID)
+	}
+	s.audit.Record(ctx, audit.Result(action, target, entryMeta, err))
 }
 
 func (s *Service) List(ctx context.Context) ([]Meta, error) {
@@ -46,6 +83,12 @@ func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
+	meta, err := s.create(ctx, in)
+	s.recordChat(ctx, audit.ActionChatCreate, meta, meta.ID, err)
+	return meta, err
+}
+
+func (s *Service) create(ctx context.Context, in CreateInput) (Meta, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = "New chat"
@@ -230,6 +273,13 @@ func (s *Service) withRunning(meta Meta) Meta {
 }
 
 func (s *Service) Delete(ctx context.Context, id ID) error {
+	existing, _ := s.repo.Get(ctx, id)
+	err := s.delete(ctx, id)
+	s.recordChat(ctx, audit.ActionChatDelete, existing, id, err)
+	return err
+}
+
+func (s *Service) delete(ctx context.Context, id ID) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}

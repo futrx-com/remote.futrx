@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 // HostClient is implemented by integration/updatecli.
@@ -42,18 +44,34 @@ type Service struct {
 	installDir     string
 	stateDir       string
 	host           HostClient
+	audit          audit.Recorder
 
 	mu        sync.Mutex
 	lastCheck *CheckResult
 }
 
-func New(currentVersion, installDir, dataDir string, host HostClient) *Service {
-	return &Service{
+// Option configures optional Service collaborators.
+type Option func(*Service)
+
+// WithAudit records who triggered an application update, and toward which tag.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
+func New(currentVersion, installDir, dataDir string, host HostClient, options ...Option) *Service {
+	service := &Service{
 		currentVersion: currentVersion,
 		installDir:     installDir,
 		stateDir:       filepath.Join(dataDir, stateDirName),
 		host:           host,
+		audit:          audit.Nop{},
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 // CheckResult is the outcome of one tag lookup against origin.
@@ -131,42 +149,61 @@ func (s *Service) Check(ctx context.Context) Status {
 // tag when tag is empty). Single-flight: a second call while a run is alive
 // returns ErrUpdateInProgress.
 func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, error) {
+	status, resolvedTag, err := s.apply(ctx, startedBy, tag)
+	if s.audit != nil {
+		entry := audit.Result(
+			audit.ActionSelfUpdateTrigger,
+			audit.Target{Type: audit.TargetServer, ID: "self-update", Name: resolvedTag},
+			audit.Meta{"tag": resolvedTag, "from": s.currentVersion},
+			err,
+		)
+		if startedBy != "" {
+			entry.Actor = audit.Actor{Email: audit.NormalizeActorEmail(startedBy), IsAdmin: true}
+		}
+		s.audit.Record(ctx, entry)
+	}
+	return status, err
+}
+
+// apply also returns the tag it resolved, so the audit entry names the target
+// even when the caller left it blank and the newest release was chosen.
+func (s *Service) apply(ctx context.Context, startedBy, tag string) (Status, string, error) {
 	tags, err := s.host.ListRemoteTags(ctx, s.installDir)
 	if err != nil {
-		return s.Status(ctx), fmt.Errorf("list origin tags: %w", err)
+		return s.Status(ctx), tag, fmt.Errorf("list origin tags: %w", err)
 	}
 	if tag == "" {
 		if tag, _ = latestReleaseTag(tags); tag == "" {
-			return s.Status(ctx), ErrNoReleaseTag
+			return s.Status(ctx), tag, ErrNoReleaseTag
 		}
 	} else if !containsTag(tags, tag) {
-		return s.Status(ctx), fmt.Errorf("%w: %s", ErrUnknownTag, tag)
+		return s.Status(ctx), tag, fmt.Errorf("%w: %s", ErrUnknownTag, tag)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if run := s.runStatus(); run != nil && run.State == "running" {
-		return s.statusLocked(), ErrUpdateInProgress
+		return s.statusLocked(), tag, ErrUpdateInProgress
 	}
 	if err := os.MkdirAll(s.stateDir, 0o700); err != nil {
-		return s.statusLocked(), err
+		return s.statusLocked(), tag, err
 	}
 	// A fresh run replaces the previous run's records.
 	if err := os.Remove(s.donePath()); err != nil && !os.IsNotExist(err) {
-		return s.statusLocked(), err
+		return s.statusLocked(), tag, err
 	}
 	if err := os.WriteFile(s.logPath(), nil, runFileMode); err != nil {
-		return s.statusLocked(), err
+		return s.statusLocked(), tag, err
 	}
 	pid, err := s.host.StartUpdater(s.installDir, tag, s.logPath(), s.donePath())
 	if err != nil {
-		return s.statusLocked(), fmt.Errorf("start updater: %w", err)
+		return s.statusLocked(), tag, fmt.Errorf("start updater: %w", err)
 	}
 	record := runRecord{Target: tag, StartedAt: time.Now().Unix(), StartedBy: startedBy, PID: pid}
 	if err := writeJSONFile(s.runPath(), record); err != nil {
-		return s.statusLocked(), err
+		return s.statusLocked(), tag, err
 	}
-	return s.statusLocked(), nil
+	return s.statusLocked(), tag, nil
 }
 
 func (s *Service) statusLocked() Status {

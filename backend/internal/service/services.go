@@ -10,6 +10,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/googleoauth"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -41,6 +42,8 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	Audit             serviceaudit.Store
+	AuditRetention    int
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -74,6 +77,7 @@ type Services struct {
 	Skills       *serviceskills.Catalog
 	Tmux         *servicetmux.Service
 	Access       *serviceauth.AccessVerifier
+	Audit        *serviceaudit.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -83,6 +87,14 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
 	}
+
+	// The audit recorder is built first so every other service can take it.
+	auditRetention := deps.AuditRetention
+	if auditRetention == 0 {
+		auditRetention = serviceaudit.DefaultRetentionMonths
+	}
+	auditLog := serviceaudit.New(deps.Audit, serviceaudit.WithRetentionMonths(auditRetention))
+	auditLog.StartJanitor(ctx, 24*time.Hour)
 
 	workspace := workspacehub.New()
 	var runs *runhub.Hub
@@ -96,7 +108,13 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	definitions := agentDefinitions()
 	profiles := profilesFromDefinitions(definitions)
-	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
+	projectService := serviceproject.New(
+		projects,
+		deps.ProjectContainers,
+		deps.ProjectSecrets,
+		deps.ProjectAccess,
+		serviceproject.WithAudit(auditLog),
+	)
 	projectService.StartAgentBrowserReaper(ctx, 20*time.Minute)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
@@ -113,6 +131,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		chatProjectResolver{projects: projectService},
 		tmuxResolver,
 		runs,
+		servicechat.WithAudit(auditLog),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	agents := agent.NewRegistry()
@@ -139,8 +158,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			return Services{}, err
 		}
 	}
-	userService := serviceuser.New(deps.Users)
-	authService, err := newAuth(ctx, deps.Auth, userService, deps.AuthBaseURL)
+	userService := serviceuser.New(deps.Users, serviceuser.WithAudit(auditLog))
+	authService, err := newAuth(ctx, deps.Auth, userService, deps.AuthBaseURL, auditLog)
 	if err != nil {
 		return Services{}, err
 	}
@@ -152,6 +171,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		runs,
 		agents,
 		prompt.WithScheduleToolIssuer(scheduleCaps),
+		prompt.WithAudit(auditLog),
 	)
 	scheduleService := serviceschedule.New(
 		deps.Schedules,
@@ -162,6 +182,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		serviceschedule.WithMinInterval(deps.ScheduleLimits.MinInterval),
 		serviceschedule.WithMaxConcurrentRuns(deps.ScheduleLimits.MaxConcurrentRuns),
 		serviceschedule.WithMaxTasksPerProject(deps.ScheduleLimits.MaxTasksPerProject),
+		serviceschedule.WithAudit(auditLog),
 	)
 	if err := scheduleService.Start(ctx); err != nil {
 		return Services{}, fmt.Errorf("start scheduled tasks: %w", err)
@@ -194,6 +215,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Skills:       skillCatalog,
 		Tmux:         tmuxService,
 		Access:       accessVerifier,
+		Audit:        auditLog,
 	}, nil
 }
 
@@ -310,6 +332,7 @@ func newAuth(
 	store AuthStore,
 	users *serviceuser.Service,
 	baseURL string,
+	auditLog serviceaudit.Recorder,
 ) (*serviceauth.Service, error) {
 	if store == nil {
 		return nil, errors.New("authentication store is required")
@@ -336,6 +359,7 @@ func newAuth(
 		},
 		baseURL,
 		sessionKey,
+		serviceauth.WithAudit(auditLog),
 	)
 }
 

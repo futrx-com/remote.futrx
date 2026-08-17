@@ -229,7 +229,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 - terminal reconnect;
 - the visible Git dirty-tree checkpoint form, despite backend support;
 - project IDE membership enforcement;
-- built-in backup/restore, audit log, metrics endpoint, or high availability;
+- built-in backup/restore, metrics endpoint, or high availability;
 - content search in Files;
 - a main-app PWA, push notification, or offline mode;
 - current application voice dictation;

@@ -29,6 +29,7 @@ This documentation maps the complete `remote.futrx` application: how to use ever
 | [07-data-and-frontend-state.md](../03-platform/07-data-and-frontend-state.md) | File-backed persistence, workspace files, entities, and UI state |
 | [08-api-and-realtime.md](../03-platform/08-api-and-realtime.md) | HTTP endpoints, WebSockets, events, and access gates |
 | [09-deployment-and-operations.md](../04-operations/09-deployment-and-operations.md) | Install, proxying, base images, updates, recovery, and security hardening |
+| [10-audit-log.md](../04-operations/10-audit-log.md) | Append-only audit trail: entry format, action names, admin API, and retention |
 
 ## Cross-cutting references
 

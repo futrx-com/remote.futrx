@@ -160,6 +160,20 @@ sudo systemctl daemon-reload
 sudo systemctl restart remote.futrx
 ```
 
+## Audit-log retention
+
+The backend keeps an append-only audit trail under `DATA_DIR/audit/`, one JSONL
+file per calendar month. A janitor goroutine runs at startup and every 24 hours
+and deletes whole monthly files that fall outside the retention window.
+
+| Environment variable | Default | Meaning |
+| --- | ---: | --- |
+| `AUDIT_RETENTION_MONTHS` | `12` | Monthly audit files to keep, including the current one; `0` disables pruning and keeps every file |
+
+Retention deletes files rather than truncating them, so export or copy them
+before shortening the window. See [Audit log](10-audit-log.md) for the entry
+format, the action names, and the admin API.
+
 Restarting the backend interrupts control of interactive and scheduled runs.
 Use a maintenance window. Before raising the limits, account for the fact that
 each scheduled occurrence can start a project container and consume provider
@@ -185,7 +199,7 @@ The server-info settings page reports host, CPU, memory, storage, network, and G
 - Preview and IDE requests use forward authentication; preview authorization is project-aware, while IDE authorization currently accepts any registered user.
 - Platform cookies are removed before container proxying.
 - Internal Caddy helper routes are denied externally.
-- Secret, auth, access, and user files use restrictive permissions.
+- Secret, auth, access, audit, and user files use restrictive permissions.
 - SSH password and keyboard-interactive authentication are disabled after install.
 - On-demand TLS issuance is restricted to valid, existing project hosts.
 - Project containers are unprivileged and receive host workspaces through mapped ownership.
@@ -208,3 +222,4 @@ sudo bash /opt/remote.futrx/infra/upgrade-workspaces.sh --dry-run
 - Workspace upgrade: [`infra/upgrade-workspaces.sh`](../../infra/upgrade-workspaces.sh)
 - Systemd template: [`infra/templates/remote.futrx.service.tmpl`](../../infra/templates/remote.futrx.service.tmpl)
 - Base-image builder: [`backend/internal/service/container/image/builder.go`](../../backend/internal/service/container/image/builder.go)
+- Audit store: [`backend/internal/stores/fileaudit/store.go`](../../backend/internal/stores/fileaudit/store.go)
