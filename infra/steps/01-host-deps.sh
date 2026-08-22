@@ -127,7 +127,15 @@ ensure_agent_cli "Codex" codex @openai/codex "$CODEX_CLI_VERSION"
 ensure_agent_cli "Kimi Code" kimi @moonshot-ai/kimi-code "$KIMI_CODE_VERSION"
 
 # ───────────────── LXD (one container per project) ─────────────────
-if ! command -v lxc >/dev/null; then
+# Checked via `snap list lxd`, not `command -v lxc`: Ubuntu 24.04 ships the
+# `lxd-installer` transitional package, which pre-populates /usr/bin/lxc and
+# /usr/sbin/lxd as shims that lazily install the snap on first invocation.
+# `command -v lxc` finds those shims on a completely fresh box, so this step
+# would silently skip the real install — and the first real LXD command
+# later in this script (or `lxd init --auto` below) would trigger the
+# shim's own uncontrolled auto-install instead, outside our retry/wait
+# logic and prone to leaving the host half-installed on any hiccup.
+if ! snap list lxd >/dev/null 2>&1; then
     log "Installing LXD via snap"
     if ! command -v snap >/dev/null; then
         apt-get install -y -qq snapd
@@ -135,8 +143,8 @@ if ! command -v lxc >/dev/null; then
         for _ in 1 2 3 4 5; do snap wait system seed.loaded && break; sleep 1; done
     fi
     snap install lxd
-    export PATH="/snap/bin:$PATH"
 fi
+export PATH="/snap/bin:$PATH"
 
 # Initialize storage + bridge on fresh installs. `lxc network show lxdbr0`
 # is our "initialized" probe.
