@@ -82,6 +82,19 @@ export const API_ROUTES = {
     access: (id: string) => `/api/projects/${encodeURIComponent(id)}/access`,
     accessMember: (id: string, email: string) =>
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,
+    applications: (id: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications`,
+    application: (id: string, appId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}`,
+    applicationAction: (id: string, appId: string, action: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/${action}`,
+  },
+  applications: {
+    catalog: "/api/applications/catalog",
+    collection: "/api/applications",
+    item: (appId: string) => `/api/applications/${encodeURIComponent(appId)}`,
+    action: (appId: string, action: string) =>
+      `/api/applications/${encodeURIComponent(appId)}/${action}`,
   },
   settings: "/api/me/settings",
   push: {

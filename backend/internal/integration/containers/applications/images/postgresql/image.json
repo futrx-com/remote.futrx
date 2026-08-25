@@ -1,0 +1,46 @@
+{
+  "id": "postgresql",
+  "name": "PostgreSQL",
+  "description": "The world's most advanced open-source relational database.",
+  "category": "database",
+  "version": "16",
+  "icon": "database",
+  "scopes": ["global", "project"],
+  "port": {
+    "internal": 5432,
+    "defaultExternal": 5432,
+    "protocol": "tcp",
+    "bindAddress": "127.0.0.1"
+  },
+  "env": [
+    {
+      "key": "POSTGRES_PASSWORD",
+      "label": "Superuser password",
+      "required": true,
+      "secret": true,
+      "generate": "password"
+    },
+    {
+      "key": "POSTGRES_USER",
+      "label": "Superuser name",
+      "required": false,
+      "default": "postgres"
+    },
+    {
+      "key": "POSTGRES_DB",
+      "label": "Default database",
+      "required": false,
+      "default": "app"
+    }
+  ],
+  "service": "postgresql",
+  "connection": {
+    "userEnv": "POSTGRES_USER",
+    "passwordEnv": "POSTGRES_PASSWORD",
+    "databaseEnv": "POSTGRES_DB"
+  },
+  "install": "install.sh",
+  "healthcheck": {
+    "command": "pg_isready -h 127.0.0.1 -p {{internalPort}}"
+  }
+}

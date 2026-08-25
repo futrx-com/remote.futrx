@@ -18,6 +18,7 @@ import (
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
@@ -49,11 +50,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure public hostname: %v", err)
 	}
+	appRegistry, err := containerapplications.NewRegistry()
+	if err != nil {
+		log.Fatalf("load application catalog: %v", err)
+	}
 	containerStack := config.NewContainerStack(
 		lxcClient,
 		service.AgentProfiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:       appRegistry,
 		},
 	)
 	tmuxClient := tmuxcli.New()
@@ -77,6 +83,10 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
+		AppStore:     storeSet.Applications,
+		AppRegistry:  appRegistry,
+		AppInstaller: containerStack.AppInstaller,
+		AppPorts:     containerStack.AppPorts,
 	})
 	if err != nil {
 		log.Fatalf("init services: %v", err)

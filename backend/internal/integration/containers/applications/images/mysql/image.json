@@ -1,0 +1,40 @@
+{
+  "id": "mysql",
+  "name": "MySQL",
+  "description": "Popular open-source relational database server.",
+  "category": "database",
+  "version": "8.0",
+  "icon": "database",
+  "scopes": ["global", "project"],
+  "port": {
+    "internal": 3306,
+    "defaultExternal": 3306,
+    "protocol": "tcp",
+    "bindAddress": "127.0.0.1"
+  },
+  "env": [
+    {
+      "key": "MYSQL_ROOT_PASSWORD",
+      "label": "Root password",
+      "required": true,
+      "secret": true,
+      "generate": "password"
+    },
+    {
+      "key": "MYSQL_DATABASE",
+      "label": "Default database",
+      "required": false,
+      "default": "app"
+    }
+  ],
+  "service": "mysql",
+  "connection": {
+    "user": "root",
+    "passwordEnv": "MYSQL_ROOT_PASSWORD",
+    "databaseEnv": "MYSQL_DATABASE"
+  },
+  "install": "install.sh",
+  "healthcheck": {
+    "command": "mysqladmin ping -h 127.0.0.1 -P {{internalPort}} --silent"
+  }
+}

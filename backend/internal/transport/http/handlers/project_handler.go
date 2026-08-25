@@ -23,6 +23,7 @@ type ProjectHandler struct {
 	projects           *serviceproject.Service
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
+	apps               *ApplicationsHandler
 	projectHostPattern *regexp.Regexp
 	codeHostPattern    *regexp.Regexp
 }
@@ -31,6 +32,7 @@ func NewProjectHandler(
 	projects *serviceproject.Service,
 	users *serviceuser.Service,
 	auth *serviceauth.Service,
+	apps *ApplicationsHandler,
 	publicHostname string,
 ) *ProjectHandler {
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
@@ -39,6 +41,7 @@ func NewProjectHandler(
 		projects: projects,
 		users:    users,
 		auth:     auth,
+		apps:     apps,
 		projectHostPattern: regexp.MustCompile(
 			`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.` + escapedHostname + `$`,
 		),
@@ -179,6 +182,15 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 
 	if len(parts) >= 2 && parts[1] == "agent-browser" {
 		h.handleAgentBrowser(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "applications" {
+		if h.apps == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "applications unavailable")
+			return
+		}
+		h.apps.HandleProject(w, r, string(id), parts)
 		return
 	}
 

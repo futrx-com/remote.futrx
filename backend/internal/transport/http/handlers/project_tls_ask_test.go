@@ -88,5 +88,5 @@ func newTLSAskProjectHandler(t *testing.T, publicHostname string) (*ProjectHandl
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewProjectHandler(projects, nil, nil, publicHostname), project
+	return NewProjectHandler(projects, nil, nil, nil, publicHostname), project
 }

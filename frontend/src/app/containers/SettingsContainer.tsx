@@ -8,6 +8,7 @@ import { useUserSettingsContext } from "../../state/context/UserSettingsContext"
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
 
 export function SettingsContainer({
@@ -23,6 +24,9 @@ export function SettingsContainer({
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
+  const applications = useGlobalApplications(
+    activeTab === "applications" && auth.isAdmin
+  );
   const push = usePushNotifications(activeTab === "notifications");
 
   return (
@@ -67,6 +71,7 @@ export function SettingsContainer({
       kimiStarting={kimiAuth.starting}
       kimiError={kimiAuth.error}
       onStartKimiDeviceLogin={kimiAuth.startDeviceLogin}
+      applications={applications}
     />
   );
 }

@@ -184,7 +184,7 @@ func newAgentBrowserProjectHandler(t *testing.T) (*ProjectHandler, *fakeProjectC
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewProjectHandler(projects, nil, nil, "remote.futrx.com"), containers, project
+	return NewProjectHandler(projects, nil, nil, nil, "remote.futrx.com"), containers, project
 }
 
 type fakeProjectContainers struct {

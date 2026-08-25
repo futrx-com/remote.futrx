@@ -12,6 +12,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/googleoauth"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
@@ -61,6 +62,13 @@ type Dependencies struct {
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
+
+	// Application (installable image) capabilities. When AppStore and
+	// AppRegistry are set the Applications service is enabled.
+	AppStore     serviceapplications.Store
+	AppRegistry  serviceapplications.Registry
+	AppInstaller serviceapplications.Installer
+	AppPorts     serviceapplications.PortAllocator
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -88,6 +96,7 @@ type Services struct {
 	Skills       *serviceskills.Catalog
 	Tmux         *servicetmux.Service
 	Access       *serviceauth.AccessVerifier
+	Applications *serviceapplications.Service
 	Push         *servicepush.Service
 	Presence     *servicepresence.Service
 }
@@ -208,6 +217,16 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxService = servicetmux.NewSessions(deps.TmuxClient)
 	}
 
+	var applicationsService *serviceapplications.Service
+	if deps.AppStore != nil && deps.AppRegistry != nil {
+		applicationsService = serviceapplications.New(
+			deps.AppRegistry,
+			deps.AppStore,
+			deps.AppInstaller,
+			projectContainersAdapter{projects: projectService},
+			deps.AppPorts,
+		)
+	}
 	pushNotifier.push = pushService
 	pushNotifier.audience.projects = projectService
 	pushNotifier.audience.users = userService
@@ -228,9 +247,29 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Skills:       skillCatalog,
 		Tmux:         tmuxService,
 		Access:       accessVerifier,
+		Applications: applicationsService,
 		Push:         pushService,
 		Presence:     presenceService,
 	}, nil
+}
+
+// projectContainersAdapter lets the applications service resolve and ready a
+// project's container without importing the project service's concrete types.
+type projectContainersAdapter struct {
+	projects *serviceproject.Service
+}
+
+func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID string) (string, error) {
+	meta, err := a.projects.Get(ctx, serviceproject.ID(projectID))
+	if err != nil {
+		return "", err
+	}
+	return meta.Slug, nil
+}
+
+func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
+	_, err := a.projects.Start(ctx, serviceproject.ID(projectID))
+	return err
 }
 
 // newPush builds the Web Push service. A deployment without a usable VAPID key

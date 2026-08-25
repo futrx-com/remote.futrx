@@ -5,6 +5,7 @@ import {
 } from "../../ui/projects/ProjectContainersPage";
 import type { ProjectMeta } from "../../models/project";
 import { useProjectContainersController } from "../../state/hooks/projects/useProjectContainersController";
+import { useProjectApplications } from "../../state/hooks/applications/useApplications";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 
@@ -26,6 +27,10 @@ export function ProjectContainersContainer({
   const { selectedProject, info, secrets, access } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
   const serverInfo = useServerInfo(activeTab === "settings");
+  const applications = useProjectApplications(
+    selectedProject,
+    activeTab === "applications"
+  );
 
   const deleteSelectedProject = useCallback(async () => {
     if (!selectedProject) return;
@@ -50,6 +55,7 @@ export function ProjectContainersContainer({
       onTabChange={setActiveTab}
       onSaveSecret={secrets.save}
       onDeleteSecret={secrets.remove}
+      applications={applications}
       onAddMember={access.add}
       onRemoveMember={access.remove}
       onRepairNetwork={info.repairNetwork}

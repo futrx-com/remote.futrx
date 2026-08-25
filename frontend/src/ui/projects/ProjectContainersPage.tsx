@@ -14,10 +14,12 @@ import { ProjectSecretsSection } from "./project-containers/ProjectSecretsSectio
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
+import { ApplicationsSection } from "../applications/ApplicationsSection";
+import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
 import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
-import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Settings, Users } from "../primitives/icons";
+import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Server, Settings, Users } from "../primitives/icons";
 
-export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
+export type ProjectSettingsTab = "info" | "settings" | "secrets" | "applications" | "sharing";
 
 const tabs: Array<{
   id: ProjectSettingsTab;
@@ -44,6 +46,12 @@ const tabs: Array<{
     Icon: Key,
   },
   {
+    id: "applications",
+    label: "Applications",
+    description: "Install databases and other services into this project's container.",
+    Icon: Server,
+  },
+  {
     id: "sharing",
     label: "Sharing",
     description: "Control which registered users can access this project.",
@@ -67,6 +75,7 @@ export function ProjectContainersPage({
   onTabChange,
   onSaveSecret,
   onDeleteSecret,
+  applications,
   onAddMember,
   onRemoveMember,
   onRepairNetwork,
@@ -91,6 +100,7 @@ export function ProjectContainersPage({
   onTabChange: (tab: ProjectSettingsTab) => void;
   onSaveSecret: (key: string, value: string) => Promise<void>;
   onDeleteSecret: (key: string) => Promise<void>;
+  applications: ApplicationsController;
   onAddMember: (email: string) => Promise<void>;
   onRemoveMember: (email: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
@@ -223,6 +233,16 @@ export function ProjectContainersPage({
                       onSave={onSaveSecret}
                       onDelete={onDeleteSecret}
                     />
+                  </ProjectSettingsPanel>
+                )}
+
+                {activeTab === "applications" && (
+                  <ProjectSettingsPanel
+                    title="Applications"
+                    description="Install and manage databases and services in this project's container."
+                    Icon={Server}
+                  >
+                    <ApplicationsSection controller={applications} />
                   </ProjectSettingsPanel>
                 )}
 

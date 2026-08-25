@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	containerbaseimage "github.com/futrx-com/remote.futrx.com/internal/integration/containers/baseimage"
 	containerbrowser "github.com/futrx-com/remote.futrx.com/internal/integration/containers/browser"
@@ -45,6 +46,8 @@ type ContainerStack struct {
 	Network       *containernetwork.Repairer
 	Workspace     *containerworkspace.Provisioner
 	Images        *serviceimage.Builder
+	AppInstaller  *containerapplications.Installer
+	AppPorts      *containerapplications.HostPortAllocator
 }
 
 // ContainerStackOptions supplies presentation and installation-specific
@@ -52,6 +55,9 @@ type ContainerStack struct {
 type ContainerStackOptions struct {
 	AgentInstructions  []byte
 	ImageBuildProgress serviceimage.ProgressReporter
+	// AppRegistry is the installable-image catalog. When non-nil the stack
+	// builds the application installer/port-allocator over the same lxc runner.
+	AppRegistry *containerapplications.Registry
 }
 
 // ProjectDependencies exposes only the capabilities consumed by project
@@ -145,6 +151,13 @@ func NewContainerStack(
 		Credentials:   inspectionAdapter,
 	})
 
+	var appInstaller *containerapplications.Installer
+	var appPorts *containerapplications.HostPortAllocator
+	if options.AppRegistry != nil {
+		appInstaller = containerapplications.NewInstaller(runner, options.AppRegistry)
+		appPorts = containerapplications.NewHostPortAllocator()
+	}
+
 	return ContainerStack{
 		Lifecycle:     lifecycle,
 		Inspection:    inspection,
@@ -157,5 +170,7 @@ func NewContainerStack(
 		Network:       network,
 		Workspace:     workspace,
 		Images:        images,
+		AppInstaller:  appInstaller,
+		AppPorts:      appPorts,
 	}
 }

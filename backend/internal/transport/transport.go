@@ -92,6 +92,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.IDE,
 	).WithSchedules(scheduleHandler)
 
+	applicationsHandler := httphandlers.NewApplicationsHandler(
+		deps.Services.Applications,
+		deps.Services.Auth,
+	)
+
 	return httptransport.NewHandler(httptransport.Handlers{
 		Sessions: httphandlers.NewTmuxHandler(deps.Services.Tmux),
 		Chats:    chatHandler,
@@ -99,8 +104,10 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.Services.Projects,
 			deps.Services.Users,
 			deps.Services.Auth,
+			applicationsHandler,
 			deps.PublicHostname,
 		),
+		Applications: applicationsHandler,
 		Users: httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,

@@ -1,0 +1,32 @@
+{
+  "id": "redis",
+  "name": "Redis",
+  "description": "In-memory data store used as a database, cache, and message broker.",
+  "category": "cache",
+  "version": "7",
+  "icon": "layers",
+  "scopes": ["global", "project"],
+  "port": {
+    "internal": 6379,
+    "defaultExternal": 6379,
+    "protocol": "tcp",
+    "bindAddress": "127.0.0.1"
+  },
+  "env": [
+    {
+      "key": "REDIS_PASSWORD",
+      "label": "Password (optional)",
+      "required": false,
+      "secret": true,
+      "generate": "password"
+    }
+  ],
+  "service": "redis-server",
+  "connection": {
+    "passwordEnv": "REDIS_PASSWORD"
+  },
+  "install": "install.sh",
+  "healthcheck": {
+    "command": "redis-cli -p {{internalPort}} ping"
+  }
+}
