@@ -17,6 +17,7 @@ import (
 	containerresources "github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
 	containerscheduletools "github.com/futrx-com/remote.futrx.com/internal/integration/containers/scheduletools"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	servicebrowser "github.com/futrx-com/remote.futrx.com/internal/service/container/browser"
 	servicecli "github.com/futrx-com/remote.futrx.com/internal/service/container/cli"
@@ -131,6 +132,7 @@ func NewContainerStack(
 		resources,
 		launchProvisioner,
 		profiles,
+		gitcli.NewCloner(),
 	)
 	inspectionAdapter := containerinspection.NewAdapter(
 		runner,
