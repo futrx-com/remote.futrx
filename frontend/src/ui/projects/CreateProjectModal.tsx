@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProjectMeta } from "../../models/project";
 import { createProjectForm } from "../../state/projects/createProjectForm";
-import { Loader, X } from "../primitives/icons";
+import { ChevronDown, ChevronRight, GitFork, Loader, X } from "../primitives/icons";
 
 const MAX_NAME_LEN = 40;
 
@@ -14,12 +14,15 @@ export function CreateProjectModal({
   open: boolean;
   projects: ProjectMeta[];
   onClose: () => void;
-  onCreate: (name: string) => Promise<unknown>;
+  onCreate: (name: string, gitUrl?: string) => Promise<unknown>;
 }) {
   const [name, setName] = useState("");
   const [touched, setTouched] = useState(false);
   const [creating, setCreating] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [gitImportOpen, setGitImportOpen] = useState(false);
+  const [gitUrl, setGitUrl] = useState("");
+  const [gitUrlTouched, setGitUrlTouched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -28,6 +31,9 @@ export function CreateProjectModal({
     setTouched(false);
     setCreating(false);
     setSubmitError("");
+    setGitImportOpen(false);
+    setGitUrl("");
+    setGitUrlTouched(false);
     // Focus after the pop animation has started so the browser doesn't
     // scroll a half-positioned card into view.
     const timer = setTimeout(() => inputRef.current?.focus(), 60);
@@ -57,7 +63,11 @@ export function CreateProjectModal({
       || (touched && !validation.ok ? validation.message : "")
       || validation.message
       || "Lowercase letters, numbers and dashes.";
-  const canSubmit = validation.ok && !creating;
+
+  const gitValidation = createProjectForm.validateGitUrl(gitUrl);
+  const showGitError = !creating && gitUrlTouched && !gitValidation.ok;
+
+  const canSubmit = validation.ok && gitValidation.ok && !creating;
 
   function close() {
     if (!creating) onClose();
@@ -68,7 +78,7 @@ export function CreateProjectModal({
     setCreating(true);
     setSubmitError("");
     try {
-      await onCreate(name.trim());
+      await onCreate(name.trim(), gitUrl.trim() || undefined);
       onClose();
     } catch (error) {
       setSubmitError("Create failed: " + (error as Error).message);
@@ -94,7 +104,7 @@ export function CreateProjectModal({
               New project
             </div>
             <div class="text-[12.5px] text-ink-300">
-              Creates a workspace container and clones nothing yet.
+              Creates a workspace container, optionally seeded from a Git repository.
             </div>
           </div>
           <button
@@ -147,6 +157,46 @@ export function CreateProjectModal({
             </div>
           </div>
 
+          <div class="flex flex-col gap-[7px]">
+            <button
+              type="button"
+              onClick={() => setGitImportOpen((v) => !v)}
+              disabled={creating}
+              class="flex items-center gap-1.5 self-start text-xs text-ink-300 transition-colors hover:text-ink-100"
+            >
+              {gitImportOpen ? <ChevronDown class="h-3.5 w-3.5" /> : <ChevronRight class="h-3.5 w-3.5" />}
+              <GitFork class="h-3.5 w-3.5" />
+              Import from a Git URL
+            </button>
+            {gitImportOpen && (
+              <>
+                <input
+                  value={gitUrl}
+                  onInput={(event) => {
+                    setGitUrl((event.target as HTMLInputElement).value);
+                    setGitUrlTouched(true);
+                    setSubmitError("");
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") void submit();
+                  }}
+                  placeholder="https://github.com/owner/repo.git"
+                  autocomplete="off"
+                  spellcheck={false}
+                  disabled={creating}
+                  class={`theme-submenu-surface w-full rounded-[9px] border bg-[#101116] px-3 py-2.5 font-mono text-sm text-ink-100 outline-none transition-[border-color,box-shadow] duration-150 ${
+                    showGitError
+                      ? "border-accent-red/60 shadow-[0_0_0_3px_rgba(255,123,114,.12)]"
+                      : "border-white/[0.12]"
+                  }`}
+                />
+                {showGitError && (
+                  <div class="text-xs text-accent-red">{gitValidation.message}</div>
+                )}
+              </>
+            )}
+          </div>
+
           <div class="flex flex-col gap-2 rounded-[10px] border border-white/10 bg-white/[0.03] px-3.5 py-3">
             <div class="flex items-baseline justify-between gap-3">
               <span class="text-xs text-ink-300">Container</span>
@@ -172,7 +222,7 @@ export function CreateProjectModal({
             onClick={() => void submit()}
             disabled={!canSubmit}
             class={`inline-flex items-center gap-[7px] rounded-lg border border-transparent px-[15px] py-2 text-[13px] font-medium transition-colors ${
-              validation.ok
+              canSubmit || creating
                 ? "bg-accent-blue text-ink-900"
                 : "cursor-not-allowed bg-white/[0.07] text-ink-400"
             } ${creating ? "opacity-80" : ""}`}

@@ -80,6 +80,35 @@ test("validate truncates a taken maximum-length slug before adding its suffix", 
   });
 });
 
+test("validateGitUrl accepts an empty url and public https urls", () => {
+  assert.deepEqual(createProjectForm.validateGitUrl(""), { ok: true, message: "" });
+  assert.deepEqual(createProjectForm.validateGitUrl("   "), { ok: true, message: "" });
+  assert.deepEqual(
+    createProjectForm.validateGitUrl("https://github.com/octocat/hello-world.git"),
+    { ok: true, message: "" }
+  );
+});
+
+test("validateGitUrl rejects non-https and unparseable urls", () => {
+  const wantMessage = "Use a public https:// repository URL.";
+  assert.deepEqual(createProjectForm.validateGitUrl("http://github.com/octocat/hello-world.git"), {
+    ok: false,
+    message: wantMessage,
+  });
+  assert.deepEqual(
+    createProjectForm.validateGitUrl("git@github.com:octocat/hello-world.git"),
+    { ok: false, message: wantMessage }
+  );
+  assert.deepEqual(
+    createProjectForm.validateGitUrl("ssh://git@github.com/octocat/hello-world.git"),
+    { ok: false, message: wantMessage }
+  );
+  assert.deepEqual(createProjectForm.validateGitUrl("not a url"), {
+    ok: false,
+    message: wantMessage,
+  });
+});
+
 test("pathPreview derives the workspace root from an existing project", () => {
   const projects = [
     project({ slug: "futrx-web", cwd: "/var/lib/remote/projects/futrx-web/workspace" }),
