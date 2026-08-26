@@ -22,6 +22,7 @@ export interface ProjectMeta {
   status: ProjectStatus;
   order?: number;
   errorMsg?: string;
+  gitUrl?: string;
   resourceLimits?: ContainerLimits;
   createdAt: number;
   updatedAt: number;
