@@ -136,11 +136,16 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 	if name == "" {
 		return Meta{}, ErrNameRequired
 	}
+	gitURL := strings.TrimSpace(in.GitURL)
+	if !ValidGitURL(gitURL) {
+		return Meta{}, ErrInvalidGitURL
+	}
 
 	m, err := s.repo.Create(ctx, Meta{
 		Name:   name,
 		Slug:   Slugify(name),
 		Status: StatusProvisioning,
+		GitURL: gitURL,
 	})
 	if err != nil {
 		return Meta{}, err

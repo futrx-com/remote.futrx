@@ -279,6 +279,7 @@ type startTestLifecycle struct {
 	state           ContainerState
 	launchErr       error
 	launchCalls     int
+	lastEnsured     Meta
 	startCalls      int
 	restartCalls    int
 	launchStarted   chan struct{}
@@ -295,9 +296,10 @@ func (l *startTestLifecycle) State(context.Context, string) (ContainerState, err
 	return l.state, nil
 }
 
-func (l *startTestLifecycle) Ensure(context.Context, Meta) error {
+func (l *startTestLifecycle) Ensure(_ context.Context, project Meta) error {
 	l.mu.Lock()
 	l.launchCalls++
+	l.lastEnsured = project
 	launchErr := l.launchErr
 	launchStarted := l.launchStarted
 	releaseLaunch := l.releaseLaunch
