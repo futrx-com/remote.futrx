@@ -68,23 +68,24 @@ export function ChatContainer({
     setText: composer.setText,
     textareaRef: composer.textareaRef,
   });
-  const terminal = useTerminalOverlayController(chat.id);
   const drawers = useChatDrawerController({
     chatId: chat.id,
     showBrowser: browser.openBrowserDrawer,
     hideBrowser: browser.closeBrowserDrawer,
   });
+  const terminal = useTerminalOverlayController(drawers.terminalOpen);
 
   useChatReadMarker({ chatId: chat.id, eventCount, status });
   useChatKeyboardShortcuts({ status, onCancel: cancel });
   const { hasRepos } = useWorkspaceGitRepos({ chatId: chat.id, status });
   const workspaceActions = {
     cwd: displayMeta.cwd || "~",
-    onOpenTerminal: terminal.openTerminal,
+    onToggleTerminal: drawers.terminalOpen ? drawers.closeTerminal : drawers.openTerminal,
     onToggleBrowser: browser.browserOpen ? browser.closeBrowserDrawer : drawers.openBrowser,
     onToggleHistory: drawers.historyOpen ? drawers.closeHistory : drawers.openHistory,
     onToggleFiles: drawers.filesOpen ? drawers.closeFiles : drawers.openFiles,
     onToggleSchedules: drawers.schedulesOpen ? drawers.closeSchedules : drawers.openSchedules,
+    terminalOpen: drawers.terminalOpen,
     browserOpen: browser.browserOpen,
     historyOpen: drawers.historyOpen,
     filesOpen: drawers.filesOpen,
@@ -98,9 +99,11 @@ export function ChatContainer({
       ? "files"
       : drawers.schedulesOpen
         ? "schedules"
-        : browser.browserOpen
-          ? "browser"
-          : null;
+        : drawers.terminalOpen
+          ? "terminal"
+          : browser.browserOpen
+            ? "browser"
+            : null;
   const previousMobilePane = useRef<typeof activePane>(null);
 
   useEffect(() => {
@@ -140,8 +143,7 @@ export function ChatContainer({
       serviceTier: displayMeta.serviceTier || "",
     },
     preferenceActions: {
-      changeProvider: preferences.changeProvider,
-      changeModel: preferences.changeModel,
+      changeAgent: preferences.changeAgent,
       changeMode: preferences.changeMode,
       changeReasoningEffort: preferences.changeReasoningEffort,
       changeServiceTier: preferences.changeServiceTier,
@@ -222,17 +224,17 @@ export function ChatContainer({
           onCaptureElement={browser.insertBrowserElementContext}
           onClose={browser.closeBrowserDrawer}
         />
+        {terminal.TerminalOverlay && (
+          <terminal.TerminalOverlay
+            chat={displayMeta}
+            open={drawers.terminalOpen}
+            onClose={drawers.closeTerminal}
+          />
+        )}
         <aside class="workspace-action-rail top-chrome z-20 hidden w-12 flex-none flex-col items-center border-l border-white/10 bg-[#101318] px-1.5 pb-2 md:flex">
           <WorkspaceActions {...workspaceActions} orientation="vertical" />
         </aside>
       </div>
-      {terminal.TerminalOverlay && (
-        <terminal.TerminalOverlay
-          chat={displayMeta}
-          open={terminal.terminalOpen}
-          onClose={terminal.closeTerminal}
-        />
-      )}
       <MediaViewerOverlay />
     </div>
   );

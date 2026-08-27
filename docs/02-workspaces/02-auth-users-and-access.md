@@ -4,7 +4,8 @@ The application separates three concerns:
 
 1. Platform identity: who may open `remote.futrx`.
 2. Agent credentials: whether a provider can run, with host-wide onboarding
-   for Claude, Codex, and Kimi and project-local sign-in for Antigravity.
+   for Claude, Codex, and Kimi and a supported project-local sign-in flow for
+   Antigravity.
 3. Project membership: which registered users may access a project.
 
 ## Application gate
@@ -18,14 +19,21 @@ stateDiagram-v2
     SignIn --> CheckLocalAdmin: valid local or Google session
     CheckLocalAdmin --> WaitForAdmin: legacy admin password setup is incomplete
     CheckLocalAdmin --> CheckProvider: local admin is configured
-    CheckProvider --> ConnectProvider: no agent provider is authenticated and caller is admin
-    CheckProvider --> WaitForProvider: no provider is authenticated and caller is member
-    ConnectProvider --> Workspace: any provider becomes authenticated
-    WaitForProvider --> Workspace: admin connects a provider
-    CheckProvider --> Workspace: provider already authenticated
+    CheckProvider --> ConnectProvider: no gate-eligible module is ready and caller is admin
+    CheckProvider --> WaitForProvider: no gate-eligible module is ready and caller is member
+    ConnectProvider --> Workspace: a gate module becomes ready
+    WaitForProvider --> Workspace: admin readies a gate module
+    CheckProvider --> Workspace: gate already ready
 ```
 
-The backend middleware applies the same order to `/api/*` and `/ws*`: valid registered session, completed local-admin setup, then at least one authenticated agent provider. Provider-login endpoints are exempt from the final check so onboarding can finish.
+The backend middleware applies the same order to `/api/*` and `/ws*`: valid
+registered session, completed local-admin setup, then at least one agent module
+marked `SatisfiesAccessGate` ready. Managed code/device modules require an
+authenticated binding; no-auth modules are ready immediately; external flows
+cannot be gate providers because Remote has no authoritative status signal.
+`GET /api/agent-auth`, normalized `/ws/agent-auth/<provider>` streams, and
+legacy provider-auth routes are exempt from the final check so onboarding can
+finish.
 
 ## Identities and roles
 
@@ -80,6 +88,14 @@ User guardrails:
 
 ## Agent-provider authentication
 
+The frontend obtains ordered auth policy and normalized status from
+`GET /api/agent-auth`. Onboarding renders only gate-eligible module cards;
+**Settings → Agents** renders every compiled-in module. Managed bindings receive
+live normalized status through `/ws/agent-auth/<provider>`, so the UI chooses
+authorization-code, device-code, external-instructions, or no-auth rendering
+from the descriptor rather than provider-specific components. No-auth modules
+arrive as already authenticated and expose no login mutation.
+
 Claude, Codex, and Kimi credentials are host-wide and admin-managed.
 
 ```mermaid
@@ -95,17 +111,22 @@ flowchart TD
     CodexDevice --> Verify["Open verification URL and enter code"]
     KimiDevice --> Verify
     Verify --> Saved
-    Saved --> Broadcast["Status WebSocket updates onboarding UI"]
+    Saved --> Broadcast["Normalized status WebSocket updates onboarding and Settings"]
 ```
 
 Claude uses an interactive authorization URL plus a pasted code. Codex and Kimi use device-code flows. Credential files are later synchronized into project containers before agent execution.
 
-Antigravity is deliberately outside this host-wide flow. Its bare `agy` sign-in
-never exits the interactive TUI, so Remote exposes no Antigravity card or
-onboarding status. A user runs `agy` once in a project Terminal and completes
-the URL-and-code flow there. That project-local state does not satisfy the
-application's initial provider gate and is not synchronized by the host
-credential service.
+Antigravity is deliberately outside this host-wide flow. Its global card shows
+the module's provider-managed instructions but has no managed login action or
+status stream. A user runs `agy` once in a project Terminal and completes
+the URL-and-code flow there, exits the CLI, and chooses **Refresh models** in
+the chat picker. That project-local state does not satisfy the application's
+initial provider gate and is not synchronized by the host credential service.
+
+Loose-chat Antigravity execution can technically read `agy` state already
+configured on the host, but Remote exposes no host Antigravity login surface
+and its chat Terminal requires a project. The supported interactive workflow is
+therefore project-local.
 
 ## Project access rules
 
@@ -154,6 +175,11 @@ sequenceDiagram
 ## Code map
 
 - Frontend gate: [`frontend/src/app/containers/AuthGate.tsx`](../../frontend/src/app/containers/AuthGate.tsx)
+- Frontend agent-auth registry: [`frontend/src/state/hooks/auth/useAgentAuthRegistry.ts`](../../frontend/src/state/hooks/auth/useAgentAuthRegistry.ts)
+- Agent module contract and runtime: [`backend/internal/service/agent/module/`](../../backend/internal/service/agent/module/)
+- Agent authentication bindings and lifecycle: [`backend/internal/service/agent/auth/`](../../backend/internal/service/agent/auth/)
+- Agent composition root: [`backend/internal/config/agents.go`](../../backend/internal/config/agents.go)
+- Agent-auth handler: [`backend/internal/transport/http/handlers/agent_auth_handler.go`](../../backend/internal/transport/http/handlers/agent_auth_handler.go)
 - Auth middleware: [`backend/internal/transport/http/middleware/auth.go`](../../backend/internal/transport/http/middleware/auth.go)
 - Auth service: [`backend/internal/service/auth/service.go`](../../backend/internal/service/auth/service.go)
 - User service: [`backend/internal/service/user/service.go`](../../backend/internal/service/user/service.go)

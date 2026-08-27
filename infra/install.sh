@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 #
-# remote.futrx — main installer / deployer.
-# Walks through infra/steps/*.sh in order. Idempotent: safe to re-run on
-# every CI deploy as well as the initial bootstrap.
+# remote.futrx — fresh installer and full host-convergence entry point.
+#
+# Use this for a first installation or an intentional repair/re-convergence of
+# an existing host. Step 00 selects and re-executes the application checkout;
+# the remaining infra/steps/*.sh converge host packages and pinned toolchains,
+# apply that commit's host agent catalog, build the application, render
+# Caddy and systemd configuration, ensure the LXD base image exists, harden
+# SSH, and install the container-network repair timer.
+#
+# The steps are designed to be idempotent, but a re-run is not an
+# application-only deployment: it can change host configuration and restart
+# the backend. For normal releases, prefer Settings -> Updates. Manually use
+# infra/deploy-app.sh for a same-major/minor application release or
+# infra/update.sh for a major/minor infrastructure release.
 #
 # Usage (from a clone):
 #   sudo bash infra/install.sh <hostname> [flags]
@@ -17,12 +28,15 @@
 #                                               A record is set but propagation isn't done.
 #   --ref=<40-character commit SHA>             install an immutable candidate commit instead
 #                                               of origin/main (used by QA branch installs).
-#   --github-token=ghp_xxx                      private-repo PAT.
+#   --github-token=ghp_xxx                      private-repo PAT; prefer the
+#                                               GITHUB_TOKEN environment variable
+#                                               to avoid placing it in shell history.
 #   --google-client-id=...                      optional; can be added in Settings later.
 #   --google-client-secret=...                  optional; can be added in Settings later.
 #
 # Environment:
-#   GITHUB_TOKEN                                same as --github-token=.
+#   GITHUB_TOKEN                                same as --github-token.
+#   FUTRX_INSTALL_DIR                           override /opt/remote.futrx (QA/tests).
 
 set -euo pipefail
 
@@ -77,6 +91,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
                 git -C "$LEGACY_TARGET" fetch --quiet --tags origin
                 git -C "$LEGACY_TARGET" reset --hard origin/main
             fi
+            export FUTRX_INSTALL_CHECKOUT_SELECTED=1
             exec bash "$LEGACY_TARGET/infra/install.sh" "$@"
         fi
     fi
@@ -114,6 +129,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
         fi
     fi
 
+    export FUTRX_INSTALL_CHECKOUT_SELECTED=1
     exec bash "$TARGET/infra/install.sh" "$@"
 fi
 
@@ -206,6 +222,12 @@ if [ "$FUTRX_INSTALL_PATH_MIGRATED" -eq 1 ]; then
     export INFRA_DIR
 fi
 
+# ───────────────── select checkout and re-exec ─────────────────
+# This precedes every version/catalog consumer so direct installer reruns are
+# as commit-consistent as update.sh.
+# shellcheck source=steps/00-checkout.sh
+. "$INFRA_DIR/steps/00-checkout.sh"
+
 # ───────────────── optional Google user authentication ─────────────────
 # The administrator always claims the server with a local email/password.
 # Google OAuth is only for invited users and may be configured later in the UI.
@@ -264,7 +286,7 @@ if [ "$SKIP_DNS_CHECK" -eq 0 ]; then
     fi
 fi
 
-# ───────────────── run the steps ─────────────────
+# ───────────────── run the convergence steps ─────────────────
 # shellcheck source=steps/01-host-deps.sh
 . "$INFRA_DIR/steps/01-host-deps.sh"
 # shellcheck source=steps/02-app.sh
@@ -296,7 +318,7 @@ cat <<EOF
  Next:
    1. Open https://$HOSTNAME (Caddy fetches the cert on first hit, ~10s)
    2. Create the administrator email and password
-   3. Connect at least one AI provider: Claude, Codex, or Kimi
+   3. Finish setup for at least one access-gate coding agent
    4. Before inviting users, configure Google sign-in in Settings → Users
 
  If you're on a cloud VPS with its own firewall, open 80/443 in the
@@ -307,7 +329,9 @@ cat <<EOF
    systemctl status   caddy
    journalctl -u      remote.futrx -f
 
- Re-run this installer any time to pull latest + rebuild + restart.
+ For future releases, use Settings → Updates so Remote selects the safe
+ application or infrastructure path. Re-run this installer only for an
+ intentional full host repair/re-convergence.
 ═══════════════════════════════════════════════════════════════
 
 EOF

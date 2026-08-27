@@ -6,14 +6,8 @@ import { chatApi } from "../../../api/chatApi";
 export function useWorkspaceCommands() {
   const workspace = useWorkspaceContext();
 
-  async function newProject() {
-    const name = prompt("Project name?", "");
-    if (!name || !name.trim()) return;
-    try {
-      await workspace.createProject(name.trim());
-    } catch (error) {
-      alert("create project failed: " + (error as Error).message);
-    }
+  function newProject() {
+    workspace.openCreateProject();
   }
 
   async function newChatInProject(projectId?: string) {
@@ -62,20 +56,6 @@ export function useWorkspaceCommands() {
     }
   }
 
-  async function deleteProject(project: ProjectMeta, event: Event) {
-    event.stopPropagation();
-    const chatsInProject = workspace.chats.filter((chat) => chat.projectId === project.id).length;
-    const message = chatsInProject > 0
-      ? `Delete project "${project.name}"? This will destroy the container and remove ${chatsInProject} chat${chatsInProject === 1 ? "" : "s"} inside it.`
-      : `Delete project "${project.name}"? This will destroy its container.`;
-    if (!confirm(message)) return;
-    try {
-      await workspace.deleteProject(project.id);
-    } catch (error) {
-      alert("delete failed: " + (error as Error).message);
-    }
-  }
-
   async function startProject(project: ProjectMeta, event: Event) {
     event.stopPropagation();
     try {
@@ -101,7 +81,6 @@ export function useWorkspaceCommands() {
     toggleChatUnread,
     forkChat,
     reorderProjects,
-    deleteProject,
     startProject,
     stopProject,
   };

@@ -1,6 +1,6 @@
 // build-base-image rebuilds the futrx-remote-dev-base LXD image used by
-// every project container. Run it after bumping Node, Claude, or any apt
-// dependency in the install script.
+// every project container. Run it after changing Node, any configured agent
+// profile or CLI, or an apt dependency in the install script.
 //
 // Usage:
 //
@@ -21,7 +21,6 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
-	"github.com/futrx-com/remote.futrx.com/internal/service"
 	serviceimage "github.com/futrx-com/remote.futrx.com/internal/service/container/image"
 )
 
@@ -36,9 +35,13 @@ func main() {
 	if !lxcClient.Available() {
 		log.Fatalf("lxc CLI not found on PATH - install LXD on the host first")
 	}
+	agentModules, err := config.NewAgentModules()
+	if err != nil {
+		log.Fatalf("configure agent modules: %v", err)
+	}
 	containerStack := config.NewContainerStack(
 		lxcClient,
-		service.AgentProfiles(),
+		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			ImageBuildProgress: newLogBuildProgressReporter(log.Default()),
 		},

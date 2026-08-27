@@ -24,13 +24,19 @@ class ChatPreferenceState {
     defaults: ChatSettings
   ): ResolvedChatMeta {
     const baseMeta = loadedMeta ?? chat;
+    const selectedSkills = chat.selectedSkills ?? baseMeta.selectedSkills;
     return {
       ...baseMeta,
-      provider: baseMeta.provider || defaults.provider,
-      model: baseMeta.model ?? defaults.model,
-      mode: baseMeta.mode || defaults.mode,
-      reasoningEffort: baseMeta.reasoningEffort ?? defaults.reasoningEffort,
-      serviceTier: baseMeta.serviceTier ?? defaults.serviceTier,
+      // Workspace chat upserts are the live cross-client source. Prefer their
+      // preference fields over the one-time detail fetch so a selection made
+      // on another browser is reflected while this chat remains open.
+      provider: chat.provider || baseMeta.provider || defaults.provider,
+      model: chat.model ?? baseMeta.model ?? defaults.model,
+      mode: chat.mode || baseMeta.mode || defaults.mode,
+      reasoningEffort:
+        chat.reasoningEffort ?? baseMeta.reasoningEffort ?? defaults.reasoningEffort,
+      serviceTier: chat.serviceTier ?? baseMeta.serviceTier ?? defaults.serviceTier,
+      ...(selectedSkills !== undefined ? { selectedSkills } : {}),
     };
   }
 

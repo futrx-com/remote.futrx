@@ -1,9 +1,10 @@
 import type { RefObject } from "preact";
 import { useState } from "preact/hooks";
-import { modelDisplayLabel, providerDisplayLabel } from "../../../config/chat";
+import { modelShortLabel, providerDisplayLabel } from "../../../config/chat";
 import type { QueuedPrompt, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
 import type { Attachment } from "../../../models/upload";
+import { useComposerAgentCapabilities } from "../../../state/hooks/chat/useComposerAgentCapabilities";
 import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
@@ -65,11 +66,38 @@ export function ChatComposer({
   onSelectSkill,
   onRemoveSelectedSkill,
 }: ChatComposerProps) {
+  const capabilityState = useComposerAgentCapabilities({
+    projectId,
+    provider: preferences.provider,
+    model: preferences.model,
+    mode: preferences.mode,
+    reasoningEffort: preferences.reasoningEffort,
+    serviceTier: preferences.serviceTier,
+    actions: preferenceActions,
+  });
+  const {
+    providerOptions,
+    modelOptions,
+    reasoningEffortOptions,
+    serviceTierOptions,
+    modeOptions,
+    loading: modelsLoading,
+    refreshing,
+    error: capabilityError,
+    refresh: refreshCapabilities,
+  } = capabilityState;
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const disconnected = !canSendPrompt && !streaming;
   const hasContent = text.trim().length > 0 || attachments.some((attachment) => attachment.serverPath);
   const canSend = !uploading && !disconnected && hasContent;
-  const settingsSummary = `${providerDisplayLabel(preferences.provider)} · ${modelDisplayLabel(preferences.model, preferences.provider)}`;
+  const providerLabel = providerOptions.find(
+    (option) => option.value === preferences.provider,
+  )?.label || providerDisplayLabel(preferences.provider);
+  const modelLabel = modelOptions.find(
+    (option) => option.value === preferences.model,
+  )?.label || modelShortLabel(preferences.model);
+  const settingsSummary = `${providerLabel} · ${modelLabel}`;
+  const skillsEnabled = capabilityState.providerCapabilities?.features?.skills !== "none";
 
   function toggleMobileSettings() {
     setMobileSettingsOpen((open) => {
@@ -149,10 +177,17 @@ export function ChatComposer({
               model={preferences.model}
               provider={preferences.provider}
               streaming={streaming}
+              providerOptions={providerOptions}
+              modelOptions={modelOptions}
+              modelsLoading={modelsLoading}
+              modelsRefreshing={refreshing}
+              modelError={capabilityError}
               selectedSkills={selectedSkills}
+              providerLabel={providerLabel}
+              skillsEnabled={skillsEnabled}
               onSelectSkill={onSelectSkill}
-              onProviderChange={preferenceActions.changeProvider}
-              onModelChange={preferenceActions.changeModel}
+              onAgentChange={preferenceActions.changeAgent}
+              onRefreshModels={refreshCapabilities}
             />
 
             <div class="mb-1.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
@@ -162,6 +197,9 @@ export function ChatComposer({
               preferences={preferences}
               preferenceActions={preferenceActions}
               streaming={streaming}
+              reasoningEffortOptions={reasoningEffortOptions}
+              serviceTierOptions={serviceTierOptions}
+              modeOptions={modeOptions}
             />
           </div>
         )}
@@ -172,16 +210,26 @@ export function ChatComposer({
             model={preferences.model}
             provider={preferences.provider}
             streaming={streaming}
+            providerOptions={providerOptions}
+            modelOptions={modelOptions}
+            modelsLoading={modelsLoading}
+            modelsRefreshing={refreshing}
+            modelError={capabilityError}
             selectedSkills={selectedSkills}
+            providerLabel={providerLabel}
+            skillsEnabled={skillsEnabled}
             onSelectSkill={onSelectSkill}
-            onProviderChange={preferenceActions.changeProvider}
-            onModelChange={preferenceActions.changeModel}
+            onAgentChange={preferenceActions.changeAgent}
+            onRefreshModels={refreshCapabilities}
           />
 
           <ComposerExecutionControls
             preferences={preferences}
             preferenceActions={preferenceActions}
             streaming={streaming}
+            reasoningEffortOptions={reasoningEffortOptions}
+            serviceTierOptions={serviceTierOptions}
+            modeOptions={modeOptions}
           />
         </div>
       </div>

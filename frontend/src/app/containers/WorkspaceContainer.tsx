@@ -1,5 +1,6 @@
 import { AppShell } from "../../ui/layout/AppShell";
 import { NoChatSelected } from "../../ui/layout/NoChatSelected";
+import { CreateProjectModal } from "../../ui/projects/CreateProjectModal";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useWorkspaceCommands } from "../../state/hooks/workspace/useWorkspaceCommands";
 import { ChatContainer } from "./ChatContainer";
@@ -41,6 +42,12 @@ export function WorkspaceContainer() {
           onHamburger={workspace.openSidebar}
         />
       )}
+      <CreateProjectModal
+        open={workspace.ui.createProjectOpen}
+        projects={workspace.projects}
+        onClose={workspace.closeCreateProject}
+        onCreate={workspace.createProject}
+      />
     </AppShell>
   );
 }

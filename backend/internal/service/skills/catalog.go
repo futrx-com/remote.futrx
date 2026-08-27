@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
@@ -55,9 +56,13 @@ func (c *Catalog) WithGlobalLibrary(global *GlobalService) *Catalog {
 }
 
 func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
+	scope := agentmodule.ScopeHost
+	if query.ProjectID != "" {
+		scope = agentmodule.ScopeProject
+	}
 	provider := query.Provider
 	if provider == "" {
-		provider = ProviderCodex
+		provider = c.skills.DefaultProvider(scope)
 	}
 
 	workspacePath := ""

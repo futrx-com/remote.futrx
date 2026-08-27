@@ -114,6 +114,37 @@ const sectionLabel = (directoryName) => directoryName
   .replace(/[-_]+/g, " ")
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const readSectionFiles = async (sectionDirectory, relativeDirectory = "") => {
+  const absoluteDirectory = path.join(docsDirectory, sectionDirectory, relativeDirectory);
+  const entries = await fs.readdir(absoluteDirectory, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.sort((left, right) => compareNames(left.name, right.name))) {
+    if (entry.name.startsWith(".")) continue;
+    const relativePath = path.posix.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await readSectionFiles(sectionDirectory, relativePath));
+    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+      files.push({
+        filename: entry.name,
+        relativePath: path.posix.join(sectionDirectory, relativePath),
+        isRootDocument: false,
+        nestedDirectory: path.posix.dirname(relativePath),
+      });
+    }
+  }
+
+  return files;
+};
+
+const documentRouteSegments = (file) => {
+  const nestedSegments = file.nestedDirectory === "."
+    ? []
+    : file.nestedDirectory.split("/").map((segment) => slugify(sectionLabel(segment)));
+  const documentSlug = fileToSlug(file.filename);
+  return documentSlug ? [...nestedSegments, documentSlug] : nestedSegments;
+};
+
 const readDocuments = async () => {
   const entries = await fs.readdir(docsDirectory, { withFileTypes: true });
   const rootFiles = entries
@@ -127,23 +158,16 @@ const readDocuments = async () => {
   const sectionSources = [];
 
   for (const directory of directories) {
-    const filenames = (await fs.readdir(path.join(docsDirectory, directory), { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
-      .map((entry) => entry.name)
-      .sort(compareNames);
-    if (!filenames.length) continue;
+    const files = await readSectionFiles(directory);
+    if (!files.length) continue;
     const label = sectionLabel(directory);
-    const files = filenames.map((filename) => ({
-      filename,
-      relativePath: `${directory}/${filename}`,
-      isRootDocument: false,
-    }));
 
     if (directory === homeDocumentDirectory) {
       files.push(...rootFiles.map((filename) => ({
         filename,
         relativePath: filename,
         isRootDocument: true,
+        nestedDirectory: ".",
       })));
     }
 
@@ -176,6 +200,7 @@ const readDocuments = async () => {
         sectionDocumentOrder,
         markdown,
         slug: fileToSlug(filename),
+        routeSegments: documentRouteSegments(file),
         isRootDocument,
         title,
         description: getDescription(markdown),
@@ -206,8 +231,9 @@ const readDocuments = async () => {
 const pagePath = (document) => {
   if (document.isSiteHome) return "/";
   if (document.isRootDocument) return `/${document.slug}/`;
-  const sectionPrefix = document.section.slug ? `/${document.section.slug}` : "";
-  return document.slug ? `${sectionPrefix}/${document.slug}/` : `${sectionPrefix}/`;
+  const routeSegments = [document.section.slug, ...(document.routeSegments || [document.slug])]
+    .filter(Boolean);
+  return `/${routeSegments.join("/")}/`;
 };
 
 const safeDecodeURIComponent = (value) => {
@@ -575,6 +601,21 @@ const notFoundTemplate = (staticAssets) => `<!doctype html>
   </body>
 </html>`;
 
+const searchIndexFor = (documents) => documents.map((document) => ({
+  title: document.title,
+  url: pagePath(document),
+  description: document.description,
+  headings: document.headings.map((heading) => heading.text),
+  content: stripMarkdown(document.markdown).slice(0, 24000),
+}));
+
+const manifestFor = (documents) => documents.map((document) => ({
+  section: document.section.label,
+  source: document.relativePath,
+  title: document.title,
+  url: pagePath(document),
+}));
+
 const build = async () => {
   const documents = await readDocuments();
   if (!documents.length) throw new Error(`No Markdown files found in ${docsDirectory}`);
@@ -599,22 +640,11 @@ const build = async () => {
     await fs.copyFile(path.join(docsDirectory, document.relativePath), sourcePath);
   }
 
-  const searchIndex = documents.map((document) => ({
-    title: document.title,
-    url: pagePath(document),
-    description: document.description,
-    headings: document.headings.map((heading) => heading.text),
-    content: stripMarkdown(document.markdown).slice(0, 24000),
-  }));
+  const searchIndex = searchIndexFor(documents);
 
   await fs.writeFile(path.join(outputDirectory, "search-index.json"), JSON.stringify(searchIndex));
   await fs.writeFile(path.join(outputDirectory, "404.html"), notFoundTemplate(staticAssets));
-  await fs.writeFile(path.join(outputDirectory, "docs-manifest.json"), JSON.stringify(documents.map((document) => ({
-    section: document.section.label,
-    source: document.relativePath,
-    title: document.title,
-    url: pagePath(document),
-  })), null, 2));
+  await fs.writeFile(path.join(outputDirectory, "docs-manifest.json"), JSON.stringify(manifestFor(documents), null, 2));
   await fs.writeFile(path.join(outputDirectory, "robots.txt"), "User-agent: *\nAllow: /\nSitemap: https://docs.remote.futrx.com/sitemap.xml\n");
   await fs.writeFile(path.join(outputDirectory, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${documents.map((document) => `<url><loc>https://docs.remote.futrx.com${pagePath(document)}</loc></url>`).join("")}</urlset>\n`);
   await fs.writeFile(path.join(outputDirectory, "_headers"), `/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  Permissions-Policy: camera=(), microphone=(), geolocation=()\n\n/assets/*\n  Cache-Control: public, max-age=3600\n`);
@@ -724,6 +754,43 @@ const testDocumentModel = async () => {
   assert.equal(documents.find((document) => document.relativePath === "known-limitations.md") && pagePath(documents.find((document) => document.relativePath === "known-limitations.md")), "/known-limitations/");
   assert.equal(documents.some((document) => document.relativePath.startsWith("codex-analysis/")), false);
   assert.equal(documents.some((document) => document.relativePath.startsWith("fable-analysis/")), false);
+
+  const agentGuide = documents.find((document) => document.relativePath === "dev/agents/README.md");
+  const addingAgent = documents.find((document) => document.relativePath === "dev/agents/07-adding-an-agent.md");
+  const pushGuide = documents.find((document) => document.relativePath === "dev/push-notifications/README.md");
+  assert.ok(agentGuide);
+  assert.ok(addingAgent);
+  assert.ok(pushGuide);
+  assert.equal(pagePath(agentGuide), "/dev/agents/");
+  assert.equal(pagePath(addingAgent), "/dev/agents/adding-an-agent/");
+  assert.equal(pagePath(pushGuide), "/dev/push-notifications/");
+
+  assert.deepEqual(
+    manifestFor(documents).find((entry) => entry.source === agentGuide.relativePath),
+    {
+      section: "Dev",
+      source: "dev/agents/README.md",
+      title: "Agent integration developer guide",
+      url: "/dev/agents/",
+    },
+  );
+  assert.equal(
+    searchIndexFor(documents).find((entry) => entry.url === "/dev/agents/")?.title,
+    "Agent integration developer guide",
+  );
+
+  const overview = documents.find((document) => document.relativePath === "01-overview/README.md");
+  assert.ok(overview);
+  const overviewGuideLink = renderMarkdown("[Agent guide](../dev/agents/README.md)", documents, overview);
+  const localGuideLink = renderMarkdown("[Add one](07-adding-an-agent.md)", documents, agentGuide);
+  const crossSectionLink = renderMarkdown(
+    "[Update flow](../../04-operations/09-deployment-and-operations.md#update-flow)",
+    documents,
+    addingAgent,
+  );
+  assert.match(overviewGuideLink, /href="\/dev\/agents\/"/);
+  assert.match(localGuideLink, /href="\/dev\/agents\/adding-an-agent\/"/);
+  assert.match(crossSectionLink, /href="\/operations\/deployment-and-operations\/#update-flow"/);
 
   const staticAssets = { stylesheet: "/assets/site.test.css", script: "/assets/site.test.js" };
   const homeHtml = pageTemplate({ document: homeDocument, documents, content: "", staticAssets });

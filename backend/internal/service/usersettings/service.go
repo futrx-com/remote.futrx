@@ -5,14 +5,41 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 type Service struct {
-	repo Repository
+	repo      Repository
+	providers ProviderCatalog
 }
 
-func New(repo Repository) *Service {
-	return &Service{repo: repo}
+type ProviderCatalog interface {
+	HasProvider(provider string) bool
+	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+}
+
+type defaultProviderCatalog interface {
+	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+}
+
+type Option func(*Service)
+
+func WithProviderCatalog(providers ProviderCatalog) Option {
+	return func(service *Service) {
+		service.providers = providers
+	}
+}
+
+func New(repo Repository, options ...Option) *Service {
+	service := &Service{repo: repo}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func KeyFromSession(email, sub string) (Key, error) {
@@ -37,11 +64,11 @@ func (s *Service) Get(ctx context.Context, key Key) (Settings, error) {
 	settings, err := s.repo.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return DefaultSettings(), nil
+			return s.defaultSettings(), nil
 		}
 		return Settings{}, err
 	}
-	return normalize(settings), nil
+	return s.normalize(settings), nil
 }
 
 func (s *Service) Update(ctx context.Context, key Key, input UpdateInput) (Settings, error) {
@@ -61,7 +88,7 @@ func (s *Service) Update(ctx context.Context, key Key, input UpdateInput) (Setti
 	if input.Chat != nil {
 		if input.Chat.Provider != nil {
 			provider := normalizeChatProvider(*input.Chat.Provider)
-			if !ValidChatProvider(provider) {
+			if !s.validProvider(provider) {
 				return Settings{}, ErrInvalidChatProvider
 			}
 			settings.Chat.Provider = provider
@@ -96,13 +123,13 @@ func (s *Service) Update(ctx context.Context, key Key, input UpdateInput) (Setti
 	return s.repo.Save(ctx, key, settings)
 }
 
-func normalize(settings Settings) Settings {
-	defaults := DefaultSettings()
+func (s *Service) normalize(settings Settings) Settings {
+	defaults := s.defaultSettings()
 	if !ValidTheme(settings.Appearance.Theme) {
 		settings.Appearance.Theme = defaults.Appearance.Theme
 	}
 	settings.Chat.Provider = normalizeChatProvider(settings.Chat.Provider)
-	if !ValidChatProvider(settings.Chat.Provider) {
+	if !s.validProvider(settings.Chat.Provider) {
 		settings.Chat.Provider = defaults.Chat.Provider
 	}
 	settings.Chat.Model = strings.TrimSpace(settings.Chat.Model)
@@ -121,8 +148,26 @@ func normalize(settings Settings) Settings {
 	return settings
 }
 
+func (s *Service) defaultSettings() Settings {
+	settings := DefaultSettings()
+	if providers, ok := s.providers.(defaultProviderCatalog); ok {
+		if provider := providers.DefaultProvider(agentmodule.ScopeHost); provider != "" {
+			settings.Chat.Provider = provider
+		}
+	}
+	return settings
+}
+
 func normalizeChatProvider(provider ChatProvider) ChatProvider {
-	return ChatProvider(strings.ToLower(strings.TrimSpace(string(provider))))
+	return agent.NormalizeProviderID(string(provider))
+}
+
+func (s *Service) validProvider(provider ChatProvider) bool {
+	if !ValidChatProvider(provider) {
+		return false
+	}
+	return s.providers == nil ||
+		(s.providers.HasProvider(string(provider)) && s.providers.SupportsScope(string(provider), agentmodule.ScopeHost))
 }
 
 func normalizeChatMode(mode ChatMode) ChatMode {
@@ -130,9 +175,9 @@ func normalizeChatMode(mode ChatMode) ChatMode {
 }
 
 func normalizeReasoningEffort(effort ReasoningEffort) ReasoningEffort {
-	return ReasoningEffort(strings.ToLower(strings.TrimSpace(string(effort))))
+	return ReasoningEffort(strings.TrimSpace(string(effort)))
 }
 
 func normalizeServiceTier(tier ServiceTier) ServiceTier {
-	return ServiceTier(strings.ToLower(strings.TrimSpace(string(tier))))
+	return ServiceTier(strings.TrimSpace(string(tier)))
 }

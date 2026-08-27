@@ -10,7 +10,9 @@ No local administrator has claimed the installation yet. Create the first accoun
 
 ### A member sees “waiting for administrator”
 
-The host has not completed local-admin setup or no agent provider is connected. A server admin must finish the displayed setup. Members cannot connect host-wide provider credentials.
+The host has not completed local-admin setup or no configured access-gate agent
+is ready. A server admin must finish the displayed module access flow. Members
+cannot configure host-wide managed provider credentials.
 
 ### Google sign-in returns access denied
 
@@ -68,7 +70,28 @@ Only `/workspace` and provider homes survive container replacement. Reinstallabl
 
 ### The provider is unavailable
 
-An admin should open **Settings → Agents**, refresh the provider login, and wait for the authenticated state. Reopen or restart the project if credential propagation is stale.
+Follow the provider's instructions under **Settings → Agents**. For a managed
+flow, an admin can refresh its login and wait for the authenticated state. For
+an external flow such as Antigravity, authenticate in the project Terminal and
+then choose **Refresh models**. A no-auth module has no login action; verify its
+CLI/configuration instead. Reopen or restart the project if credential
+propagation is stale.
+
+### Models or controls are missing or stale
+
+Make sure the project is running, then open the provider/model picker and
+choose **Refresh models**. This bypasses the
+shared backend entry and probes the CLIs in the active project container, or on
+the host for a loose chat. Use it after a CLI or configuration change, an
+account-entitlement change, or a manual terminal login.
+
+Healthy results are held in backend memory for 24 hours; a result containing
+any provider fallback or warning is held for 2 hours. Expiry is checked on the
+next request, and restarting the backend clears the cache. The browser keeps
+the previous catalog visible while refresh runs. Provider-level fallback and
+partial-discovery warnings are not generally rendered in the picker, so if
+choices remain absent or generic, inspect the API response or backend logs and
+verify the provider CLI directly.
 
 ### A run does not start
 
@@ -76,7 +99,7 @@ Check:
 
 1. The workspace socket and chat socket are connected.
 2. The project is running.
-3. The selected provider is authenticated.
+3. The selected provider's declared authentication/access requirement is satisfied.
 4. No other client already owns the one-run-per-chat lock.
 5. The chosen model, reasoning, or speed value is accepted by that provider.
 
@@ -106,20 +129,24 @@ Runs execute under the current backend process and cannot be reattached after it
 
 ### Kimi behaves differently from Claude or Codex
 
-Kimi currently has no usage telemetry, its fork starts fresh, selected skills are stored but not injected as provider triggers, and it does not receive the equivalent Browser MCP plumbing.
+Kimi currently has no usage telemetry, its fork starts fresh, and it does not
+receive the equivalent Browser MCP plumbing. Selected skills are injected as
+instructions to read their canonical `SKILL.md` paths rather than as native
+provider triggers.
 
 ### Antigravity says it is not signed in
 
-Antigravity is authenticated per project, not from **Settings → Agents**. Open
-the project's **Terminal**, run `agy`, complete the displayed URL-and-code
-flow, then retry the chat prompt. A container replacement removes
-Antigravity's `/root/.gemini` state, so sign in again after that kind of
-upgrade or recovery.
+Antigravity is authenticated per project. Its **Settings → Agents** card shows
+instructions but cannot perform the external login. Open the project's
+**Terminal**, run `agy`, complete the displayed URL-and-code
+flow, exit the CLI, and choose **Refresh models** in the chat picker before
+retrying the prompt. Its `/root/.gemini/antigravity-cli` state is durable
+across container replacement.
 
 Antigravity also differs from Claude and Codex: it streams plain text rather
-than structured tool/usage events, general selected skills are not injected,
-the Browser skill is not wired, and a fork starts fresh. The built-in
-Scheduled Tasks skill is supported explicitly.
+than structured tool/usage events, the Browser skill is not wired, and a fork
+starts fresh. Selected skills are injected as canonical `SKILL.md` instruction
+paths, and Scheduled Tasks also receives its scoped capability.
 
 ## Attachments, files, terminal, and IDE
 
@@ -145,7 +172,11 @@ Folder ZIP downloads are limited to 1 GiB and two simultaneous archives across t
 
 ### Terminal closed after a network interruption
 
-Each Terminal overlay is a new non-persistent PTY. Closing the overlay or losing its socket kills that shell, and there is no reconnect. Run durable processes under an appropriate project process manager or terminal multiplexer that you configure inside the project.
+The Terminal pane keeps its PTY when it is merely hidden and reopened in the
+same loaded chat. Losing its socket, switching chats, reloading, or closing the
+page kills that shell, and there is no reconnect. Run durable processes under
+an appropriate project process manager or terminal multiplexer that you
+configure inside the project.
 
 ### IDE opens the wrong place
 

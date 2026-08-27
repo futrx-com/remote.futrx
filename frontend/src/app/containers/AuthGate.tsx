@@ -77,8 +77,8 @@ export function AuthGate() {
   }
   if (!providerAuthChecked) return <LoadingScreen />;
   if (!providerAuthenticated) {
-    // Provider credentials are host-wide and admin-managed. Members wait while
-    // an admin connects any one of the supported providers.
+    // Members wait while an administrator completes any module-declared
+    // access path. The catalog may expose managed or no-auth gate providers.
     if (auth.isAdmin) {
       return <ProviderLoginScreen />;
     }

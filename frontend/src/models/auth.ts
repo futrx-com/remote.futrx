@@ -16,39 +16,12 @@ export interface GoogleOAuthSettings {
   redirectUrl: string;
 }
 
-export interface ClaudeAuthStatus {
-  authenticated: boolean;
-  login?: ClaudeLoginState;
-}
+export type AgentAuthMode = "managed-code" | "managed-device" | "external" | "none";
 
-// Streamed handshake state, mirroring CodexDeviceLogin. Claude's CLI uses the
-// authorization-code grant instead of a device grant: it emits an OAuth URL
-// and expects a code pasted back, so there's an `authUrl` + `awaitingCode`
-// rather than a `userCode` for the user to read off.
-export interface ClaudeLoginState {
+export interface AgentAuthLoginSnapshot {
   active: boolean;
-  authUrl?: string;
+  url?: string;
   awaitingCode?: boolean;
-  startedAt?: number;
-  completed?: boolean;
-  error?: string;
-}
-
-export interface ClaudeLoginStart {
-  url: string;
-  resumed?: boolean;
-}
-
-export interface CodexAuthStatus {
-  authenticated: boolean;
-  authMode?: string;
-  usesApiKey?: boolean;
-  deviceLogin?: CodexDeviceLogin;
-}
-
-export interface CodexDeviceLogin {
-  active: boolean;
-  verificationUri?: string;
   userCode?: string;
   startedAt?: number;
   expiresAt?: number;
@@ -56,25 +29,25 @@ export interface CodexDeviceLogin {
   error?: string;
 }
 
-export interface KimiAuthStatus {
+export interface AgentAuthSnapshot {
   authenticated: boolean;
-  deviceLogin?: KimiDeviceLogin;
+  warning?: string;
+  login: AgentAuthLoginSnapshot;
 }
 
-export interface KimiDeviceLogin {
-  active: boolean;
-  verificationUri?: string;
-  userCode?: string;
-  startedAt?: number;
-  expiresAt?: number;
-  completed?: boolean;
-  error?: string;
+export interface AgentAuthProvider {
+  provider: string;
+  label: string;
+  default?: boolean;
+  executionScopes: Array<"host" | "project">;
+  authentication: {
+    mode: AgentAuthMode;
+    instructions?: string;
+    satisfiesAccessGate: boolean;
+  };
+  status: AgentAuthSnapshot;
 }
 
-export type ClaudeLoginPhase =
-  | "idle"
-  | "starting"
-  | "awaiting-code"
-  | "submitting"
-  | "done"
-  | "error";
+export interface AgentAuthCatalog {
+  providers: AgentAuthProvider[];
+}

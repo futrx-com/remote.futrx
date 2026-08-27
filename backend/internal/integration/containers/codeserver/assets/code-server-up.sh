@@ -74,6 +74,17 @@ UNIT
 # Managed user settings for this container's code-server. Runtime keys an
 # extension may add later (e.g. dbcode.connections) are workspace-specific and
 # intentionally omitted here.
+#
+# Note: editor.experimentalGpuAcceleration stays "off" (upstream default). Its
+# WebGPU renderer observes the editor canvas with
+# ResizeObserver.observe(el, { box: ['device-pixel-content-box'] }), which
+# WebKit does not implement -- observe() throws, VS Code rethrows it as
+# "Could not observe device pixel dimensions", and the editor never mounts. On
+# iOS/iPadOS every browser is WebKit, so turning this on breaks opening ANY
+# file from a phone ("Unable to open '<file>'") while the explorer still
+# renders. Settings here are server-side and shared by every client of this
+# container, so there is no per-client opt-out -- desktop Chrome would have to
+# cost mobile the editor entirely. Keep it off.
 install -d -m 0755 /root/.local/share/code-server/User
 cat > /root/.local/share/code-server/User/settings.json <<'JSON'
 {
@@ -132,7 +143,7 @@ cat > /root/.local/share/code-server/User/settings.json <<'JSON'
   "breadcrumbs.enabled": false,
   "editor.linkedEditing": false,
   "editor.stickyScroll.enabled": false,
-  "editor.experimentalGpuAcceleration": "on",
+  "editor.experimentalGpuAcceleration": "off",
   "editor.fontLigatures": false,
   "terminal.integrated.gpuAcceleration": "auto",
   "telemetry.telemetryLevel": "off",

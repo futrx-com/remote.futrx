@@ -21,7 +21,7 @@ flowchart TB
 
     subgraph Host["Single host (Ubuntu/Debian, runs as root)"]
         Caddy["Caddy — public HTTPS edge<br/>on-demand TLS, forward_auth, cookie stripping"]
-        Go["Go backend — 127.0.0.1:7682<br/>embedded Preact SPA + REST + 5 WebSocket families"]
+        Go["Go backend — 127.0.0.1:7682<br/>embedded Preact SPA + REST + WebSockets"]
         Stores["File stores under DATA_DIR<br/>JSON metadata + JSONL chat logs"]
         LXD["LXD daemon"]
 
@@ -99,12 +99,13 @@ Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-wor
 2. **Agent-provider credentials.** Host-wide OAuth tokens for
    Claude/Codex/Kimi, connected once by an admin and **shared by all projects
    and users** on the box. Antigravity instead authenticates through `agy`
-   inside one project and stores that state in the replaceable container root.
+   inside one project and stores that state in its project-specific durable
+   provider mount.
 3. **Per-project membership.** A flat email access-list per project (`projectaccess/<id>.json`). Any member — not only admins — can read/write that project's secrets and edit its member list.
 
 **Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches the preview/IDE subdomains for `forward_auth`. There is no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
 
-**Request gating** ([`middleware/auth.go`](backend/internal/transport/http/middleware/auth.go)): the middleware covers `/api/*` and `/ws*` only. It requires a valid session for a registered user, then two setup preconditions (local admin claimed; at least one provider authenticated). Admin-only routes and project-membership routes re-check authorization per handler.
+**Request gating** ([`middleware/auth.go`](backend/internal/transport/http/middleware/auth.go)): the middleware covers `/api/*` and `/ws*` only. It requires a valid session for a registered user, then two setup preconditions: local admin claimed, and at least one module marked `SatisfiesAccessGate` ready. A no-auth gate module is ready immediately; managed code/device modules require an authenticated binding; external auth cannot be a gate because Remote has no authoritative status signal for it. The module-driven auth catalog and streams remain reachable while this gate is closed. Admin-only routes and project-membership routes re-check authorization per handler.
 
 ## Request lifecycle: a prompt
 
@@ -114,32 +115,103 @@ sequenceDiagram
     participant SPA as Preact SPA
     participant WS as /ws/chat/{id}
     participant Prompt as prompt.Service
-    participant Life as container lifecycle
+    participant Runtime as module.Runtime
+    participant Provider as agent.Provider
+    participant Prep as execution.Preparer
+    participant Cmd as integration/agents/runtime
+    participant Projects as agent.ProjectResolver
     participant LXD as LXD container
     participant CLI as Agent CLI
 
     User->>SPA: Type prompt, send
     SPA->>WS: {type:"prompt", text}
     WS->>Prompt: StartPrompt (single run per chat)
-    Prompt->>Life: ensure container running
-    Life->>LXD: lxc start / reconcile mounts
-    Prompt->>LXD: push credentials, skills, instructions
-    Prompt->>CLI: lxc exec selected provider CLI (root, skip-permissions)
-    CLI-->>Prompt: provider JSONL stream
+    Prompt->>Runtime: validate scope + lookup provider
+    Prompt->>Provider: Run(provider-neutral request)
+    opt Project chat
+        Provider->>Prep: Prepare(project + selected features)
+        Prep->>Projects: resolve + start/reconcile
+        Projects->>LXD: enforce lifecycle
+        Prep->>LXD: provision CLI, credentials, and assets
+        Prep->>Projects: load project secrets
+        Prep-->>Provider: prepared container target
+        Provider->>Cmd: build common lxc exec envelope
+    end
+    Provider->>CLI: execute native host/container command
+    CLI-->>Provider: provider-native stream/protocol
+    Provider-->>Prompt: normalized agent events
     Prompt-->>WS: normalized events (persisted to JSONL, broadcast)
     WS-->>SPA: live text / reasoning / tool calls / usage
-    Prompt->>LXD: on success, sync refreshed credentials back to host
+    opt Successful project run with managed credentials
+        Provider->>LXD: best-effort credential sync to host
+    end
 ```
 
 The run hub ([`service/runhub/hub.go`](backend/internal/service/runhub/hub.go))
 enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
-adapters ([`agent/claude`](backend/internal/agent/claude),
-[`agent/codex`](backend/internal/agent/codex),
-[`agent/kimi`](backend/internal/agent/kimi), and
-[`agent/antigravity`](backend/internal/agent/antigravity)) normalize each
+adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
+[`integration/agents/codex`](backend/internal/integration/agents/codex),
+[`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
+[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
 CLI's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
+
+Agent composition uses the validated provider-owned factory contract in
+[`service/agent/module`](backend/internal/service/agent/module). Each adapter
+package exposes one `NewFactory()` from its local `factory.go` and is
+compile-time checked against `module.FactoryBuilder`. The factory keeps public
+descriptor metadata separate from its private provisioning profile and
+project-preparation policy. `AuthNone` modules omit the binding; all other auth
+modes require one. Project-capable modules must provide a profile; a host-only
+module may provide one when it runs a locally installed CLI, or omit it for a
+remote integration.
+
+Catalog construction rejects duplicate or unsafe IDs, multiple defaults,
+invalid auth/scope/feature combinations, and overlapping persistent-state
+mounts before the server starts. `Catalog.Build` then returns one
+`module.Runtime` that owns matching provider and authentication registries, so
+consumers cannot combine state built from different catalogs. The provider
+runtime contract itself stays narrow: identity, capability discovery, and
+execution.
+
+Provider-specific commands, protocols, parsers, credentials, capability
+probes, and profiles live in the concrete
+[`integration/agents`](backend/internal/integration/agents) adapters. Neutral
+provider contracts remain in [`agent`](backend/internal/agent), and shared project
+start/provision/secret orchestration lives in
+[`service/agent/execution`](backend/internal/service/agent/execution), while
+[`integration/agents/runtime`](backend/internal/integration/agents/runtime)
+assembles the common process and `lxc exec` command shapes used by those
+adapters. Each provider factory declares its small preparation policy and
+retains native CLI argument and transport ownership.
+
+The explicit composition root in
+[`config/agents.go`](backend/internal/config/agents.go) only lists provider
+`NewFactory` functions in deterministic order. There is no plugin discovery or
+package `init` registration. `service.New` passes application-facing
+`module.BuildDependencies`—the narrow
+[`ProjectResolver`](backend/internal/agent/project.go), full container ports,
+and global credential-sync timeout—to `Catalog.Build`. For every project-scoped
+module, `module.Factory` constructs `execution.Preparer` from a deep clone of
+the validated profile and the provider's `ProjectPreparationPolicy`. It then
+projects only `ProjectPreparer`, `CredentialCollector`, and the sync timeout
+into the provider callback, alongside an independent validated profile clone.
+Those factory dependencies do not expose project-service models or the full
+container port set. Current adapters use the shared preparer; importing project
+services directly or copying its CLI/workspace/browser/lifecycle workflow would
+violate the integration contract.
+
+When application authentication is enabled, service startup additionally
+requires at least one managed or no-auth module that declares
+`SatisfiesAccessGate`; this prevents a valid-looking catalog from leaving every
+application route permanently behind an impossible onboarding gate.
+
+The catalog also owns the provider default. At most one module may be marked
+default, and it must support host execution; Codex is the current built-in
+default. When no explicit provider is stored, chat creation, user settings,
+and skill lookup ask the catalog for the default compatible with the requested
+scope, falling back deterministically to the first compatible module.
 
 A chat with **no project** ("loose chat") runs the CLI directly on the host instead of in a container. This path is convenient but removes the container boundary; its consequences are the subject of several threat-model entries.
 
@@ -154,11 +226,13 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
 | Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
 | Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
+| Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
+| Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
 | Global skills library | `DATA_DIR/skills-global/<name>/` | SKILL.md dirs + `_index.json` | admin-published skills pushed into every project container ([deep dive](docs/02-workspaces/09-global-skills.md)) |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
-| Antigravity project auth/session | project container `/root/.gemini/antigravity-cli` | provider files | survives stop/start, not container replacement |
+| Antigravity project auth/session | `/var/lib/remote/projects/<slug>/agent-home/antigravity` | provider files | bind-mounted to `/root/.gemini/antigravity-cli`; survives container replacement |
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
 
@@ -168,9 +242,12 @@ JSON and metadata writes use temp-file + rename. Chat events are different: they
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Four bind mounts per project:** `workspace` → `/workspace`, and `agent-home/{claude,codex,kimi}` → `/root/.{claude,codex,kimi-code}`. Host dirs are chowned to uid/gid `1000000` (the unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap races.
-- **Antigravity is not a fifth mount.** Its `agy` state currently lives under
-  `/root/.gemini` in the replaceable rootfs.
+- **Five bind mounts per project:** `workspace` → `/workspace`, plus the
+  provider-declared persistent directories for Claude, Codex, Kimi, and
+  Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+  whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
+  unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
+  races.
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) targets **4 GiB memory, 6 CPUs, 2000 processes** and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. Default/profile resource convergence is best-effort because errors from the default `resources.Ensure` path are discarded; explicit per-project overrides fail launch when they cannot be applied. There is **no default disk quota.**
 - **Networking:** containers share LXD's default bridge; Caddy reaches them by `<slug>.lxd:<port>` DNS. The bridge has no inter-container ACLs by default.
 - **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, and skill links.
@@ -204,18 +281,51 @@ Three capabilities live inside each container ([deep dive](docs/03-platform/06-p
 
 ## Frontend
 
-A **Preact** (not React) SPA built with Vite + Tailwind, whose production build is embedded into the Go binary via `go:embed` and served same-origin ([deep dive](docs/03-platform/07-data-and-frontend-state.md)). It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML` anywhere, keeping the XSS surface narrow.
+A **Preact** (not React) SPA built with Vite + Tailwind, whose production build is embedded into the Go binary via `go:embed` and served same-origin ([deep dive](docs/03-platform/07-data-and-frontend-state.md)). It is an installable **PWA**: `frontend/public/` supplies the manifest, icons, and a service worker for Web Push plus network-first navigation. The worker deliberately does not cache the app shell or API data; it caches only the self-contained `/offline.html` fallback and serves it when navigation cannot reach the network. Cache cleanup is restricted to Remote-owned offline-cache names. (The `code.<host>` **IDE launcher** in [`infra/launcher/`](infra/launcher/) is a separate PWA on a separate origin, with its own manifest and worker.)
+
+**Notifications.** The backend raises a Web Push notification when an agent calls `AskUserQuestion`, when a turn completes or fails, and when a scheduled run finishes. The trigger hangs off the chat repository's append path ([`push_notifier.go`](backend/internal/service/push_notifier.go)), so every producer — interactive prompts, scheduled runs, crash recovery — is covered by construction. The audience mirrors chat visibility: project members plus admins, or every registered user for a loose chat. VAPID signing and RFC 8291 payload encryption are implemented against the standard library only ([`integration/webpush`](backend/internal/integration/webpush/)), so push services relay ciphertext they cannot read and the dependency list is unchanged. It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML` anywhere, keeping the XSS surface narrow.
+
+**Agent authentication UI.** The frontend loads ordered module metadata and a
+normalized auth snapshot from `GET /api/agent-auth`, then subscribes to
+`/ws/agent-auth/<provider>` for each managed flow. The same descriptor fields
+drive onboarding eligibility, Settings cards, provider labels/instructions,
+and code-versus-device controls. External and no-auth modules render without
+inventing managed login actions. Legacy provider-specific status endpoints and
+WebSockets remain available for compatibility, but the current UI does not
+depend on their provider-specific payloads.
 
 ## Deployment and supply chain
 
 Deployment is a single-box, root-driven, idempotent-converge model ([deep dive](docs/04-operations/09-deployment-and-operations.md)):
 
-- **[`infra/install.sh`](infra/install.sh)** is both bootstrap and deployer. It clones to `/opt/remote.futrx`, walks `infra/steps/01..07` (host deps, app build, Caddy, systemd service, base image, SSH hardening, network-heal timer), and is re-runnable.
-- **[`infra/update.sh`](infra/update.sh)** fetches and hard-resets to `origin/main`, rebuilds, and recycles containers onto a fresh base image. Busy-workspace detection is intended to skip active runs but is not currently reliable; use a maintenance window or `--skip-workspaces` when interruption is unacceptable.
-- **CI** ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) deploys on push to `main` by SSHing to the box as root and running the fast build-and-restart path.
+- **[`infra/install.sh`](infra/install.sh)** is both bootstrap and deployer. It
+  clones/selects `/opt/remote.futrx`, re-executes the chosen checkout, then
+  walks `infra/steps/00..07` (checkout guard, host deps, host agents/app build,
+  Caddy, systemd service, base image, SSH hardening, network-heal timer). It is
+  re-runnable without mixing manifests from the old and selected commits.
+- **Host agent CLI installation is catalog-driven.** After selecting the target
+  checkout, the application step runs `cmd/install-host-agents`, which
+  converges every host-scoped module with
+  a local profile using that profile's binary, provider-declared version
+  arguments, exact semver pin, npm package or install script, timeout, and
+  verification policy. Host-only remote integrations may
+  omit a profile and install nothing. The base image and runtime repair consume
+  the same profiles for project-scoped modules.
+- **[`infra/update.sh`](infra/update.sh)** fetches and hard-resets to the
+  requested tag/ref (default `origin/main`), rebuilds, and recycles containers
+  onto a fresh base image. Busy-workspace detection is intended to skip active
+  runs but is not currently reliable; use a maintenance window or
+  `--skip-workspaces` when interruption is unacceptable.
+- **CI publishes releases; it does not deploy production.**
+  [`.github/workflows/release-on-tag.yml`](.github/workflows/release-on-tag.yml)
+  creates a GitHub Release for a semantic-version tag after classifying it.
+  Production changes are applied separately by an operator through Remote's
+  updater or `infra/update.sh`.
 - **Version pinning:** every pin — agent CLIs, host toolchain, code-server, Playwright/Chrome-for-Testing — lives in one manifest ([`versions.env`](backend/internal/agent/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the code-server `.deb`, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
 
-The security consequences of the root-on-push deploy chain and the unverified fetches are covered in the [threat model](docs/threat-model.md).
+The security consequences of applying unsigned update refs as root and of
+unverified upstream fetches are covered in the
+[threat model](docs/threat-model.md).
 
 ## Trust boundaries at a glance
 
@@ -225,12 +335,15 @@ These are the boundaries the [threat model](docs/threat-model.md) reasons about:
 2. **Registered user → other users' projects.** Enforced per-resource in handlers and at `forward_auth` — but unevenly (dev previews check membership; the IDE host class does not).
 3. **Container → host, and container → sibling container.** Unprivileged LXC namespaces plus resource caps are the boundary; the shared bridge and in-container `auth: none` services are the soft spots.
 4. **Agent → everything it can reach.** The agent runs as root inside its container (or on the host for loose chats) with safety rails off, so any content it ingests (web pages, files, attachments) is a potential injection vector.
-5. **Host → upstreams.** The installer, updater, base-image build, and CI all pull code from GitHub and package registries as root.
+5. **Host → upstreams.** The root-run installer, updater, and base-image build
+   pull code and packages from GitHub and external registries; release CI is a
+   separate publication path and does not deploy the host.
 
 ## Where to read next
 
 - [`docs/01-overview/`](docs/01-overview/) — system overview and the code map
 - [`docs/02-workspaces/`](docs/02-workspaces/) — auth, projects/containers, chat/agents, workspace tools
+- [`docs/dev/agents/`](docs/dev/agents/) — agent module contracts and the complete extension guide
 - [`docs/03-platform/`](docs/03-platform/) — previews & browser, data & frontend state, API & realtime
 - [`docs/04-operations/`](docs/04-operations/) — deployment and operations
 - [Threat model](docs/threat-model.md) · [Known limitations](docs/known-limitations.md)

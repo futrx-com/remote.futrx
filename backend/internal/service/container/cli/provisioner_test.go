@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,8 +35,12 @@ type recordingRuntime struct {
 
 func (r *recordingRuntime) Available() bool { return r.available }
 
-func (r *recordingRuntime) Version(ctx context.Context, containerName, binary string) (string, error) {
-	r.calls = append(r.calls, "version "+containerName+" "+binary)
+func (r *recordingRuntime) Version(ctx context.Context, containerName, binary string, arguments ...string) (string, error) {
+	call := "version " + containerName + " " + binary
+	if len(arguments) > 0 {
+		call += " " + strings.Join(arguments, " ")
+	}
+	r.calls = append(r.calls, call)
 	r.versionTimeout = append(r.versionTimeout, remainingTimeout(ctx))
 	if len(r.versions) == 0 {
 		return "", nil
@@ -122,6 +127,7 @@ func TestEnsureKeepsNPMInstallSequenceAndTimeout(t *testing.T) {
 	spec := provisioning.CLISpec{
 		Name:               "agent",
 		Binary:             "agent",
+		VersionArgs:        []string{"version"},
 		PackageName:        "@vendor/agent",
 		Version:            "1.2.3",
 		CheckVersion:       true,
@@ -138,11 +144,11 @@ func TestEnsureKeepsNPMInstallSequenceAndTimeout(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"version c1 agent",
+		"version c1 agent version",
 		"install running c1 @vendor/agent",
 		"exists c1 npm",
 		"install npm c1 @vendor/agent@1.2.3",
-		"version c1 agent",
+		"version c1 agent version",
 	}
 	if !reflect.DeepEqual(runtime.calls, wantCalls) {
 		t.Fatalf("calls = %#v, want %#v", runtime.calls, wantCalls)

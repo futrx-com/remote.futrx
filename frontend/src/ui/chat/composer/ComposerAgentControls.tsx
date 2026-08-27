@@ -1,8 +1,10 @@
 import type { ChatProvider, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
-import { modelOptionsForProvider } from "../../../config/chat";
-import { ComposerModelPicker } from "./ComposerModelPicker";
-import { ProviderToggle } from "./ProviderToggle";
+import type {
+  ComposerModelOption,
+  ComposerProviderOption,
+} from "../../../state/chat/agentCapabilityState";
+import { ComposerAgentPicker } from "./ComposerAgentPicker";
 import { SkillPicker } from "./SkillPicker";
 
 export function ComposerAgentControls({
@@ -10,44 +12,59 @@ export function ComposerAgentControls({
   model,
   provider,
   streaming,
+  providerOptions,
+  modelOptions,
+  modelsLoading,
+  modelsRefreshing,
+  modelError,
   selectedSkills,
+  providerLabel,
+  skillsEnabled,
   onSelectSkill,
-  onProviderChange,
-  onModelChange,
+  onAgentChange,
+  onRefreshModels,
 }: {
   projectId?: string;
   model: string;
   provider: ChatProvider;
   streaming: boolean;
+  providerOptions: readonly ComposerProviderOption[];
+  modelOptions: readonly ComposerModelOption[];
+  modelsLoading: boolean;
+  modelsRefreshing: boolean;
+  modelError: string;
   selectedSkills: SelectedSkill[];
+  providerLabel: string;
+  skillsEnabled: boolean;
   onSelectSkill: (skill: RegisteredSkill) => void;
-  onProviderChange: (provider: ChatProvider) => void;
-  onModelChange: (model: string) => void;
+  onAgentChange: (provider: ChatProvider, model: string) => void;
+  onRefreshModels: () => Promise<void>;
 }) {
-  const modelOptions = modelOptionsForProvider(provider);
   const selectedCount = selectedSkills.length;
   return (
     <div class="codex-composer-agent-controls flex min-w-0 flex-wrap items-center gap-1">
-      <ProviderToggle
-        provider={provider}
-        streaming={streaming}
-        onChange={onProviderChange}
-      />
-
-      <ComposerModelPicker
+      <ComposerAgentPicker
         provider={provider}
         model={model}
         streaming={streaming}
-        options={modelOptions}
-        onChange={onModelChange}
+        providerOptions={providerOptions}
+        modelOptions={modelOptions}
+        loading={modelsLoading}
+        refreshing={modelsRefreshing}
+        error={modelError}
+        onChange={onAgentChange}
+        onRefresh={onRefreshModels}
       />
 
-      <SkillPicker
-        provider={provider}
-        projectId={projectId}
-        selectedCount={selectedCount}
-        onSelect={(skill) => onSelectSkill(skill)}
-      />
+      {skillsEnabled && (
+        <SkillPicker
+          provider={provider}
+          providerLabel={providerLabel}
+          projectId={projectId}
+          selectedCount={selectedCount}
+          onSelect={(skill) => onSelectSkill(skill)}
+        />
+      )}
     </div>
   );
 }
