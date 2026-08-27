@@ -21,6 +21,9 @@ type recordingRuntime struct {
 	scriptResponses []runtimeResponse
 	stopResponse    runtimeResponse
 	publishResponse runtimeResponse
+	// scriptAlwaysErr fails every ExecuteScript, for the container that never
+	// comes up rather than the one that is merely slow to get a lease.
+	scriptAlwaysErr error
 }
 
 func (r *recordingRuntime) Available() bool {
@@ -46,6 +49,9 @@ func (r *recordingRuntime) ExecuteScript(_ context.Context, containerName, scrip
 		}
 	}
 	r.events = append(r.events, "script "+containerName+" "+script)
+	if r.scriptAlwaysErr != nil {
+		return "", r.scriptAlwaysErr
+	}
 	if responseIndex >= len(r.scriptResponses) {
 		return "", nil
 	}
@@ -117,12 +123,12 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 }
 
 func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
-	runtime := &recordingRuntime{
-		available: true,
-		scriptResponses: []runtimeResponse{
-			{output: "", err: errors.New("exit 1")}, // IPv4 egress probe
-		},
-	}
+	// Every probe fails: a host whose FORWARD policy blocks the bridge never
+	// gets IPv4, however long the builder waits. One failing response would
+	// only prove the first attempt happens, which stopped being the behaviour
+	// under test when the probe started retrying.
+	shortenEgressRetry(t)
+	runtime := &recordingRuntime{available: true, scriptAlwaysErr: errors.New("exit 1")}
 	builder := NewBuilder(
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
