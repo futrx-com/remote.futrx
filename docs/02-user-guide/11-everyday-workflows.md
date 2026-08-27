@@ -64,7 +64,8 @@ cleanly; when a provider session is missing, Remote supplies a bounded visible
 transcript to a fresh session. Kimi and Antigravity forks start fresh.
 
 Antigravity must first be signed in by running `agy` in that project's
-Terminal. Its sign-in and session state are not part of Remote's durable
+Terminal. Exit the CLI and choose **Refresh models** in the chat picker before
+selecting it. Its sign-in and session state are not part of Remote's durable
 provider-home mounts.
 
 ## Schedule a monitor and walk away

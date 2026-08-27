@@ -9,9 +9,9 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
-// SelfUpdateHandler exposes the admin-only application update flow: read
-// the current status, check origin for newer release tags, and start
-// infra/update.sh toward one.
+// SelfUpdateHandler exposes the admin-only release update flow: read the
+// current status, check origin for newer release tags, and start the safe
+// application or infrastructure path toward one.
 type SelfUpdateHandler struct {
 	updates *serviceselfupdate.Service
 	auth    *serviceauth.Service

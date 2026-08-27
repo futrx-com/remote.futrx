@@ -21,8 +21,12 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **Ubuntu/Debian only.** The installer hard-exits on any other distro and assumes systemd, snap (LXD is installed via snap), Caddy, root execution, public DNS pointing at the box, and outbound reachability to Let's Encrypt. There is no air-gapped, Docker, or non-Linux deployment path. *(`infra/install.sh`, `infra/steps/01-host-deps.sh`)*
 - **The backend runs as root.** With `KillMode=process`, a compromise of the app process is a compromise of the host. There is no privilege separation for the backend. *(`infra/templates/remote.futrx.service.tmpl`)*
 - **The installer disables SSH password login.** Confirm your SSH key works before running it (this is called out in the README, and repeated here because it is easy to lock yourself out).
-- **Deploy has no automatic rollback.** CI restarts the service *before* the health check, so a build that starts but fails the 30-second probe leaves the box running the broken binary; the workflow just exits non-zero. *(`.github/workflows/deploy.yml`)*
-- **`update.sh` hard-resets to `origin/main`.** There is no version pinning, staged rollout, or rollback path — you get whatever is on the tip of `main`, and any local source changes are discarded.
+- **Infrastructure updates hard-reset the installed checkout.** `update.sh`
+  selects the requested release tag/ref and defaults to `origin/main`, so any
+  local source changes are discarded. It converges the host, application, base
+  image, and workspaces incrementally, with no transaction-wide rollback if a
+  later step fails. Patch-only `deploy-app.sh` is narrower and does restore its
+  previous checkout/binary when build, restart, or health validation fails.
 
 ## Updates and workspace upgrades
 
@@ -47,17 +51,32 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Agents
 
+- **Agent modules are compiled in, not runtime plugins.** Each provider package
+  owns a validated factory combining its adapter, auth, feature policy, and
+  provisioning profile. A new integration still requires an explicit reviewed
+  factory entry in `internal/config/agents.go`, followed by a rebuild and
+  deployment.
+  Remote does not load third-party provider modules from configuration or
+  shared objects.
+
 - **Claude, Codex, and Kimi identity is a shared host singleton.** Those
   credentials are authenticated once at host level and seeded into every
   container, so all users and projects share the same provider accounts and
   subscription quotas. There is no per-user or per-project identity for those
   providers, and each allows only one interactive login at a time.
-- **Antigravity authentication is project-local but not durable across
-  replacement.** Users run `agy` in the project Terminal. Its credential and
-  conversation state live under `/root/.gemini` in the replaceable container
-  root rather than a mounted provider home. It survives stop/start of the same
-  container but must be recreated after an upgrade or recovery replaces that
-  container.
+- **Codex's API-key guard does not inspect newer project-local auth before a
+  run.** Remote rejects a host `auth.json` explicitly marked `apikey` and clears
+  `OPENAI_API_KEY`, but credential seeding does not overwrite a newer
+  project-local record. That record can therefore drive a project run. A
+  successful pull detects the API-key mode only afterward, and the sync error
+  is logged without failing the completed run.
+- **The supported Antigravity authentication flow is project-local.** Users
+  run `agy` in the project Terminal. Its credential and conversation state
+  under `/root/.gemini/antigravity-cli` is a durable provider mount and survives
+  container replacement. It remains shared by everyone with access to that
+  project. A loose chat can use operator-prepared host `agy` state, but Remote
+  exposes no host Antigravity login UI and a loose-chat Terminal cannot create
+  that state.
 - **Run control does not survive a backend restart.** Agent runs are owned by in-process state around an `lxc exec` child. A backend restart loses the run lock, cancellation handle, and event-stream ownership. With the production unit's `KillMode=process`, the child may remain alive but orphaned rather than being killed. There is no server-side run persistence, reattachment, or restart recovery.
 - **One backend run per chat; interactive queueing remains browser-owned.** A
   direct concurrent run request is rejected. Drafts and queued prompts are
@@ -66,14 +85,37 @@ These are the constraints worth understanding before you deploy or rely on remot
   chat's queue sends only after that chat is opened again. Use scheduled tasks
   for host-owned future work.
 - **Session recovery drops context.** When a provider session is missing (or you switch provider mid-chat), the chat is "recovered" by replaying at most the last ~24 KB of visible transcript as plain text into a fresh session — earlier context and all tool-call state are dropped.
-- **Modes are advisory.** Chat/Plan/Code/Review/Debug/Full-Auto are prompt-preamble policies with no backend enforcement, sandboxing difference, or approval gate. An agent in "chat" mode can still modify files; there is no human-confirmation gate for irreversible or external actions.
+- **Provider Plan modes differ.** Remote forwards provider-native Default and
+  Plan modes instead of adding workflow prompts. Claude Plan is read-only;
+  Codex Plan is a provider collaboration-instruction preset rather than an
+  OS-level read-only sandbox. Default project runs bypass provider approvals,
+  and Remote has no human-confirmation gate for irreversible or external
+  actions.
 - **Provider-specific gaps.** Kimi has no fork primitive (forked Kimi chats
-  silently start fresh) and reports no usage data. Antigravity forks also
+  silently start fresh) and reports no usage data. Its discovered per-model
+  Thinking choice is displayed and saved but is not forwarded to the Kimi run,
+  and the currently pinned Kimi CLI rejects its advertised Plan flag with the
+  prompt mode Remote requires. Antigravity forks also
   start fresh; print mode exposes plain streamed text rather than structured
-  tool/usage events, general selected skills are not injected, and Browser MCP
-  is unavailable. Codex service-tier selection is limited to three values
-  (default/priority/fast). Failed Claude tool calls are currently rendered as
-  successes.
+  tool/usage events, selected skills use explicit `SKILL.md` instruction paths
+  rather than native triggers, and Browser MCP is unavailable. Model catalogs
+  reflect the installed CLI, its configuration,
+  the signed-in account, and current entitlements; they are not a promise that
+  every provider model in existence is available to that account. Claude Fast
+  mode requires an eligible Opus model, usage credits, and provider/account
+  enablement. Failed Claude tool calls are currently rendered as successes.
+- **Capability catalogs can lag external changes.** A fully live catalog is
+  cached in backend process memory for 24 hours; any fallback or warning uses a
+  2-hour TTL. CLI, configuration, and entitlement changes do not directly
+  invalidate it. Managed authenticated-state changes and completed-login
+  revisions detected by the browser, plus the sidebar's project **Start**
+  action, request selected refreshes; intermediate login-status changes, the
+  Project workspaces Start/Restart actions, and terminal-based changes such as
+  Antigravity login require **Refresh models**. Restarting the backend clears
+  the entire cache. Provider-level fallback and
+  partial-discovery warnings are present in the API but, except for the
+  Antigravity sign-in disable reason, are not currently rendered in the
+  composer.
 
 ## Scheduled tasks
 
@@ -112,6 +154,10 @@ These are the constraints worth understanding before you deploy or rely on remot
 ## Frontend
 
 - **No URL routing.** The active chat, current view, and open drawers are all in-memory state — a page refresh loses your selection, and nothing is deep-linkable.
-- **No PWA on the main app.** Despite mobile positioning, the main chat UI ships no web app manifest, no service worker, and no push notifications — so there's no notification when a long-running agent finishes and no installable/offline shell. Only the separate IDE launcher at `code.<host>` is a PWA.
+- **The PWA is not an offline workspace.** The main app is installable and can
+  receive Web Push notifications, but navigation remains network-first. Its
+  service worker caches only a self-contained offline status page, not the app
+  shell, chats, API data, or project content. Work cannot continue without a
+  connection. The IDE launcher at `code.<host>` is a separate PWA.
 - **The terminal has no reconnect logic.** A network blip ends the terminal view (unlike the chat/workspace sockets, which reconnect).
 - **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite; CI does not run the Go `go test` suite either (run it locally — see [CONTRIBUTING.md](../CONTRIBUTING.md)).

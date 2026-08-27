@@ -99,7 +99,7 @@ func TestAdapterGuestAndAgentProbesTranslateCommandOutput(t *testing.T) {
 		switch joined {
 		case "exec c1 -- which claude":
 			return inspectionResponse{}
-		case "exec c1 -- claude --version":
+		case "exec c1 -- claude version --short":
 			return inspectionResponse{output: "claude 1.2.3\n"}
 		case "exec c1 -- test -f /workspace/CLAUDE.md":
 			return inspectionResponse{}
@@ -127,7 +127,7 @@ Filesystem 1B-blocks Used Available Capacity MountedOn
 	}}
 	profiles := serviceprofiles.NewCatalog([]provisioning.Profile{{
 		ID:  "claude",
-		CLI: provisioning.CLISpec{Binary: "claude"},
+		CLI: provisioning.CLISpec{Name: "Claude Code", Binary: "claude", VersionArgs: []string{"version", "--short"}},
 		Instructions: &provisioning.InstructionTarget{
 			Path:     "/workspace/CLAUDE.md",
 			HashPath: "/workspace/.claude.hash",
@@ -158,8 +158,10 @@ Filesystem 1B-blocks Used Available Capacity MountedOn
 	}
 	if want := []serviceproject.AgentContainerStatus{{
 		ID:                    "claude",
+		Label:                 "Claude Code",
 		Installed:             true,
 		Version:               "claude 1.2.3",
+		InstructionsPath:      "/workspace/CLAUDE.md",
 		InstructionsInstalled: true,
 		InstructionsInSync:    true,
 	}}; !reflect.DeepEqual(agents, want) {
@@ -202,6 +204,56 @@ func TestAdapterCredentialProbeGatesGuestStatsByState(t *testing.T) {
 	file := running[0].Files[0]
 	if !file.HostExists || !file.ContainerExists || file.HostMTime != 200 || file.ContainerMTime != 100 || !file.HostNewer || file.ContainerNewer {
 		t.Fatalf("running credentials = %#v", running)
+	}
+}
+
+func TestAdapterCredentialProbeIncludesDynamicDirectoryFiles(t *testing.T) {
+	hostDirectory := t.TempDir()
+	hostPath := filepath.Join(hostDirectory, "host.json")
+	if err := os.WriteFile(hostPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hostTime := time.Unix(100, 0)
+	if err := os.Chtimes(hostPath, hostTime, hostTime); err != nil {
+		t.Fatal(err)
+	}
+	containerDirectory := "/root/.future/credentials"
+	runner := &inspectionRecordingRunner{responses: map[string]inspectionResponse{
+		"exec c1 -- find " + containerDirectory + " -mindepth 1 -maxdepth 1 -type f -printf %f\\n": {
+			output: "container.json\nhost.json\n../unsafe\n",
+		},
+		"exec c1 -- stat -c %Y " + containerDirectory + "/container.json": {output: "200\n"},
+		"exec c1 -- stat -c %Y " + containerDirectory + "/host.json":      {output: "90\n"},
+	}}
+	profiles := serviceprofiles.NewCatalog([]provisioning.Profile{{
+		ID: "future-agent",
+		Credentials: provisioning.CredentialSpec{
+			Name: "future-agent",
+			Directory: &provisioning.CredentialDirectory{
+				HostPath: hostDirectory, ContainerPath: containerDirectory,
+			},
+		},
+	}})
+	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+
+	running := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateRunning)
+	if len(running) != 1 || len(running[0].Files) != 2 {
+		t.Fatalf("running directory credentials = %#v", running)
+	}
+	if got := running[0].Files[0]; filepath.Base(got.HostPath) != "container.json" || !got.ContainerExists || !got.ContainerNewer {
+		t.Fatalf("container-only credential = %#v", got)
+	}
+	if got := running[0].Files[1]; filepath.Base(got.HostPath) != "host.json" || !got.HostExists || !got.ContainerExists || !got.HostNewer {
+		t.Fatalf("shared credential = %#v", got)
+	}
+
+	runner.calls = nil
+	stopped := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateStopped)
+	if len(runner.calls) != 0 {
+		t.Fatalf("stopped directory probe executed guest commands: %v", runner.calls)
+	}
+	if len(stopped) != 1 || len(stopped[0].Files) != 1 || filepath.Base(stopped[0].Files[0].HostPath) != "host.json" {
+		t.Fatalf("stopped directory credentials = %#v", stopped)
 	}
 }
 

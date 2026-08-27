@@ -28,6 +28,10 @@ func (p *schedulePromptProvider) ID() agent.ProviderID { return agent.ProviderCo
 
 func (p *schedulePromptProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
 
+func (p *schedulePromptProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
+	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+}
+
 func (p *schedulePromptProvider) Run(
 	ctx context.Context,
 	req agent.RunRequest,
@@ -131,6 +135,7 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 		runhub.New(store),
 		registry,
 		WithScheduleToolIssuer(issuer),
+		WithAgentPolicy(codexTestAgentPolicy()),
 	)
 
 	actor := Actor{Email: "owner@example.com", IsAdmin: true}
@@ -207,6 +212,7 @@ func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 		runhub.New(store),
 		registry,
 		WithScheduleToolIssuer(issuer),
+		WithAgentPolicy(codexTestAgentPolicy()),
 	)
 
 	const scheduledTaskID = "task-123"

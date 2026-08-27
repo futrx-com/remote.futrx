@@ -7,10 +7,6 @@ import { API_ROUTES } from "../config/routes";
 import {
   DEFAULT_USER_SETTINGS,
   VALID_APPEARANCE_THEMES,
-  VALID_CHAT_MODES,
-  VALID_CHAT_PROVIDERS,
-  VALID_REASONING_EFFORTS,
-  VALID_SERVICE_TIERS,
 } from "../config/settings";
 
 export const settingsApi = {
@@ -43,18 +39,20 @@ function normalizeUserSettings(settings: UserSettings): UserSettings {
     chat: {
       ...DEFAULT_USER_SETTINGS.chat,
       ...settings?.chat,
-      provider: VALID_CHAT_PROVIDERS.has(provider)
+      provider: typeof provider === "string" && provider.length > 0
         ? provider
         : DEFAULT_USER_SETTINGS.chat.provider,
       model:
         typeof settings?.chat?.model === "string"
           ? settings.chat.model
           : DEFAULT_USER_SETTINGS.chat.model,
-      mode: VALID_CHAT_MODES.has(mode) ? mode : DEFAULT_USER_SETTINGS.chat.mode,
-      reasoningEffort: VALID_REASONING_EFFORTS.has(reasoningEffort)
+      mode: typeof mode === "string" && mode.length > 0
+        ? mode
+        : DEFAULT_USER_SETTINGS.chat.mode,
+      reasoningEffort: typeof reasoningEffort === "string"
         ? reasoningEffort
         : DEFAULT_USER_SETTINGS.chat.reasoningEffort,
-      serviceTier: VALID_SERVICE_TIERS.has(serviceTier)
+      serviceTier: typeof serviceTier === "string"
         ? serviceTier
         : DEFAULT_USER_SETTINGS.chat.serviceTier,
     },

@@ -8,9 +8,11 @@ agents, terminals, the IDE, browsers, and development processes run.
 
 1. In the sidebar, select **New project**. On an empty workspace, you can also
    select the **New project** button in the center of the page.
-2. Enter a name in the browser prompt **Project name?**.
-3. Confirm the prompt.
-4. Wait while the project shows its provisioning state.
+2. Enter a name in the **New project** modal. It validates the display name and
+   previews the normalized slug, workspace path, and container name before any
+   request is sent.
+3. Select **Create project**.
+4. Keep the modal open while it reports container provisioning progress.
 5. When provisioning finishes, select **New chat in this project** or expand
    the project and select **New chat**.
 
@@ -18,7 +20,10 @@ agents, terminals, the IDE, browsers, and development processes run.
 
 **Outcome:** Remote creates a unique project slug, durable workspace and agent
 home directories, a project membership record, and a container based on the
-server's development image. Duplicate names receive distinct slugs.
+server's development image. A display name already in use is rejected even if
+case or surrounding whitespace differs. Two genuinely different names that
+normalize to the same slug remain valid; later projects receive a numeric slug
+suffix such as `-2`.
 
 The new-chat control is disabled and shows a spinner while the project is still
 provisioning. If provisioning fails, the sidebar displays the project error.

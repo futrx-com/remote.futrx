@@ -8,11 +8,12 @@ const actionClass = `workspace-action relative inline-flex h-9 w-9 flex-none ite
 
 export function WorkspaceActions({
   cwd,
-  onOpenTerminal,
+  onToggleTerminal,
   onToggleBrowser,
   onToggleHistory,
   onToggleFiles,
   onToggleSchedules,
+  terminalOpen,
   browserOpen,
   historyOpen,
   filesOpen,
@@ -22,11 +23,12 @@ export function WorkspaceActions({
   orientation,
 }: {
   cwd: string;
-  onOpenTerminal: () => void;
+  onToggleTerminal: () => void;
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
   onToggleFiles: () => void;
   onToggleSchedules: () => void;
+  terminalOpen: boolean;
   browserOpen: boolean;
   historyOpen: boolean;
   filesOpen: boolean;
@@ -50,9 +52,12 @@ export function WorkspaceActions({
       />
       <WorkspaceAction
         Icon={Terminal}
-        onClick={onOpenTerminal}
-        label="Container terminal"
-        tooltip="Open container terminal"
+        onClick={onToggleTerminal}
+        label={terminalOpen ? "Close container terminal" : "Container terminal"}
+        tooltip={terminalOpen ? "Close container terminal" : "Open container terminal"}
+        expanded={terminalOpen}
+        controls="workspace-terminal-pane"
+        action="terminal"
         tooltipPlacement={tooltipPlacement}
       />
       {showHistory && (
@@ -121,7 +126,7 @@ function WorkspaceAction({
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
-  action?: "history" | "files" | "schedules" | "browser";
+  action?: "history" | "files" | "schedules" | "browser" | "terminal";
   tooltipPlacement: "below" | "left";
 }) {
   const tooltipId = useId();

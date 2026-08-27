@@ -130,6 +130,7 @@ func NewContainerStack(
 		hostfs.NewWorkspacePreparer(hostMappedUID, hostMappedUID),
 		resources,
 		launchProvisioner,
+		profiles,
 	)
 	inspectionAdapter := containerinspection.NewAdapter(
 		runner,

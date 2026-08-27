@@ -5,8 +5,10 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 INSTALL_SCRIPT="$TESTS_DIR/../qa/install.sh"
 UPDATE_SCRIPT="$TESTS_DIR/../qa/update.sh"
 DEPLOY_APP_SCRIPT="$TESTS_DIR/../qa/deploy-app.sh"
+DEPLOY_LOCAL_SCRIPT="$TESTS_DIR/../qa/deploy-local.sh"
 COMMON_SCRIPT="$TESTS_DIR/../qa/common.sh"
 CORE_INSTALL_SCRIPT="$TESTS_DIR/../install.sh"
+ROOT_PACKAGE_JSON="$TESTS_DIR/../../package.json"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_DIR"' EXIT
 
@@ -15,7 +17,7 @@ fail() {
     exit 1
 }
 
-for script in "$COMMON_SCRIPT" "$INSTALL_SCRIPT" "$UPDATE_SCRIPT" "$DEPLOY_APP_SCRIPT"; do
+for script in "$COMMON_SCRIPT" "$INSTALL_SCRIPT" "$UPDATE_SCRIPT" "$DEPLOY_APP_SCRIPT" "$DEPLOY_LOCAL_SCRIPT"; do
     bash -n "$script"
 done
 
@@ -25,6 +27,8 @@ bash "$UPDATE_SCRIPT" --help | grep -q 'existing QA installation' || \
     fail "update help does not identify the existing-installation contract"
 bash "$DEPLOY_APP_SCRIPT" --help | grep -q 'application code only' || \
     fail "deploy-app help does not identify the app-only contract"
+bash "$DEPLOY_LOCAL_SCRIPT" --help | grep -q 'without a commit' || \
+    fail "deploy-local help does not identify the local-working-tree contract"
 
 if QA_ENV_FILE="$TEST_DIR/missing.env" bash "$INSTALL_SCRIPT" >"$TEST_DIR/out" 2>"$TEST_DIR/err"; then
     fail "install.sh accepted missing QA configuration"
@@ -68,6 +72,12 @@ fi
 grep -q 'unsupported characters' "$TEST_DIR/err" || \
     fail "deploy-app.sh gave an unclear unsafe-ref error"
 
+if QA_ENV_FILE="$TEST_DIR/missing.env" bash "$DEPLOY_LOCAL_SCRIPT" >"$TEST_DIR/out" 2>"$TEST_DIR/err"; then
+    fail "deploy-local.sh accepted missing QA configuration"
+fi
+grep -q 'missing .*missing.env' "$TEST_DIR/err" || \
+    fail "deploy-local.sh gave an unclear missing-config error"
+
 if bash "$CORE_INSTALL_SCRIPT" test.example.com --ref=main >"$TEST_DIR/out" 2>"$TEST_DIR/err"; then
     fail "core install.sh accepted a movable ref"
 fi
@@ -101,5 +111,21 @@ done
 if grep -Eq 'infra/(install|update|upgrade-workspaces)[.]sh|FORCE_REBUILD_BASE_IMAGE|apt-get' "$DEPLOY_APP_SCRIPT"; then
     fail "deploy-app.sh invokes host or workspace convergence"
 fi
+for required_contract in 'git ls-files' 'scp -q' 'npm run build' 'go build -trimpath' 'systemctl restart' 'wait_for_http_health' 'QA_DEPLOYED_VERSION'; do
+    grep -Fq "$required_contract" "$DEPLOY_LOCAL_SCRIPT" || \
+        fail "deploy-local.sh is missing contract: $required_contract"
+done
+if grep -Eq 'git (fetch|reset)|infra/(install|update|upgrade-workspaces)[.]sh|FORCE_REBUILD_BASE_IMAGE|apt-get' "$DEPLOY_LOCAL_SCRIPT"; then
+    fail "deploy-local.sh changes the installed checkout, host, or workspaces"
+fi
+for package_contract in \
+    '"qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/install.sh"' \
+    '"qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/update.sh"' \
+    '"qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-app.sh"' \
+    '"qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-local.sh"' \
+    '"qa:test": "bash infra/tests/qa-scripts-test.sh"'; do
+    grep -Fq "$package_contract" "$ROOT_PACKAGE_JSON" || \
+        fail "root package is missing QA command: $package_contract"
+done
 
-echo "QA install/update/app-deploy script tests passed"
+echo "QA install/update/app-deploy/local-deploy script tests passed"

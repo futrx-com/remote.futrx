@@ -8,13 +8,8 @@ type TerminalOverlayComponent = ComponentType<{
   onClose: () => void;
 }>;
 
-export function useTerminalOverlayController(chatId: string) {
-  const [terminalOpen, setTerminalOpen] = useState(false);
+export function useTerminalOverlayController(terminalOpen: boolean) {
   const [TerminalOverlay, setTerminalOverlay] = useState<TerminalOverlayComponent | null>(null);
-
-  useEffect(() => {
-    setTerminalOpen(false);
-  }, [chatId]);
 
   useEffect(() => {
     if (!terminalOpen || TerminalOverlay) return;
@@ -27,10 +22,5 @@ export function useTerminalOverlayController(chatId: string) {
     };
   }, [TerminalOverlay, terminalOpen]);
 
-  return {
-    TerminalOverlay,
-    terminalOpen,
-    openTerminal: () => setTerminalOpen(true),
-    closeTerminal: () => setTerminalOpen(false),
-  };
+  return { TerminalOverlay };
 }

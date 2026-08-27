@@ -133,16 +133,22 @@ rejected.
 container. The shell begins in the chat working directory when that path maps
 into the container, otherwise it falls back to `/workspace`.
 
+On desktop, Terminal opens as a pane beside the chat. Drag its left edge to
+resize it; Remote remembers that width in this browser. Opening Files, History,
+Schedules, or Browser hides Terminal because workspace panes are mutually
+exclusive.
+
 The status can read **Connecting**, **Connected**, **Error**, or **Closed**.
 If the project is stopped, opening the terminal first starts it.
 
-> The PTY is intentionally tied to its WebSocket. Closing the Terminal
-> overlay, losing the socket, or closing the page kills that shell. There is no
-> reconnect and reopening **Open Terminal** creates a new shell.
+> The PTY is intentionally tied to its WebSocket. Hiding and reopening the
+> Terminal pane in the same loaded chat preserves its shell and current input.
+> Switching chats, losing the socket, reloading, or closing the page kills that
+> shell. There is no reconnect after the socket is lost.
 
 Use a process manager or a terminal multiplexer that you configure inside the
-project for work that must survive the overlay. Do not treat the Terminal
-drawer itself as a durable process supervisor.
+project for work that must survive the page. Do not treat the Terminal pane
+itself as a durable process supervisor.
 
 ## Open the browser IDE
 
@@ -172,7 +178,10 @@ the same Remote installation until IDE membership enforcement is added.
 
 Open `https://code.<your-remote-host>` to see the available project IDEs in a dedicated launcher. That launcher includes a web-app manifest and minimal service worker, so a supporting browser can install it as a PWA for faster access to project editors.
 
-The launcher always loads the live project list and does not provide offline project access. The main Remote chat application is not currently a PWA; only this IDE launcher is installable.
+The launcher always loads the live project list and does not provide offline
+project access. The main Remote chat application is also installable as a PWA,
+but it remains network-first: only a self-contained offline status page is
+cached, never the live workspace or agent data.
 
 ## How the three paths meet
 

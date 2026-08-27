@@ -63,8 +63,11 @@ class WorkspaceDataProjector {
         left.id !== right.id ||
         left.title !== right.title ||
         left.provider !== right.provider ||
+        !this.sameStringRecord(left.sessions, right.sessions) ||
         left.claudeSessionId !== right.claudeSessionId ||
         left.codexSessionId !== right.codexSessionId ||
+        left.kimiSessionId !== right.kimiSessionId ||
+        left.antigravitySessionId !== right.antigravitySessionId ||
         left.tmuxSession !== right.tmuxSession ||
         left.cwd !== right.cwd ||
         left.createdAt !== right.createdAt ||
@@ -81,6 +84,17 @@ class WorkspaceDataProjector {
       }
     }
     return true;
+  }
+
+  private sameStringRecord(
+    left: Record<string, string> | undefined,
+    right: Record<string, string> | undefined
+  ): boolean {
+    if (left === right) return true;
+    const leftKeys = Object.keys(left ?? {});
+    const rightKeys = Object.keys(right ?? {});
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) => left?.[key] === right?.[key]);
   }
 
   private sameProjects(leftProjects: ProjectMeta[], rightProjects: ProjectMeta[]): boolean {

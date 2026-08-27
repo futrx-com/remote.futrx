@@ -13,3 +13,10 @@ type Repository interface {
 	SetRole(ctx context.Context, email string, role Role) error
 	Count(ctx context.Context) (int, error)
 }
+
+// RemovalCleanup revokes resources that are keyed by a user's identity before
+// the identity itself disappears. Implementations must be idempotent because
+// a partially completed removal can be retried.
+type RemovalCleanup interface {
+	CleanupRemovedUser(ctx context.Context, email string) error
+}

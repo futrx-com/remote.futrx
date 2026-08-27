@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -33,6 +35,7 @@ type agentBrowserActivityRecorder interface {
 }
 
 var ErrPromptAlreadyRunning = errors.New("a previous prompt is still running")
+var ErrUnsupportedAgentScope = errors.New("agent does not support this chat execution scope")
 
 type Actor struct {
 	Email   string
@@ -84,12 +87,28 @@ func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
 	}
 }
 
+type AgentPolicy interface {
+	Descriptor(provider string) (agentmodule.Descriptor, bool)
+	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+}
+
+type AgentRegistry interface {
+	Lookup(agent.ProviderID) agent.Provider
+}
+
+func WithAgentPolicy(policy AgentPolicy) Option {
+	return func(service *Service) {
+		service.agentPolicy = policy
+	}
+}
+
 type Service struct {
 	store         servicechat.Repository
 	tmux          TmuxClient
 	projects      ProjectResolver
 	hub           *runhub.Hub
-	agents        *agent.Registry
+	agents        AgentRegistry
+	agentPolicy   AgentPolicy
 	scheduleTools ScheduleToolIssuer
 }
 
@@ -98,7 +117,7 @@ func New(
 	tmux TmuxClient,
 	projects ProjectResolver,
 	hub *runhub.Hub,
-	agents *agent.Registry,
+	agents AgentRegistry,
 	options ...Option,
 ) *Service {
 	if hub == nil {
@@ -151,6 +170,9 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 			ctx,
 			input,
 			func(ev ChatEvent) {
+				// Stamp the originating task so a scheduled run's events stay
+				// distinguishable from an interactive turn's downstream.
+				ev.ScheduledTaskID = input.ScheduledTaskID
 				rnr.hub.Emit(input.ChatID, ev)
 				if ev.Type == "assistant_text" {
 					output.WriteString(ev.Text)
@@ -218,6 +240,18 @@ func (rnr *Service) runPromptAs(
 	emit(ChatEvent{T: time.Now().UnixMilli(), Type: "user", Text: prompt})
 
 	providerID := providerIDFromChatProvider(meta.Provider)
+	descriptor := agentmodule.Descriptor{}
+	if rnr.agentPolicy != nil {
+		descriptor, _ = rnr.agentPolicy.Descriptor(string(providerID))
+		scope := agentmodule.ScopeHost
+		if meta.ProjectID != "" {
+			scope = agentmodule.ScopeProject
+		}
+		if !rnr.agentPolicy.SupportsScope(string(providerID), scope) {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedAgentScope.Error()})
+			return ErrUnsupportedAgentScope
+		}
+	}
 	promptSkills := meta.SelectedSkills
 	if input.ScheduledTaskID != "" && !hasScheduledTasksSkill(promptSkills) {
 		promptSkills = append(
@@ -231,8 +265,15 @@ func (rnr *Service) runPromptAs(
 		)
 	}
 	resumeID := sessionIDForProvider(meta, providerID)
-	effectivePrompt := promptForMode(meta.Mode, prompt)
-	enableBrowser := hasBrowserSkill(meta.SelectedSkills)
+	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume {
+		resumeID = ""
+	}
+	forkSession := meta.ForkPending
+	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Fork {
+		forkSession = false
+	}
+	effectivePrompt := prompt
+	enableBrowser := descriptor.Features.BrowserTools && hasBrowserSkill(meta.SelectedSkills)
 	if enableBrowser && meta.ProjectID != "" {
 		stopBrowserKeepalive := rnr.keepAgentBrowserActivity(ctx, serviceproject.ID(meta.ProjectID))
 		defer stopBrowserKeepalive()
@@ -240,7 +281,14 @@ func (rnr *Service) runPromptAs(
 	if resumeID == "" {
 		effectivePrompt = promptWithVisibleHistory(priorEvents, effectivePrompt)
 	}
-	effectivePrompt = promptWithSelectedSkills(providerID, promptSkills, effectivePrompt)
+	effectivePrompt = promptWithSelectedSkills(
+		descriptor.Features.Skills,
+		descriptor.Label,
+		providerID,
+		promptSkills,
+		meta.ProjectID != "",
+		effectivePrompt,
+	)
 
 	provider := rnr.agents.Lookup(providerID)
 	if provider == nil {
@@ -249,7 +297,8 @@ func (rnr *Service) runPromptAs(
 		return err
 	}
 
-	enableScheduleTools := hasScheduledTasksSkill(meta.SelectedSkills) || input.ScheduledTaskID != ""
+	enableScheduleTools := descriptor.Features.ScheduledTools &&
+		(hasScheduledTasksSkill(meta.SelectedSkills) || input.ScheduledTaskID != "")
 	runtimeEnv := map[string]string(nil)
 	if enableScheduleTools {
 		if meta.ProjectID == "" {
@@ -289,10 +338,10 @@ func (rnr *Service) runPromptAs(
 			Prompt:         runPrompt,
 			Cwd:            cwd,
 			Model:          meta.Model,
-			Mode:           meta.Mode,
+			Mode:           agent.RunMode(meta.Mode),
 			ResumeID:       runResumeID,
 			ProjectID:      string(meta.ProjectID),
-			Fork:           meta.ForkPending,
+			Fork:           forkSession,
 			Preferences: agent.RunPreferences{
 				ReasoningEffort: agent.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     agent.ServiceTier(meta.ServiceTier),
@@ -301,7 +350,7 @@ func (rnr *Service) runPromptAs(
 			EnableScheduleTools: enableScheduleTools,
 			RuntimeEnv:          runtimeEnv,
 		}, func(ev agent.Event) {
-			rnr.emitAgentEvent(ctx, id, ev, emit)
+			rnr.emitAgentEvent(ctx, id, providerID, ev, emit)
 		})
 	}
 
@@ -312,9 +361,16 @@ func (rnr *Service) runPromptAs(
 			m.ForkPending = false
 		})
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "system", Subtype: "session_recovered"})
-		freshPrompt := promptForMode(meta.Mode, prompt)
+		freshPrompt := prompt
 		freshPrompt = promptWithVisibleHistory(priorEvents, freshPrompt)
-		freshPrompt = promptWithSelectedSkills(providerID, promptSkills, freshPrompt)
+		freshPrompt = promptWithSelectedSkills(
+			descriptor.Features.Skills,
+			descriptor.Label,
+			providerID,
+			promptSkills,
+			meta.ProjectID != "",
+			freshPrompt,
+		)
 		err = run(freshPrompt, "")
 	}
 	if err != nil && !errors.Is(err, agent.ErrRunFailed) {
@@ -324,16 +380,7 @@ func (rnr *Service) runPromptAs(
 }
 
 func clearSessionIDForProvider(meta *ChatMeta, provider agent.ProviderID) {
-	switch provider {
-	case agent.ProviderCodex:
-		meta.CodexSessionID = ""
-	case agent.ProviderKimi:
-		meta.KimiSessionID = ""
-	case agent.ProviderAntigravity:
-		meta.AntigravitySessionID = ""
-	default:
-		meta.ClaudeSessionID = ""
-	}
+	meta.SetSessionID(servicechat.Provider(provider), "")
 }
 
 func (rnr *Service) keepAgentBrowserActivity(ctx context.Context, projectID serviceproject.ID) func() {
@@ -359,46 +406,11 @@ func (rnr *Service) keepAgentBrowserActivity(ctx context.Context, projectID serv
 }
 
 func providerIDFromChatProvider(provider servicechat.Provider) agent.ProviderID {
-	switch servicechat.NormalizeProvider(provider) {
-	case servicechat.ProviderCodex:
-		return agent.ProviderCodex
-	case servicechat.ProviderKimi:
-		return agent.ProviderKimi
-	case servicechat.ProviderAntigravity:
-		return agent.ProviderAntigravity
-	default:
-		return agent.ProviderClaude
-	}
+	return servicechat.NormalizeProvider(provider)
 }
 
 func sessionIDForProvider(meta ChatMeta, provider agent.ProviderID) string {
-	switch provider {
-	case agent.ProviderCodex:
-		return meta.CodexSessionID
-	case agent.ProviderKimi:
-		return meta.KimiSessionID
-	case agent.ProviderAntigravity:
-		return meta.AntigravitySessionID
-	default:
-		return meta.ClaudeSessionID
-	}
-}
-
-func promptForMode(mode, prompt string) string {
-	switch mode {
-	case "plan":
-		return "Work in planning mode. Inspect enough context to be concrete, then propose the implementation plan before changing files. Avoid file edits until the user asks you to proceed.\n\n" + prompt
-	case "review":
-		return "Work in review mode. Prioritize bugs, behavioral regressions, missing tests, and risks. Put findings first with file and line references when available.\n\n" + prompt
-	case "debug":
-		return "Work in debugging mode. Reproduce or localize the issue first, explain the failing path, then make the smallest fix that addresses the root cause.\n\n" + prompt
-	case "full-auto":
-		return "Work in full-auto mode. Carry the task through implementation, verification, and a concise outcome unless you hit a hard blocker.\n\n" + prompt
-	case "chat":
-		return "Work in chat mode. Answer directly and avoid changing files unless the user clearly asks for implementation.\n\n" + prompt
-	default:
-		return prompt
-	}
+	return meta.SessionID(servicechat.Provider(provider))
 }
 
 func promptWithVisibleHistory(events []ChatEvent, prompt string) string {
@@ -419,8 +431,8 @@ func promptWithVisibleHistory(events []ChatEvent, prompt string) string {
 const browserSkillName = "browser"
 const scheduledTasksSkillName = "scheduled-tasks"
 
-// hasBrowserSkill reports whether the user selected the `browser` skill for
-// this prompt — the signal to wire the @playwright/mcp browser tools.
+// hasBrowserSkill reports whether the user selected the `browser` skill. The
+// module descriptor must also enable browser tools before they are wired in.
 func hasBrowserSkill(skills []servicechat.SkillRef) bool {
 	for _, s := range skills {
 		if skillTriggerName(s.Command) == browserSkillName || skillTriggerName(s.Name) == browserSkillName {
@@ -440,8 +452,15 @@ func hasScheduledTasksSkill(skills []servicechat.SkillRef) bool {
 	return false
 }
 
-func promptWithSelectedSkills(provider agent.ProviderID, skills []servicechat.SkillRef, prompt string) string {
-	if len(skills) == 0 {
+func promptWithSelectedSkills(
+	strategy agentmodule.SkillStrategy,
+	providerLabel string,
+	provider agent.ProviderID,
+	skills []servicechat.SkillRef,
+	projectScoped bool,
+	prompt string,
+) string {
+	if len(skills) == 0 || strategy == agentmodule.SkillsNone {
 		return prompt
 	}
 
@@ -458,30 +477,35 @@ func promptWithSelectedSkills(provider agent.ProviderID, skills []servicechat.Sk
 			continue
 		}
 
-		switch provider {
-		case agent.ProviderClaude:
+		switch strategy {
+		case agentmodule.SkillsSlashCommand:
 			triggers = append(triggers, "/"+name)
-		case agent.ProviderCodex:
+		case agentmodule.SkillsDollarMention:
 			triggers = append(triggers, "$"+name)
-		case agent.ProviderKimi, agent.ProviderAntigravity:
-			if name == scheduledTasksSkillName {
-				triggers = append(
-					triggers,
-					"/workspace/.agents/skills/scheduled-tasks/SKILL.md",
-				)
+		case agentmodule.SkillsInstructions:
+			if name == "." || name == ".." || path.Base(name) != name {
+				continue
 			}
+			root := "/root/.agents/skills"
+			if projectScoped {
+				root = "/workspace/.agents/skills"
+			}
+			triggers = append(triggers, path.Join(root, name, "SKILL.md"))
 		}
 	}
 	if len(triggers) == 0 {
 		return prompt
 	}
 
-	switch provider {
-	case agent.ProviderClaude:
+	switch strategy {
+	case agentmodule.SkillsSlashCommand:
 		return strings.Join(triggers, "\n") + "\n\n" + prompt
-	case agent.ProviderCodex:
-		return "Use these Codex skills for this request: " + strings.Join(triggers, " ") + "\n\n" + prompt
-	case agent.ProviderKimi, agent.ProviderAntigravity:
+	case agentmodule.SkillsDollarMention:
+		if strings.TrimSpace(providerLabel) == "" {
+			providerLabel = string(provider)
+		}
+		return "Use these " + providerLabel + " skills for this request: " + strings.Join(triggers, " ") + "\n\n" + prompt
+	case agentmodule.SkillsInstructions:
 		return "Read and follow the selected skill instructions at " +
 			strings.Join(triggers, ", ") + ".\n\n" + prompt
 	default:

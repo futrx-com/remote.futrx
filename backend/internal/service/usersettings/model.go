@@ -1,6 +1,11 @@
 package usersettings
 
-import "errors"
+import (
+	"errors"
+	"strings"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+)
 
 var (
 	ErrNotFound               = errors.New("user settings not found")
@@ -34,24 +39,20 @@ type Appearance struct {
 	Theme Theme `json:"theme"`
 }
 
-type ChatProvider string
+type ChatProvider = agent.ProviderID
 
 const (
-	ChatProviderClaude      ChatProvider = "claude"
-	ChatProviderCodex       ChatProvider = "codex"
-	ChatProviderKimi        ChatProvider = "kimi"
-	ChatProviderAntigravity ChatProvider = "antigravity"
+	ChatProviderClaude      = agent.ProviderClaude
+	ChatProviderCodex       = agent.ProviderCodex
+	ChatProviderKimi        = agent.ProviderKimi
+	ChatProviderAntigravity = agent.ProviderAntigravity
 )
 
 type ChatMode string
 
 const (
-	ChatModeChat     ChatMode = "chat"
-	ChatModePlan     ChatMode = "plan"
-	ChatModeCode     ChatMode = "code"
-	ChatModeReview   ChatMode = "review"
-	ChatModeDebug    ChatMode = "debug"
-	ChatModeFullAuto ChatMode = "full-auto"
+	ChatModeDefault ChatMode = "default"
+	ChatModePlan    ChatMode = "plan"
 )
 
 type ReasoningEffort string
@@ -108,7 +109,7 @@ func DefaultSettings() Settings {
 		Chat: Chat{
 			Provider:        ChatProviderCodex,
 			Model:           "",
-			Mode:            ChatModeCode,
+			Mode:            ChatModeDefault,
 			ReasoningEffort: ReasoningEffortAuto,
 			ServiceTier:     ServiceTierAuto,
 		},
@@ -125,17 +126,12 @@ func ValidTheme(theme Theme) bool {
 }
 
 func ValidChatProvider(provider ChatProvider) bool {
-	switch provider {
-	case ChatProviderClaude, ChatProviderCodex, ChatProviderKimi, ChatProviderAntigravity:
-		return true
-	default:
-		return false
-	}
+	return agent.ValidProviderID(provider)
 }
 
 func ValidChatMode(mode ChatMode) bool {
 	switch mode {
-	case ChatModeChat, ChatModePlan, ChatModeCode, ChatModeReview, ChatModeDebug, ChatModeFullAuto:
+	case ChatModeDefault, ChatModePlan:
 		return true
 	default:
 		return false
@@ -143,19 +139,21 @@ func ValidChatMode(mode ChatMode) bool {
 }
 
 func ValidReasoningEffort(effort ReasoningEffort) bool {
-	switch effort {
-	case ReasoningEffortAuto, ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax, ReasoningEffortUltra:
-		return true
-	default:
-		return false
-	}
+	return validCapabilityValue(string(effort))
 }
 
 func ValidServiceTier(tier ServiceTier) bool {
-	switch tier {
-	case ServiceTierAuto, ServiceTierDefault, ServiceTierPriority, ServiceTierFast:
-		return true
-	default:
+	return validCapabilityValue(string(tier))
+}
+
+func validCapabilityValue(value string) bool {
+	value = strings.TrimSpace(value)
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.' {
+			continue
+		}
 		return false
 	}
+	return true
 }

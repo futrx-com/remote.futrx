@@ -8,6 +8,7 @@ import { useUserSettingsContext } from "../../state/context/UserSettingsContext"
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
+import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
 
 export function SettingsContainer({
   onBack,
@@ -16,12 +17,13 @@ export function SettingsContainer({
   onBack: () => void;
   onHamburger: () => void;
 }) {
-  const { auth, codexAuth, kimiAuth } = useAuthContext();
+  const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
+  const push = usePushNotifications(activeTab === "notifications");
 
   return (
     <SettingsPage
@@ -44,12 +46,7 @@ export function SettingsContainer({
       appearanceLoading={userSettings.loading}
       appearanceSaving={userSettings.saving}
       appearanceError={userSettings.error}
-      codexAuthenticated={codexAuth.authenticated}
-      codexUsesApiKey={codexAuth.usesApiKey}
-      codexDeviceLogin={codexAuth.deviceLogin}
-      codexLoading={codexAuth.loading}
-      codexStarting={codexAuth.starting}
-      codexError={codexAuth.error}
+      push={push}
       onBack={onBack}
       onHamburger={onHamburger}
       onTabChange={setActiveTab}
@@ -57,13 +54,6 @@ export function SettingsContainer({
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
-      onStartCodexDeviceLogin={codexAuth.startDeviceLogin}
-      kimiAuthenticated={kimiAuth.authenticated}
-      kimiDeviceLogin={kimiAuth.deviceLogin}
-      kimiLoading={kimiAuth.loading}
-      kimiStarting={kimiAuth.starting}
-      kimiError={kimiAuth.error}
-      onStartKimiDeviceLogin={kimiAuth.startDeviceLogin}
     />
   );
 }

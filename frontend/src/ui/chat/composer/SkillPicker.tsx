@@ -6,11 +6,13 @@ import { ChevronDown, Code, Search } from "../../primitives/icons";
 
 export function SkillPicker({
   provider,
+  providerLabel,
   projectId,
   selectedCount,
   onSelect,
 }: {
   provider: ChatProvider;
+  providerLabel: string;
   projectId?: string;
   selectedCount: number;
   onSelect: (skill: RegisteredSkill) => void;
@@ -53,8 +55,6 @@ export function SkillPicker({
     setOpen(false);
     setQuery("");
   }
-
-  const providerLabel = provider === "codex" ? "Codex" : "Claude";
 
   return (
     <div ref={rootRef} class="codex-skill-control-root relative w-[130px] flex-none sm:w-[148px]">

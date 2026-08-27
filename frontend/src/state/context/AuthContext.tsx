@@ -1,16 +1,14 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useContext } from "preact/hooks";
+import { useContext, useEffect, useRef } from "preact/hooks";
+import { agentCapabilityCatalogStore } from "../agents/agentCapabilityCatalog";
+import { agentAuthRevision } from "../auth/agentAuthRegistryState";
+import { useAgentAuthRegistry, type AgentAuthRegistryState } from "../hooks/auth/useAgentAuthRegistry";
 import { useAuth, type AuthState } from "../hooks/auth/useAuth";
-import { useClaudeAuth, type ClaudeAuthState } from "../hooks/auth/useClaudeAuth";
-import { useCodexAuth, type CodexAuthState } from "../hooks/auth/useCodexAuth";
-import { useKimiAuth, type KimiAuthState } from "../hooks/auth/useKimiAuth";
 
 interface AuthContextValue {
   auth: AuthState;
-  claudeAuth: ClaudeAuthState;
-  codexAuth: CodexAuthState;
-  kimiAuth: KimiAuthState;
+  agentAuth: AgentAuthRegistryState;
   appAuthOk: boolean;
   providerAuthChecked: boolean;
   providerAuthenticated: boolean;
@@ -19,26 +17,47 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+interface ProviderAuthMarker {
+  userId: string;
+  revision: string;
+}
+
 export function AuthProvider({ children }: { children: ComponentChildren }) {
   const auth = useAuth();
   // A valid local-admin or invited-user session may proceed to provider setup.
   const appAuthOk = auth.authenticated && (auth.isRegistered || auth.isAdmin);
   const providerAuthEnabled = appAuthOk && auth.localAdminConfigured;
-  const claudeAuth = useClaudeAuth(providerAuthEnabled);
-  const codexAuth = useCodexAuth(providerAuthEnabled);
-  const kimiAuth = useKimiAuth(providerAuthEnabled);
-  const providerAuthChecked = claudeAuth.checked && codexAuth.checked && kimiAuth.checked;
-  const providerAuthenticated =
-    claudeAuth.authenticated || codexAuth.authenticated || kimiAuth.authenticated;
+  const agentAuth = useAgentAuthRegistry(providerAuthEnabled);
+  const providerAuthChecked = agentAuth.checked;
+  const providerAuthenticated = agentAuth.gateReady;
   const gateOpen = providerAuthEnabled && providerAuthChecked && providerAuthenticated;
+  const previousProviderAuth = useRef<ProviderAuthMarker | null>(null);
+  const revision = agentAuthRevision(agentAuth.providers);
+
+  useEffect(() => {
+    const userId = auth.email || auth.adminEmail;
+    if (!providerAuthChecked || !userId) return;
+
+    const current: ProviderAuthMarker = {
+      userId: userId.trim().toLowerCase(),
+      revision,
+    };
+    const previous = previousProviderAuth.current;
+    previousProviderAuth.current = current;
+    if (!previous || previous.userId !== current.userId || previous.revision === current.revision) {
+      return;
+    }
+
+    // Provider identity and entitlements affect live model discovery. Request
+    // a refresh for every capability scope mounted in this browser.
+    agentCapabilityCatalogStore.invalidateUser(current.userId);
+  }, [auth.email, auth.adminEmail, providerAuthChecked, revision]);
 
   return (
     <AuthContext.Provider
       value={{
         auth,
-        claudeAuth,
-        codexAuth,
-        kimiAuth,
+        agentAuth,
         appAuthOk,
         providerAuthChecked,
         providerAuthenticated,
