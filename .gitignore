@@ -20,8 +20,10 @@
 .vscode/
 .idea/
 
-# Logs
+# Logs & Coverage
 *.log
+coverage.out
+*.out
 
 
 # Claude Code runtime artifacts
