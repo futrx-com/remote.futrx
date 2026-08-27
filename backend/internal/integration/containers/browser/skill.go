@@ -3,9 +3,10 @@ package browser
 // Browser-skill provisioning: ships the `browser` SKILL.md into the workspace
 // so it shows up in the skill picker and is available to the agent. The skill
 // holds the browser playbook (how to use the browser_* tools, the login
-// handoff, the write-approval policy); selecting it is what wires the MCP
-// tools (see the providers). Provisioned at container launch like the browser
-// script, so every project has it without bloating AGENTS.md.
+// handoff, the write-approval policy). Provider factories declare whether
+// shared preparation should also wire MCP/core when the skill is selected.
+// Provisioned at container launch like the browser script, so every project
+// has it without bloating AGENTS.md.
 
 import (
 	"context"

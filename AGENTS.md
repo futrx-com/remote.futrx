@@ -54,5 +54,6 @@ not a substitute for testing the complete updater.
 1. Commit and push the candidate.
 2. Iterate with `deploy-app.sh`.
 3. Test `install.sh` on a rebuilt VM if installer behavior changed.
-4. Run `update.sh` against an existing installation before release.
-5. Release only the verified commit.
+4. For a patch release, finish with `deploy-app.sh` against an existing installation.
+5. For a major/minor release, run `update.sh` against an existing installation.
+6. Release only the verified commit. Tags use `MAJOR.MINOR.PATCH`; infrastructure changes require a major/minor bump.

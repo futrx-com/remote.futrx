@@ -30,6 +30,7 @@ export function Sidebar({
   onReorderProjects,
   onOpenProjectContainers,
   onOpenSettings,
+  onSignOut,
 }: {
   open: boolean;
   model: WorkspaceSidebarModel;
@@ -52,6 +53,7 @@ export function Sidebar({
   onReorderProjects: (projectIds: string[]) => void;
   onOpenProjectContainers: (projectId: string) => void;
   onOpenSettings?: () => void;
+  onSignOut: () => void;
 }) {
   const sidebarWidth = sidebarCollapsed ? "md:w-[64px]" : "md:w-[300px]";
   const expandedOnly = sidebarCollapsed ? "md:hidden" : "";
@@ -234,7 +236,11 @@ export function Sidebar({
 
         {account?.authenticated && (
           <div class={expandedOnly}>
-            <AccountFooter email={account.email} onOpenSettings={onOpenSettings} />
+            <AccountFooter
+              email={account.email}
+              onOpenSettings={onOpenSettings}
+              onSignOut={onSignOut}
+            />
           </div>
         )}
       </aside>

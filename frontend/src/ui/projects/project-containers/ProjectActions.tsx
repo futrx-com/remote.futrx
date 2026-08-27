@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import type { ProjectMeta } from "../../../models/project";
 import type { ApiError } from "../../../api/apiRequest";
 import { AlertCircle } from "../../primitives/icons";
+import { DeleteProjectModal } from "../DeleteProjectModal";
 
 // The aggregate resource guard answers 409 when the host has no room left.
 const CONFLICT = 409;
@@ -19,15 +20,15 @@ export function ProjectActions({
   onRestart: () => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
-  const [busy, setBusy] = useState<"start" | "stop" | "restart" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"start" | "stop" | "restart" | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [refusedForCapacity, setRefusedForCapacity] = useState(false);
   const canStart = project.status === "stopped" || project.status === "missing" || project.status === "error";
   const canStop = project.status === "running";
   const canRestart = project.status === "running" || project.status === "error";
 
-  async function run(action: "start" | "stop" | "restart" | "delete", operation: () => Promise<void>) {
-    if (action === "delete" && !confirm(`Delete project "${project.name}"? This destroys the container and removes project settings.`)) return;
+  async function run(action: "start" | "stop" | "restart", operation: () => Promise<void>) {
     if (action === "restart" && !confirm(`Force-restart "${project.name}"? All processes inside the container are killed immediately — use this to recover a workspace stuck at its resource limits.`)) return;
     setBusy(action);
     setErr(null);
@@ -44,6 +45,12 @@ export function ProjectActions({
 
   return (
     <div class="space-y-3">
+      <DeleteProjectModal
+        open={deleteOpen}
+        projectName={project.name}
+        onClose={() => setDeleteOpen(false)}
+        onDelete={onDelete}
+      />
       {err && (
         <div class="flex items-start gap-2.5 rounded-lg border border-accent-red/30 bg-accent-red/[0.08] px-3 py-2.5 text-[13px]">
           <AlertCircle class="w-4 h-4 mt-0.5 flex-none text-accent-red" />
@@ -91,11 +98,11 @@ export function ProjectActions({
       </button>
       <button
         type="button"
-        onClick={() => void run("delete", onDelete)}
+        onClick={() => setDeleteOpen(true)}
         disabled={busy !== null}
         class="h-10 w-full rounded-md border border-accent-red/30 bg-accent-red/[0.08] px-3 text-[13px] font-semibold text-accent-red hover:bg-accent-red/[0.14] disabled:opacity-45 disabled:cursor-not-allowed"
       >
-        {busy === "delete" ? "Deleting..." : "Delete project"}
+        Delete project
       </button>
     </div>
   );

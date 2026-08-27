@@ -1,11 +1,13 @@
 package stores
 
 import (
+	"context"
 	"fmt"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceresources "github.com/futrx-com/remote.futrx.com/internal/service/resources"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
@@ -15,6 +17,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileresources"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
@@ -23,6 +26,14 @@ import (
 
 type AuthStore interface {
 	serviceauth.Store
+}
+
+// PushStore exposes the subscription, account-cleanup, and VAPID capabilities
+// required at the application composition boundary.
+type PushStore interface {
+	servicepush.Repository
+	DeleteAll(ctx context.Context, email string) error
+	VAPIDKeys(generate func() (private string, public string, err error)) (string, string, error)
 }
 
 type Stores struct {
@@ -35,6 +46,7 @@ type Stores struct {
 	Auth           AuthStore
 	Users          serviceuser.Repository
 	UserSettings   serviceusersettings.Repository
+	Push           PushStore
 }
 
 func New(dataDir string) (Stores, error) {
@@ -78,6 +90,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init user settings store: %w", err)
 	}
 
+	push, err := filepush.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init push subscriptions store: %w", err)
+	}
+
 	return Stores{
 		Chats:          chats,
 		Projects:       projects,
@@ -88,5 +105,6 @@ func New(dataDir string) (Stores, error) {
 		Auth:           fileauth.New(dataDir),
 		Users:          users,
 		UserSettings:   userSettings,
+		Push:           push,
 	}, nil
 }

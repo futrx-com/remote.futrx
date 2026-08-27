@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "preact/hooks": ["./preact-shim/hooks.ts"],
+      "preact/jsx-runtime": ["./preact-shim/jsx-runtime.ts"],
+      "preact/jsx-dev-runtime": ["./preact-shim/jsx-runtime.ts"],
+      "preact/compat": ["./preact-shim/compat.ts"],
+      "preact": ["./preact-shim/preact.ts"]
+    }
+  }
+}

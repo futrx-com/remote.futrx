@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared local safeguards for the explicit QA install and update commands.
+# Shared connection, ref-validation, and public-health helpers for QA deploys.
 
 set -euo pipefail
 

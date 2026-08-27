@@ -88,6 +88,16 @@ export interface CodexContainerStatus {
   version?: string;
 }
 
+export interface AgentContainerStatus {
+  id: string;
+  label: string;
+  installed: boolean;
+  version?: string;
+  instructionsPath?: string;
+  instructionsInstalled?: boolean;
+  instructionsInSync?: boolean;
+}
+
 export interface AuthBundleFileStatus {
   hostPath: string;
   containerPath: string;
@@ -123,6 +133,7 @@ export interface ProjectContainerInfo {
   limitOverrides?: ContainerLimits;
   claude: ClaudeContainerStatus;
   codex: CodexContainerStatus;
+  agents?: AgentContainerStatus[];
   authBundles: AuthBundleStatus[];
 }
 

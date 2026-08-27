@@ -42,8 +42,16 @@ test("preserves workspace UI transitions and sidebar ordering", () => {
     activeChatId: "new-chat",
     containerProjectId: null,
     sidebarOpen: false,
+    createProjectOpen: false,
     view: "chat",
   });
+
+  const modalOpen = workspaceUiState.reduce(open, { type: "open-create-project" });
+  assert.equal(modalOpen.createProjectOpen, true);
+  assert.equal(
+    workspaceUiState.reduce(modalOpen, { type: "close-create-project" }).createProjectOpen,
+    false
+  );
 
   const model = workspaceSidebarState.model(chats, projects, "");
   assert.deepEqual(model.visibleProjects.map((node) => node.project.id), ["newer", "older"]);

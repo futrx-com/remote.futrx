@@ -49,6 +49,7 @@ export const Eye = (p: P) => (<svg {...base} {...p}><path d="M2 12s4-7 10-7 10 7
 export const EyeOff = (p: P) => (<svg {...base} {...p}><path d="M17.94 17.94A10.43 10.43 0 0 1 12 19c-6 0-10-7-10-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c6 0 10 7 10 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><path d="m1 1 22 22"/></svg>);
 export const ExternalLink = (p: P) => (<svg {...base} {...p}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>);
 export const Key = (p: P) => (<svg {...base} {...p}><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>);
+export const Lock = (p: P) => (<svg {...base} {...p}><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>);
 export const Monitor = (p: P) => (<svg {...base} {...p}><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>);
 export const Moon = (p: P) => (<svg {...base} {...p}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>);
 export const Sun = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>);
@@ -62,3 +63,6 @@ export const Cpu = (p: P) => (<svg {...base} {...p}><rect x="6" y="6" width="12"
 export const MemoryStick = (p: P) => (<svg {...base} {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h2v4H6zM11 10h2v4h-2zM16 10h2v4h-2zM6 18v2M10 18v2M14 18v2M18 18v2"/></svg>);
 export const HardDrive = (p: P) => (<svg {...base} {...p}><path d="M22 12H2l3-7h14l3 7Z"/><rect x="2" y="12" width="20" height="7" rx="1"/><path d="M6 15.5h.01M10 15.5h.01"/></svg>);
 export const Network = (p: P) => (<svg {...base} {...p}><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>);
+export const Bell = (p: P) => (<svg {...base} {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>);
+export const BellOff = (p: P) => (<svg {...base} {...p}><path d="M8.7 3A6 6 0 0 1 18 8c0 2.4.4 4.2.9 5.5M6 8a6 6 0 0 1 .3-1.8M3 17h15M13.73 21a2 2 0 0 1-3.46 0"/><path d="m1 1 22 22"/></svg>);
+export const Smartphone = (p: P) => (<svg {...base} {...p}><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>);

@@ -168,13 +168,18 @@ Before using Remote with valuable code or credentials, read the [threat model](d
 
 ## Updating
 
-Run on the Remote server:
+The in-app updater selects the deployment path from the release version:
+patch releases rebuild and restart only the frontend/backend application,
+while major or minor releases also converge host infrastructure, rebuild the
+workspace image, and recycle idle containers.
+
+To force a full infrastructure convergence from the server, run:
 
 ```bash
 sudo bash /opt/remote.futrx/infra/update.sh
 ```
 
-The updater rebuilds the app and project image while preserving project files and provider homes. Coordinate a maintenance window, or use `--skip-workspaces`, when agents are actively running. See [Deployment and operations](docs/04-operations/09-deployment-and-operations.md#update-flow) for details.
+The full updater preserves project files and provider homes. Coordinate a maintenance window, or use `--skip-workspaces`, when agents are actively running. See [Deployment and operations](docs/04-operations/09-deployment-and-operations.md#update-flow) for details.
 
 ## Learn more
 
