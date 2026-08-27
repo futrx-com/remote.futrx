@@ -33,6 +33,8 @@ export function UpdatesSettings({
   const runActive = run?.state === "running";
   const latestTag = lastCheck?.latestTag ?? "";
   const updateAvailable = !runActive && lastCheck?.updateAvailable === true && latestTag !== "";
+  const updateKind = lastCheck?.updateKind ?? "infrastructure";
+  const infrastructureUpdate = updateKind === "infrastructure";
 
   return (
     <div class="space-y-4">
@@ -81,12 +83,23 @@ export function UpdatesSettings({
       {updateAvailable && (
         <section class="rounded-lg border border-accent-blue/25 bg-accent-blue/[0.06] p-4">
           <div class="text-[13.5px] font-semibold text-ink-50">
-            Release {latestTag} is ready to install
+            {infrastructureUpdate ? "Infrastructure" : "Application"} release {latestTag} is ready
           </div>
           <p class="mt-1 text-[12.5px] leading-relaxed text-ink-300">
-            Updating pulls the release onto the server, rebuilds the application, restarts it,
-            and recycles idle project containers onto the fresh base image. Containers with a
-            running agent are skipped. Expect a few minutes where the app is unreachable.
+            {infrastructureUpdate ? (
+              <>
+                This release crosses a major or minor version boundary. It converges the host,
+                rebuilds the application and base image, and recycles idle project containers.
+                Containers with a running agent are skipped. Expect a few minutes where the app
+                is unreachable.
+              </>
+            ) : (
+              <>
+                This patch release rebuilds and restarts the frontend/backend application only.
+                Host configuration, the base image, and project containers remain unchanged.
+                Expect a brief reconnect while the service restarts.
+              </>
+            )}
           </p>
           <button
             type="button"
@@ -94,7 +107,13 @@ export function UpdatesSettings({
             disabled={applying}
             class="mt-3 h-10 px-3 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50"
           >
-            {applying ? "Starting update…" : `Update to ${latestTag}`}
+            {applying
+              ? infrastructureUpdate
+                ? "Starting infrastructure update…"
+                : "Starting application deploy…"
+              : infrastructureUpdate
+                ? `Update infrastructure to ${latestTag}`
+                : `Deploy ${latestTag}`}
           </button>
         </section>
       )}
@@ -105,18 +124,20 @@ export function UpdatesSettings({
             {run.state === "running" && (
               <div class="flex items-center gap-2 text-[13.5px] font-semibold text-ink-50">
                 <Loader class="w-4 h-4 animate-spin text-accent-blue" />
-                Updating to {run.target}…
+                {run.updateKind === "application"
+                  ? `Deploying application release ${run.target}…`
+                  : `Updating infrastructure to ${run.target}…`}
               </div>
             )}
             {run.state === "succeeded" && (
               <div class="text-[13.5px] font-semibold text-accent-green">
-                Updated to {run.target}
+                {run.updateKind === "application" ? "Deployed" : "Updated to"} {run.target}
               </div>
             )}
             {run.state === "failed" && (
               <div class="flex items-center gap-2 text-[13.5px] font-semibold text-accent-red">
                 <AlertCircle class="w-4 h-4 flex-none" />
-                Update to {run.target} failed
+                {run.updateKind === "application" ? "Deployment of" : "Update to"} {run.target} failed
                 {typeof run.exitCode === "number" ? ` (exit ${run.exitCode})` : ""}
               </div>
             )}
@@ -127,8 +148,9 @@ export function UpdatesSettings({
             </div>
             {run.state === "running" && restarting && (
               <div class="mt-2 text-[12px] text-accent-yellow">
-                The server is restarting as part of the update — reconnecting… This can take a
-                few minutes while containers are recycled.
+                {run.updateKind === "application"
+                  ? "The application is restarting — reconnecting…"
+                  : "The server is restarting as part of the update — reconnecting… This can take a few minutes while containers are recycled."}
               </div>
             )}
             {run.state === "succeeded" && (

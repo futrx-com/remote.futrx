@@ -35,7 +35,7 @@ machine and guardrails.
 | --- | --- | --- | --- | --- | --- |
 | 1 | Loose (project-less) chat → root code execution on the host, reachable by any invited user | Agent / Web | Elevation of privilege | **Critical** | ✓ |
 | 2 | Host tmux WebSocket / `/api/sessions` → host shell as root, no admin gate | Web | Elevation of privilege | **Critical** | ✓ (direct) |
-| 3 | Push to `main` deploys to production as root with no commit/tag signature check | Supply chain | Elevation of privilege | **Critical** | cited |
+| 3 | Operator-selected update ref executes as root without commit/tag signature verification | Supply chain | Elevation of privilege | **High** | cited |
 | 4 | Any invited user reaches any project's code-server IDE (cross-tenant root shell) | Web | Elevation of privilege | **High** | ✓ |
 | 5 | Cross-container lateral movement over the unsegmented LXD bridge | Container | Elevation of privilege | **High** | ✓ |
 | 6 | Prompt-injected agent exfiltrates secrets over unrestricted egress | Agent | Information disclosure | **High** | cited |
@@ -123,7 +123,7 @@ The agent runs as root with approvals disabled and ingests untrusted content —
 
 ### 1. Loose chat → root code execution on the host — **Critical** ✓ code-verified
 
-**Elevation of privilege.** A chat with an empty `ProjectID` runs the agent CLI **directly on the host**, not in a container ([`agent/claude/command.go`](../backend/internal/agent/claude/command.go), [`agent/codex/command.go`](../backend/internal/agent/codex/command.go): the `req.ProjectID == ""` branch execs `claude`/`codex` on the host). The backend is root, and the CLI carries `--dangerously-skip-permissions` + `IS_SANDBOX=1` (which explicitly permits uid 0). Any invited user can create a loose chat — the chat WebSocket only checks membership when `ProjectID != ""` ([`chat_socket.go`](../backend/internal/transport/ws/chat_socket.go), [`service/chat/access.go`](../backend/internal/service/chat/access.go)) — and either drive it directly or feed it injected content. Either way the result is arbitrary root code execution on the host, exposing `session.key`, `oauth.json`, the admin hash, every project's secrets, and all provider tokens.
+**Elevation of privilege.** A chat with an empty `ProjectID` runs the agent CLI **directly on the host**, not in a container ([`integration/agents/claude/command.go`](../backend/internal/integration/agents/claude/command.go), [`integration/agents/codex/command.go`](../backend/internal/integration/agents/codex/command.go): the `req.ProjectID == ""` branch execs `claude`/`codex` on the host). The backend is root, and the CLI carries `--dangerously-skip-permissions` + `IS_SANDBOX=1` (which explicitly permits uid 0). Any invited user can create a loose chat — the chat WebSocket only checks membership when `ProjectID != ""` ([`chat_socket.go`](../backend/internal/transport/ws/chat_socket.go), [`service/chat/access.go`](../backend/internal/service/chat/access.go)) — and either drive it directly or feed it injected content. Either way the result is arbitrary root code execution on the host, exposing `session.key`, `oauth.json`, the admin hash, every project's secrets, and all provider tokens.
 
 - **Existing mitigations:** the global middleware requires a registered session; Codex strips `OPENAI_API_KEY` and pins `CODEX_HOME`.
 - **Residual gap:** there is no container boundary on loose chats, no tool allowlist, and no membership gate on creating/running them. Consider running loose chats in a throwaway container, or restricting them to admins.
@@ -142,9 +142,14 @@ The agent runs as root with approvals disabled and ingests untrusted content —
 - **Existing mitigations:** the MCP is wired only when the skill is selected; CDP and RFB are loopback-only inside the container; the skill prose asks for confirmation before writes.
 - **Residual gap:** no technical enforcement of write-approval, no URL allowlist, unrestricted reads of authenticated content. Classic confused deputy over a live session.
 
-### Related: agent modes and skill instructions are advisory only
+### Related: default runs and skill instructions are approval-free
 
-Chat/Plan/Debug modes are prepended prompt sentences with no backend enforcement ([`prompt/service.go`](../backend/internal/service/prompt/service.go)); an agent in "chat" mode can still modify files. There is no human-confirmation gate for irreversible or external actions. See [Known limitations](known-limitations.md).
+Remote now forwards only provider-native Default and Plan modes; it does not
+prepend custom workflow prompts. Default runs still bypass provider approvals
+inside the project container, and Codex Plan is implemented by provider-owned
+collaboration instructions rather than an OS-level read-only sandbox. There is
+no Remote human-confirmation gate for irreversible or external actions. See
+[Known limitations](known-limitations.md).
 
 ---
 
@@ -179,14 +184,14 @@ Provider tokens, project secrets, the session key, the OAuth client secret, and 
 
 ### 7. Provider tokens copied into every container, readable by an injected agent — **High**
 
-**Information disclosure.** Host-canonical provider OAuth tokens (`/root/.claude*`, `/root/.codex/auth.json`, `/root/.kimi-code/*`) are pushed into every project container before a run and persist in the per-project agent-home bind mount ([`agent/claude/profile.go`](../backend/internal/agent/claude/profile.go), [`credentials/files.go`](../backend/internal/integration/containers/credentials/files.go)). The agent runs as root, so mode 600 does not protect them from it. An injection that makes the agent read and exfiltrate `.credentials.json` hands the attacker the operator's Anthropic/OpenAI/Kimi **subscription** tokens, reusable off-box until rotation. The same tokens sit in every container (finding 4/5 make them reachable cross-tenant too).
+**Information disclosure.** Host-canonical provider OAuth tokens (`/root/.claude*`, `/root/.codex/auth.json`, `/root/.kimi-code/*`) are pushed into every project container before a run and persist in the per-project agent-home bind mount ([`integration/agents/claude/profile.go`](../backend/internal/integration/agents/claude/profile.go), [`credentials/files.go`](../backend/internal/integration/containers/credentials/files.go)). The agent runs as root, so mode 600 does not protect them from it. An injection that makes the agent read and exfiltrate `.credentials.json` hands the attacker the operator's Anthropic/OpenAI/Kimi **subscription** tokens, reusable off-box until rotation. The same tokens sit in every container (finding 4/5 make them reachable cross-tenant too).
 
 - **Existing mitigations:** unprivileged containers; Codex refuses api-key mode (subscription-only); the backend never handles provider passwords.
 - **Residual gap:** one shared platform identity copied into every untrusted workspace; no per-project scoping, no short-lived tokens.
 
 ### 8. Untrusted container poisons host-canonical tokens via sync-back — **High** ✓ code-verified
 
-**Tampering.** After a successful run (`err == nil`), the host **pulls** credential files the container wrote back onto the canonical host paths, chmods 0600, and stamps `mtime` to now ([`provider.go`](../backend/internal/agent/claude/provider.go), [`credentials/files.go`](../backend/internal/integration/containers/credentials/files.go)). The pull is **unconditional** (no mtime comparison), so a compromised agent that overwrites its own `/root/.claude/.credentials.json` and exits 0 gets its tokens adopted as canonical. Because the host copy is then stamped newer, the next `pushIfNewer` re-pushes the poisoned tokens into **every other container**. No signature, provenance, or content validation is applied to pulled credentials.
+**Tampering.** After a successful run (`err == nil`), the host **pulls** credential files the container wrote back onto the canonical host paths, chmods 0600, and stamps `mtime` to now ([`provider.go`](../backend/internal/integration/agents/claude/provider.go), [`credentials/files.go`](../backend/internal/integration/containers/credentials/files.go)). The pull is **unconditional** (no mtime comparison), so a compromised agent that overwrites its own `/root/.claude/.credentials.json` and exits 0 gets its tokens adopted as canonical. Because the host copy is then stamped newer, the next `pushIfNewer` re-pushes the poisoned tokens into **every other container**. No signature, provenance, or content validation is applied to pulled credentials.
 
 - **Existing mitigations:** sync-back only fires on a clean exit; directory sync uses basenames only (no path traversal); Codex re-checks auth mode after sync.
 - **Residual gap:** "successful run" is fully attacker-controlled, and the host trusts whatever the container writes. Fleet-wide credential poisoning / auth DoS from a single container.
@@ -208,27 +213,46 @@ Provider tokens, project secrets, the session key, the OAuth client secret, and 
 
 ## Boundary 5 — Host → upstreams (supply chain and operations)
 
-The installer, updater, base-image build, and CI all pull code as root from GitHub and package registries.
+The installer, updater, and base-image build pull code or packages as root from
+GitHub and external registries. Release CI runs separately on GitHub-hosted
+runners and does not deploy production.
 
-### 3. Push to `main` = root on production, unsigned — **Critical**
+### 3. An unsigned selected update ref executes as root — **High**
 
-**Elevation of privilege.** [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) fires on every push to `main`, SSHes to the box as root, runs `git reset --hard origin/main`, rebuilds, and restarts — in ~25s, with no human in the loop. `install.sh`, `update.sh`, and the deploy step all do `git reset --hard origin/main` with **no `git verify-commit` / `verify-tag` / `merge.verifySignatures` anywhere**. A single malicious commit on `main` (compromised maintainer token, coerced merge, or GitHub-side compromise) converges to root on production, owning every container, all provider tokens, and every secret.
+**Elevation of privilege.** Production is not deployed automatically from a
+push. An operator explicitly invokes the in-app updater or `infra/update.sh`,
+but that root-run updater fetches and hard-resets to a requested tag/ref (or
+`origin/main`) and re-executes the selected script without
+**`git verify-commit` / `verify-tag` / `merge.verifySignatures`**. A malicious
+selected commit or tag can therefore own every container, provider token, and
+project secret once an operator applies it.
 
-- **Existing mitigations:** CI runs installer + frontend tests before deploying; the SSH host key is pinned via `KNOWN_HOSTS`; a concurrency group serializes deploys; Go builds are checksum-verified via `go.sum`.
-- **Residual gap:** no signature verification, no GitHub Environment approval gate visible in-repo. Branch protection (if any) lives outside the repo and is the sole barrier. Also: the deploy SSH key is a long-lived root key stored as a repo secret, and third-party actions are pinned to mutable tags (`@v4`) rather than commit SHAs — either is a path to the same root.
+- **Existing mitigations:** the update requires an explicit operator action;
+  semantic-version tags pass the repository release classifier before the
+  release workflow publishes them; Go dependencies are checksum-verified via
+  `go.sum`.
+- **Residual gap:** neither the installer nor updater requires signed commits
+  or tags. Branch protection and release approval policy, if configured, live
+  outside the repository. GitHub Actions used for release/vendor publication
+  are pinned to mutable major tags such as `@v4`, although those workflows do
+  not directly deploy production.
 
 ### 12. Unpinned/unverified upstream fetches baked in as root — **High**
 
 **Tampering.** Several root-context fetches have no cryptographic integrity check: NodeSource `curl | bash` (major-version pinned only), the Go tarball (validated only by `tar -tzf` + the reported version string), the code-server `.deb` from GitHub releases (no checksum), `snap install lxd` (unpinned), and the `ubuntu:24.04` base image (floating). All of this is rebuilt on every update and re-run inside live containers via the CLI repair path. A compromise or MITM of any of these upstreams runs as root and propagates into every workspace on the next rebake.
 
-- **Existing mitigations:** Caddy and GitHub CLI apt repos are GPG-signed; the Go install stages with backup/rollback; LXD's `ubuntu:` remote verifies image signatures; agent CLI and host versions are centrally pinned in two files.
+- **Existing mitigations:** Caddy and GitHub CLI apt repos are GPG-signed; the Go install stages with backup/rollback; LXD's `ubuntu:` remote verifies image signatures; agent CLI and host versions are centrally pinned in one canonical manifest (`infra/versions.env` is a symlink).
 - **Residual gap:** no SHA256/signature pinning on the fetches above; the base image is non-reproducible. Also note the npm agent CLIs are pinned by version but installed with lifecycle scripts enabled and no integrity hashes — a backdoored publish *at* the pinned version, or a poisoned pin commit, runs as root host-wide.
 
 ### Also in this boundary
 
 - A `--github-token` PAT is embedded in `/opt/remote.futrx/.git/config` (0600, but root — and every agent runs as root); the Google client secret can transit `argv`/shell history when passed as an install flag.
 - Production frontend builds use `npm install`, not `npm ci`, so the committed lockfile is not strictly enforced at deploy.
-- The deploy restarts the service **before** the health check, so a build that starts but fails the probe leaves the box on the broken binary with no automatic rollback.
+- The full infrastructure updater mutates the checkout, host, base image, and
+  eligible workspaces incrementally and has no transaction-wide rollback if a
+  later convergence step fails. The patch-only application deployer does stage
+  its binary and restore the previous checkout/binary on restart or health-check
+  failure.
 
 ---
 
@@ -240,7 +264,9 @@ Roughly in order of risk reduction per unit effort:
 2. **Enforce project membership on the IDE host class** (finding 4) — parse the slug from `<slug>.code.<host>` and `code.<host>/<slug>/` and apply `HasAccess`.
 3. **Segment the container bridge** (finding 5) — LXD network ACLs or per-container nftables default-deny on peer ingress to 8842/6080/9222/5900.
 4. **Add a default disk quota** (finding 13) — move workspaces to a quota-capable pool or apply a project quota on the bind-mount source.
-5. **Sign the deploy chain** (finding 3) — require signed commits/tags and a manual approval gate; SHA-pin GitHub Actions; move off a long-lived root SSH key.
+5. **Sign the update chain** (finding 3) — require verified signed commits/tags
+   before the root updater re-executes selected code; preserve an explicit
+   operator approval; SHA-pin GitHub Actions used for release publication.
 6. **Validate credential sync-back** (finding 8) and scope provider tokens per project if feasible (findings 7, 8).
 7. **Harden auth details:** check `verified_email` + bind to `sub` (11); fix the rate-limiter IP source / set `trusted_proxies` (14); filter `/ws/workspace` events (15); add per-session revocation (16).
 8. **Constrain the confused-deputy surface:** egress allowlist and/or secret-access policy for agents (6), enforced write-approval and URL allowlist for the Agent Browser (9).

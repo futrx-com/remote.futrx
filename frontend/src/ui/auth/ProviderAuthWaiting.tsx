@@ -15,8 +15,9 @@ export function ProviderAuthWaiting({ adminEmail }: { adminEmail?: string }) {
               {adminEmail ? (
                 <> (<span class="font-mono text-ink-100">{adminEmail}</span>)</>
               ) : null}{" "}
-              must connect Claude, Codex, or Kimi before the workspace opens.
-              This page will continue automatically once one is ready.
+              must finish setting up one of the configured coding agents before
+              the workspace opens. This page will continue automatically once
+              an access-gate agent is ready.
             </div>
           </div>
         </div>

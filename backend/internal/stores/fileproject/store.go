@@ -94,6 +94,14 @@ func (s *Store) Create(ctx context.Context, m serviceproject.Meta) (serviceproje
 	s.indexMu.Lock()
 	defer s.indexMu.Unlock()
 
+	taken, err := s.nameTakenLocked(m.Name, "")
+	if err != nil {
+		return serviceproject.Meta{}, err
+	}
+	if taken {
+		return serviceproject.Meta{}, serviceproject.ErrNameAlreadyExists
+	}
+
 	slug, err := s.resolveSlugLocked(base)
 	if err != nil {
 		return serviceproject.Meta{}, err
@@ -177,12 +185,24 @@ func (s *Store) Update(
 	lk := s.lock(id)
 	lk.Lock()
 	defer lk.Unlock()
+	s.indexMu.Lock()
+	defer s.indexMu.Unlock()
 
 	m, err := s.readMeta(id)
 	if err != nil {
 		return serviceproject.Meta{}, err
 	}
+	previousName := m.Name
 	fn(&m)
+	if !sameProjectName(previousName, m.Name) {
+		taken, err := s.nameTakenLocked(m.Name, id)
+		if err != nil {
+			return serviceproject.Meta{}, err
+		}
+		if taken {
+			return serviceproject.Meta{}, serviceproject.ErrNameAlreadyExists
+		}
+	}
 	m.UpdatedAt = time.Now().UnixMilli()
 	if err := s.writeMeta(m); err != nil {
 		return serviceproject.Meta{}, err
@@ -295,4 +315,29 @@ func (s *Store) resolveSlugLocked(base string) (string, error) {
 		}
 	}
 	return "", errors.New("could not find an available slug")
+}
+
+func (s *Store) nameTakenLocked(name string, except serviceproject.ID) (bool, error) {
+	for _, id := range s.bySlug {
+		if id == except {
+			continue
+		}
+		m, err := s.readMeta(id)
+		if err != nil {
+			// Delete removes project metadata before releasing its slug from the
+			// index. Treat that short-lived stale entry as already deleted.
+			if errors.Is(err, serviceproject.ErrNotFound) {
+				continue
+			}
+			return false, err
+		}
+		if sameProjectName(m.Name, name) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func sameProjectName(left, right string) bool {
+	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
 }

@@ -45,7 +45,7 @@ export function BrowserDrawerHeader({
   onClose: () => void;
 }) {
   return (
-    <header class="workspace-pane-header codex-header flex flex-none flex-wrap items-center gap-2 border-b border-white/10 bg-[#191a1f] px-3 py-2.5 md:flex-nowrap md:px-4">
+    <header class="workspace-pane-header codex-header flex flex-none flex-wrap items-center gap-2 border-b border-white/10 bg-[#191a1f] px-3 pb-2.5 md:flex-nowrap md:px-4">
       <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
         <Monitor class="w-4 h-4 text-accent-blue" />
       </div>

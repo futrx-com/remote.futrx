@@ -20,27 +20,29 @@ type Middleware interface {
 }
 
 type Handlers struct {
-	Sessions         RouteRegistrar
-	Chats            RouteRegistrar
-	Projects         RouteRegistrar
-	Users            RouteRegistrar
-	AgentAuth        RouteRegistrar
-	UserSettings     RouteRegistrar
-	Notifications    RouteRegistrar
-	ServerInfo       RouteRegistrar
-	SelfUpdate       RouteRegistrar
-	Skills           RouteRegistrar
-	BrowserInspector RouteRegistrar
-	Schedules        RouteRegistrar
-	Uploads          RouteRegistrar
-	TmuxWS           WebSocketRegistrar
-	TerminalWS       WebSocketRegistrar
-	ChatWS           WebSocketRegistrar
-	WorkspaceWS      WebSocketRegistrar
-	AgentAuthWS      WebSocketRegistrar
-	Auth             RouteRegistrar
-	Middleware       Middleware
-	Static           http.Handler
+	Sessions          RouteRegistrar
+	Chats             RouteRegistrar
+	Projects          RouteRegistrar
+	Users             RouteRegistrar
+	AgentAuth         RouteRegistrar
+	AgentCapabilities RouteRegistrar
+	UserSettings      RouteRegistrar
+	Notifications     RouteRegistrar
+	Push              RouteRegistrar
+	ServerInfo        RouteRegistrar
+	SelfUpdate        RouteRegistrar
+	Skills            RouteRegistrar
+	BrowserInspector  RouteRegistrar
+	Schedules         RouteRegistrar
+	Uploads           RouteRegistrar
+	TmuxWS            WebSocketRegistrar
+	TerminalWS        WebSocketRegistrar
+	ChatWS            WebSocketRegistrar
+	WorkspaceWS       WebSocketRegistrar
+	AgentAuthWS       WebSocketRegistrar
+	Auth              RouteRegistrar
+	Middleware        Middleware
+	Static            http.Handler
 }
 
 func NewHandler(handlers Handlers) http.Handler {
@@ -57,8 +59,10 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Projects)
 	register(handlers.Users)
 	register(handlers.AgentAuth)
+	register(handlers.AgentCapabilities)
 	register(handlers.UserSettings)
 	register(handlers.Notifications)
+	register(handlers.Push)
 	register(handlers.ServerInfo)
 	register(handlers.SelfUpdate)
 	register(handlers.Skills)

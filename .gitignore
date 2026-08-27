@@ -26,3 +26,12 @@
 
 # Claude Code runtime artifacts
 /.claude/scheduled_tasks.lock
+
+# Design-sync machine state (durable inputs in .design-sync/ ARE committed)
+/.ds-sync/
+/ds-bundle/
+/.design-sync/.cache/
+/.design-sync/learnings/
+/.design-sync/node_modules/
+/frontend/.ds-css/
+/frontend/.ds-dts/

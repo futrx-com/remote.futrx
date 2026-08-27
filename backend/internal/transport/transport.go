@@ -38,7 +38,7 @@ type Dependencies struct {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
-	agentAuthBindings := deps.Services.AgentAuth.Bindings()
+	agentAuthBindings := deps.Services.Agents.Bindings()
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
 	if deps.Services.Auth != nil {
@@ -52,10 +52,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 				"/ws/"+provider+"/auth-status",
 			)
 		}
+		providerAuthPrefixes = append(providerAuthPrefixes, "/api/agent-auth", "/ws/agent-auth/")
 		middleware = httpmiddleware.NewAuth(deps.Services.Auth).
 			RequireLocalAdminSetup(deps.Services.Auth.LocalAdminConfigured).
 			RequireProviderLogin(
-				deps.Services.AgentAuth.AnyAuthenticated,
+				deps.Services.Agents.AccessReady,
 				providerAuthPrefixes...,
 			)
 	}
@@ -105,7 +106,9 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
+			deps.Services.Agents,
 		),
+		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
 			deps.Services.Auth,
@@ -113,6 +116,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Notifications: httphandlers.NewNotificationsHandler(
 			deps.Services.Notifications,
 			deps.Services.Auth,
+		),
+		Push: httphandlers.NewPushHandler(
+			deps.Services.Push,
+			deps.Services.Auth,
+			deps.Services.Presence,
 		),
 		ServerInfo:       httphandlers.NewServerInfoHandler(deps.ServerInfo),
 		SelfUpdate:       httphandlers.NewSelfUpdateHandler(deps.SelfUpdate, deps.Services.Auth),

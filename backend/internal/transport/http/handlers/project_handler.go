@@ -644,6 +644,8 @@ func sendProjectError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, serviceproject.ErrSecretsUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
+	case errors.Is(err, serviceproject.ErrNameAlreadyExists):
+		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, serviceproject.ErrNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, "project not found")
 	default:

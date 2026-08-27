@@ -6,8 +6,9 @@ package browser
 // `browser` skill — the agent calls browser_navigate / browser_snapshot /
 // browser_click / browser_type etc. instead of hand-writing Playwright recipes.
 //
-// Only wired when the browser skill is selected (see the providers), so the
-// tool surface and the per-prompt MCP process don't burden ordinary prompts.
+// Shared agent preparation invokes this only when the selected module's factory
+// opted into MCP/core support and the run selected the browser skill, so the
+// tool surface and per-prompt MCP process do not burden ordinary prompts.
 
 import (
 	"context"

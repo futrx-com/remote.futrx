@@ -1,11 +1,12 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useContext, useEffect, useReducer, useRef } from "preact/hooks";
+import { useCallback, useContext, useEffect, useReducer, useRef } from "preact/hooks";
 import type { ChatMeta, CreateChatInput } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
 import { chatApi } from "../../api/chatApi";
 import { projectApi } from "../../api/projectApi";
 import { useWorkspaceData } from "../hooks/workspace/useWorkspaceData";
+import { useWorkspacePushLifecycle } from "../hooks/push/useWorkspacePushLifecycle";
 import { useUserSettingsContext } from "./UserSettingsContext";
 import {
   workspaceUiState,
@@ -13,6 +14,9 @@ import {
 } from "../workspace/workspaceUiState";
 import { workspaceSidebarState } from "../workspace/workspaceSidebarState";
 import { chatDeepLinkState } from "../workspace/chatDeepLink";
+import { agentCapabilityCatalogStore } from "../agents/agentCapabilityCatalog";
+import { takePushNotificationChatId } from "../push/pushNotificationNavigation";
+import { useAuthContext } from "./AuthContext";
 
 interface WorkspaceContextValue {
   chats: ChatMeta[];
@@ -25,6 +29,8 @@ interface WorkspaceContextValue {
   showChat: () => void;
   showSettings: () => void;
   showProjectContainers: (projectId: string | null) => void;
+  openCreateProject: () => void;
+  closeCreateProject: () => void;
   createProject: (name: string) => Promise<ProjectMeta>;
   createChat: (projectId?: string) => Promise<ChatMeta>;
   deleteChat: (chatId: string) => Promise<void>;
@@ -45,9 +51,32 @@ export function WorkspaceProvider({
   children: ComponentChildren;
 }) {
   const data = useWorkspaceData(enabled);
+  const { auth } = useAuthContext();
   const { settings } = useUserSettingsContext();
-  const [ui, dispatch] = useReducer(workspaceUiState.reduce, workspaceUiState.createInitial());
+  const [ui, dispatch] = useReducer(
+    workspaceUiState.reduce,
+    null,
+    () => workspaceUiState.createInitial(takePushNotificationChatId())
+  );
   const activeChat = workspaceSidebarState.activeChat(data.chats, ui.activeChatId);
+  const capabilityUserId = auth.email || auth.adminEmail || "anonymous";
+  const activeCapabilityProjectId = activeChat?.projectId;
+
+  useEffect(() => {
+    if (!enabled || !activeChat) return;
+    void agentCapabilityCatalogStore
+      .load(capabilityUserId, activeCapabilityProjectId)
+      .catch(() => undefined);
+  }, [enabled, capabilityUserId, activeCapabilityProjectId, activeChat?.id]);
+
+  const openPushChat = useCallback((chatId: string) => {
+    dispatch({ type: "select-chat", chatId });
+  }, []);
+  useWorkspacePushLifecycle({
+    activeChatId: ui.activeChatId,
+    view: ui.view,
+    openChat: openPushChat,
+  });
 
   // A notification links to `/?chat=<id>`. Consume that parameter once the chat
   // list has loaded, then fall back to the usual "most recent chat" behaviour.
@@ -73,10 +102,13 @@ export function WorkspaceProvider({
   }, [data.chats, enabled, ui.activeChatId]);
 
   useEffect(() => {
+    // Wait for the first snapshot: a chat id handed over by a notification tap
+    // would otherwise be discarded against a not-yet-populated list.
+    if (!data.loaded) return;
     if (workspaceSidebarState.isActiveChatMissing(data.chats, ui.activeChatId)) {
       dispatch({ type: "select-chat", chatId: null });
     }
-  }, [data.chats, ui.activeChatId]);
+  }, [data.chats, data.loaded, ui.activeChatId]);
 
   async function createProject(name: string): Promise<ProjectMeta> {
     const project = await projectApi.create(name);
@@ -109,6 +141,7 @@ export function WorkspaceProvider({
 
   async function deleteProject(projectId: string) {
     await projectApi.delete(projectId);
+    agentCapabilityCatalogStore.removeProject(capabilityUserId, projectId);
   }
 
   async function reorderProjects(projectIds: string[]) {
@@ -117,6 +150,10 @@ export function WorkspaceProvider({
 
   async function startProject(projectId: string) {
     await projectApi.start(projectId);
+    // The sidebar Start command requests a probe inside the running container
+    // instead of intentionally reusing a pre-start catalog. Other lifecycle
+    // surfaces must invalidate separately or leave refresh to the user.
+    agentCapabilityCatalogStore.invalidateProject(capabilityUserId, projectId);
   }
 
   async function stopProject(projectId: string) {
@@ -137,6 +174,8 @@ export function WorkspaceProvider({
         showSettings: () => dispatch({ type: "show-settings" }),
         showProjectContainers: (projectId) =>
           dispatch({ type: "show-project-containers", projectId }),
+        openCreateProject: () => dispatch({ type: "open-create-project" }),
+        closeCreateProject: () => dispatch({ type: "close-create-project" }),
         createProject,
         createChat,
         deleteChat,

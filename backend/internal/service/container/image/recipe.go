@@ -54,13 +54,13 @@ func InstallScript(profiles []provisioning.Profile) (string, error) {
 			if profile.CLI.InstallScript == "" {
 				return "", fmt.Errorf("agent profile %q uses script install but has no install script", profile.ID)
 			}
-			scripts = append(scripts, "# "+profile.CLI.Name+" CLI.\n(\n"+profile.CLI.InstallScript+"\n)")
+			scripts = append(scripts, "# Script-installed agent CLI.\n(\n"+profile.CLI.InstallScript+"\n)")
 		case profile.CLI.PackageName == "":
 			return "", fmt.Errorf("agent profile %q has an incomplete CLI definition", profile.ID)
 		default:
-			packages = append(packages, profile.CLI.NPMPackage())
+			packages = append(packages, shellWord(profile.CLI.NPMPackage()))
 		}
-		binaries = append(binaries, profile.CLI.Binary)
+		binaries = append(binaries, shellWord(profile.CLI.Binary))
 	}
 	if len(packages) == 0 && len(scripts) == 0 {
 		return "", errors.New("no agent profiles configured")
@@ -81,12 +81,30 @@ func InstallScript(profiles []provisioning.Profile) (string, error) {
 	script.WriteString("\n\n# Sanity check the full toolchain.\nwhich ")
 	script.WriteString(strings.Join(binaries, " "))
 	script.WriteString(" git gh jq node npm python3 ssh\n")
-	for _, binary := range binaries {
-		script.WriteString(binary)
-		script.WriteString(" --version\n")
+	for _, profile := range profiles {
+		if len(profile.CLI.VersionArgs) == 0 {
+			continue
+		}
+		script.WriteString(shellWord(profile.CLI.Binary))
+		for _, argument := range profile.CLI.VersionArgs {
+			script.WriteByte(' ')
+			script.WriteString(shellWord(argument))
+		}
+		script.WriteByte('\n')
 	}
 	script.WriteString("node --version\ngh --version | head -1")
 	return script.String(), nil
+}
+
+func shellWord(value string) string {
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || strings.ContainsRune("_@%+=:,./-", character) {
+			continue
+		}
+		return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+	}
+	return value
 }
 
 func description(profiles []provisioning.Profile) string {

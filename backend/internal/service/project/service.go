@@ -7,34 +7,32 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 type Service struct {
-	repo                 Repository
-	containerLifecycle   ContainerLifecycle
-	containerEnvironment ContainerEnvironment
-	containerInspector   ContainerInspector
-	containerNetwork     ContainerNetwork
-	containerListeners   ContainerListeners
-	containerBrowser     ContainerBrowser
-	secrets              SecretsRepository
-	access               AccessRepository
+	repo               Repository
+	containerLifecycle ContainerLifecycle
+	containerInspector ContainerInspector
+	containerNetwork   ContainerNetwork
+	containerListeners ContainerListeners
 
-	agentBrowserMu    sync.Mutex
-	agentBrowserInfo  map[ID]AgentBrowserInfo
-	agentBrowserStart map[ID]int64
+	// access owns per-project membership and email normalization.
+	access *accessList
 
-	browserActivityMu sync.Mutex
-	browserSeen       map[ID]time.Time
-	reaperOn          bool
+	// secrets owns the project's environment variables and their propagation
+	// to the workspace .env file and the container environment.
+	secrets *secretStore
 
-	// runStateLocks serializes container run-state transitions per project so a
+	// browsers owns all Agent Browser state and its idle reaper.
+	browsers *agentBrowsers
+
+	// runState serializes container run-state transitions per project so a
 	// container deleted out-of-band (e.g. a workspace recycle onto a new base
-	// image) is relaunched exactly once even under concurrent prompts.
-	runStateMu    sync.Mutex
-	runStateLocks map[ID]*sync.Mutex
+	// image) is relaunched exactly once even under concurrent prompts. It also
+	// keeps an explicit stop, restart, or delete from racing an agent-triggered
+	// recovery. Different projects remain independent.
+	runState keyedMutex
 }
 
 func New(
@@ -44,31 +42,22 @@ func New(
 	access AccessRepository,
 ) *Service {
 	return &Service{
-		repo:                 repo,
-		containerLifecycle:   containers.Lifecycle,
-		containerEnvironment: containers.Environment,
-		containerInspector:   containers.Inspector,
-		containerNetwork:     containers.Network,
-		containerListeners:   containers.Listeners,
-		containerBrowser:     containers.Browser,
-		secrets:              secrets,
-		access:               access,
-		agentBrowserInfo:     make(map[ID]AgentBrowserInfo),
-		agentBrowserStart:    make(map[ID]int64),
+		repo:               repo,
+		containerLifecycle: containers.Lifecycle,
+		containerInspector: containers.Inspector,
+		containerNetwork:   containers.Network,
+		containerListeners: containers.Listeners,
+		access:             newAccessList(access),
+		secrets:            newSecretStore(secrets, containers.Environment),
+		browsers:           newAgentBrowsers(containers.Browser, repo),
 	}
 }
 
 func (s *Service) ListSecrets(ctx context.Context, id ID) ([]Secret, error) {
-	if !ValidID(id) {
-		return nil, ErrInvalidID
-	}
-	if _, err := s.repo.Get(ctx, id); err != nil {
+	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
-	if s.secrets == nil {
-		return nil, nil
-	}
-	return s.secrets.List(ctx, id)
+	return s.secrets.list(ctx, id)
 }
 
 func (s *Service) SetSecret(ctx context.Context, id ID, key, value string) (Secret, error) {
@@ -82,25 +71,7 @@ func (s *Service) SetSecret(ctx context.Context, id ID, key, value string) (Secr
 	if err != nil {
 		return Secret{}, err
 	}
-	if s.secrets == nil {
-		return Secret{}, ErrSecretsUnavailable
-	}
-	saved, err := s.secrets.Set(ctx, id, key, value)
-	if err != nil {
-		return Secret{}, err
-	}
-	if syncErr := s.syncEnvFile(ctx, id, m.Cwd); syncErr != nil {
-		log.Printf("projects: sync .env for %s after set %s: %v", id, key, syncErr)
-	}
-	if s.containerEnvironment != nil && m.ContainerName != "" {
-		if envErr := s.containerEnvironment.ApplyDiff(
-			ctx, m.ContainerName,
-			map[string]string{key: value}, nil,
-		); envErr != nil {
-			log.Printf("projects: push env %s to %s: %v", key, m.ContainerName, envErr)
-		}
-	}
-	return saved, nil
+	return s.secrets.set(ctx, m, key, value)
 }
 
 func (s *Service) DeleteSecret(ctx context.Context, id ID, key string) error {
@@ -114,23 +85,7 @@ func (s *Service) DeleteSecret(ctx context.Context, id ID, key string) error {
 	if err != nil {
 		return err
 	}
-	if s.secrets == nil {
-		return ErrSecretsUnavailable
-	}
-	if err := s.secrets.Delete(ctx, id, key); err != nil {
-		return err
-	}
-	if syncErr := s.syncEnvFile(ctx, id, m.Cwd); syncErr != nil {
-		log.Printf("projects: sync .env for %s after delete %s: %v", id, key, syncErr)
-	}
-	if s.containerEnvironment != nil && m.ContainerName != "" {
-		if envErr := s.containerEnvironment.ApplyDiff(
-			ctx, m.ContainerName, nil, []string{key},
-		); envErr != nil {
-			log.Printf("projects: unset env %s on %s: %v", key, m.ContainerName, envErr)
-		}
-	}
-	return nil
+	return s.secrets.delete(ctx, m, key)
 }
 
 // List returns every project. Use ListVisible to apply per-caller filtering.
@@ -146,25 +101,10 @@ func (s *Service) ListVisible(ctx context.Context, callerEmail string, isAdmin b
 	if err != nil {
 		return nil, err
 	}
-	if isAdmin || s.access == nil {
+	if isAdmin {
 		return all, nil
 	}
-	callerEmail = strings.ToLower(strings.TrimSpace(callerEmail))
-	if callerEmail == "" {
-		return nil, nil
-	}
-	out := make([]Meta, 0, len(all))
-	for _, m := range all {
-		ok, err := s.access.Has(ctx, m.ID, callerEmail)
-		if err != nil {
-			log.Printf("projects: access check %s/%s: %v", m.ID, callerEmail, err)
-			continue
-		}
-		if ok {
-			out = append(out, m)
-		}
-	}
-	return out, nil
+	return s.access.filterVisible(ctx, all, callerEmail), nil
 }
 
 func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
@@ -206,14 +146,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 		return Meta{}, err
 	}
 
-	if s.access != nil {
-		em := strings.ToLower(strings.TrimSpace(callerEmail))
-		if em != "" {
-			if addErr := s.access.Add(ctx, m.ID, em); addErr != nil {
-				log.Printf("projects: seed access for %s: %v", m.ID, addErr)
-			}
-		}
-	}
+	s.access.seed(ctx, m.ID, callerEmail)
 
 	if s.containerLifecycle != nil {
 		if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
@@ -223,7 +156,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 		// Push any pre-existing project secrets into the freshly launched
 		// container's env. Empty on first create; matters on recreate
 		// (delete + relaunch with secrets already stored).
-		if syncErr := s.syncContainerEnv(ctx, m.ID, m.ContainerName); syncErr != nil {
+		if syncErr := s.secrets.syncContainer(ctx, m.ID, m.ContainerName); syncErr != nil {
 			log.Printf("projects: sync env to %s after launch: %v", m.ContainerName, syncErr)
 		}
 	}
@@ -350,54 +283,32 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
-	unlock := s.lockRunState(id)
+	unlock := s.runState.lock(id)
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	s.clearAgentBrowserState(id)
+	s.browsers.clearState(id)
 	if s.containerLifecycle != nil && m.ContainerName != "" {
 		if err := s.containerLifecycle.Delete(ctx, m.ContainerName); err != nil {
 			log.Printf("projects: delete container %s: %v", m.ContainerName, err)
 		}
 	}
-	if s.secrets != nil {
-		if err := s.secrets.DeleteAll(ctx, id); err != nil {
-			log.Printf("projects: delete secrets %s: %v", id, err)
-		}
+	if err := s.secrets.deleteAll(ctx, id); err != nil {
+		log.Printf("projects: delete secrets %s: %v", id, err)
 	}
-	if s.access != nil {
-		if err := s.access.DeleteAll(ctx, id); err != nil {
-			log.Printf("projects: delete access %s: %v", id, err)
-		}
+	if err := s.access.deleteAll(ctx, id); err != nil {
+		log.Printf("projects: delete access %s: %v", id, err)
 	}
 	return s.repo.Delete(ctx, id)
-}
-
-// lockRunState serializes container lifecycle transitions for a single project.
-// This prevents double-launches and keeps an explicit stop, restart, or delete
-// from racing an agent-triggered recovery. Different projects remain independent.
-func (s *Service) lockRunState(id ID) func() {
-	s.runStateMu.Lock()
-	if s.runStateLocks == nil {
-		s.runStateLocks = make(map[ID]*sync.Mutex)
-	}
-	mu := s.runStateLocks[id]
-	if mu == nil {
-		mu = &sync.Mutex{}
-		s.runStateLocks[id] = mu
-	}
-	s.runStateMu.Unlock()
-	mu.Lock()
-	return mu.Unlock
 }
 
 func (s *Service) Start(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.lockRunState(id)
+	unlock := s.runState.lock(id)
 	defer unlock()
 	return s.startLocked(ctx, id)
 }
@@ -419,7 +330,7 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 			return s.setStartError(ctx, id, err)
 		}
 		if state == ContainerStateMissing {
-			if syncErr := s.syncContainerEnv(ctx, id, m.ContainerName); syncErr != nil {
+			if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 				log.Printf("projects: sync env to %s after ensure: %v", m.ContainerName, syncErr)
 			}
 		}
@@ -435,7 +346,7 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.lockRunState(id)
+	unlock := s.runState.lock(id)
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -464,7 +375,7 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 		if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
 			return s.setStartError(ctx, id, err)
 		}
-		s.stopAgentBrowserBeforeUpgrade(ctx, id, m.ContainerName)
+		s.browsers.stopBeforeUpgrade(ctx, id, m.ContainerName)
 		if err := s.containerLifecycle.Delete(ctx, m.ContainerName); err != nil {
 			return s.setStartError(ctx, id, err)
 		}
@@ -472,25 +383,10 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 	if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
 		return s.setStartError(ctx, id, err)
 	}
-	if syncErr := s.syncContainerEnv(ctx, id, m.ContainerName); syncErr != nil {
+	if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 		log.Printf("projects: sync env to %s after upgrade: %v", m.ContainerName, syncErr)
 	}
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")
-}
-
-// Browser profiles are durable host mounts. Stop Chromium gracefully so it
-// can remove its Singleton* locks before the disposable container is deleted.
-// A missing or legacy browser stack must not block the workspace upgrade; the
-// replacement container provisions it on demand.
-func (s *Service) stopAgentBrowserBeforeUpgrade(ctx context.Context, id ID, containerName string) {
-	if s.containerBrowser == nil {
-		return
-	}
-	if err := s.containerBrowser.Stop(ctx, containerName); err != nil {
-		log.Printf("projects: stop agent browser in %s before upgrade: %v", containerName, err)
-	}
-	s.clearAgentBrowserState(id)
-	s.forgetAgentBrowserActivity(id)
 }
 
 // setStartError keeps the persisted project status useful for the UI while
@@ -509,7 +405,7 @@ func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.lockRunState(id)
+	unlock := s.runState.lock(id)
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -532,7 +428,7 @@ func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.lockRunState(id)
+	unlock := s.runState.lock(id)
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -632,36 +528,7 @@ func (s *Service) ListContainerApps(ctx context.Context, id ID) ([]ContainerApp,
 // TouchAgentBrowserActivity records a browser-use heartbeat for idle reaping.
 func (s *Service) TouchAgentBrowserActivity(ctx context.Context, id ID) {
 	_ = ctx
-	if !ValidID(id) {
-		return
-	}
-	s.browserActivityMu.Lock()
-	defer s.browserActivityMu.Unlock()
-	if s.browserSeen == nil {
-		s.browserSeen = map[ID]time.Time{}
-	}
-	s.browserSeen[id] = time.Now()
-}
-
-func (s *Service) browserLastActivity(id ID) int64 {
-	s.browserActivityMu.Lock()
-	defer s.browserActivityMu.Unlock()
-	if s.browserSeen == nil {
-		return 0
-	}
-	t := s.browserSeen[id]
-	if t.IsZero() {
-		return 0
-	}
-	return t.UnixMilli()
-}
-
-func (s *Service) forgetAgentBrowserActivity(id ID) {
-	s.browserActivityMu.Lock()
-	defer s.browserActivityMu.Unlock()
-	if s.browserSeen != nil {
-		delete(s.browserSeen, id)
-	}
+	s.browsers.touch(id)
 }
 
 // StartAgentBrowser ensures the project's container is running, records the
@@ -672,272 +539,44 @@ func (s *Service) StartAgentBrowser(ctx context.Context, id ID) (AgentBrowserInf
 	if err != nil {
 		return AgentBrowserInfo{}, err
 	}
-	if s.containerBrowser == nil || m.ContainerName == "" {
-		return AgentBrowserInfo{}, errors.New("project has no container to run the browser in")
-	}
-	s.TouchAgentBrowserActivity(ctx, id)
-	if info, ok := s.agentBrowserState(id); ok && info.Status == AgentBrowserStatusStarting {
-		return info, nil
-	}
-	current, err := s.containerBrowser.Status(ctx, m.ContainerName)
-	if err != nil {
-		return AgentBrowserInfo{}, err
-	}
-	if current.Status == AgentBrowserStatusReady {
-		current.Slug = m.Slug
-		current.Port = s.containerBrowser.Port()
-		current.LastActivity = s.browserLastActivity(id)
-		s.setAgentBrowserState(id, current)
-		return current, nil
-	}
-
-	info, startID := s.beginAgentBrowserStart(id, m)
-	go s.ensureAgentBrowserStarted(id, startID, m)
-	return info, nil
+	return s.browsers.start(ctx, id, m)
 }
 
 // AgentBrowserStatus returns split core/view browser state and records a
 // heartbeat so an open pane keeps the idle reaper from tearing down the stack.
 func (s *Service) AgentBrowserStatus(ctx context.Context, id ID) (AgentBrowserInfo, error) {
-	if !ValidID(id) {
-		return AgentBrowserInfo{}, ErrInvalidID
-	}
-	m, err := s.repo.Get(ctx, id)
+	m, err := s.Get(ctx, id)
 	if err != nil {
 		return AgentBrowserInfo{}, err
 	}
-	s.TouchAgentBrowserActivity(ctx, id)
-	info := s.agentBrowserInfoFor(m, AgentBrowserStatusStopped, "")
-	if s.containerBrowser == nil || m.ContainerName == "" {
-		info.LastActivity = s.browserLastActivity(id)
-		return info, nil
-	}
-	stored, hasStored := s.agentBrowserState(id)
-	containerInfo, err := s.containerBrowser.Status(ctx, m.ContainerName)
-	if err != nil {
-		return AgentBrowserInfo{}, err
-	}
-	containerInfo.Slug = m.Slug
-	containerInfo.Port = s.containerBrowser.Port()
-	containerInfo.LastActivity = s.browserLastActivity(id)
-	if containerInfo.Core == "ready" {
-		info = containerInfo
-		if info.Status == AgentBrowserStatusCoreReady && info.View == "ready" {
-			info.Status = AgentBrowserStatusReady
-		}
-		s.setAgentBrowserState(id, info)
-		return info, nil
-	}
-	if hasStored {
-		switch stored.Status {
-		case AgentBrowserStatusStarting, AgentBrowserStatusError:
-			stored.LastActivity = s.browserLastActivity(id)
-			return stored, nil
-		case AgentBrowserStatusReady:
-			s.clearAgentBrowserState(id)
-		}
-	}
-	info.Core = containerInfo.Core
-	info.View = containerInfo.View
-	info.ViewerCount = containerInfo.ViewerCount
-	info.UptimeSec = containerInfo.UptimeSec
-	info.LastActivity = s.browserLastActivity(id)
-	return info, nil
+	return s.browsers.status(ctx, id, m)
 }
 
 // StopAgentBrowser tears down the Agent Browser stack in the project's
 // container, leaving the container running and the persistent browser
 // profile on disk so logins survive.
 func (s *Service) StopAgentBrowser(ctx context.Context, id ID) error {
-	if !ValidID(id) {
-		return ErrInvalidID
-	}
-	m, err := s.repo.Get(ctx, id)
+	m, err := s.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if s.containerBrowser == nil || m.ContainerName == "" {
-		s.clearAgentBrowserState(id)
-		s.forgetAgentBrowserActivity(id)
-		return nil
-	}
-	s.clearAgentBrowserState(id)
-	if err := s.containerBrowser.Stop(ctx, m.ContainerName); err != nil {
-		return err
-	}
-	s.forgetAgentBrowserActivity(id)
-	return nil
-}
-
-func (s *Service) ensureAgentBrowserStarted(id ID, startID int64, m Meta) {
-	if err := s.containerBrowser.Ensure(context.Background(), m.ContainerName); err != nil {
-		log.Printf("projects: start agent browser for %s: %v", id, err)
-		s.finishAgentBrowserStart(id, startID, s.agentBrowserInfoFor(m, AgentBrowserStatusError, err.Error()))
-		return
-	}
-	s.finishAgentBrowserStart(id, startID, s.agentBrowserInfoFor(m, AgentBrowserStatusReady, ""))
-}
-
-func (s *Service) agentBrowserInfoFor(m Meta, status AgentBrowserStatus, errMsg string) AgentBrowserInfo {
-	info := AgentBrowserInfo{
-		Status: status,
-		Slug:   m.Slug,
-		Error:  errMsg,
-	}
-	if s.containerBrowser != nil {
-		info.Port = s.containerBrowser.Port()
-	}
-	return info
-}
-
-func (s *Service) agentBrowserState(id ID) (AgentBrowserInfo, bool) {
-	s.agentBrowserMu.Lock()
-	defer s.agentBrowserMu.Unlock()
-	info, ok := s.agentBrowserInfo[id]
-	return info, ok
-}
-
-func (s *Service) setAgentBrowserState(id ID, info AgentBrowserInfo) {
-	s.agentBrowserMu.Lock()
-	defer s.agentBrowserMu.Unlock()
-	s.ensureAgentBrowserStateLocked()
-	s.agentBrowserInfo[id] = info
-}
-
-func (s *Service) beginAgentBrowserStart(id ID, m Meta) (AgentBrowserInfo, int64) {
-	s.agentBrowserMu.Lock()
-	defer s.agentBrowserMu.Unlock()
-	s.ensureAgentBrowserStateLocked()
-	s.agentBrowserStart[id]++
-	startID := s.agentBrowserStart[id]
-	info := s.agentBrowserInfoFor(m, AgentBrowserStatusStarting, "")
-	s.agentBrowserInfo[id] = info
-	return info, startID
-}
-
-func (s *Service) finishAgentBrowserStart(id ID, startID int64, info AgentBrowserInfo) {
-	s.agentBrowserMu.Lock()
-	defer s.agentBrowserMu.Unlock()
-	s.ensureAgentBrowserStateLocked()
-	if s.agentBrowserStart[id] != startID {
-		return
-	}
-	s.agentBrowserInfo[id] = info
-}
-
-func (s *Service) clearAgentBrowserState(id ID) {
-	s.agentBrowserMu.Lock()
-	defer s.agentBrowserMu.Unlock()
-	s.ensureAgentBrowserStateLocked()
-	s.agentBrowserStart[id]++
-	delete(s.agentBrowserInfo, id)
-}
-
-func (s *Service) ensureAgentBrowserStateLocked() {
-	if s.agentBrowserInfo == nil {
-		s.agentBrowserInfo = make(map[ID]AgentBrowserInfo)
-	}
-	if s.agentBrowserStart == nil {
-		s.agentBrowserStart = make(map[ID]int64)
-	}
+	return s.browsers.stop(ctx, id, m)
 }
 
 // StopAgentBrowserView tears down only the human noVNC layer.
 func (s *Service) StopAgentBrowserView(ctx context.Context, id ID) error {
-	if !ValidID(id) {
-		return ErrInvalidID
-	}
-	m, err := s.repo.Get(ctx, id)
+	m, err := s.Get(ctx, id)
 	if err != nil {
 		return err
 	}
-	if s.containerBrowser == nil || m.ContainerName == "" {
-		return nil
-	}
-	return s.containerBrowser.StopView(ctx, m.ContainerName)
+	return s.browsers.stopView(ctx, m)
 }
 
 // StartAgentBrowserReaper stops browser stacks that have had no agent or pane
 // activity for ttl. It is safe to call multiple times; only the first call
 // starts a ticker.
 func (s *Service) StartAgentBrowserReaper(ctx context.Context, ttl time.Duration) {
-	if ttl <= 0 || s.containerBrowser == nil {
-		return
-	}
-	s.browserActivityMu.Lock()
-	if s.reaperOn {
-		s.browserActivityMu.Unlock()
-		return
-	}
-	s.reaperOn = true
-	s.browserActivityMu.Unlock()
-
-	go func() {
-		ticker := time.NewTicker(time.Minute)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.reapIdleAgentBrowsers(ttl)
-			}
-		}
-	}()
-}
-
-func (s *Service) reapIdleAgentBrowsers(ttl time.Duration) {
-	metas, err := s.repo.List(context.Background())
-	if err != nil {
-		log.Printf("projects: browser reaper list: %v", err)
-		return
-	}
-	now := time.Now()
-	for _, m := range metas {
-		if m.ContainerName == "" {
-			continue
-		}
-		s.browserActivityMu.Lock()
-		last, ok := s.browserSeen[m.ID]
-		if !ok || last.IsZero() {
-			if s.browserSeen == nil {
-				s.browserSeen = map[ID]time.Time{}
-			}
-			s.browserSeen[m.ID] = now
-			s.browserActivityMu.Unlock()
-			continue
-		}
-		idle := now.Sub(last)
-		s.browserActivityMu.Unlock()
-		if idle < ttl {
-			continue
-		}
-		statusCtx, statusCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		info, statusErr := s.containerBrowser.Status(statusCtx, m.ContainerName)
-		statusCancel()
-		if statusErr != nil {
-			continue
-		}
-		if info.Core != "ready" {
-			s.clearAgentBrowserState(m.ID)
-			s.forgetAgentBrowserActivity(m.ID)
-			continue
-		}
-		if info.ViewerCount > 0 {
-			s.TouchAgentBrowserActivity(context.Background(), m.ID)
-			continue
-		}
-		stopCtx, stopCancel := context.WithTimeout(context.Background(), 30*time.Second)
-		err := s.containerBrowser.Stop(stopCtx, m.ContainerName)
-		stopCancel()
-		if err != nil {
-			log.Printf("projects: browser reap %s/%s after %s: %v", m.ID, m.ContainerName, idle.Round(time.Second), err)
-		} else {
-			s.clearAgentBrowserState(m.ID)
-			s.forgetAgentBrowserActivity(m.ID)
-			log.Printf("projects: browser reap %s/%s after %s", m.ID, m.ContainerName, idle.Round(time.Second))
-		}
-	}
+	s.browsers.startReaper(ctx, ttl)
 }
 
 func (s *Service) Reconcile(ctx context.Context) error {
@@ -989,65 +628,32 @@ func (s *Service) HasAccess(ctx context.Context, id ID, email string) (bool, err
 	if !ValidID(id) {
 		return false, ErrInvalidID
 	}
-	if s.access == nil {
-		return false, nil
-	}
-	em := strings.ToLower(strings.TrimSpace(email))
-	if em == "" {
-		return false, nil
-	}
-	return s.access.Has(ctx, id, em)
+	return s.access.has(ctx, id, email)
 }
 
 // ListAccess returns the sorted, normalized membership list for a project.
 func (s *Service) ListAccess(ctx context.Context, id ID) ([]string, error) {
-	if !ValidID(id) {
-		return nil, ErrInvalidID
-	}
-	if _, err := s.repo.Get(ctx, id); err != nil {
+	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
-	if s.access == nil {
-		return nil, nil
-	}
-	return s.access.List(ctx, id)
+	return s.access.list(ctx, id)
 }
 
 // AddAccess adds email to the project's membership list. Caller is
 // responsible for verifying the email belongs to a registered user.
 func (s *Service) AddAccess(ctx context.Context, id ID, email string) error {
-	if !ValidID(id) {
-		return ErrInvalidID
-	}
-	if _, err := s.repo.Get(ctx, id); err != nil {
+	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}
-	if s.access == nil {
-		return errors.New("access store unavailable")
-	}
-	em := strings.ToLower(strings.TrimSpace(email))
-	if em == "" {
-		return errors.New("empty email")
-	}
-	return s.access.Add(ctx, id, em)
+	return s.access.add(ctx, id, email)
 }
 
 // RemoveAccess deletes email from the project's membership list.
 func (s *Service) RemoveAccess(ctx context.Context, id ID, email string) error {
-	if !ValidID(id) {
-		return ErrInvalidID
-	}
-	if _, err := s.repo.Get(ctx, id); err != nil {
+	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}
-	if s.access == nil {
-		return nil
-	}
-	em := strings.ToLower(strings.TrimSpace(email))
-	if em == "" {
-		return nil
-	}
-	return s.access.Remove(ctx, id, em)
+	return s.access.remove(ctx, id, email)
 }
 
 // CountAccess returns how many members the project has.
@@ -1055,14 +661,7 @@ func (s *Service) CountAccess(ctx context.Context, id ID) (int, error) {
 	if !ValidID(id) {
 		return 0, ErrInvalidID
 	}
-	if s.access == nil {
-		return 0, nil
-	}
-	list, err := s.access.List(ctx, id)
-	if err != nil {
-		return 0, err
-	}
-	return len(list), nil
+	return s.access.count(ctx, id)
 }
 
 func statusForContainerState(state ContainerState) Status {
@@ -1076,27 +675,4 @@ func statusForContainerState(state ContainerState) Status {
 	default:
 		return StatusUnknown
 	}
-}
-
-// syncContainerEnv pushes every stored secret for the project into the
-// container's LXD environment.* config. Best-effort; logs failures.
-func (s *Service) syncContainerEnv(ctx context.Context, id ID, containerName string) error {
-	if s.containerEnvironment == nil || containerName == "" {
-		return nil
-	}
-	if s.secrets == nil {
-		return nil
-	}
-	secs, err := s.secrets.List(ctx, id)
-	if err != nil {
-		return err
-	}
-	if len(secs) == 0 {
-		return nil
-	}
-	set := make(map[string]string, len(secs))
-	for _, sec := range secs {
-		set[sec.Key] = sec.Value
-	}
-	return s.containerEnvironment.ApplyDiff(ctx, containerName, set, nil)
 }

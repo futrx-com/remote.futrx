@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import type {
+	AgentContainerStatus,
   AuthBundleFileStatus,
   AuthBundleStatus,
   ContainerLimits,
@@ -70,8 +71,7 @@ export function ProjectInfoSection({
       {info.network && info.network.length > 0 && <NetworkPanel ifaces={info.network} onRepair={onRepairNetwork} />}
       {info.workspace && <WorkspacePanel ws={info.workspace} />}
       {info.limits && <LimitsPanel limits={info.limits} />}
-      <ClaudePanel claude={info.claude} />
-      <CodexPanel codex={info.codex} />
+      {agentStatuses(info).map((agent) => <AgentPanel key={agent.id} agent={agent} />)}
       {info.authBundles && info.authBundles.length > 0 && <AuthBundlesPanel bundles={info.authBundles} />}
     </>
   );
@@ -264,33 +264,59 @@ function LimitsPanel({ limits }: { limits: ContainerLimits }) {
   );
 }
 
-function ClaudePanel({ claude }: { claude: ProjectContainerInfo["claude"] }) {
+function AgentPanel({ agent }: { agent: AgentContainerStatus }) {
   return (
-    <Panel title="Claude provisioning">
+    <Panel title={`${agent.label || providerLabel(agent.id)} provisioning`}>
       <Grid>
-        <Field label="CLI installed" value={claude.installed ? "yes" : "no"} mono />
-        <Field label="Version" value={claude.version || "—"} mono />
-        <Field label="CLAUDE.md" value={claude.claudeMdInstalled ? "installed" : "missing"} mono />
-        <Field
-          label="CLAUDE.md in sync"
-          value={claude.claudeMdInSync ? "yes" : "no"}
-          mono
-          tone={claude.claudeMdInstalled && !claude.claudeMdInSync ? "warn" : undefined}
-        />
+        <Field label="CLI installed" value={agent.installed ? "yes" : "no"} mono />
+        <Field label="Version" value={agent.version || "—"} mono />
+		{agent.instructionsPath ? (
+          <>
+            <Field
+              label="Instructions"
+              value={agent.instructionsInstalled ? "installed" : "missing"}
+              mono
+            />
+            <Field
+              label="Instructions in sync"
+              value={agent.instructionsInSync ? "yes" : "no"}
+              mono
+              tone={agent.instructionsInstalled && !agent.instructionsInSync ? "warn" : undefined}
+            />
+          </>
+		) : <></>}
       </Grid>
     </Panel>
   );
 }
 
-function CodexPanel({ codex }: { codex: ProjectContainerInfo["codex"] }) {
-  return (
-    <Panel title="Codex provisioning">
-      <Grid>
-        <Field label="CLI installed" value={codex.installed ? "yes" : "no"} mono />
-        <Field label="Version" value={codex.version || "—"} mono />
-      </Grid>
-    </Panel>
-  );
+function agentStatuses(info: ProjectContainerInfo): AgentContainerStatus[] {
+  if (info.agents?.length) return info.agents;
+  return [
+    {
+      id: "claude",
+      label: "Claude Code",
+      installed: info.claude.installed,
+      version: info.claude.version,
+      instructionsPath: "/root/.claude/CLAUDE.md",
+      instructionsInstalled: info.claude.claudeMdInstalled,
+      instructionsInSync: info.claude.claudeMdInSync,
+    },
+    {
+      id: "codex",
+      label: "Codex",
+      installed: info.codex.installed,
+      version: info.codex.version,
+    },
+  ];
+}
+
+function providerLabel(provider: string): string {
+  return provider
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "Agent";
 }
 
 function AuthBundlesPanel({ bundles }: { bundles: AuthBundleStatus[] }) {

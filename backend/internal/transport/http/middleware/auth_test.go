@@ -43,7 +43,13 @@ func TestProviderLoginGate(t *testing.T) {
 	localAdminReady := true
 	handler := NewAuth(auth).
 		RequireLocalAdminSetup(func() bool { return localAdminReady }).
-		RequireProviderLogin(func() bool { return providerReady }, "/api/claude/", "/ws/claude/auth-status").
+		RequireProviderLogin(
+			func() bool { return providerReady },
+			"/api/claude/",
+			"/ws/claude/auth-status",
+			"/api/agent-auth",
+			"/ws/agent-auth/",
+		).
 		Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
@@ -62,6 +68,12 @@ func TestProviderLoginGate(t *testing.T) {
 	}
 	if got := request("/api/claude/auth-status"); got != http.StatusNoContent {
 		t.Fatalf("provider auth status = %d, want %d", got, http.StatusNoContent)
+	}
+	if got := request("/api/agent-auth"); got != http.StatusNoContent {
+		t.Fatalf("agent auth catalog = %d, want %d", got, http.StatusNoContent)
+	}
+	if got := request("/ws/agent-auth/future-agent"); got != http.StatusNoContent {
+		t.Fatalf("normalized provider stream = %d, want %d", got, http.StatusNoContent)
 	}
 	localAdminReady = false
 	if got := request("/api/claude/auth-status"); got != http.StatusPreconditionRequired {

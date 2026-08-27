@@ -8,11 +8,15 @@ import { workspaceDataProjector } from "../../workspace/workspaceDataProjector";
 export function useWorkspaceData(enabled: boolean) {
   const [chats, setChats] = useState<ChatMeta[]>([]);
   const [projects, setProjects] = useState<ProjectMeta[]>([]);
+  // Until the first snapshot lands, an empty chat list means "not loaded yet",
+  // not "no chats" — callers must not act on the difference before then.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!enabled) {
       setChats((current) => workspaceDataProjector.replaceChats([], current));
       setProjects((current) => workspaceDataProjector.replaceProjects([], current));
+      setLoaded(false);
       return;
     }
 
@@ -26,6 +30,7 @@ export function useWorkspaceData(enabled: boolean) {
         setProjects((current) =>
           workspaceDataProjector.replaceProjects(message.projects, current)
         );
+        setLoaded(true);
         break;
       case "chat.upsert":
         setChats((current) => workspaceDataProjector.upsertChat(current, message.chat));
@@ -45,5 +50,6 @@ export function useWorkspaceData(enabled: boolean) {
   return {
     chats,
     projects,
+    loaded,
   };
 }

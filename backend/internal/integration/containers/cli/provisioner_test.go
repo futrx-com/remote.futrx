@@ -42,7 +42,7 @@ func TestClientTranslatesCLIOperationsToLXDArguments(t *testing.T) {
 		t.Fatal("Available = false, want runner availability")
 	}
 
-	version, err := client.Version(context.Background(), "c1", "agent")
+	version, err := client.Version(context.Background(), "c1", "agent", "version")
 	if err != nil || version != "agent 1.2.3\n" {
 		t.Fatalf("Version = %q, %v", version, err)
 	}
@@ -60,7 +60,7 @@ func TestClientTranslatesCLIOperationsToLXDArguments(t *testing.T) {
 	}
 
 	wantCalls := []string{
-		"exec c1 -- agent --version",
+		"exec c1 -- agent version",
 		"exec c1 -- which npm",
 		"exec c1 -- pgrep -f npm install.*@vendor/agent",
 		"exec c1 -- npm install -g @vendor/agent@1.2.3 --silent",

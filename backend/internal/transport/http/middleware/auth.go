@@ -25,9 +25,10 @@ func NewAuth(auth *serviceauth.Service) *Auth {
 	return &Auth{auth: auth, principal: httptransport.NewPrincipalResolver(auth)}
 }
 
-// RequireProviderLogin keeps application APIs closed until at least one AI
-// provider is authenticated. Provider status and login routes remain open so
-// an authenticated administrator can complete onboarding.
+// RequireProviderLogin keeps application APIs closed until the configured
+// agent-catalog readiness policy succeeds. Agent auth/status routes remain
+// open so an authenticated administrator can complete onboarding; readiness
+// may also come from a catalog-declared no-auth gate module.
 func (m *Auth) RequireProviderLogin(authenticated func() bool, allowedPrefixes ...string) *Auth {
 	m.providerAuthenticated = authenticated
 	m.providerAuthPrefixes = append([]string(nil), allowedPrefixes...)

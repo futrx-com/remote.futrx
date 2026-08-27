@@ -1,7 +1,8 @@
 // Package selfupdate checks the installed checkout's origin for newer
-// release tags and applies updates by running infra/update.sh detached from
-// the service unit. Run state lives on disk under DATA_DIR/self-update/ so
-// it survives the backend restart that every successful update performs.
+// release tags and applies them with either application deployment or full
+// infrastructure convergence detached from the service unit. Run state lives
+// on disk under DATA_DIR/self-update/ so it survives the backend restart that
+// every successful update performs.
 package selfupdate
 
 import (
@@ -21,7 +22,7 @@ import (
 // HostClient is implemented by integration/updatecli.
 type HostClient interface {
 	ListRemoteTags(ctx context.Context, installDir string) ([]string, error)
-	StartUpdater(installDir, tag, logPath, donePath string) (int, error)
+	StartUpdater(installDir, tag, kind, logPath, donePath string) (int, error)
 	ProcessAlive(pid int) bool
 }
 
@@ -35,6 +36,16 @@ const (
 	stateDirName = "self-update"
 	logTailBytes = 16 * 1024
 	runFileMode  = 0o600
+)
+
+// UpdateKind selects the smallest safe deployment path for a release.
+// Application updates stay within the installed major/minor release line;
+// crossing either boundary requires full infrastructure convergence.
+type UpdateKind string
+
+const (
+	UpdateKindApplication    UpdateKind = "application"
+	UpdateKindInfrastructure UpdateKind = "infrastructure"
 )
 
 type Service struct {
@@ -58,22 +69,24 @@ func New(currentVersion, installDir, dataDir string, host HostClient) *Service {
 
 // CheckResult is the outcome of one tag lookup against origin.
 type CheckResult struct {
-	CheckedAt       int64  `json:"checkedAt"`
-	LatestTag       string `json:"latestTag,omitempty"`
-	UpdateAvailable bool   `json:"updateAvailable"`
-	Error           string `json:"error,omitempty"`
+	CheckedAt       int64      `json:"checkedAt"`
+	LatestTag       string     `json:"latestTag,omitempty"`
+	UpdateAvailable bool       `json:"updateAvailable"`
+	UpdateKind      UpdateKind `json:"updateKind,omitempty"`
+	Error           string     `json:"error,omitempty"`
 }
 
 // RunStatus describes the most recent apply run, reconstructed from disk so
 // it stays accurate across the restart the update itself triggers.
 type RunStatus struct {
-	State      string `json:"state"` // running | succeeded | failed
-	Target     string `json:"target"`
-	StartedAt  int64  `json:"startedAt"`
-	StartedBy  string `json:"startedBy,omitempty"`
-	FinishedAt int64  `json:"finishedAt,omitempty"`
-	ExitCode   *int   `json:"exitCode,omitempty"`
-	Log        string `json:"log,omitempty"`
+	State      string     `json:"state"` // running | succeeded | failed
+	Target     string     `json:"target"`
+	UpdateKind UpdateKind `json:"updateKind,omitempty"`
+	StartedAt  int64      `json:"startedAt"`
+	StartedBy  string     `json:"startedBy,omitempty"`
+	FinishedAt int64      `json:"finishedAt,omitempty"`
+	ExitCode   *int       `json:"exitCode,omitempty"`
+	Log        string     `json:"log,omitempty"`
 }
 
 type Status struct {
@@ -83,10 +96,11 @@ type Status struct {
 }
 
 type runRecord struct {
-	Target    string `json:"target"`
-	StartedAt int64  `json:"startedAt"`
-	StartedBy string `json:"startedBy"`
-	PID       int    `json:"pid"`
+	Target     string     `json:"target"`
+	UpdateKind UpdateKind `json:"updateKind,omitempty"`
+	StartedAt  int64      `json:"startedAt"`
+	StartedBy  string     `json:"startedBy"`
+	PID        int        `json:"pid"`
 }
 
 type doneRecord struct {
@@ -119,6 +133,9 @@ func (s *Service) Check(ctx context.Context) Status {
 		result.LatestTag = latest
 		if current, ok := parseReleaseTag(describeBase(s.currentVersion)); ok && latest != "" {
 			result.UpdateAvailable = compareVersions(latestSegments, current) > 0
+			if result.UpdateAvailable {
+				result.UpdateKind = classifyUpdate(s.currentVersion, latest)
+			}
 		}
 	}
 	s.mu.Lock()
@@ -127,9 +144,9 @@ func (s *Service) Check(ctx context.Context) Status {
 	return s.Status(ctx)
 }
 
-// Apply starts infra/update.sh toward the given tag (or the newest release
-// tag when tag is empty). Single-flight: a second call while a run is alive
-// returns ErrUpdateInProgress.
+// Apply starts the safe deployment path toward the given tag (or the newest
+// release tag when tag is empty). Single-flight: a second call while a run is
+// alive returns ErrUpdateInProgress.
 func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, error) {
 	tags, err := s.host.ListRemoteTags(ctx, s.installDir)
 	if err != nil {
@@ -158,11 +175,14 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	if err := os.WriteFile(s.logPath(), nil, runFileMode); err != nil {
 		return s.statusLocked(), err
 	}
-	pid, err := s.host.StartUpdater(s.installDir, tag, s.logPath(), s.donePath())
+	kind := classifyUpdate(s.currentVersion, tag)
+	pid, err := s.host.StartUpdater(s.installDir, tag, string(kind), s.logPath(), s.donePath())
 	if err != nil {
 		return s.statusLocked(), fmt.Errorf("start updater: %w", err)
 	}
-	record := runRecord{Target: tag, StartedAt: time.Now().Unix(), StartedBy: startedBy, PID: pid}
+	record := runRecord{
+		Target: tag, UpdateKind: kind, StartedAt: time.Now().Unix(), StartedBy: startedBy, PID: pid,
+	}
 	if err := writeJSONFile(s.runPath(), record); err != nil {
 		return s.statusLocked(), err
 	}
@@ -190,11 +210,12 @@ func (s *Service) runStatus() *RunStatus {
 		return nil
 	}
 	status := &RunStatus{
-		State:     "running",
-		Target:    record.Target,
-		StartedAt: record.StartedAt,
-		StartedBy: record.StartedBy,
-		Log:       tailFile(s.logPath(), logTailBytes),
+		State:      "running",
+		Target:     record.Target,
+		UpdateKind: record.UpdateKind,
+		StartedAt:  record.StartedAt,
+		StartedBy:  record.StartedBy,
+		Log:        tailFile(s.logPath(), logTailBytes),
 	}
 	var done doneRecord
 	switch err := readJSONFile(s.donePath(), &done); {
@@ -257,6 +278,21 @@ func compareVersions(a, b []int) int {
 		}
 	}
 	return 0
+}
+
+// classifyUpdate is conservative for legacy or malformed versions. Only
+// releases with a major, minor, and patch component in the same release line
+// can use the application-only deployment path.
+func classifyUpdate(currentVersion, targetTag string) UpdateKind {
+	current, currentOK := parseReleaseTag(describeBase(currentVersion))
+	target, targetOK := parseReleaseTag(targetTag)
+	if !currentOK || !targetOK || len(current) < 3 || len(target) < 3 {
+		return UpdateKindInfrastructure
+	}
+	if current[0] == target[0] && current[1] == target[1] {
+		return UpdateKindApplication
+	}
+	return UpdateKindInfrastructure
 }
 
 // latestReleaseTag picks the highest version-shaped tag.

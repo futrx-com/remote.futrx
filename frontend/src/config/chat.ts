@@ -1,10 +1,8 @@
-export {
-  CHAT_MODE_OPTIONS as MODE_OPTIONS,
-  CHAT_PROVIDER_OPTIONS as PROVIDER_OPTIONS,
-  modelDisplayLabel,
-  modelOptionsForProvider,
-  modelShortLabel,
-  providerDisplayLabel,
-  reasoningEffortOptionsForProvider,
-  serviceTierOptionsForProvider,
-} from "./chatCatalog";
+export function modelShortLabel(model?: string): string {
+  return model || "auto";
+}
+
+export function providerDisplayLabel(provider?: string): string {
+  if (!provider) return "Codex";
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}

@@ -52,13 +52,16 @@ func (Client) ListRemoteTags(ctx context.Context, installDir string) ([]string, 
 	return tags, nil
 }
 
-// StartUpdater launches infra/update.sh --ref=<tag> in its own session so
-// that the systemd restart the updater itself performs cannot kill it (the
-// unit runs with KillMode=process). Output streams to logPath; when the run
-// finishes, its exit code is written to donePath — that file, not the
-// process, is the durable record of the outcome, because the backend that
-// spawned the run is usually replaced before the run ends.
-func (Client) StartUpdater(installDir, tag, logPath, donePath string) (int, error) {
+// StartUpdater launches the selected release script in its own session so
+// that the systemd restart cannot kill it (the unit runs with
+// KillMode=process). Output streams to logPath; when the run finishes, its
+// exit code is written to donePath — that file, not the process, is the
+// durable record of the outcome, because the backend that spawned the run is
+// usually replaced before the run ends.
+func (Client) StartUpdater(installDir, tag, kind, logPath, donePath string) (int, error) {
+	if kind != "application" && kind != "infrastructure" {
+		return 0, fmt.Errorf("unknown update kind: %s", kind)
+	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return 0, err
@@ -67,11 +70,15 @@ func (Client) StartUpdater(installDir, tag, logPath, donePath string) (int, erro
 
 	// Values reach the script as positional parameters, never by string
 	// interpolation.
-	const script = `bash "$1/infra/update.sh" "--ref=$2"
+	const script = `case "$4" in
+application) FUTRX_INSTALL_DIR="$1" bash "$1/infra/deploy-app.sh" "--ref=$2" ;;
+infrastructure) FUTRX_INSTALL_DIR="$1" bash "$1/infra/update.sh" "--ref=$2" ;;
+*) echo "unknown update kind: $4" >&2; exit 2 ;;
+esac
 status=$?
 printf '{"exitCode":%d,"finishedAt":%d}\n' "$status" "$(date +%s)" > "$3.tmp" && mv "$3.tmp" "$3"
 exit "$status"`
-	cmd := exec.Command("bash", "-c", script, "self-update", installDir, tag, donePath)
+	cmd := exec.Command("bash", "-c", script, "self-update", installDir, tag, donePath, kind)
 	cmd.Dir = installDir
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile

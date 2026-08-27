@@ -16,6 +16,13 @@ type Repository interface {
 	TruncateEventsBefore(ctx context.Context, id ID, beforeT int64) ([]Event, error)
 }
 
+// CopiedEventAppender persists historical events without treating them as new
+// user-visible activity. Fork uses this port while ordinary producers append
+// through Repository.
+type CopiedEventAppender interface {
+	AppendCopiedEvent(ctx context.Context, id ID, event Event) (Event, error)
+}
+
 type ProjectResolver interface {
 	WorkspaceForProject(ctx context.Context, id ProjectID) (string, error)
 }

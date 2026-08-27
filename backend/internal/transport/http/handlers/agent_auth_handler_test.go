@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 const missingAgentCLI = "futrx-test-agent-cli-that-does-not-exist"
@@ -21,6 +23,55 @@ var (
 type agentAuthDeviceStatus struct {
 	Authenticated bool                  `json:"authenticated"`
 	DeviceLogin   agentauth.DeviceState `json:"deviceLogin,omitempty"`
+}
+
+type agentAuthTestModules []agentmodule.Descriptor
+
+func (m agentAuthTestModules) Descriptors() []agentmodule.Descriptor {
+	return append([]agentmodule.Descriptor(nil), m...)
+}
+
+func TestAgentAuthCatalogPublishesOrderedFactoryMetadata(t *testing.T) {
+	handler := newTestAgentAuthHandler()
+	handler.modules = agentAuthTestModules{
+		{
+			ID: "future-agent", Label: "Future Agent", Default: true,
+			ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+			Auth:            agentmodule.AuthExternal, AuthInstructions: "Run future-agent login.",
+		},
+		{
+			ID: agent.ProviderCodex, Label: "Codex",
+			ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
+			Auth:            agentmodule.AuthManagedDevice, AuthInstructions: "Complete device login.",
+			SatisfiesAccessGate: true,
+		},
+	}
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/agent-auth", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var response agentAuthCatalogResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Providers) != 2 || response.Providers[0].Provider != "future-agent" ||
+		!response.Providers[0].Default || response.Providers[0].Authentication.Mode != agentmodule.AuthExternal {
+		t.Fatalf("providers = %#v", response.Providers)
+	}
+	codex := response.Providers[1]
+	if codex.Provider != "codex" || codex.Authentication.Mode != agentmodule.AuthManagedDevice ||
+		!codex.Authentication.SatisfiesAccessGate || codex.Status.Authenticated {
+		t.Fatalf("codex = %#v", codex)
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/agent-auth", nil))
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
 }
 
 func TestAgentAuthStatusRoutesPreserveProviderPayloads(t *testing.T) {
