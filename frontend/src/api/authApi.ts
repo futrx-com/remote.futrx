@@ -71,6 +71,10 @@ type LocalLoginResult =
   | { twoFactorRequired: true }
   | { twoFactorRequired: false; session: AuthSession };
 
+type LocalLoginResponse =
+  | { twoFactorRequired: true }
+  | (AuthSession & { twoFactorRequired?: false });
+
 // Local login's response shape now branches: an account with 2FA enabled
 // gets {twoFactorRequired: true} and a pending cookie instead of a full
 // AuthSession.
@@ -79,10 +83,10 @@ async function requestLocalAuthOrChallenge(
   email: string,
   password: string
 ): Promise<LocalLoginResult> {
-  const data = await requestPreSessionJson<AuthSession & { twoFactorRequired?: boolean }>(url, {
+  const data = await requestPreSessionJson<LocalLoginResponse>(url, {
     email,
     password,
   });
-  if (data?.twoFactorRequired) return { twoFactorRequired: true };
-  return { twoFactorRequired: false, session: data as AuthSession };
+  if (data.twoFactorRequired) return { twoFactorRequired: true };
+  return { twoFactorRequired: false, session: data };
 }
