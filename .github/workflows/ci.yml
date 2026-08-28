@@ -30,6 +30,9 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
+      - name: Prepare static public directory
+        run: mkdir -p public && touch public/index.html
+
       - name: Run go vet
         run: go vet ./...
 
