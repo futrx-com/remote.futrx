@@ -53,9 +53,19 @@ func (s *Service) CompleteTwoFactorEnrollment(
 }
 
 // DisableTwoFactor removes email's 2FA enrollment after verifying proof of
-// possession; see twoFactorAuthenticator.Disable.
+// possession. Once disabled, the recovery-code alert preference and any
+// pending alert are cleared because both are meaningful only while 2FA is on.
+// Cleanup remains best-effort after the primary disable succeeds.
 func (s *Service) DisableTwoFactor(ctx context.Context, email, code string) error {
-	return s.twoFactor.Disable(ctx, email, code)
+	if err := s.twoFactor.Disable(ctx, email, code); err != nil {
+		return err
+	}
+	if prefs, err := s.SecurityPreferences(ctx, email); err == nil && prefs.RecoveryCodeAlertEnabled {
+		prefs.RecoveryCodeAlertEnabled = false
+		_ = s.SetSecurityPreferences(ctx, email, prefs)
+	}
+	_ = s.AckSecurityAlert(ctx, email)
+	return nil
 }
 
 // RegenerateRecoveryCodes replaces email's recovery codes; see

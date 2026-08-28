@@ -163,14 +163,6 @@ func (h *SecurityHandler) handleDisable(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// recoveryCodeAlertEnabled cannot remain on without 2FA - clear it and
-	// any pending alert along with disabling 2FA itself.
-	if prefs, err := h.auth.SecurityPreferences(r.Context(), session.Email); err == nil && prefs.RecoveryCodeAlertEnabled {
-		prefs.RecoveryCodeAlertEnabled = false
-		_ = h.auth.SetSecurityPreferences(r.Context(), session.Email, prefs)
-	}
-	_ = h.auth.AckSecurityAlert(r.Context(), session.Email)
-
 	w.WriteHeader(http.StatusNoContent)
 }
 
