@@ -152,14 +152,7 @@ func (h *SecurityHandler) handleDisable(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.auth.DisableTwoFactor(r.Context(), session.Email, body.Code); err != nil {
-		switch {
-		case errors.Is(err, serviceauth.ErrTwoFactorNotEnabled):
-			httptransport.SendErr(w, http.StatusConflict, err.Error())
-		case errors.Is(err, serviceauth.ErrInvalidTwoFactorCode):
-			httptransport.SendErr(w, http.StatusUnauthorized, err.Error())
-		default:
-			httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
-		}
+		sendTwoFactorProofError(w, err)
 		return
 	}
 
@@ -185,17 +178,21 @@ func (h *SecurityHandler) handleRegenerate(w http.ResponseWriter, r *http.Reques
 
 	codes, err := h.auth.RegenerateRecoveryCodes(r.Context(), session.Email, body.Code)
 	if err != nil {
-		switch {
-		case errors.Is(err, serviceauth.ErrTwoFactorNotEnabled):
-			httptransport.SendErr(w, http.StatusConflict, err.Error())
-		case errors.Is(err, serviceauth.ErrInvalidTwoFactorCode):
-			httptransport.SendErr(w, http.StatusUnauthorized, err.Error())
-		default:
-			httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
-		}
+		sendTwoFactorProofError(w, err)
 		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, map[string]any{"recoveryCodes": codes})
+}
+
+func sendTwoFactorProofError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, serviceauth.ErrTwoFactorNotEnabled):
+		httptransport.SendErr(w, http.StatusConflict, err.Error())
+	case errors.Is(err, serviceauth.ErrInvalidTwoFactorCode):
+		httptransport.SendErr(w, http.StatusUnauthorized, err.Error())
+	default:
+		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
+	}
 }
 
 func (h *SecurityHandler) handlePreferences(w http.ResponseWriter, r *http.Request) {
