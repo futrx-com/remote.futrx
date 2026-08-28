@@ -21,7 +21,7 @@ export function SecuritySettings({ controller }: { controller: SecuritySettingsC
       {settings?.securityAlert && (
         <SecurityAlertBanner
           alert={settings.securityAlert}
-          onAck={controller.ackAlert}
+          onAck={controller.acknowledgeAlert}
         />
       )}
       <TwoFactorSection controller={controller} />
@@ -29,13 +29,13 @@ export function SecuritySettings({ controller }: { controller: SecuritySettingsC
         title="Single active session"
         description="Signing in on a new device immediately signs you out everywhere else."
         checked={settings?.singleSessionEnabled ?? false}
-        onChange={(checked) => controller.setPreferences({ singleSessionEnabled: checked })}
+        onChange={controller.setSingleSessionEnabled}
       />
       <PreferenceToggle
         title="Sign-in history"
         description="Keep a record of the devices and locations that have signed in to this account."
         checked={settings?.historyEnabled ?? false}
-        onChange={(checked) => controller.setPreferences({ historyEnabled: checked })}
+        onChange={controller.setHistoryEnabled}
       />
       {settings?.historyEnabled && <SessionHistoryList sessions={settings.sessions} />}
     </div>
@@ -180,7 +180,7 @@ function TwoFactorSection({ controller }: { controller: SecuritySettingsControll
     setSectionError(null);
     setBusy(true);
     try {
-      const enrollment = await controller.beginEnrollment();
+      const enrollment = await controller.beginTwoFactorEnrollment();
       setEnrollmentToken(enrollment.enrollmentToken);
       setSecret(enrollment.secret);
       setOtpauthUrl(enrollment.otpauthUrl);
@@ -197,7 +197,7 @@ function TwoFactorSection({ controller }: { controller: SecuritySettingsControll
     setSectionError(null);
     setBusy(true);
     try {
-      const codes = await controller.confirmEnrollment(enrollmentToken, confirmCode);
+      const codes = await controller.confirmTwoFactorEnrollment(enrollmentToken, confirmCode);
       setRecoveryCodes(codes);
       setEnrolling(false);
       setConfirmCode("");
@@ -213,7 +213,7 @@ function TwoFactorSection({ controller }: { controller: SecuritySettingsControll
     setSectionError(null);
     setBusy(true);
     try {
-      await controller.disable(disableCode);
+      await controller.disableTwoFactor(disableCode);
       setShowDisable(false);
       setDisableCode("");
     } catch (cause) {

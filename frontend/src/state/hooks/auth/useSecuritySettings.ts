@@ -10,13 +10,12 @@ export interface SecuritySettingsController {
   settings: SecuritySettings | null;
   loading: boolean;
   error: string | null;
-  refresh: () => Promise<void>;
-  beginEnrollment: () => Promise<TwoFactorEnrollment>;
-  confirmEnrollment: (enrollmentToken: string, code: string) => Promise<string[]>;
-  disable: (code: string) => Promise<void>;
-  regenerateRecoveryCodes: (code: string) => Promise<string[]>;
-  setPreferences: (input: SecurityPreferencesInput) => Promise<void>;
-  ackAlert: () => Promise<void>;
+  beginTwoFactorEnrollment: () => Promise<TwoFactorEnrollment>;
+  confirmTwoFactorEnrollment: (enrollmentToken: string, code: string) => Promise<string[]>;
+  disableTwoFactor: (code: string) => Promise<void>;
+  setSingleSessionEnabled: (enabled: boolean) => Promise<void>;
+  setHistoryEnabled: (enabled: boolean) => Promise<void>;
+  acknowledgeAlert: () => Promise<void>;
 }
 
 export function useSecuritySettings(enabled: boolean): SecuritySettingsController {
@@ -40,9 +39,12 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     if (enabled) void refresh();
   }, [enabled, refresh]);
 
-  const beginEnrollment = useCallback(() => securityApi.beginTwoFactorEnrollment(), []);
+  const beginTwoFactorEnrollment = useCallback(
+    () => securityApi.beginTwoFactorEnrollment(),
+    []
+  );
 
-  const confirmEnrollment = useCallback(
+  const confirmTwoFactorEnrollment = useCallback(
     async (enrollmentToken: string, code: string) => {
       const recoveryCodes = await securityApi.confirmTwoFactorEnrollment(enrollmentToken, code);
       await refresh();
@@ -51,7 +53,7 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     [refresh]
   );
 
-  const disable = useCallback(
+  const disableTwoFactor = useCallback(
     async (code: string) => {
       await securityApi.disableTwoFactor(code);
       await refresh();
@@ -59,15 +61,21 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     [refresh]
   );
 
-  const regenerateRecoveryCodes = useCallback(async (code: string) => {
-    return securityApi.regenerateRecoveryCodes(code);
-  }, []);
-
-  const setPreferences = useCallback(async (input: SecurityPreferencesInput) => {
+  const updatePreferences = useCallback(async (input: SecurityPreferencesInput) => {
     setSettings(await securityApi.updatePreferences(input));
   }, []);
 
-  const ackAlert = useCallback(async () => {
+  const setSingleSessionEnabled = useCallback(
+    (enabled: boolean) => updatePreferences({ singleSessionEnabled: enabled }),
+    [updatePreferences]
+  );
+
+  const setHistoryEnabled = useCallback(
+    (enabled: boolean) => updatePreferences({ historyEnabled: enabled }),
+    [updatePreferences]
+  );
+
+  const acknowledgeAlert = useCallback(async () => {
     await securityApi.acknowledgeAlert();
     setSettings((current) => (current ? { ...current, securityAlert: undefined } : current));
   }, []);
@@ -76,12 +84,11 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     settings,
     loading,
     error,
-    refresh,
-    beginEnrollment,
-    confirmEnrollment,
-    disable,
-    regenerateRecoveryCodes,
-    setPreferences,
-    ackAlert,
+    beginTwoFactorEnrollment,
+    confirmTwoFactorEnrollment,
+    disableTwoFactor,
+    setSingleSessionEnabled,
+    setHistoryEnabled,
+    acknowledgeAlert,
   };
 }
