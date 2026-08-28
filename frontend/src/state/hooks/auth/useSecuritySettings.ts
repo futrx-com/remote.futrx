@@ -6,13 +6,16 @@ import type {
   TwoFactorEnrollment,
 } from "../../../models/security";
 
-export interface SecuritySettingsController {
-  settings: SecuritySettings | null;
-  loading: boolean;
-  error: string | null;
+export interface TwoFactorSettingsActions {
   beginTwoFactorEnrollment: () => Promise<TwoFactorEnrollment>;
   confirmTwoFactorEnrollment: (enrollmentToken: string, code: string) => Promise<string[]>;
   disableTwoFactor: (code: string) => Promise<void>;
+}
+
+export interface SecuritySettingsController extends TwoFactorSettingsActions {
+  settings: SecuritySettings | null;
+  loading: boolean;
+  error: string | null;
   setSingleSessionEnabled: (enabled: boolean) => Promise<void>;
   setHistoryEnabled: (enabled: boolean) => Promise<void>;
   acknowledgeAlert: () => Promise<void>;
