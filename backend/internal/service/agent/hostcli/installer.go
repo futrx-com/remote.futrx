@@ -23,8 +23,9 @@ const defaultInstallTimeout = 10 * time.Minute
 // execution behind this port makes convergence deterministic in tests.
 type Runtime interface {
 	CommandExists(binary string) bool
+	ExecutablePath(binary string) string
 	Version(context.Context, string, ...string) (string, error)
-	InstallNPM(context.Context, string) (string, error)
+	InstallNPM(context.Context, string, string, string) (string, error)
 	InstallScript(context.Context, string) (string, error)
 }
 
@@ -97,7 +98,7 @@ func (i *Installer) ensure(ctx context.Context, profile provisioning.Profile) (R
 		if strings.TrimSpace(spec.PackageName) == "" {
 			return Result{}, errors.New("npm install policy has no package")
 		}
-		installOutput, err = i.runtime.InstallNPM(installCtx, spec.NPMPackage())
+		installOutput, err = i.runtime.InstallNPM(installCtx, spec.PackageName, spec.NPMPackage(), spec.Binary)
 	case provisioning.InstallWithScript:
 		if strings.TrimSpace(spec.InstallScript) == "" {
 			return Result{}, errors.New("script install policy has no script")
@@ -116,12 +117,16 @@ func (i *Installer) ensure(ctx context.Context, profile provisioning.Profile) (R
 	// version probe instead of inheriting an almost-expired install context.
 	ready, result.DetectedVersion = i.ready(ctx, spec)
 	if spec.VerifyAfterInstall && !ready {
-		return Result{}, fmt.Errorf(
+		errorMessage := fmt.Sprintf(
 			"install %s completed but the required binary/version is unavailable (detected %q, want %q)",
 			installLabel(spec),
 			result.DetectedVersion,
 			spec.Version,
 		)
+		if executablePath := i.runtime.ExecutablePath(spec.Binary); executablePath != "" {
+			errorMessage += fmt.Sprintf("; PATH resolves %q to %q", spec.Binary, executablePath)
+		}
+		return Result{}, errors.New(errorMessage)
 	}
 	return result, nil
 }

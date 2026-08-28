@@ -13,8 +13,9 @@ import (
 
 type fakeRuntime struct {
 	exists           map[string]bool
+	executablePaths  map[string]string
 	versions         map[string]string
-	npmInstalls      []string
+	npmInstalls      []npmInstall
 	scriptInstalls   []string
 	installErr       error
 	installedOutput  string
@@ -25,8 +26,18 @@ type fakeRuntime struct {
 	blockVersionCall int
 }
 
+type npmInstall struct {
+	packageName string
+	npmPackage  string
+	binary      string
+}
+
 func (r *fakeRuntime) CommandExists(binary string) bool {
 	return r.exists[binary]
+}
+
+func (r *fakeRuntime) ExecutablePath(binary string) string {
+	return r.executablePaths[binary]
 }
 
 func (r *fakeRuntime) Version(ctx context.Context, binary string, arguments ...string) (string, error) {
@@ -43,8 +54,12 @@ func (r *fakeRuntime) Version(ctx context.Context, binary string, arguments ...s
 	return version, nil
 }
 
-func (r *fakeRuntime) InstallNPM(ctx context.Context, npmPackage string) (string, error) {
-	r.npmInstalls = append(r.npmInstalls, npmPackage)
+func (r *fakeRuntime) InstallNPM(ctx context.Context, packageName, npmPackage, binary string) (string, error) {
+	r.npmInstalls = append(r.npmInstalls, npmInstall{
+		packageName: packageName,
+		npmPackage:  npmPackage,
+		binary:      binary,
+	})
 	if r.waitForCancel {
 		<-ctx.Done()
 		return "", ctx.Err()
@@ -105,7 +120,12 @@ func TestEnsureAllInstallsNPMModesAtExactPin(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runtime.npmInstalls) != 1 || runtime.npmInstalls[0] != "future-cli@1.2.3" {
+			wantInstall := npmInstall{
+				packageName: "future-cli",
+				npmPackage:  "future-cli@1.2.3",
+				binary:      "future",
+			}
+			if len(runtime.npmInstalls) != 1 || runtime.npmInstalls[0] != wantInstall {
 				t.Fatalf("npm installs = %#v", runtime.npmInstalls)
 			}
 			if len(results) != 1 || !results[0].Changed || results[0].DetectedVersion != "1.2.3" {
@@ -134,9 +154,11 @@ func TestEnsureAllRunsPinnedScriptPolicy(t *testing.T) {
 
 func TestEnsureAllRejectsSuccessfulInstallWithWrongVersion(t *testing.T) {
 	runtime := newFakeRuntime("future 1.2.2")
+	runtime.executablePaths["future"] = "/usr/local/bin/future"
 	runtime.installedOutput = "future 1.2.4"
 	_, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
-	if err == nil || !strings.Contains(err.Error(), "required binary/version is unavailable") {
+	if err == nil || !strings.Contains(err.Error(), "required binary/version is unavailable") ||
+		!strings.Contains(err.Error(), `PATH resolves "future" to "/usr/local/bin/future"`) {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -262,8 +284,9 @@ func TestMatchSemanticVersionRecognizesCLIOutputForms(t *testing.T) {
 
 func newFakeRuntime(version string) *fakeRuntime {
 	runtime := &fakeRuntime{
-		exists:   make(map[string]bool),
-		versions: make(map[string]string),
+		exists:          make(map[string]bool),
+		executablePaths: make(map[string]string),
+		versions:        make(map[string]string),
 	}
 	if version != "" {
 		runtime.exists["future"] = true

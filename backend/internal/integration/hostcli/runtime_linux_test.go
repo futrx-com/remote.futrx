@@ -41,7 +41,7 @@ func TestRuntimeCancellationTerminatesCompleteProcessGroup(t *testing.T) {
 		{
 			name: "npm install",
 			run: func(ctx context.Context, runtime *Runtime, _ string) (string, error) {
-				return runtime.InstallNPM(ctx, "fixture-package@1.0.0")
+				return runtime.InstallNPM(ctx, "fixture-package", "fixture-package@1.0.0", "fixture-binary")
 			},
 		},
 		{
@@ -96,6 +96,111 @@ func TestRuntimeCancellationTerminatesCompleteProcessGroup(t *testing.T) {
 			}
 			waitForProcessExit(t, childPID)
 		})
+	}
+}
+
+func TestRuntimeInstallNPMUpgradesPATHActivePackagePrefix(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	legacyPrefix := filepath.Join(temporaryDirectory, "usr-local")
+	currentBin := filepath.Join(temporaryDirectory, "usr", "bin")
+	legacyBin := filepath.Join(legacyPrefix, "bin")
+	legacyPackage := filepath.Join(legacyPrefix, "lib", "node_modules", "@moonshot-ai", "kimi-code")
+	legacyTarget := filepath.Join(legacyPackage, "dist", "main.mjs")
+	for _, directory := range []string{legacyBin, filepath.Dir(legacyTarget), currentBin} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(legacyTarget, []byte("#!/bin/bash\nprintf '0.19.2\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacyLinkTarget := filepath.Join("..", "lib", "node_modules", "@moonshot-ai", "kimi-code", "dist", "main.mjs")
+	if err := os.Symlink(legacyLinkTarget, filepath.Join(legacyBin, "kimi")); err != nil {
+		t.Fatal(err)
+	}
+
+	argumentsFile := filepath.Join(temporaryDirectory, "npm-arguments")
+	npmFixture := `#!/bin/bash
+set -eu
+printf '%s\n' "$@" > "$HOSTCLI_NPM_ARGUMENTS_FILE"
+printf '%s\n' '#!/bin/bash' "printf '0.38.0\\n'" > "$HOSTCLI_ACTIVE_CLI_TARGET"
+`
+	if err := os.WriteFile(filepath.Join(currentBin, "npm"), []byte(npmFixture), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", legacyBin+string(os.PathListSeparator)+currentBin)
+	t.Setenv("HOSTCLI_NPM_ARGUMENTS_FILE", argumentsFile)
+	t.Setenv("HOSTCLI_ACTIVE_CLI_TARGET", legacyTarget)
+
+	runtime := New()
+	before, err := runtime.Version(context.Background(), "kimi", "--version")
+	if err != nil || strings.TrimSpace(before) != "0.19.2" {
+		t.Fatalf("version before install = %q, %v", before, err)
+	}
+	if _, err := runtime.InstallNPM(
+		context.Background(),
+		"@moonshot-ai/kimi-code",
+		"@moonshot-ai/kimi-code@0.38.0",
+		"kimi",
+	); err != nil {
+		t.Fatal(err)
+	}
+	after, err := runtime.Version(context.Background(), "kimi", "--version")
+	if err != nil || strings.TrimSpace(after) != "0.38.0" {
+		t.Fatalf("version after install = %q, %v", after, err)
+	}
+	arguments, err := os.ReadFile(argumentsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArguments := strings.Join([]string{
+		"install",
+		"-g",
+		"--prefix",
+		legacyPrefix,
+		"@moonshot-ai/kimi-code@0.38.0",
+		"--silent",
+		"",
+	}, "\n")
+	if string(arguments) != wantArguments {
+		t.Fatalf("npm arguments = %q, want %q", arguments, wantArguments)
+	}
+}
+
+func TestRuntimeInstallNPMDoesNotRetargetUnownedPATHBinary(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	shadowBin := filepath.Join(temporaryDirectory, "shadow", "bin")
+	npmBin := filepath.Join(temporaryDirectory, "npm", "bin")
+	for _, directory := range []string{shadowBin, npmBin} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(shadowBin, "kimi"), []byte("#!/bin/bash\nprintf 'manual binary\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	argumentsFile := filepath.Join(temporaryDirectory, "npm-arguments")
+	npmFixture := "#!/bin/bash\nprintf '%s\\n' \"$@\" > \"$HOSTCLI_NPM_ARGUMENTS_FILE\"\n"
+	if err := os.WriteFile(filepath.Join(npmBin, "npm"), []byte(npmFixture), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", shadowBin+string(os.PathListSeparator)+npmBin)
+	t.Setenv("HOSTCLI_NPM_ARGUMENTS_FILE", argumentsFile)
+
+	if _, err := New().InstallNPM(
+		context.Background(),
+		"@moonshot-ai/kimi-code",
+		"@moonshot-ai/kimi-code@0.38.0",
+		"kimi",
+	); err != nil {
+		t.Fatal(err)
+	}
+	arguments, err := os.ReadFile(argumentsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(arguments), "--prefix") {
+		t.Fatalf("npm was retargeted for an unowned executable: %q", arguments)
 	}
 }
 

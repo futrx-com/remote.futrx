@@ -7,7 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -20,21 +23,85 @@ func New() *Runtime {
 	return &Runtime{}
 }
 
-func (*Runtime) CommandExists(binary string) bool {
-	_, err := exec.LookPath(binary)
-	return err == nil
+func (r *Runtime) CommandExists(binary string) bool {
+	return r.ExecutablePath(binary) != ""
+}
+
+func (*Runtime) ExecutablePath(binary string) string {
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return ""
+	}
+	if absolutePath, absoluteErr := filepath.Abs(path); absoluteErr == nil {
+		path = absolutePath
+	}
+	return filepath.Clean(path)
 }
 
 func (*Runtime) Version(ctx context.Context, binary string, arguments ...string) (string, error) {
 	return runInProcessGroup(ctx, binary, arguments...)
 }
 
-func (*Runtime) InstallNPM(ctx context.Context, npmPackage string) (string, error) {
-	return runInProcessGroup(ctx, "npm", "install", "-g", npmPackage, "--silent")
+func (r *Runtime) InstallNPM(ctx context.Context, packageName, npmPackage, binary string) (string, error) {
+	arguments := []string{"install", "-g"}
+	if prefix, ok := activeNPMPrefix(r.ExecutablePath(binary), binary, packageName); ok {
+		// npm's configured global prefix can differ from the prefix containing
+		// the executable selected by PATH. Upgrade the selected installation so
+		// verification and the backend do not keep invoking a stale CLI.
+		arguments = append(arguments, "--prefix", prefix)
+	}
+	arguments = append(arguments, npmPackage, "--silent")
+	return runInProcessGroup(ctx, "npm", arguments...)
 }
 
 func (*Runtime) InstallScript(ctx context.Context, script string) (string, error) {
 	return runInProcessGroup(ctx, "/bin/bash", "-c", script)
+}
+
+// activeNPMPrefix recognizes the symlink layout created by a Unix global npm
+// install: <prefix>/bin/<binary> -> <prefix>/lib/node_modules/<package>/....
+// It deliberately rejects regular files and links owned by another package;
+// the updater must never overwrite an arbitrary PATH-shadowing executable.
+func activeNPMPrefix(executablePath, binary, packageName string) (string, bool) {
+	if executablePath == "" || filepath.Base(binary) != binary || !validNPMPackageName(packageName) {
+		return "", false
+	}
+
+	info, err := os.Lstat(executablePath)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	resolvedPath, err := filepath.EvalSymlinks(executablePath)
+	if err != nil {
+		return "", false
+	}
+
+	packagePath := filepath.FromSlash(packageName)
+	marker := string(os.PathSeparator) + filepath.Join("lib", "node_modules", packagePath) + string(os.PathSeparator)
+	markerIndex := strings.LastIndex(filepath.Clean(resolvedPath), marker)
+	if markerIndex < 0 {
+		return "", false
+	}
+	prefix := filepath.Clean(resolvedPath[:markerIndex])
+	if prefix == "." {
+		prefix = string(os.PathSeparator)
+	}
+	if filepath.Clean(executablePath) != filepath.Join(prefix, "bin", binary) {
+		return "", false
+	}
+	return prefix, true
+}
+
+func validNPMPackageName(packageName string) bool {
+	if packageName == "" || strings.Contains(packageName, `\`) {
+		return false
+	}
+	parts := strings.Split(packageName, "/")
+	if len(parts) == 1 {
+		return parts[0] != "." && parts[0] != ".." && !strings.HasPrefix(parts[0], "@")
+	}
+	return len(parts) == 2 && strings.HasPrefix(parts[0], "@") && len(parts[0]) > 1 &&
+		parts[1] != "" && parts[1] != "." && parts[1] != ".."
 }
 
 // runInProcessGroup isolates every provider-owned command from the updater's
