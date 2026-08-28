@@ -136,13 +136,9 @@ func (a *twoFactorAuthenticator) ConfirmEnrollment(ctx context.Context, expected
 		return nil, "", ErrInvalidTwoFactorCode
 	}
 	defer a.account.lock(normalizeEmail(pending.Email))()
-	codes, err := generateRecoveryCodes(recoveryCodeCount)
+	codes, hashes, err := newRecoveryCodeSet()
 	if err != nil {
 		return nil, "", err
-	}
-	hashes := make([]string, len(codes))
-	for i, c := range codes {
-		hashes[i] = hashRecoveryCode(c)
 	}
 	record := TwoFactorRecord{
 		Secret:             pending.Secret,
@@ -237,13 +233,9 @@ func (a *twoFactorAuthenticator) RegenerateRecoveryCodes(ctx context.Context, em
 	if !verifyTOTPCode(record.Secret, code, time.Now()) {
 		return nil, ErrInvalidTwoFactorCode
 	}
-	codes, err := generateRecoveryCodes(recoveryCodeCount)
+	codes, hashes, err := newRecoveryCodeSet()
 	if err != nil {
 		return nil, err
-	}
-	hashes := make([]string, len(codes))
-	for i, c := range codes {
-		hashes[i] = hashRecoveryCode(c)
 	}
 	updated := *record
 	updated.RecoveryCodeHashes = hashes
@@ -252,6 +244,18 @@ func (a *twoFactorAuthenticator) RegenerateRecoveryCodes(ctx context.Context, em
 	}
 	a.setCache(email, &updated)
 	return codes, nil
+}
+
+func newRecoveryCodeSet() (codes, hashes []string, err error) {
+	codes, err = generateRecoveryCodes(recoveryCodeCount)
+	if err != nil {
+		return nil, nil, err
+	}
+	hashes = make([]string, len(codes))
+	for i, code := range codes {
+		hashes[i] = hashRecoveryCode(code)
+	}
+	return codes, hashes, nil
 }
 
 // RecoveryCodesRemaining reports how many unused recovery codes email has,
