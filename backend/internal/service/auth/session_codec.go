@@ -18,7 +18,7 @@ func newSessionCodec(key []byte) *sessionCodec {
 	// The empty domain is intentional: it reproduces the pre-domain MAC, so
 	// sessions issued before domain separation existed keep verifying. Every
 	// other payload type must use a distinct, non-empty domain.
-	return &sessionCodec{payload: newSignedPayload[Session](key, "")}
+	return &sessionCodec{payload: newSessionPayload(key)}
 }
 
 func (c *sessionCodec) sign(user User, sid string) string {

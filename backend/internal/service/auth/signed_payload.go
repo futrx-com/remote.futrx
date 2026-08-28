@@ -40,8 +40,19 @@ type signedPayload[T expirer] struct {
 	domain string
 }
 
-func newSignedPayload[T expirer](key []byte, domain string) signedPayload[T] {
-	return signedPayload[T]{key: key, domain: domain}
+// newSessionPayload is the sole empty-domain construction path. The empty
+// domain intentionally preserves session cookies issued before purpose
+// binding was introduced.
+func newSessionPayload(key []byte) signedPayload[Session] {
+	return signedPayload[Session]{key: key}
+}
+
+func newPendingLoginPayload(key []byte) signedPayload[pendingLogin] {
+	return signedPayload[pendingLogin]{key: key, domain: "pending-login/v1"}
+}
+
+func newPendingEnrollmentPayload(key []byte) signedPayload[pendingEnrollment] {
+	return signedPayload[pendingEnrollment]{key: key, domain: "2fa-enrollment/v1"}
 }
 
 // mac binds the codec's domain to the payload so the same key cannot produce

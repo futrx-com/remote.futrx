@@ -19,10 +19,6 @@ var (
 
 const enrollmentTTL = 10 * time.Minute
 
-// pendingEnrollmentDomain keeps an in-flight enrollment token from verifying
-// as any other payload signed with the same session key (notably Session).
-const pendingEnrollmentDomain = "2fa-enrollment/v1"
-
 // pendingEnrollment is the signed, stateless payload carried by an
 // enrollment token between BeginEnrollment and ConfirmEnrollment - nothing
 // is persisted server-side until the user proves possession of the
@@ -63,7 +59,7 @@ func newTwoFactorAuthenticator(store TwoFactorStore, issuer string, key []byte) 
 	return &twoFactorAuthenticator{
 		store:  store,
 		issuer: issuer,
-		codec:  newSignedPayload[pendingEnrollment](key, pendingEnrollmentDomain),
+		codec:  newPendingEnrollmentPayload(key),
 		cache:  map[string]*TwoFactorRecord{},
 	}
 }

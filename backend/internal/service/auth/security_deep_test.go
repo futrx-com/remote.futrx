@@ -88,7 +88,7 @@ func TestEnrollmentTokenIsNotAValidSession(t *testing.T) {
 // way still verifies and nobody is logged out by the fix.
 func TestExistingSessionsSurviveDomainSeparation(t *testing.T) {
 	service, email := newTestServiceWithLocalAdmin(t)
-	legacy := newSignedPayload[Session]([]byte("test-session-key"), "")
+	legacy := newSessionPayload([]byte("test-session-key"))
 	now := time.Now()
 	raw := legacy.sign(Session{Email: email, Sub: "local-admin", Iat: now.Unix(), Exp: now.Add(time.Hour).Unix()})
 	if _, err := service.CurrentSession(context.Background(), raw); err != nil {
@@ -142,7 +142,7 @@ func flipLast(s string) string {
 // decoded but authenticated.
 func TestForgedSessionWithDifferentKeyIsRejected(t *testing.T) {
 	service, email := newTestServiceWithLocalAdmin(t)
-	forged := newSignedPayload[Session]([]byte("attacker-key"), "")
+	forged := newSessionPayload([]byte("attacker-key"))
 	now := time.Now()
 	raw := forged.sign(Session{Email: email, Sub: "local-admin", Iat: now.Unix(), Exp: now.Add(time.Hour).Unix()})
 	if _, err := service.CurrentSession(context.Background(), raw); err == nil {
@@ -156,7 +156,7 @@ func TestExpiredSessionAndPendingTokensAreRejected(t *testing.T) {
 	service, email := newTestServiceWithLocalAdmin(t)
 	ctx := context.Background()
 
-	expiredSession := newSignedPayload[Session]([]byte("test-session-key"), "").
+	expiredSession := newSessionPayload([]byte("test-session-key")).
 		sign(Session{Email: email, Sub: "local-admin", Iat: time.Now().Add(-2 * time.Hour).Unix(), Exp: time.Now().Add(-time.Hour).Unix()})
 	if _, err := service.CurrentSession(ctx, expiredSession); err == nil {
 		t.Fatal("expired session cookie was accepted")

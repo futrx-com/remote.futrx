@@ -52,12 +52,6 @@ func (p pendingLogin) expired(now time.Time) bool {
 
 const pendingLoginTTL = 5 * time.Minute
 
-// pendingLoginDomain separates the half-authenticated pending-login token
-// from a real Session. Both are signed with the session key and their JSON
-// overlaps, so without this a pending token decodes as a valid session and
-// the second factor can be skipped entirely.
-const pendingLoginDomain = "pending-login/v1"
-
 // LoginResult is returned by the Complete*Login methods: either a login
 // completed outright (CookieValue set) or it needs a second factor
 // (PendingToken set, to be presented back to CompleteTwoFactorChallenge).
@@ -144,7 +138,7 @@ func New(
 		codec:             newSessionCodec(sessionKey),
 		twoFactor:         newTwoFactorAuthenticator(twoFactorStore, "remote.futrx", sessionKey),
 		registry:          newSessionRegistry(sessionRegistryStore),
-		pendingLoginCodec: newSignedPayload[pendingLogin](sessionKey, pendingLoginDomain),
+		pendingLoginCodec: newPendingLoginPayload(sessionKey),
 	}
 	return service, nil
 }
