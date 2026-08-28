@@ -207,57 +207,31 @@ func (h *SecurityHandler) handlePreferences(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	var body struct {
-		SingleSessionEnabled     *bool `json:"singleSessionEnabled"`
-		HistoryEnabled           *bool `json:"historyEnabled"`
-		RecoveryCodeAlertEnabled *bool `json:"recoveryCodeAlertEnabled"`
-	}
-	if err := readJSONBody(r, &body); err != nil {
+	var update serviceauth.SecurityPreferencesUpdate
+	if err := readJSONBody(r, &update); err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
-	prefs, err := h.auth.SecurityPreferences(r.Context(), session.Email)
+	result, err := h.auth.UpdateSecurityPreferences(
+		r.Context(),
+		serviceauth.User{Email: session.Email, Sub: session.Sub},
+		update,
+		localClientIP(r),
+		r.UserAgent(),
+	)
+	if result.SessionCookieValue != "" {
+		setSessionCookie(w, h.auth, result.SessionCookieValue)
+	}
 	if err != nil {
-		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if errors.Is(err, serviceauth.ErrRecoveryCodeAlertRequiresTwoFactor) {
+			status = http.StatusBadRequest
+		}
+		httptransport.SendErr(w, status, err.Error())
 		return
 	}
-
-	turningSingleSessionOn := false
-	if body.SingleSessionEnabled != nil {
-		if *body.SingleSessionEnabled && !prefs.SingleSessionEnabled {
-			turningSingleSessionOn = true
-		}
-		prefs.SingleSessionEnabled = *body.SingleSessionEnabled
-	}
-	if body.HistoryEnabled != nil {
-		prefs.HistoryEnabled = *body.HistoryEnabled
-	}
-	if body.RecoveryCodeAlertEnabled != nil {
-		if *body.RecoveryCodeAlertEnabled && !h.auth.TwoFactorEnabled(r.Context(), session.Email) {
-			httptransport.SendErr(w, http.StatusBadRequest, "enable two-factor authentication before turning on the recovery-code alert")
-			return
-		}
-		prefs.RecoveryCodeAlertEnabled = *body.RecoveryCodeAlertEnabled
-	}
-
-	if err := h.auth.SetSecurityPreferences(r.Context(), session.Email, prefs); err != nil {
-		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	if turningSingleSessionOn {
-		if cookieValue, err := h.auth.ReissueTrackedSession(r.Context(), serviceauth.User{Email: session.Email, Sub: session.Sub}, localClientIP(r), r.UserAgent()); err == nil {
-			setSessionCookie(w, h.auth, cookieValue)
-		}
-	}
-
-	summary, err := h.auth.SecuritySummary(r.Context(), session.Email)
-	if err != nil {
-		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	httptransport.SendJSON(w, http.StatusOK, summary)
+	httptransport.SendJSON(w, http.StatusOK, result.Summary)
 }
 
 func (h *SecurityHandler) handleAckAlert(w http.ResponseWriter, r *http.Request) {

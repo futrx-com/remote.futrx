@@ -1,12 +1,34 @@
 package auth
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrRecoveryCodeAlertRequiresTwoFactor rejects an alert preference that
+// cannot fire until the account has recovery codes.
+var ErrRecoveryCodeAlertRequiresTwoFactor = errors.New("enable two-factor authentication before turning on the recovery-code alert")
 
 // TwoFactorEnrollmentCompletion is the outcome of confirming enrollment for
 // an authenticated account. SessionCookieValue is set only when an existing
 // account preference requires the current browser session to be tracked.
 type TwoFactorEnrollmentCompletion struct {
 	RecoveryCodes      []string
+	SessionCookieValue string
+}
+
+// SecurityPreferencesUpdate is a partial account-security preference change.
+// Nil fields retain their current value.
+type SecurityPreferencesUpdate struct {
+	SingleSessionEnabled     *bool `json:"singleSessionEnabled"`
+	HistoryEnabled           *bool `json:"historyEnabled"`
+	RecoveryCodeAlertEnabled *bool `json:"recoveryCodeAlertEnabled"`
+}
+
+// SecurityPreferencesUpdateResult carries the refreshed view and any session
+// cookie reissued while applying the change.
+type SecurityPreferencesUpdateResult struct {
+	Summary            SecuritySummary
 	SessionCookieValue string
 }
 
@@ -82,6 +104,52 @@ func (s *Service) SecurityPreferences(ctx context.Context, email string) (Securi
 // SetSecurityPreferences overwrites email's SecurityPreferences.
 func (s *Service) SetSecurityPreferences(ctx context.Context, email string, prefs SecurityPreferences) error {
 	return s.registry.SetPreferences(ctx, email, prefs)
+}
+
+// UpdateSecurityPreferences merges a partial preference change, enforces the
+// recovery-alert dependency on 2FA, and makes a newly single-session account's
+// current browser active immediately. Session reissue remains best-effort.
+func (s *Service) UpdateSecurityPreferences(
+	ctx context.Context,
+	user User,
+	update SecurityPreferencesUpdate,
+	ip, userAgent string,
+) (SecurityPreferencesUpdateResult, error) {
+	prefs, err := s.SecurityPreferences(ctx, user.Email)
+	if err != nil {
+		return SecurityPreferencesUpdateResult{}, err
+	}
+
+	turningSingleSessionOn := false
+	if update.SingleSessionEnabled != nil {
+		if *update.SingleSessionEnabled && !prefs.SingleSessionEnabled {
+			turningSingleSessionOn = true
+		}
+		prefs.SingleSessionEnabled = *update.SingleSessionEnabled
+	}
+	if update.HistoryEnabled != nil {
+		prefs.HistoryEnabled = *update.HistoryEnabled
+	}
+	if update.RecoveryCodeAlertEnabled != nil {
+		if *update.RecoveryCodeAlertEnabled && !s.TwoFactorEnabled(ctx, user.Email) {
+			return SecurityPreferencesUpdateResult{}, ErrRecoveryCodeAlertRequiresTwoFactor
+		}
+		prefs.RecoveryCodeAlertEnabled = *update.RecoveryCodeAlertEnabled
+	}
+
+	if err := s.SetSecurityPreferences(ctx, user.Email, prefs); err != nil {
+		return SecurityPreferencesUpdateResult{}, err
+	}
+
+	result := SecurityPreferencesUpdateResult{}
+	if turningSingleSessionOn {
+		if cookieValue, err := s.ReissueTrackedSession(ctx, user, ip, userAgent); err == nil {
+			result.SessionCookieValue = cookieValue
+		}
+	}
+
+	result.Summary, err = s.SecuritySummary(ctx, user.Email)
+	return result, err
 }
 
 // AckSecurityAlert clears email's pending SecurityAlert, if any.
