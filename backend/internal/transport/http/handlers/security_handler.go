@@ -151,7 +151,7 @@ func (h *SecurityHandler) handleDisable(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.auth.DisableTwoFactor(r.Context(), session.Email, body.Code); err != nil {
+	if err := h.auth.CompleteTwoFactorDisable(r.Context(), session.Email, body.Code); err != nil {
 		sendTwoFactorProofError(w, err)
 		return
 	}
