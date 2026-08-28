@@ -37,13 +37,16 @@ func (r browserAssetRenderer) installScript() string {
 	script := strings.TrimSuffix(embeddedAgentBrowserInstallScript, "\n") + "\n\n" +
 		strings.TrimSuffix(embeddedAgentBrowserSmokeTestScript, "\n")
 	for placeholder, key := range map[string]string{
-		"__PLAYWRIGHT_VERSION__":               "PLAYWRIGHT_VERSION",
-		"__PW_CFT_VERSION__":                   "PW_CFT_VERSION",
-		"__PW_VENDOR_REPO__":                   "PW_VENDOR_REPO",
-		"__PW_VENDOR_RELEASE_TAG__":            "PW_VENDOR_RELEASE_TAG",
-		"__PW_CHROME_LINUX64_SHA256__":         "PW_CHROME_LINUX64_SHA256",
-		"__PW_HEADLESS_SHELL_LINUX64_SHA256__": "PW_HEADLESS_SHELL_LINUX64_SHA256",
-		"__PW_FFMPEG_LINUX_SHA256__":           "PW_FFMPEG_LINUX_SHA256",
+		"__PLAYWRIGHT_VERSION__":                   "PLAYWRIGHT_VERSION",
+		"__PW_CFT_VERSION__":                       "PW_CFT_VERSION",
+		"__PW_VENDOR_REPO__":                       "PW_VENDOR_REPO",
+		"__PW_VENDOR_RELEASE_TAG__":                "PW_VENDOR_RELEASE_TAG",
+		"__PW_CHROME_LINUX64_SHA256__":             "PW_CHROME_LINUX64_SHA256",
+		"__PW_HEADLESS_SHELL_LINUX64_SHA256__":     "PW_HEADLESS_SHELL_LINUX64_SHA256",
+		"__PW_FFMPEG_LINUX_SHA256__":               "PW_FFMPEG_LINUX_SHA256",
+		"__PW_CHROMIUM_LINUX_ARM64_SHA256__":       "PW_CHROMIUM_LINUX_ARM64_SHA256",
+		"__PW_HEADLESS_SHELL_LINUX_ARM64_SHA256__": "PW_HEADLESS_SHELL_LINUX_ARM64_SHA256",
+		"__PW_FFMPEG_LINUX_ARM64_SHA256__":         "PW_FFMPEG_LINUX_ARM64_SHA256",
 	} {
 		script = strings.ReplaceAll(script, placeholder, r.pin(key))
 	}
@@ -59,7 +62,7 @@ func (r browserAssetRenderer) launcherScript() []byte {
 }
 
 func (r browserAssetRenderer) stackCheck() string {
-	return `command -v Xvfb >/dev/null 2>&1 && for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; do [ -x "$browser_bin" ] || continue; "$browser_bin" --version 2>/dev/null | grep -Fq '` + r.pin("PW_CFT_VERSION") + `' && exit 0; done; exit 1`
+	return `command -v Xvfb >/dev/null 2>&1 && for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do [ -x "$browser_bin" ] || continue; "$browser_bin" --version 2>/dev/null | grep -Fq '` + r.pin("PW_CFT_VERSION") + `' && exit 0; done; exit 1`
 }
 
 func renderedGUIUpScript() []byte {

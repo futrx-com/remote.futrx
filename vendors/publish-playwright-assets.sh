@@ -14,9 +14,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$ROOT/infra/versions.env"
-for v in PLAYWRIGHT_VERSION PW_CFT_VERSION PW_FFMPEG_BUILD PW_VENDOR_REPO \
+for v in PLAYWRIGHT_VERSION PW_CFT_VERSION PW_CHROMIUM_BUILD PW_FFMPEG_BUILD PW_VENDOR_REPO \
          PW_VENDOR_RELEASE_TAG PW_CHROME_LINUX64_SHA256 \
-         PW_HEADLESS_SHELL_LINUX64_SHA256 PW_FFMPEG_LINUX_SHA256; do
+         PW_HEADLESS_SHELL_LINUX64_SHA256 PW_FFMPEG_LINUX_SHA256 \
+         PW_CHROMIUM_LINUX_ARM64_SHA256 PW_HEADLESS_SHELL_LINUX_ARM64_SHA256 \
+         PW_FFMPEG_LINUX_ARM64_SHA256; do
     [ -n "${!v:-}" ] || { echo "versions.env is missing $v" >&2; exit 1; }
 done
 
@@ -26,23 +28,46 @@ sha256() {
 }
 
 # ── Consistency gate ─────────────────────────────────────────────────────────
-# The CfT and ffmpeg pins must match what the pinned Playwright actually
-# requests, or the vendored assets would never be the ones the installer asks
-# for. (Version numbers are platform-independent; the dry-run may print this
-# machine's platform in URLs.)
-dryrun="$(npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium --dry-run 2>/dev/null)"
-want_cft="$(printf '%s\n' "$dryrun" | sed -n 's/.*Chrome for Testing \([0-9.]*\) .*/\1/p' | head -1)"
-want_ffmpeg="$(printf '%s\n' "$dryrun" | sed -n 's/.*playwright ffmpeg v\([0-9]*\).*/\1/p' | head -1)"
-if [ "$want_cft" != "$PW_CFT_VERSION" ] || [ "$want_ffmpeg" != "$PW_FFMPEG_BUILD" ]; then
-    echo "pin mismatch: playwright@${PLAYWRIGHT_VERSION} wants CfT ${want_cft:-?} / ffmpeg ${want_ffmpeg:-?}," >&2
-    echo "but versions.env pins PW_CFT_VERSION=${PW_CFT_VERSION} / PW_FFMPEG_BUILD=${PW_FFMPEG_BUILD}." >&2
+# The version/build pins must match what the pinned Playwright actually asks
+# for on both supported Linux architectures, or the vendored assets would not
+# match its fallback requests. Explicit platform overrides keep this gate
+# independent of the machine running the publisher.
+dryrun_x64="$(PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 \
+    npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium --dry-run 2>/dev/null)"
+dryrun_arm64="$(PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-arm64 \
+    npx --yes "playwright@${PLAYWRIGHT_VERSION}" install chromium --dry-run 2>/dev/null)"
+want_cft_x64="$(printf '%s\n' "$dryrun_x64" | sed -n 's/.*Chrome for Testing \([0-9.]*\) .*/\1/p' | head -1)"
+want_cft_arm64="$(printf '%s\n' "$dryrun_arm64" | sed -n 's/.*Chrome for Testing \([0-9.]*\) .*/\1/p' | head -1)"
+want_chromium_x64="$(printf '%s\n' "$dryrun_x64" | sed -n 's/.*playwright chromium v\([0-9]*\).*/\1/p' | head -1)"
+want_chromium_arm64="$(printf '%s\n' "$dryrun_arm64" | sed -n 's/.*playwright chromium v\([0-9]*\).*/\1/p' | head -1)"
+want_ffmpeg_x64="$(printf '%s\n' "$dryrun_x64" | sed -n 's/.*playwright ffmpeg v\([0-9]*\).*/\1/p' | head -1)"
+want_ffmpeg_arm64="$(printf '%s\n' "$dryrun_arm64" | sed -n 's/.*playwright ffmpeg v\([0-9]*\).*/\1/p' | head -1)"
+if [ "$want_cft_x64" != "$PW_CFT_VERSION" ] \
+    || [ "$want_cft_arm64" != "$PW_CFT_VERSION" ] \
+    || [ "$want_chromium_x64" != "$PW_CHROMIUM_BUILD" ] \
+    || [ "$want_chromium_arm64" != "$PW_CHROMIUM_BUILD" ] \
+    || [ "$want_ffmpeg_x64" != "$PW_FFMPEG_BUILD" ] \
+    || [ "$want_ffmpeg_arm64" != "$PW_FFMPEG_BUILD" ]; then
+    echo "pin mismatch: playwright@${PLAYWRIGHT_VERSION} reports:" >&2
+    echo "  amd64: CfT ${want_cft_x64:-?} / Chromium ${want_chromium_x64:-?} / ffmpeg ${want_ffmpeg_x64:-?}" >&2
+    echo "  arm64: CfT ${want_cft_arm64:-?} / Chromium ${want_chromium_arm64:-?} / ffmpeg ${want_ffmpeg_arm64:-?}" >&2
+    echo "versions.env pins CfT ${PW_CFT_VERSION} / Chromium ${PW_CHROMIUM_BUILD} / ffmpeg ${PW_FFMPEG_BUILD}." >&2
     echo "Update versions.env (and its sha256 pins) before publishing." >&2
     exit 1
 fi
 
-# ── Download the three Linux assets ──────────────────────────────────────────
+# ── Download the six Linux assets ────────────────────────────────────────────
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+
+ASSETS=(
+    chrome-linux64.zip
+    chrome-headless-shell-linux64.zip
+    ffmpeg-linux.zip
+    chromium-linux-arm64.zip
+    chromium-headless-shell-linux-arm64.zip
+    ffmpeg-linux-arm64.zip
+)
 
 fetch() { # fetch <output-name> <url>...
     local out="$WORK/$1"; shift
@@ -64,6 +89,18 @@ fetch chrome-headless-shell-linux64.zip \
 fetch ffmpeg-linux.zip \
     "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux.zip" \
     "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux.zip"
+fetch chromium-linux-arm64.zip \
+    "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-linux-arm64.zip" \
+    "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-linux-arm64.zip" \
+    "https://cdn.playwright.dev/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-linux-arm64.zip"
+fetch chromium-headless-shell-linux-arm64.zip \
+    "https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-headless-shell-linux-arm64.zip" \
+    "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-headless-shell-linux-arm64.zip" \
+    "https://cdn.playwright.dev/builds/chromium/${PW_CHROMIUM_BUILD}/chromium-headless-shell-linux-arm64.zip"
+fetch ffmpeg-linux-arm64.zip \
+    "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux-arm64.zip" \
+    "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux-arm64.zip" \
+    "https://cdn.playwright.dev/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux-arm64.zip"
 
 # ── Verify against the committed pins ────────────────────────────────────────
 fail=0
@@ -79,6 +116,9 @@ check() { # check <file> <pinned-sha>
 check chrome-linux64.zip "$PW_CHROME_LINUX64_SHA256"
 check chrome-headless-shell-linux64.zip "$PW_HEADLESS_SHELL_LINUX64_SHA256"
 check ffmpeg-linux.zip "$PW_FFMPEG_LINUX_SHA256"
+check chromium-linux-arm64.zip "$PW_CHROMIUM_LINUX_ARM64_SHA256"
+check chromium-headless-shell-linux-arm64.zip "$PW_HEADLESS_SHELL_LINUX_ARM64_SHA256"
+check ffmpeg-linux-arm64.zip "$PW_FFMPEG_LINUX_ARM64_SHA256"
 if [ "$fail" -ne 0 ]; then
     echo "If you just bumped PLAYWRIGHT_VERSION, update the PW_*_SHA256 pins in" >&2
     echo "versions.env to the 'actual' values above and re-run." >&2
@@ -92,16 +132,14 @@ if ! gh release view "$PW_VENDOR_RELEASE_TAG" -R "$PW_VENDOR_REPO" >/dev/null 2>
     # Releases page belongs to version tags (see release-on-tag.yml).
     gh release create "$PW_VENDOR_RELEASE_TAG" -R "$PW_VENDOR_REPO" --prerelease \
         --title "Vendored Playwright assets (playwright@${PLAYWRIGHT_VERSION})" \
-        --notes "Unmodified Playwright/Chrome-for-Testing archives (CfT ${PW_CFT_VERSION}, ffmpeg ${PW_FFMPEG_BUILD}), republished as the install-time fallback for servers geo-blocked by Google's CDN. sha256 pins live in versions.env; provenance is this repo's 'Vendor Playwright assets' workflow. See vendors/README.md."
+        --notes "Unmodified amd64 and arm64 Playwright/Chrome-for-Testing archives (CfT ${PW_CFT_VERSION}, Chromium ${PW_CHROMIUM_BUILD}, ffmpeg ${PW_FFMPEG_BUILD}), republished as the install-time fallback for servers geo-blocked by Google's CDN. sha256 pins live in versions.env; provenance is this repo's 'Vendor Playwright assets' workflow. See vendors/README.md."
 fi
 gh release upload "$PW_VENDOR_RELEASE_TAG" -R "$PW_VENDOR_REPO" --clobber \
-    "$WORK/chrome-linux64.zip" \
-    "$WORK/chrome-headless-shell-linux64.zip" \
-    "$WORK/ffmpeg-linux.zip"
+    "${ASSETS[@]/#/$WORK/}"
 
 # ── Round-trip: the URLs the install fallback will use must serve the bytes ──
 base="https://github.com/${PW_VENDOR_REPO}/releases/download/${PW_VENDOR_RELEASE_TAG}"
-for f in chrome-linux64.zip chrome-headless-shell-linux64.zip ffmpeg-linux.zip; do
+for f in "${ASSETS[@]}"; do
     curl -fsSL --retry 3 -o "$WORK/rt-$f" "$base/$f"
     [ "$(sha256 "$WORK/rt-$f")" = "$(sha256 "$WORK/$f")" ] \
         || { echo "round-trip sha mismatch for $f" >&2; exit 1; }

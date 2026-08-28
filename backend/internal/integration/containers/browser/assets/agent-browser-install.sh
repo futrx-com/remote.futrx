@@ -60,13 +60,35 @@ if ! pw_install; then
     echo "direct Playwright download failed — retrying from vendored assets at ${VENDOR_URL}" >&2
     VENDOR_DIR=/tmp/pw-vendor
     mkdir -p "$VENDOR_DIR"
-    for f in chrome-linux64.zip chrome-headless-shell-linux64.zip ffmpeg-linux.zip; do
+    case "$(dpkg --print-architecture)" in
+        amd64)
+            PW_CHROME_ARCHIVE=chrome-linux64.zip
+            PW_HEADLESS_ARCHIVE=chrome-headless-shell-linux64.zip
+            PW_FFMPEG_ARCHIVE=ffmpeg-linux.zip
+            PW_CHROME_SHA256=__PW_CHROME_LINUX64_SHA256__
+            PW_HEADLESS_SHA256=__PW_HEADLESS_SHELL_LINUX64_SHA256__
+            PW_FFMPEG_SHA256=__PW_FFMPEG_LINUX_SHA256__
+            ;;
+        arm64)
+            PW_CHROME_ARCHIVE=chromium-linux-arm64.zip
+            PW_HEADLESS_ARCHIVE=chromium-headless-shell-linux-arm64.zip
+            PW_FFMPEG_ARCHIVE=ffmpeg-linux-arm64.zip
+            PW_CHROME_SHA256=__PW_CHROMIUM_LINUX_ARM64_SHA256__
+            PW_HEADLESS_SHA256=__PW_HEADLESS_SHELL_LINUX_ARM64_SHA256__
+            PW_FFMPEG_SHA256=__PW_FFMPEG_LINUX_ARM64_SHA256__
+            ;;
+        *)
+            echo "Playwright browser fallback does not support architecture $(dpkg --print-architecture)." >&2
+            exit 1
+            ;;
+    esac
+    for f in "$PW_CHROME_ARCHIVE" "$PW_HEADLESS_ARCHIVE" "$PW_FFMPEG_ARCHIVE"; do
         curl -fsSL --retry 3 -o "$VENDOR_DIR/$f" "$VENDOR_URL/$f"
     done
     sha256sum -c --quiet <<EOF
-__PW_CHROME_LINUX64_SHA256__  $VENDOR_DIR/chrome-linux64.zip
-__PW_HEADLESS_SHELL_LINUX64_SHA256__  $VENDOR_DIR/chrome-headless-shell-linux64.zip
-__PW_FFMPEG_LINUX_SHA256__  $VENDOR_DIR/ffmpeg-linux.zip
+$PW_CHROME_SHA256  $VENDOR_DIR/$PW_CHROME_ARCHIVE
+$PW_HEADLESS_SHA256  $VENDOR_DIR/$PW_HEADLESS_ARCHIVE
+$PW_FFMPEG_SHA256  $VENDOR_DIR/$PW_FFMPEG_ARCHIVE
 EOF
     # Serve the archives by filename for whatever path Playwright requests —
     # its URL layout under a custom PLAYWRIGHT_DOWNLOAD_HOST has changed

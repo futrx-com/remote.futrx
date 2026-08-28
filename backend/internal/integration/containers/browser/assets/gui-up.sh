@@ -29,7 +29,9 @@ export DISPLAY=":$DISPLAY_NUM"
 # Ubuntu's stock chrome profile otherwise denies all its sockets inside
 # nested LXD AppArmor namespaces — CreatePlatformSocket EPERM).
 CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; do
+for browser_bin in \
+  /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
+  /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
   [ -x "$browser_bin" ] || continue
   if "$browser_bin" --version 2>/dev/null | grep -Fq "$EXPECTED_CHROME_VERSION"; then
     CHROME="$browser_bin"
@@ -37,7 +39,7 @@ for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; 
   fi
 done
 if [ -z "$CHROME" ]; then
-  echo "[gui-up] pinned Chrome for Testing $EXPECTED_CHROME_VERSION is not installed" >&2
+  echo "[gui-up] pinned Chromium $EXPECTED_CHROME_VERSION was not found or executable for $(dpkg --print-architecture)" >&2
   exit 1
 fi
 

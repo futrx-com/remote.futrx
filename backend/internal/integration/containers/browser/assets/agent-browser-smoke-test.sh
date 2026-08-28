@@ -1,7 +1,12 @@
 # Sanity check the GUI toolchain and select the browser pinned by versions.env.
 which Xvfb x11vnc websockify openbox xdotool setsid
 CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; do
+# Playwright's extracted directory differs by CPU architecture: Chrome for
+# Testing uses chrome-linux64 on amd64, while its Linux ARM64 Chromium build
+# uses chrome-linux. Check both so the image recipe stays portable.
+for browser_bin in \
+    /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
+    /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
     [ -x "$browser_bin" ] || continue
     if "$browser_bin" --version 2>/dev/null | grep -Fq "$PW_CFT_VERSION"; then
         CHROME="$browser_bin"
@@ -9,7 +14,7 @@ for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; 
     fi
 done
 if [ -z "$CHROME" ]; then
-    echo "pinned Chrome for Testing $PW_CFT_VERSION was not installed" >&2
+    echo "pinned Chromium $PW_CFT_VERSION was not found or executable for $(dpkg --print-architecture)" >&2
     exit 1
 fi
 
