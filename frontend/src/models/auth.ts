@@ -1,5 +1,3 @@
-import type { SecurityAlertSummary } from "./security";
-
 export interface AuthSession {
   authenticated: boolean;
   claimed: boolean;
@@ -10,7 +8,6 @@ export interface AuthSession {
   email: string;
   isAdmin: boolean;
   isRegistered: boolean;
-  securityAlert?: SecurityAlertSummary;
 }
 
 export interface GoogleOAuthSettings {

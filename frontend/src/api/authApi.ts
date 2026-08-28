@@ -19,7 +19,6 @@ export async function fetchAuthSession(): Promise<AuthSession> {
       email: data.email ?? "",
       isAdmin: !!data.isAdmin,
       isRegistered: !!data.isRegistered,
-      securityAlert: data.securityAlert ?? undefined,
     };
   } catch {
     return UNAUTHENTICATED_SESSION;
