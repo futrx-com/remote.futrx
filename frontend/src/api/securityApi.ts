@@ -7,23 +7,24 @@ import type {
 import { API_ROUTES } from "../config/routes";
 
 export const securityApi = {
-  fetch: () => requestJson<SecuritySettings>("GET", API_ROUTES.security.summary),
-  beginEnrollment: () =>
+  fetchSettings: () => requestJson<SecuritySettings>("GET", API_ROUTES.security.summary),
+  beginTwoFactorEnrollment: () =>
     requestJson<TwoFactorEnrollment>("POST", API_ROUTES.security.enroll),
-  confirmEnrollment: (enrollmentToken: string, code: string) =>
-    requestJson<{ recoveryCodes: string[] }>("POST", API_ROUTES.security.confirm, {
+  confirmTwoFactorEnrollment: (enrollmentToken: string, code: string) =>
+    requestRecoveryCodes(API_ROUTES.security.confirm, {
       enrollmentToken,
       code,
     }),
-  disable: (code: string) =>
+  disableTwoFactor: (code: string) =>
     requestJson<void>("POST", API_ROUTES.security.disable, { code }),
   regenerateRecoveryCodes: (code: string) =>
-    requestJson<{ recoveryCodes: string[] }>(
-      "POST",
-      API_ROUTES.security.regenerateRecoveryCodes,
-      { code }
-    ),
-  setPreferences: (input: SecurityPreferencesInput) =>
+    requestRecoveryCodes(API_ROUTES.security.regenerateRecoveryCodes, { code }),
+  updatePreferences: (input: SecurityPreferencesInput) =>
     requestJson<SecuritySettings>("POST", API_ROUTES.security.preferences, input),
-  ackAlert: () => requestJson<void>("POST", API_ROUTES.security.ackAlert),
+  acknowledgeAlert: () => requestJson<void>("POST", API_ROUTES.security.ackAlert),
 };
+
+async function requestRecoveryCodes(url: string, body: unknown): Promise<string[]> {
+  const response = await requestJson<{ recoveryCodes: string[] }>("POST", url, body);
+  return response.recoveryCodes;
+}
