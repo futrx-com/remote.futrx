@@ -106,7 +106,14 @@ func (h *SecurityHandler) handleConfirm(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	codes, email, err := h.auth.ConfirmTwoFactorEnrollment(r.Context(), session.Email, body.EnrollmentToken, body.Code)
+	result, err := h.auth.CompleteTwoFactorEnrollment(
+		r.Context(),
+		serviceauth.User{Email: session.Email, Sub: session.Sub},
+		body.EnrollmentToken,
+		body.Code,
+		localClientIP(r),
+		r.UserAgent(),
+	)
 	if err != nil {
 		switch {
 		case errors.Is(err, serviceauth.ErrEnrollmentTokenMismatch):
@@ -120,19 +127,11 @@ func (h *SecurityHandler) handleConfirm(w http.ResponseWriter, r *http.Request) 
 		}
 		return
 	}
-	// Enrolling 2FA does not itself turn on any SecurityPreferences flag
-	// (they're independent toggles) - only re-issue the current session as
-	// tracked if one is already on, so an enrolling user whose browser is
-	// mid-session under single-session/history/alert isn't left stale.
-	if prefs, err := h.auth.SecurityPreferences(r.Context(), email); err == nil {
-		if prefs.SingleSessionEnabled || prefs.HistoryEnabled || prefs.RecoveryCodeAlertEnabled {
-			if cookieValue, err := h.auth.ReissueTrackedSession(r.Context(), serviceauth.User{Email: session.Email, Sub: session.Sub}, localClientIP(r), r.UserAgent()); err == nil {
-				setSessionCookie(w, h.auth, cookieValue)
-			}
-		}
+	if result.SessionCookieValue != "" {
+		setSessionCookie(w, h.auth, result.SessionCookieValue)
 	}
 
-	httptransport.SendJSON(w, http.StatusOK, map[string]any{"recoveryCodes": codes})
+	httptransport.SendJSON(w, http.StatusOK, map[string]any{"recoveryCodes": result.RecoveryCodes})
 }
 
 func (h *SecurityHandler) handleDisable(w http.ResponseWriter, r *http.Request) {

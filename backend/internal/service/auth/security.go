@@ -2,6 +2,14 @@ package auth
 
 import "context"
 
+// TwoFactorEnrollmentCompletion is the outcome of confirming enrollment for
+// an authenticated account. SessionCookieValue is set only when an existing
+// account preference requires the current browser session to be tracked.
+type TwoFactorEnrollmentCompletion struct {
+	RecoveryCodes      []string
+	SessionCookieValue string
+}
+
 // TwoFactorEnabled reports whether email has completed TOTP enrollment.
 func (s *Service) TwoFactorEnabled(ctx context.Context, email string) bool {
 	return s.twoFactor.Enabled(ctx, email)
@@ -17,6 +25,31 @@ func (s *Service) BeginTwoFactorEnrollment(ctx context.Context, email string) (e
 // twoFactorAuthenticator.ConfirmEnrollment.
 func (s *Service) ConfirmTwoFactorEnrollment(ctx context.Context, expectedEmail, enrollmentToken, code string) (recoveryCodes []string, email string, err error) {
 	return s.twoFactor.ConfirmEnrollment(ctx, expectedEmail, enrollmentToken, code)
+}
+
+// CompleteTwoFactorEnrollment confirms enrollment and keeps an already
+// tracked browser session current. Preference lookup and session reissue are
+// intentionally best-effort so successful enrollment still returns its
+// one-time recovery codes when that follow-up work fails.
+func (s *Service) CompleteTwoFactorEnrollment(
+	ctx context.Context,
+	user User,
+	enrollmentToken, code, ip, userAgent string,
+) (TwoFactorEnrollmentCompletion, error) {
+	recoveryCodes, email, err := s.ConfirmTwoFactorEnrollment(ctx, user.Email, enrollmentToken, code)
+	if err != nil {
+		return TwoFactorEnrollmentCompletion{}, err
+	}
+
+	result := TwoFactorEnrollmentCompletion{RecoveryCodes: recoveryCodes}
+	if prefs, err := s.SecurityPreferences(ctx, email); err == nil {
+		if prefs.SingleSessionEnabled || prefs.HistoryEnabled || prefs.RecoveryCodeAlertEnabled {
+			if cookieValue, err := s.ReissueTrackedSession(ctx, user, ip, userAgent); err == nil {
+				result.SessionCookieValue = cookieValue
+			}
+		}
+	}
+	return result, nil
 }
 
 // DisableTwoFactor removes email's 2FA enrollment after verifying proof of
