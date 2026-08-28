@@ -37,9 +37,9 @@ jobs:
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Check Go test coverage
-        uses: vladopajic/go-test-coverage-action@v2
+        uses: vladopajic/go-test-coverage@v2
         with:
-          config-path: backend/.testcoverage.yml
+          config: backend/.testcoverage.yml
 
       - name: Build backend binaries
         run: go build -v ./...
