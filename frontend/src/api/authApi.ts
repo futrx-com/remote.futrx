@@ -28,7 +28,7 @@ export async function fetchAuthSession(): Promise<AuthSession> {
 
 export const localAuthApi = {
   claim: (email: string, password: string) =>
-    requestLocalAuth("/auth/local/claim", email, password),
+    requestPreSessionJson<AuthSession>("/auth/local/claim", { email, password }),
   login: (email: string, password: string) =>
     requestLocalAuthOrChallenge("/auth/local/login", email, password),
 };
@@ -39,17 +39,8 @@ export const localAuthApi = {
 // directly rather than requestJson - a wrong code intentionally returns 401
 // here and must not trigger requestJson's "session expired, reload" behavior.
 export const twoFactorApi = {
-  verify: async (code: string): Promise<AuthSession> => {
-    const response = await sendHttpRequest("POST", API_ROUTES.auth2fa.verify, { code });
-    if (!response.ok) {
-      let message = `${response.status}`;
-      try {
-        message = (await response.json()).error || message;
-      } catch {}
-      throw new Error(message);
-    }
-    return response.json() as Promise<AuthSession>;
-  },
+  verify: (code: string) =>
+    requestPreSessionJson<AuthSession>(API_ROUTES.auth2fa.verify, { code }),
   cancel: async (): Promise<void> => {
     await sendHttpRequest("POST", API_ROUTES.auth2fa.cancel);
   },
@@ -65,8 +56,8 @@ export const googleOAuthApi = {
     }),
 };
 
-async function requestLocalAuth(url: string, email: string, password: string): Promise<AuthSession> {
-  const response = await sendHttpRequest("POST", url, { email, password });
+async function requestPreSessionJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await sendHttpRequest("POST", url, body);
   if (!response.ok) {
     let message = `${response.status}`;
     try {
@@ -74,10 +65,10 @@ async function requestLocalAuth(url: string, email: string, password: string): P
     } catch {}
     throw new Error(message);
   }
-  return response.json() as Promise<AuthSession>;
+  return response.json() as Promise<T>;
 }
 
-export type LocalLoginResult =
+type LocalLoginResult =
   | { twoFactorRequired: true }
   | { twoFactorRequired: false; session: AuthSession };
 
@@ -89,15 +80,10 @@ async function requestLocalAuthOrChallenge(
   email: string,
   password: string
 ): Promise<LocalLoginResult> {
-  const response = await sendHttpRequest("POST", url, { email, password });
-  if (!response.ok) {
-    let message = `${response.status}`;
-    try {
-      message = (await response.json()).error || message;
-    } catch {}
-    throw new Error(message);
-  }
-  const data = await response.json();
+  const data = await requestPreSessionJson<AuthSession & { twoFactorRequired?: boolean }>(url, {
+    email,
+    password,
+  });
   if (data?.twoFactorRequired) return { twoFactorRequired: true };
   return { twoFactorRequired: false, session: data as AuthSession };
 }
