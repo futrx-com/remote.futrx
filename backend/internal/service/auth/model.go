@@ -47,7 +47,7 @@ type Session struct {
 	// signed before this field existed (those still verify fine) and for
 	// accounts that have never turned on "single active session" or
 	// "sign-in history" (see SecurityPreferences) - in both cases there is
-	// nothing to look up in SessionRegistry.
+	// nothing to look up in the session registry.
 	SID string `json:"sid,omitempty"`
 }
 

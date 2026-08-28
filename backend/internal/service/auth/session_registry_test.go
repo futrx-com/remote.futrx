@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func newTestSessionRegistry() *SessionRegistry {
+func newTestSessionRegistry() *sessionRegistry {
 	return newSessionRegistry(newAuthTestSessionRegistryStore())
 }
 

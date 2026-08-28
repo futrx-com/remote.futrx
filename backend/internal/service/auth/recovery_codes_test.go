@@ -6,7 +6,7 @@ import (
 )
 
 func TestGenerateRecoveryCodesFormatAndUniqueness(t *testing.T) {
-	codes, err := GenerateRecoveryCodes(10)
+	codes, err := generateRecoveryCodes(10)
 	if err != nil {
 		t.Fatalf("GenerateRecoveryCodes: %v", err)
 	}
@@ -37,16 +37,16 @@ func TestGenerateRecoveryCodesFormatAndUniqueness(t *testing.T) {
 }
 
 func TestConsumeRecoveryCodeIsOneTimeUse(t *testing.T) {
-	codes, err := GenerateRecoveryCodes(3)
+	codes, err := generateRecoveryCodes(3)
 	if err != nil {
 		t.Fatalf("GenerateRecoveryCodes: %v", err)
 	}
 	hashes := make([]string, len(codes))
 	for i, c := range codes {
-		hashes[i] = HashRecoveryCode(c)
+		hashes[i] = hashRecoveryCode(c)
 	}
 
-	remaining, ok := ConsumeRecoveryCode(hashes, codes[1])
+	remaining, ok := consumeRecoveryCode(hashes, codes[1])
 	if !ok {
 		t.Fatal("ConsumeRecoveryCode did not accept a valid code")
 	}
@@ -54,22 +54,22 @@ func TestConsumeRecoveryCodeIsOneTimeUse(t *testing.T) {
 		t.Fatalf("len(remaining) = %d, want %d", len(remaining), len(hashes)-1)
 	}
 	for _, h := range remaining {
-		if h == HashRecoveryCode(codes[1]) {
+		if h == hashRecoveryCode(codes[1]) {
 			t.Fatal("consumed code hash is still present in remaining")
 		}
 	}
 
-	if _, ok := ConsumeRecoveryCode(remaining, codes[1]); ok {
+	if _, ok := consumeRecoveryCode(remaining, codes[1]); ok {
 		t.Fatal("consumed code was accepted a second time")
 	}
 
-	if _, ok := ConsumeRecoveryCode(remaining, "not-a-real-code"); ok {
+	if _, ok := consumeRecoveryCode(remaining, "not-a-real-code"); ok {
 		t.Fatal("garbage code was accepted")
 	}
 
 	// Case/whitespace-insensitive: the same code re-typed with different
 	// case and surrounding whitespace still matches before consumption.
-	remaining2, ok := ConsumeRecoveryCode(hashes, "  "+strings.ToLower(codes[0])+"  ")
+	remaining2, ok := consumeRecoveryCode(hashes, "  "+strings.ToLower(codes[0])+"  ")
 	if !ok {
 		t.Fatal("normalized code variant was not accepted")
 	}

@@ -7,11 +7,11 @@ import (
 	"time"
 )
 
-func newTestTwoFactorAuthenticator() *TwoFactorAuthenticator {
+func newTestTwoFactorAuthenticator() *twoFactorAuthenticator {
 	return newTwoFactorAuthenticator(newAuthTestTwoFactorStore(), "remote.futrx", []byte("test-key"))
 }
 
-func enrollTestAccount(t *testing.T, a *TwoFactorAuthenticator, email string) []string {
+func enrollTestAccount(t *testing.T, a *twoFactorAuthenticator, email string) []string {
 	t.Helper()
 	token, secretBase32, uri, err := a.BeginEnrollment(context.Background(), email)
 	if err != nil {

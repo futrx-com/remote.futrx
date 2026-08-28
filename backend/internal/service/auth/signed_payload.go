@@ -19,7 +19,7 @@ type expirer interface {
 }
 
 // signedPayload is a small generic HMAC sign/verify/expire primitive,
-// extracted from what was SessionCodec so the same envelope format
+// extracted from what was sessionCodec so the same envelope format
 // (b64(json) + "." + b64(hmac)) can back real sessions, pending 2FA-login
 // challenges, and pending 2FA-enrollment tokens without three copies of this
 // logic.

@@ -59,15 +59,15 @@ func pow10(n int) uint32 {
 	return result
 }
 
-// VerifyTOTPCode checks code against secret, allowing +/- one 30-second step
+// verifyTOTPCode checks code against secret, allowing +/- one 30-second step
 // of clock skew (the ±1 step window recommended by RFC 6238 §5.2), using a
 // constant-time comparison to avoid leaking timing information.
-func VerifyTOTPCode(secret []byte, code string, at time.Time) bool {
+func verifyTOTPCode(secret []byte, code string, at time.Time) bool {
 	_, ok := verifyTOTPCounter(secret, code, at)
 	return ok
 }
 
-// verifyTOTPCounter is VerifyTOTPCode plus the time-step counter the code
+// verifyTOTPCounter is verifyTOTPCode plus the time-step counter the code
 // matched on. Callers that must reject replays (RFC 6238 SS5.2: a code should
 // only ever be accepted once) record that counter and refuse anything at or
 // below it next time.
@@ -94,9 +94,9 @@ func verifyTOTPCounter(secret []byte, code string, at time.Time) (uint64, bool) 
 	return 0, false
 }
 
-// TOTPProvisioningURI builds the otpauth://totp/... URI that authenticator
+// totpProvisioningURI builds the otpauth://totp/... URI that authenticator
 // apps consume for QR/manual enrollment.
-func TOTPProvisioningURI(issuer, accountEmail string, secret []byte) string {
+func totpProvisioningURI(issuer, accountEmail string, secret []byte) string {
 	label := url.PathEscape(issuer) + ":" + url.PathEscape(accountEmail)
 	query := url.Values{}
 	query.Set("secret", base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(secret))

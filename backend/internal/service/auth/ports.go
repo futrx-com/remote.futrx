@@ -37,7 +37,6 @@ type TwoFactorStore interface {
 type SessionRegistryStore interface {
 	Get(ctx context.Context, email string) (*SessionRegistryRecord, error)
 	Save(ctx context.Context, email string, record SessionRegistryRecord) error
-	Delete(ctx context.Context, email string) error
 }
 
 type OAuthProvider interface {

@@ -73,9 +73,9 @@ type Service struct {
 	google            *GoogleAuthenticator
 	baseURL           string
 	cookieDomain      string
-	codec             *SessionCodec
-	twoFactor         *TwoFactorAuthenticator
-	registry          *SessionRegistry
+	codec             *sessionCodec
+	twoFactor         *twoFactorAuthenticator
+	registry          *sessionRegistry
 	pendingLoginCodec signedPayload[pendingLogin]
 }
 
@@ -195,7 +195,7 @@ func (s *Service) IsLocalAdmin(email string) bool {
 
 // IssueSession signs a new session for user, first consulting the account's
 // SecurityPreferences: if any of the three flags (single-session, history,
-// recovery-code alert) is on, it registers the sign-in with SessionRegistry
+// recovery-code alert) is on, it registers the sign-in with the session registry
 // and embeds the resulting session id; otherwise it behaves exactly like
 // SignSession (no registry write, no per-request registry lookup cost for
 // accounts that opt into nothing).
@@ -304,7 +304,7 @@ func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Sess
 	}
 	// Single active session is one more account-scoped rule here, consulted
 	// only when the account has independently turned SingleSessionEnabled on
-	// (SessionRegistry.IsActive treats every session as active otherwise).
+	// (sessionRegistry.IsActive treats every session as active otherwise).
 	if !s.registry.IsActive(ctx, session.Email, session.SID) {
 		return nil, ErrSessionSuperseded
 	}
@@ -312,7 +312,7 @@ func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Sess
 }
 
 // RevokeSession clears email's active session id (used on logout), a no-op
-// for an account with no SessionRegistry record.
+// for an account with no session registry record.
 func (s *Service) RevokeSession(ctx context.Context, email string) error {
 	return s.registry.Revoke(ctx, email)
 }
@@ -323,25 +323,25 @@ func (s *Service) TwoFactorEnabled(ctx context.Context, email string) bool {
 }
 
 // BeginTwoFactorEnrollment starts TOTP enrollment for email; see
-// TwoFactorAuthenticator.BeginEnrollment.
+// twoFactorAuthenticator.BeginEnrollment.
 func (s *Service) BeginTwoFactorEnrollment(ctx context.Context, email string) (enrollmentToken, secretBase32, otpauthURL string, err error) {
 	return s.twoFactor.BeginEnrollment(ctx, email)
 }
 
 // ConfirmTwoFactorEnrollment completes TOTP enrollment; see
-// TwoFactorAuthenticator.ConfirmEnrollment.
+// twoFactorAuthenticator.ConfirmEnrollment.
 func (s *Service) ConfirmTwoFactorEnrollment(ctx context.Context, expectedEmail, enrollmentToken, code string) (recoveryCodes []string, email string, err error) {
 	return s.twoFactor.ConfirmEnrollment(ctx, expectedEmail, enrollmentToken, code)
 }
 
 // DisableTwoFactor removes email's 2FA enrollment after verifying proof of
-// possession; see TwoFactorAuthenticator.Disable.
+// possession; see twoFactorAuthenticator.Disable.
 func (s *Service) DisableTwoFactor(ctx context.Context, email, code string) error {
 	return s.twoFactor.Disable(ctx, email, code)
 }
 
 // RegenerateRecoveryCodes replaces email's recovery codes; see
-// TwoFactorAuthenticator.RegenerateRecoveryCodes.
+// twoFactorAuthenticator.RegenerateRecoveryCodes.
 func (s *Service) RegenerateRecoveryCodes(ctx context.Context, email, code string) ([]string, error) {
 	return s.twoFactor.RegenerateRecoveryCodes(ctx, email, code)
 }

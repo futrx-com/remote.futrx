@@ -259,8 +259,8 @@ func TestTOTPSkewWindowBoundaries(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code := TOTPCode(secret, base.Add(tc.offset))
-			if got := VerifyTOTPCode(secret, code, base); got != tc.want {
-				t.Fatalf("VerifyTOTPCode(offset %v) = %v, want %v", tc.offset, got, tc.want)
+			if got := verifyTOTPCode(secret, code, base); got != tc.want {
+				t.Fatalf("verifyTOTPCode(offset %v) = %v, want %v", tc.offset, got, tc.want)
 			}
 		})
 	}

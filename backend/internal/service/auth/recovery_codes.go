@@ -21,10 +21,10 @@ const (
 	recoveryCodeGroupLen = 4
 )
 
-// GenerateRecoveryCodes returns n freshly generated, unique, grouped
+// generateRecoveryCodes returns n freshly generated, unique, grouped
 // recovery codes (e.g. "ABCD-EFGH-JKMN"), each carrying ~60 bits of
 // server-chosen entropy.
-func GenerateRecoveryCodes(n int) ([]string, error) {
+func generateRecoveryCodes(n int) ([]string, error) {
 	codes := make([]string, 0, n)
 	seen := make(map[string]struct{}, n)
 	for len(codes) < n {
@@ -63,21 +63,21 @@ func normalizeRecoveryCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))
 }
 
-// HashRecoveryCode returns the SHA-256 hex digest of the normalized code.
+// hashRecoveryCode returns the SHA-256 hex digest of the normalized code.
 // Recovery codes are hashed with SHA-256, not argon2id like passwords: they
 // carry ~60 bits of server-chosen entropy (not human-chosen), so a slow KDF
 // adds cost without adding real offline-guessing resistance, and a login
 // checks a candidate against up to ten stored hashes.
-func HashRecoveryCode(code string) string {
+func hashRecoveryCode(code string) string {
 	sum := sha256.Sum256([]byte(normalizeRecoveryCode(code)))
 	return hex.EncodeToString(sum[:])
 }
 
-// ConsumeRecoveryCode checks candidate against hashes using a constant-time
+// consumeRecoveryCode checks candidate against hashes using a constant-time
 // comparison per entry. On a match it returns the remaining hashes with the
 // matched one removed (so the code cannot be reused) and ok=true.
-func ConsumeRecoveryCode(hashes []string, candidate string) (remaining []string, ok bool) {
-	want := HashRecoveryCode(candidate)
+func consumeRecoveryCode(hashes []string, candidate string) (remaining []string, ok bool) {
+	want := hashRecoveryCode(candidate)
 	matchedIndex := -1
 	for i, h := range hashes {
 		if subtle.ConstantTimeCompare([]byte(h), []byte(want)) == 1 {

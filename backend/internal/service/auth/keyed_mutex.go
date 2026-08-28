@@ -6,7 +6,7 @@ import "sync"
 // caller holds a key's lock exclusively; different accounts never block each
 // other.
 //
-// Both TwoFactorAuthenticator and SessionRegistry read a record, decide
+// Both twoFactorAuthenticator and sessionRegistry read a record, decide
 // against it, and write it back. The cache RWMutex only guards the map
 // itself, so without this an account's read-modify-write can interleave with
 // its own concurrent copy - most importantly letting two racing logins each

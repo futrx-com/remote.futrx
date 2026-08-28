@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// SessionRegistry owns SecurityPreferences (the three independent
+// sessionRegistry owns SecurityPreferences (the three independent
 // single-session/history/alert toggles), the currently active session id
 // per account, bounded sign-in history, and any pending recovery-code
 // alert. Mutex + in-memory cache per the LocalAdminAuthenticator shape: an
@@ -17,7 +17,7 @@ import (
 // is cached lazily on first access, so accounts that never touch any of the
 // three flags pay at most one file read per process lifetime, not one per
 // request.
-type SessionRegistry struct {
+type sessionRegistry struct {
 	store SessionRegistryStore
 
 	// account serializes each account's read-modify-write of its record so
@@ -29,8 +29,8 @@ type SessionRegistry struct {
 	cache map[string]*SessionRegistryRecord
 }
 
-func newSessionRegistry(store SessionRegistryStore) *SessionRegistry {
-	return &SessionRegistry{store: store, cache: map[string]*SessionRegistryRecord{}}
+func newSessionRegistry(store SessionRegistryStore) *sessionRegistry {
+	return &sessionRegistry{store: store, cache: map[string]*SessionRegistryRecord{}}
 }
 
 func newSessionID() (string, error) {
@@ -41,7 +41,7 @@ func newSessionID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func (r *SessionRegistry) load(ctx context.Context, email string) (*SessionRegistryRecord, error) {
+func (r *sessionRegistry) load(ctx context.Context, email string) (*SessionRegistryRecord, error) {
 	email = normalizeEmail(email)
 	r.mu.RLock()
 	if record, ok := r.cache[email]; ok {
@@ -58,7 +58,7 @@ func (r *SessionRegistry) load(ctx context.Context, email string) (*SessionRegis
 	return record, nil
 }
 
-func (r *SessionRegistry) setCache(email string, record *SessionRegistryRecord) {
+func (r *sessionRegistry) setCache(email string, record *SessionRegistryRecord) {
 	r.mu.Lock()
 	r.cache[normalizeEmail(email)] = record
 	r.mu.Unlock()
@@ -66,7 +66,7 @@ func (r *SessionRegistry) setCache(email string, record *SessionRegistryRecord) 
 
 // Preferences returns email's current SecurityPreferences, defaulting to
 // all-off for an account that has never saved any.
-func (r *SessionRegistry) Preferences(ctx context.Context, email string) (SecurityPreferences, error) {
+func (r *sessionRegistry) Preferences(ctx context.Context, email string) (SecurityPreferences, error) {
 	record, err := r.load(ctx, email)
 	if err != nil {
 		return SecurityPreferences{}, err
@@ -79,7 +79,7 @@ func (r *SessionRegistry) Preferences(ctx context.Context, email string) (Securi
 
 // SetPreferences overwrites email's SecurityPreferences. Callers do their
 // own read-modify-write for partial updates.
-func (r *SessionRegistry) SetPreferences(ctx context.Context, email string, prefs SecurityPreferences) error {
+func (r *sessionRegistry) SetPreferences(ctx context.Context, email string, prefs SecurityPreferences) error {
 	email = normalizeEmail(email)
 	defer r.account.lock(email)()
 	record, err := r.load(ctx, email)
@@ -106,7 +106,7 @@ func (r *SessionRegistry) SetPreferences(ctx context.Context, email string, pref
 // when method used a recovery code. It always returns a freshly generated
 // session id, even when every flag is off, so callers can uniformly embed
 // it in the signed session (harmless when nothing consults it).
-func (r *SessionRegistry) IssueForAccount(ctx context.Context, email string, method SignInMethod, ip, userAgent string) (string, error) {
+func (r *sessionRegistry) IssueForAccount(ctx context.Context, email string, method SignInMethod, ip, userAgent string) (string, error) {
 	email = normalizeEmail(email)
 	sid, err := newSessionID()
 	if err != nil {
@@ -155,7 +155,7 @@ func (r *SessionRegistry) IssueForAccount(ctx context.Context, email string, met
 // meaningful (and only ever false for a previously-issued sid) once
 // SingleSessionEnabled is on; before that, or for an account with no
 // record, every issued sid is treated as active.
-func (r *SessionRegistry) IsActive(ctx context.Context, email, sid string) bool {
+func (r *sessionRegistry) IsActive(ctx context.Context, email, sid string) bool {
 	record, err := r.load(ctx, email)
 	if err != nil || record == nil {
 		return true
@@ -168,7 +168,7 @@ func (r *SessionRegistry) IsActive(ctx context.Context, email, sid string) bool 
 
 // Revoke clears email's active session id (used on logout), a no-op if the
 // account has no registry record.
-func (r *SessionRegistry) Revoke(ctx context.Context, email string) error {
+func (r *sessionRegistry) Revoke(ctx context.Context, email string) error {
 	email = normalizeEmail(email)
 	defer r.account.lock(email)()
 	record, err := r.load(ctx, email)
@@ -189,7 +189,7 @@ func (r *SessionRegistry) Revoke(ctx context.Context, email string) error {
 
 // History returns email's bounded sign-in history, empty if the account has
 // never enabled HistoryEnabled or has no registry record.
-func (r *SessionRegistry) History(ctx context.Context, email string) (SessionHistory, error) {
+func (r *sessionRegistry) History(ctx context.Context, email string) (SessionHistory, error) {
 	record, err := r.load(ctx, email)
 	if err != nil {
 		return SessionHistory{}, err
@@ -202,7 +202,7 @@ func (r *SessionRegistry) History(ctx context.Context, email string) (SessionHis
 
 // PendingAlert returns email's unacknowledged SecurityAlert, or nil if there
 // is none.
-func (r *SessionRegistry) PendingAlert(ctx context.Context, email string) (*SecurityAlert, error) {
+func (r *sessionRegistry) PendingAlert(ctx context.Context, email string) (*SecurityAlert, error) {
 	record, err := r.load(ctx, email)
 	if err != nil || record == nil {
 		return nil, err
@@ -211,7 +211,7 @@ func (r *SessionRegistry) PendingAlert(ctx context.Context, email string) (*Secu
 }
 
 // AckAlert clears email's pending alert, a no-op if there is none.
-func (r *SessionRegistry) AckAlert(ctx context.Context, email string) error {
+func (r *sessionRegistry) AckAlert(ctx context.Context, email string) error {
 	email = normalizeEmail(email)
 	defer r.account.lock(email)()
 	record, err := r.load(ctx, email)

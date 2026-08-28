@@ -42,19 +42,19 @@ func TestVerifyTOTPCodeAllowsOneStepSkew(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	code := TOTPCode(secret, now)
 
-	if !VerifyTOTPCode(secret, code, now) {
+	if !verifyTOTPCode(secret, code, now) {
 		t.Fatal("code did not verify at the same instant it was generated")
 	}
-	if !VerifyTOTPCode(secret, code, now.Add(30*time.Second)) {
+	if !verifyTOTPCode(secret, code, now.Add(30*time.Second)) {
 		t.Fatal("code did not verify one step later (should tolerate +1 skew)")
 	}
-	if !VerifyTOTPCode(secret, code, now.Add(-30*time.Second)) {
+	if !verifyTOTPCode(secret, code, now.Add(-30*time.Second)) {
 		t.Fatal("code did not verify one step earlier (should tolerate -1 skew)")
 	}
-	if VerifyTOTPCode(secret, code, now.Add(90*time.Second)) {
+	if verifyTOTPCode(secret, code, now.Add(90*time.Second)) {
 		t.Fatal("code verified three steps later, want rejection outside +/-1 skew")
 	}
-	if VerifyTOTPCode(secret, "000000", now) {
+	if verifyTOTPCode(secret, "000000", now) {
 		t.Fatal("wrong code verified")
 	}
 }
@@ -78,7 +78,7 @@ func TestGenerateTOTPSecretIsRandomAndCorrectLength(t *testing.T) {
 
 func TestTOTPProvisioningURIContainsExpectedFields(t *testing.T) {
 	secret := []byte("12345678901234567890")
-	uri := TOTPProvisioningURI("remote.futrx", "user@example.com", secret)
+	uri := totpProvisioningURI("remote.futrx", "user@example.com", secret)
 
 	wantSubstrings := []string{
 		"otpauth://totp/",
