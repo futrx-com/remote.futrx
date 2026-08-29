@@ -458,3 +458,39 @@ func TestBuiltinGlobalSkillsAreValid(t *testing.T) {
 func boolPointer(value bool) *bool {
 	return &value
 }
+
+// The library is mirrored and linked into /workspace/.agents/skills before the
+// platform pushes its own skills into that same directory, so an entry named
+// after one of them gets its content written through the link and replaced —
+// silently, and without touching the library's hash marker, so nothing repairs
+// it. The name is refused at authoring time instead.
+func TestPlatformProvisionedNamesAreRefused(t *testing.T) {
+	for _, name := range []string{"browser", "scheduled-tasks"} {
+		if ValidGlobalSkillName(name) {
+			t.Fatalf("%q is provisioned into every workspace and must not be a library name", name)
+		}
+	}
+	// The rule is about specific names, not a pattern: a skill that merely
+	// mentions one must still be allowed.
+	for _, name := range []string{"browser-testing", "my-browser", "scheduled-tasks-v2"} {
+		if !ValidGlobalSkillName(name) {
+			t.Fatalf("%q is a normal name and must be allowed", name)
+		}
+	}
+}
+
+func TestCreateReportsAReservedNameAsTakenNotMalformed(t *testing.T) {
+	service := NewGlobalService(newMemoryGlobalRepository(), nil)
+	_, err := service.Create(context.Background(), GlobalInput{
+		Name:  "browser",
+		Files: map[string]string{"SKILL.md": sampleManifest},
+	})
+	if !errors.Is(err, ErrReservedGlobalSkillName) {
+		t.Fatalf("expected ErrReservedGlobalSkillName, got %v", err)
+	}
+	// Telling the operator their name is malformed would send them off
+	// rewriting a name that is perfectly well formed.
+	if errors.Is(err, ErrInvalidGlobalSkillName) {
+		t.Fatal("a reserved name was reported as a character-rule failure")
+	}
+}

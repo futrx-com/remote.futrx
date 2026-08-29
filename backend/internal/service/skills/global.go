@@ -45,6 +45,12 @@ var (
 	ErrInvalidGlobalSkillName   = errors.New(
 		"skill name must be 1-64 characters of lowercase letters, digits, '.', '_' or '-'",
 	)
+	// ErrReservedGlobalSkillName is separate from ErrInvalidGlobalSkillName so
+	// the operator is told their name is taken rather than malformed. The
+	// character rules are fine; the name belongs to the platform.
+	ErrReservedGlobalSkillName = errors.New(
+		"that name is provisioned by the platform into every workspace: choose another",
+	)
 	ErrInvalidGlobalSkillFile = errors.New(
 		"skill file paths must be relative, slash separated, and must not escape the skill directory",
 	)
@@ -53,9 +59,27 @@ var (
 	ErrProjectSkillNotFound = errors.New("project skill not found")
 )
 
-// reservedGlobalSkillNames cannot be used as skill directory names: the admin
-// API reserves them for actions on the collection.
-var reservedGlobalSkillNames = map[string]bool{"import": true}
+// reservedGlobalSkillNames cannot be used as skill directory names.
+//
+// "import" belongs to the admin API, which uses it for an action on the
+// collection rather than an entry.
+//
+// The rest are names the platform itself provisions into
+// /workspace/.agents/skills at container launch. A library entry sharing one
+// of those names is not merely shadowed: the library is mirrored and linked
+// into that directory first, so the built-in's own SKILL.md is then written
+// *through* the link and replaces the operator's content in the container's
+// copy — silently, and without disturbing the library's hash marker, so
+// nothing repairs it until the library changes for another reason.
+//
+// Refusing the name at authoring time turns that into an error the operator
+// reads immediately. Keep this list in step with the skills provisioned in
+// service/container/launch.Provision.
+var reservedGlobalSkillNames = map[string]bool{
+	"import":          true,
+	"browser":         true,
+	"scheduled-tasks": true,
+}
 
 // GlobalRecord is the persistence shape of one library entry. Files is nil on
 // listing reads, where contents are deliberately not loaded.
@@ -155,6 +179,9 @@ func (s *GlobalService) Create(ctx context.Context, in GlobalInput) (GlobalSkill
 		return GlobalSkill{}, ErrGlobalLibraryUnavailable
 	}
 	name := NormalizeGlobalSkillName(in.Name)
+	if reservedGlobalSkillNames[name] {
+		return GlobalSkill{}, ErrReservedGlobalSkillName
+	}
 	if !ValidGlobalSkillName(name) {
 		return GlobalSkill{}, ErrInvalidGlobalSkillName
 	}
@@ -237,6 +264,12 @@ func (s *GlobalService) ImportFromProject(
 	}
 
 	source := NormalizeGlobalSkillName(skillName)
+	// A workspace skill with one of these names is the platform's own copy,
+	// pushed in at launch. Importing it would put a library entry on a
+	// collision course with the thing it was copied from.
+	if reservedGlobalSkillNames[source] {
+		return GlobalSkill{}, ErrReservedGlobalSkillName
+	}
 	if !ValidGlobalSkillName(source) {
 		return GlobalSkill{}, ErrInvalidGlobalSkillName
 	}
@@ -248,6 +281,9 @@ func (s *GlobalService) ImportFromProject(
 	name := NormalizeGlobalSkillName(targetName)
 	if name == "" {
 		name = source
+	}
+	if reservedGlobalSkillNames[name] {
+		return GlobalSkill{}, ErrReservedGlobalSkillName
 	}
 	if !ValidGlobalSkillName(name) {
 		return GlobalSkill{}, ErrInvalidGlobalSkillName
