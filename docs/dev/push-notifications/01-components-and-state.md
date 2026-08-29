@@ -32,6 +32,7 @@ flowchart LR
 | Presence claims | Backend memory | Claims live for 55 seconds; revisions are bounded per user |
 | Parked-question state | Backend memory | Until a user, completion, or error event |
 | Browser permission and subscription | Browser profile | Controlled by the browser and user |
+| Per-account opt-in for this browser | `localStorage`, `remote.futrx.pushOptIn` (SHA-256 fingerprints, not addresses) | Until the account turns notifications off or signs out |
 
 At startup, Remote loads or creates the VAPID key, verifies the key pair, and
 constructs the Web Push client. If that fails, notifications are disabled but
@@ -44,5 +45,7 @@ the rest of Remote still starts normally.
 - [`backend/internal/integration/webpush/`](../../../backend/internal/integration/webpush/)
 - [`backend/internal/stores/filepush/`](../../../backend/internal/stores/filepush/)
 - [`frontend/src/api/pushSubscriptionApi.ts`](../../../frontend/src/api/pushSubscriptionApi.ts)
+- [`frontend/src/api/pushDeviceRegistration.ts`](../../../frontend/src/api/pushDeviceRegistration.ts)
+- [`frontend/src/api/pushSubscriptionOwnership.ts`](../../../frontend/src/api/pushSubscriptionOwnership.ts)
 - [`frontend/src/state/push/pushPresenceState.ts`](../../../frontend/src/state/push/pushPresenceState.ts)
 - [`frontend/public/sw.js`](../../../frontend/public/sw.js)

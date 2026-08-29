@@ -61,7 +61,8 @@ export function WorkspaceProvider({
     () => workspaceUiState.createInitial(takePushNotificationChatId())
   );
   const activeChat = workspaceSidebarState.activeChat(data.chats, ui.activeChatId);
-  const capabilityUserId = auth.email || auth.adminEmail || "anonymous";
+  const account = auth.email || auth.adminEmail;
+  const capabilityUserId = account || "anonymous";
   const activeCapabilityProjectId = activeChat?.projectId;
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function WorkspaceProvider({
     dispatch({ type: "select-chat", chatId });
   }, []);
   useWorkspacePushLifecycle({
+    account: enabled ? account : "",
     activeChatId: ui.activeChatId,
     view: ui.view,
     openChat: openPushChat,

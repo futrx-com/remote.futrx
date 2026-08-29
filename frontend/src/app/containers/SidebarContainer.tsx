@@ -17,7 +17,7 @@ export function SidebarContainer() {
     workspace.chats
   );
   const commands = useWorkspaceCommands();
-  const signOut = useAccountSignOut();
+  const signOut = useAccountSignOut(auth.email || auth.adminEmail);
   const model = useMemo(
     () => workspaceSidebarState.model(workspace.chats, workspace.projects, sidebar.query),
     [workspace.chats, workspace.projects, sidebar.query]

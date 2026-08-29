@@ -37,14 +37,23 @@ class WebPushTransport {
     return subscription.unsubscribe();
   }
 
-  matchesApplicationServerKey(
+  /**
+   * Whether this subscription was provably signed with a *different* key than
+   * the server signs with today, which makes it undeliverable.
+   *
+   * A browser that does not expose the applied key answers false: an
+   * unprovable mismatch must never cost a working subscription, because
+   * unsubscribing is exactly what drops the notification permission on Safari
+   * and puts the "Allow notifications?" prompt back in front of the user.
+   */
+  isSignedWithRetiredKey(
     subscription: PushSubscription,
     applicationServerKey: string
   ): boolean {
     const appliedKey = subscription.options?.applicationServerKey;
     if (!appliedKey) return false;
     return (
-      this.#encodeBase64Url(new Uint8Array(appliedKey)) ===
+      this.#encodeBase64Url(new Uint8Array(appliedKey)) !==
       applicationServerKey.replace(/=+$/, "")
     );
   }

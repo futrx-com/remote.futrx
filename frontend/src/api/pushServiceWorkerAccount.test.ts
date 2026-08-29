@@ -82,13 +82,13 @@ test("the worker drops and invalidates a previous account's endpoint", async () 
   assert.equal(harness.unsubscribed(), 1);
 });
 
-test("the worker drops and invalidates pushes after logout", async () => {
+test("the worker stays quiet without a session, keeping the device registered", async () => {
   const harness = workerHarness({ status: 401 });
 
   await harness.receivePush();
 
   assert.equal(harness.displayed(), 0);
-  assert.equal(harness.unsubscribed(), 1);
+  assert.equal(harness.unsubscribed(), 0);
 });
 
 test("the worker fails closed without deleting a subscription on a transient error", async () => {

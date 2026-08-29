@@ -1,6 +1,7 @@
 import { sendHttpRequest } from "../transport/http";
 import type { HttpMethod } from "../types/transport";
 import { API_RESPONSE_STATUS } from "../config/api";
+import { ApiError } from "./apiError.ts";
 
 export async function requestJson<T>(
   method: HttpMethod,
@@ -17,7 +18,7 @@ export async function requestJson<T>(
     try {
       msg = (await response.json()).error || msg;
     } catch {}
-    throw new Error(msg);
+    throw new ApiError(msg, response.status);
   }
   if (response.status === API_RESPONSE_STATUS.noContent) return undefined as T;
   return response.json() as Promise<T>;

@@ -27,6 +27,12 @@ export function writeString(key: string, value: string): void {
   } catch {}
 }
 
+export function removeString(key: string): void {
+  try {
+    store()?.removeItem(key);
+  } catch {}
+}
+
 export function readBool(key: string): boolean {
   return readString(key) === "true";
 }
