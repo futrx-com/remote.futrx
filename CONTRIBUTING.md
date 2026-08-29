@@ -89,6 +89,7 @@ bash infra/tests/go-toolchain-test.sh
 bash infra/tests/host-agent-install-test.sh
 bash infra/tests/dns-resolve-test.sh
 bash infra/tests/container-forwarding-test.sh
+bash infra/tests/swap-provision-test.sh
 bash infra/tests/release-version-test.sh
 bash infra/tests/deploy-app-script-test.sh
 bash infra/tests/qa-scripts-test.sh

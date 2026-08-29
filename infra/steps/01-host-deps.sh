@@ -19,6 +19,16 @@ log "apt update + base packages"
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base
 
+# ───────────────── swap (spike buffer) ─────────────────
+# Running several dev servers at once produces a large, short-lived RSS spike
+# (~5x steady state) that a swapless box can't survive — it OOM-kills the dev
+# servers. Provision a swap file sized from RAM and free disk before the
+# memory-heavy work below (Go build, base-image build). Skips gracefully when
+# swap already exists or the disk has no room. See lib/swap-provision.sh.
+# shellcheck source=../lib/swap-provision.sh
+. "$INFRA_DIR/lib/swap-provision.sh"
+ensure_swap
+
 # ───────────────── version pins ─────────────────
 # infra/versions.env (a symlink to the canonical manifest embedded by the
 # backend) declares the exact versions the host must run. Every section
