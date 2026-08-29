@@ -87,6 +87,13 @@ type UsageRecorder interface {
 	RecordRun(ctx context.Context, event serviceusage.RunEvent)
 }
 
+// QuotaRecorder files the subscription windows the agent CLIs volunteer. It is
+// optional: without one the readings are dropped and the dashboard has no plan
+// card, which is the behaviour before this existed.
+type QuotaRecorder interface {
+	Record(ctx context.Context, provider agent.ProviderID, quota agent.Quota)
+}
+
 type Option func(*Service)
 
 func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
@@ -98,6 +105,13 @@ func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
 func WithUsageRecorder(recorder UsageRecorder) Option {
 	return func(service *Service) {
 		service.usage = recorder
+	}
+}
+
+// WithQuotaRecorder installs it.
+func WithQuotaRecorder(recorder QuotaRecorder) Option {
+	return func(service *Service) {
+		service.quota = recorder
 	}
 }
 
@@ -125,6 +139,7 @@ type Service struct {
 	agentPolicy   AgentPolicy
 	scheduleTools ScheduleToolIssuer
 	usage         UsageRecorder
+	quota         QuotaRecorder
 }
 
 func New(
@@ -388,6 +403,7 @@ func (rnr *Service) runPromptAs(
 			// branch's and sits after the emit as before.
 			rnr.emitAgentEvent(ctx, id, providerID, ev, emit)
 			rnr.recordRunUsage(ctx, ledger, ev)
+			rnr.recordQuota(ctx, ledger, ev)
 		})
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	serviceagentquota "github.com/futrx-com/remote.futrx.com/internal/service/agentquota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
@@ -57,6 +58,7 @@ type Dependencies struct {
 	UserSettings      serviceusersettings.Repository
 	Push              PushStore
 	Usage             serviceusage.Repository
+	AgentQuota        serviceagentquota.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -106,6 +108,7 @@ type Services struct {
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
+	AgentQuota        *serviceagentquota.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -189,6 +192,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		usageService = serviceusage.New(deps.Usage, projectService, chats)
 		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
 	}
+	// The quota service is built even without a store: readings still show for
+	// the life of the process, they just do not survive a restart.
+	agentQuotaService := serviceagentquota.New(ctx, deps.AgentQuota)
+	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
@@ -263,6 +270,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
+		AgentQuota:        agentQuotaService,
 	}, nil
 }
 

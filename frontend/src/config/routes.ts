@@ -83,6 +83,7 @@ export const API_ROUTES = {
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,
   },
   settings: "/api/me/settings",
+  agentQuota: "/api/agent-quota",
   usage: {
     summary: (query: string) => `/api/usage/summary${query ? `?${query}` : ""}`,
     records: (query: string) => `/api/usage/records${query ? `?${query}` : ""}`,
