@@ -24,8 +24,8 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	for index, descriptor := range descriptors {
 		ids[index] = descriptor.ID
 	}
-	if !slices.Equal(profileIDs, []string{"claude", "codex", "kimi", "antigravity"}) {
-		t.Fatalf("project profiles = %v (host-only providers must not appear)", profileIDs)
+	if !slices.Equal(profileIDs, []string{"claude", "codex", "kimi", "antigravity", "opencode"}) {
+		t.Fatalf("project profiles = %v", profileIDs)
 	}
 	want := []agent.ProviderID{
 		agent.ProviderClaude,
