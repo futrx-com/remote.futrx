@@ -8,8 +8,9 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 )
 
-// Fixtures are real `opencode run --format json` lines captured from
-// opencode-ai v1.15.13 against a tool-using turn.
+// Fixtures are real `opencode run --format json` lines. The stop-finish
+// fixture is captured from the pinned opencode-ai v1.18.25, which reliably
+// emits a terminating step_finish after the last text part.
 const (
 	fixtureStepStart  = `{"type":"step_start","timestamp":1788169427440,"sessionID":"ses_abc","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_abc","type":"step-start"}}`
 	fixtureText       = `{"type":"text","timestamp":1788169431703,"sessionID":"ses_abc","part":{"id":"prt_2","messageID":"msg_2","sessionID":"ses_abc","type":"text","text":"The command ran successfully."}}`
@@ -18,6 +19,30 @@ const (
 	fixtureToolFinish = `{"type":"step_finish","timestamp":1788169428348,"sessionID":"ses_abc","part":{"id":"prt_3","reason":"tool-calls","messageID":"msg_1","sessionID":"ses_abc","type":"step-finish","tokens":{"total":60404,"input":3019,"output":29,"reasoning":12,"cache":{"write":0,"read":57344}},"cost":0}}`
 	fixtureStopFinish = `{"type":"step_finish","timestamp":1788169428999,"sessionID":"ses_abc","part":{"id":"prt_4","reason":"stop","messageID":"msg_2","sessionID":"ses_abc","type":"step-finish","tokens":{"total":10,"input":5,"output":4,"reasoning":1,"cache":{"write":0,"read":0}},"cost":0.25}}`
 )
+
+// fixtureStopFinish118 is the final event of a real v1.18.25 text-only run.
+const fixtureStopFinish118 = `{"type":"step_finish","timestamp":1788172880424,"sessionID":"ses_abc","part":{"id":"prt_5","reason":"stop","messageID":"msg_2","sessionID":"ses_abc","type":"step-finish","tokens":{"total":44325,"input":44312,"output":2,"reasoning":11,"cache":{"write":0,"read":0}},"cost":0}}`
+
+func TestParserCompletesPlain118RunWithStopFinish(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "conv-1", Model: "opencode/test-model"})
+	events := parseLines(t, parser, fixtureStepStart, fixtureText, fixtureStopFinish118)
+	index := slices.IndexFunc(events, func(event agent.Event) bool {
+		return event.Type == agent.EventRunCompleted
+	})
+	if index < 0 {
+		t.Fatalf("v1.18.25 plain run did not complete: %#v", events)
+	}
+	if !parser.Completed() {
+		t.Fatal("parser should be completed after a v1.18.25 stop finish")
+	}
+	var usage agent.Usage
+	if err := json.Unmarshal(events[index].Usage, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 44312 || usage.OutputTokens != 2 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
 
 func parseLines(t *testing.T, parser *Parser, lines ...string) []agent.Event {
 	t.Helper()
