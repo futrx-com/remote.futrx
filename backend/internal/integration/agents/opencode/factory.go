@@ -20,6 +20,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		AuthInstructions: "Starts `opencode auth login` on the host. Pick your provider, sign in, and the credentials are stored under ~/.local/share/opencode/auth.json.",
 		Features: agentmodule.Features{
 			Sessions: agentmodule.SessionSupport{Resume: true},
+			Skills:   agentmodule.SkillsNone,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		binding := agentauth.NewDeviceBinding(agent.ProviderOpenCode, NewAuth())
