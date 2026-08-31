@@ -12,6 +12,7 @@ test("detects generic and legacy provider session changes", () => {
     sessions: { "future-agent": "session-1" },
     kimiSessionId: "kimi-1",
     antigravitySessionId: "agy-1",
+    opencodeSessionId: "oc-1",
   }];
 
   const same = workspaceDataProjector.replaceChats([{
@@ -31,4 +32,10 @@ test("detects generic and legacy provider session changes", () => {
     antigravitySessionId: "agy-2",
   }], current);
   assert.notEqual(legacyChanged, current);
+
+  const opencodeChanged = workspaceDataProjector.replaceChats([{
+    ...current[0],
+    opencodeSessionId: "oc-2",
+  }], current);
+  assert.notEqual(opencodeChanged, current);
 });

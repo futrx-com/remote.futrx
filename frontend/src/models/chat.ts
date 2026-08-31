@@ -17,6 +17,7 @@ export interface ChatMeta {
   codexSessionId?: string;
   kimiSessionId?: string;
   antigravitySessionId?: string;
+  opencodeSessionId?: string;
   tmuxSession?: string;
   cwd?: string;
   createdAt: number;
@@ -48,7 +49,7 @@ export type ChatEvent = ChatEventBase & (
   | { type: "tool_use_end"; id: string; output?: string; isError?: boolean }
   | { type: "permission_request"; id: string; toolName: string; input: Record<string, unknown> }
   | { type: "system"; subtype: string; data?: Record<string, unknown> }
-  | { type: "session"; provider?: ChatProvider; sessionId?: string; claudeSessionId?: string; codexSessionId?: string; kimiSessionId?: string; antigravitySessionId?: string }
+  | { type: "session"; provider?: ChatProvider; sessionId?: string; claudeSessionId?: string; codexSessionId?: string; kimiSessionId?: string; antigravitySessionId?: string; opencodeSessionId?: string }
   | { type: "complete"; usage?: ChatUsagePayload }
   | { type: "error"; message: string }
   | { type: "sync"; running?: boolean }
