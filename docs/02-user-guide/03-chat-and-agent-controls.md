@@ -150,7 +150,7 @@ Current provider caveats:
 - Kimi and Antigravity receive an instruction to read the selected skills from
   their canonical `SKILL.md` paths.
 - The browser skill prepares per-run browser MCP access for Claude and Codex,
-  not Kimi or Antigravity.
+  not Kimi, Antigravity, or OpenCode.
 
 These generated triggers are an internal integration detail. The composer does
 not currently implement general-purpose user `@` mentions or slash commands.
@@ -191,8 +191,9 @@ managed-CLI integration. Sign in by running `opencode auth login` on the host
 and choosing the provider to connect; credentials are stored in
 `~/.local/share/opencode/auth.json`. Model selection uses OpenCode's
 `provider/model` identifiers as reported by `opencode models`, and a run may
-resume or fork its OpenCode session across prompts. OpenCode runs are
-currently host-scope only; project-container execution is not yet wired.
+resume or fork its OpenCode session across prompts. OpenCode supports the
+shared skills instruction trigger, scheduled tools, and browser asset
+migration; project-container execution follows the Kimi pattern.
 
 ## Running-state rules
 

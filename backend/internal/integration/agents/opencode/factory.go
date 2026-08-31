@@ -19,8 +19,9 @@ func NewFactory() (agentmodule.Factory, error) {
 		Auth:             agentmodule.AuthManagedDevice,
 		AuthInstructions: "Starts `opencode auth login` on the host. Pick your provider, sign in, and the credentials are stored under ~/.local/share/opencode/auth.json.",
 		Features: agentmodule.Features{
-			Sessions: agentmodule.SessionSupport{Resume: true},
-			Skills:   agentmodule.SkillsNone,
+			Sessions:       agentmodule.SessionSupport{Resume: true},
+			Skills:         agentmodule.SkillsInstructions,
+			ScheduledTools: true,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		binding := agentauth.NewDeviceBinding(agent.ProviderOpenCode, NewAuth())
@@ -33,7 +34,9 @@ func NewFactory() (agentmodule.Factory, error) {
 			),
 			Auth: &binding,
 		}, nil
-	})
+	}, agentmodule.WithProjectPreparation(agentmodule.ProjectPreparationPolicy{
+		BrowserAssets: true,
+	}))
 }
 
 var (
