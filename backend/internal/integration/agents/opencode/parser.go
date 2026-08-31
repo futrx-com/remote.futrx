@@ -180,6 +180,16 @@ func (p *Parser) completionEvent(now int64, raw json.RawMessage) agent.Event {
 	})
 }
 
+// CompletionEventFallback builds the terminal run.completed for streams that
+// ended without a step_finish(reason=stop). It carries the accumulated usage
+// and the last observed session id.
+func (p *Parser) CompletionEventFallback() agent.Event {
+	return p.event(time.Now().UnixMilli(), agent.EventRunCompleted, nil, func(ev *agent.Event) {
+		ev.SessionID = p.sawSessionID
+		ev.Usage = p.RunUsage().Raw()
+	})
+}
+
 // Completed reports whether the stream emitted a terminating step_finish.
 func (p *Parser) Completed() bool {
 	return p.completed
