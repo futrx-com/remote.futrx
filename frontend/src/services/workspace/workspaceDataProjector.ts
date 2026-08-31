@@ -68,6 +68,7 @@ class WorkspaceDataProjector {
         left.codexSessionId !== right.codexSessionId ||
         left.kimiSessionId !== right.kimiSessionId ||
         left.antigravitySessionId !== right.antigravitySessionId ||
+        left.opencodeSessionId !== right.opencodeSessionId ||
         left.tmuxSession !== right.tmuxSession ||
         left.cwd !== right.cwd ||
         left.createdAt !== right.createdAt ||
