@@ -66,5 +66,7 @@ grep -Fxq $'kimi\tkimi\t'"$KIMI_CODE_VERSION"$'\timage-repair\t@moonshot-ai/kimi
     fail "host plan is missing Kimi"
 grep -Fxq $'antigravity\tagy\t'"$ANTIGRAVITY_CLI_VERSION"$'\tscript\t-' <<<"$plan" || \
     fail "host plan is missing Antigravity"
+grep -Fxq $'opencode\topencode\t'"$OPENCODE_VERSION"$'\tnpm\topencode-ai' <<<"$plan" || \
+    fail "host plan is missing OpenCode"
 
 echo "host agent install tests passed"

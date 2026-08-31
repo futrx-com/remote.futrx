@@ -5,7 +5,7 @@ This document describes how remote.futrx is put together: its runtime topology, 
 ## What it is
 
 remote.futrx is a **single-server, self-hosted** workspace for the Claude
-Code, Codex, Kimi Code, and Antigravity agent CLIs. A user creates a project,
+Code, Codex, Kimi Code, Antigravity, and OpenCode agent CLIs. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -152,8 +152,9 @@ enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
 adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
 [`integration/agents/codex`](backend/internal/integration/agents/codex),
-[`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
-[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
+[`integration/agents/kimi`](backend/internal/integration/agents/kimi),
+[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity), and
+[`integration/agents/opencode`](backend/internal/integration/agents/opencode)) normalize each
 CLI's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
