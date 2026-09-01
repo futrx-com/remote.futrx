@@ -1,5 +1,5 @@
 import { AskUserQuestion } from "./ask-user-question/AskUserQuestion";
-import type { AskUserQuestionInput } from "./ask-user-question/types";
+import type { AskUserQuestionInput } from "../../../models/chat.ts";
 import type { ToolCallProps } from "./ToolCallTypes";
 import { BashCall } from "./renderers/BashCall";
 import { EditCall } from "./renderers/EditCall";

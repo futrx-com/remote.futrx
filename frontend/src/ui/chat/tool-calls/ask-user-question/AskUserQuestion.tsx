@@ -1,21 +1,24 @@
 // Render agent AskUserQuestion tool calls as a paginated wizard.
 
+import type {
+  AskUserQuestionInput,
+  QuestionAnswerSubmission,
+} from "../../../../models/chat.ts";
+import { chatQuestionCountdownService } from "../../../../services/chat/chatQuestionCountdownService.ts";
+import { chatQuestionService } from "../../../../services/chat/chatQuestionService.ts";
+import { useAskUserQuestion } from "../../../../state/hooks/chat/useAskUserQuestion.ts";
+import { useAutoResolutionCountdown } from "../../../../state/hooks/chat/useAutoResolutionCountdown.ts";
 import { AnsweredSummary } from "./AnsweredSummary";
-import { formatAutoResolutionRemaining } from "./autoResolutionCountdown";
 import { OtherAnswerOption } from "./OtherAnswerOption";
 import { QuestionOption } from "./QuestionOption";
 import { QuestionPager } from "./QuestionPager";
 import { QuestionProgress } from "./QuestionProgress";
-import { hasValidQuestionIds, resolvedQuestionPreview } from "./questionSummary";
-import type { AskUserQuestionInput, QuestionSummary } from "./types";
-import { useAskUserQuestion } from "./useAskUserQuestion";
-import { useAutoResolutionCountdown } from "./useAutoResolutionCountdown";
 
 interface Props {
   toolUseId: string;
   chatId: string;
   input: AskUserQuestionInput;
-  onSubmit: (answer: QuestionSummary) => boolean;
+  onSubmit: (answer: QuestionAnswerSubmission) => boolean;
   onActivity?: () => boolean;
   interactive?: boolean;
   requestedAt?: number;
@@ -54,7 +57,11 @@ export function AskUserQuestion({
   // optimistic state. The response can lose a race with native auto-resolution
   // or cancellation even when WebSocket.send() returned true.
   if (resolved) {
-    return <AnsweredSummary answered={resolvedQuestionPreview(wizard.questions, resolvedOutput)} />;
+    return (
+      <AnsweredSummary
+        answered={chatQuestionService.resolvedPreview(wizard.questions, resolvedOutput)}
+      />
+    );
   }
   if (!interactive && wizard.questions.some((item) => item.isSecret)) {
     return (
@@ -68,7 +75,7 @@ export function AskUserQuestion({
     );
   }
   if (wizard.answered) return <AnsweredSummary answered={wizard.answered} />;
-  if (interactive && !hasValidQuestionIds(wizard.questions)) {
+  if (interactive && !chatQuestionService.hasValidIds(wizard.questions)) {
     return (
       <div class="my-2 rounded-lg border border-accent-red/30 bg-accent-red/5 p-3 text-sm">
         <div class="text-accent-red text-[12px] font-medium">Question cannot be answered</div>
@@ -95,7 +102,9 @@ export function AskUserQuestion({
         <div class="flex items-center gap-2">
           {autoResolutionRemaining !== null && (
             <span class="text-accent-red font-medium">
-              Auto-resolves in {formatAutoResolutionRemaining(autoResolutionRemaining)}
+              Auto-resolves in {chatQuestionCountdownService.formatRemaining(
+                autoResolutionRemaining,
+              )}
             </span>
           )}
           <QuestionProgress

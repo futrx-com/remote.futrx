@@ -1,4 +1,4 @@
-import type { Question } from "./types";
+import type { Question } from "../../../../models/chat.ts";
 
 export function QuestionProgress({
   questions,

@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  hasValidQuestionIds,
-  resolvedQuestionPreview,
-  summarizeQuestionAnswers,
-} from "./questionSummary.ts";
+import { chatQuestionService } from "./chatQuestionService.ts";
 
 test("summarizes display text and structured answers keyed by question id", () => {
-  const summary = summarizeQuestionAnswers([
+  const summary = chatQuestionService.summarizeAnswers([
     {
       id: "environment",
       header: "Environment",
@@ -47,22 +43,22 @@ test("summarizes display text and structured answers keyed by question id", () =
 });
 
 test("validates every interactive question id and rejects duplicates", () => {
-  assert.equal(hasValidQuestionIds([
+  assert.equal(chatQuestionService.hasValidIds([
     { id: "first", question: "First?", options: [] },
     { id: "second", question: "Second?", options: [] },
   ]), true);
-  assert.equal(hasValidQuestionIds([
+  assert.equal(chatQuestionService.hasValidIds([
     { id: "first", question: "First?", options: [] },
     { question: "Missing?", options: [] },
   ]), false);
-  assert.equal(hasValidQuestionIds([
+  assert.equal(chatQuestionService.hasValidIds([
     { id: "same", question: "First?", options: [] },
     { id: " same ", question: "Duplicate?", options: [] },
   ]), false);
 });
 
 test("preserves a Codex option with its additional native note", () => {
-  const summary = summarizeQuestionAnswers([{
+  const summary = chatQuestionService.summarizeAnswers([{
     id: "scope",
     header: "Scope",
     question: "Which scope should I use?",
@@ -92,21 +88,24 @@ test("derives a readable resolved preview from backend interaction output", () =
     },
   ];
 
-  assert.equal(resolvedQuestionPreview(
+  assert.equal(chatQuestionService.resolvedPreview(
     questions,
     JSON.stringify({ Answers: { environment: ["QA"], checks: ["Tests", "Lint"] } }),
   ), "Environment: QA · Checks: Tests, Lint");
-  assert.equal(resolvedQuestionPreview(
+  assert.equal(chatQuestionService.resolvedPreview(
     questions,
     JSON.stringify({ answers: { environment: ["Production"] } }),
   ), "Environment: Production");
-  assert.equal(resolvedQuestionPreview(questions, "not-json"), "Response received");
+  assert.equal(chatQuestionService.resolvedPreview(questions, "not-json"), "Response received");
   assert.equal(
-    resolvedQuestionPreview(questions, "No response before the agent continued"),
+    chatQuestionService.resolvedPreview(
+      questions,
+      "No response before the agent continued",
+    ),
     "No response before the agent continued",
   );
   assert.equal(
-    resolvedQuestionPreview(questions, "Agent interaction cancelled"),
+    chatQuestionService.resolvedPreview(questions, "Agent interaction cancelled"),
     "Agent interaction cancelled",
   );
 });
@@ -120,13 +119,13 @@ test("never exposes secret answers in previews or resolved output", () => {
     isOther: false,
     options: null,
   }];
-  const summary = summarizeQuestionAnswers(questions, () => ["super-secret"]);
+  const summary = chatQuestionService.summarizeAnswers(questions, () => ["super-secret"]);
 
   assert.equal(summary.preview, "Token: Secret response received");
   assert.equal(summary.sensitive, true);
   assert.equal(summary.preview.includes("super-secret"), false);
   assert.equal(
-    resolvedQuestionPreview(
+    chatQuestionService.resolvedPreview(
       questions,
       JSON.stringify({ answers: { token: ["super-secret"] } }),
     ),
