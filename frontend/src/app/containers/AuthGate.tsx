@@ -2,6 +2,7 @@ import type { ComponentType } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import { LoginScreen } from "../../ui/auth/LoginScreen";
 import { AdminSetupWaiting } from "../../ui/auth/AdminSetupWaiting";
+import { TerminalSetupRequired } from "../../ui/auth/TerminalSetupRequired";
 import { ProviderAuthWaiting } from "../../ui/auth/ProviderAuthWaiting";
 import { ProviderLoginScreen } from "../../ui/auth/ProviderLoginScreen";
 import { LoadingScreen } from "../../ui/primitives/LoadingScreen";
@@ -55,6 +56,12 @@ export function AuthGate() {
   // last visit stopped at a login screen gets the neutral boot screen instead.
   if (auth.loading) return bootsIntoWorkspace ? <WorkspaceSkeleton /> : <LoadingScreen />;
   if (!auth.claimed) {
+    // Only allow the first-time setup form when the backend confirms the
+    // request is coming from localhost. Remote visitors see a notice that
+    // directs them to the server terminal instead.
+    if (!auth.claimAllowed) {
+      return <TerminalSetupRequired />;
+    }
     return (
       <LoginScreen
         mode="claim"

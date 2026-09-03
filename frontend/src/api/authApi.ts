@@ -12,6 +12,7 @@ export async function fetchAuthSession(): Promise<AuthSession> {
     return {
       authenticated: !!data.authenticated,
       claimed: !!data.claimed,
+      claimAllowed: !!data.claimAllowed,
       localAdminConfigured: !!data.localAdminConfigured,
       googleOAuthEnabled: !!data.googleOAuthEnabled,
       googleClientId: data.googleClientId ?? "",

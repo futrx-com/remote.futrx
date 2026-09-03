@@ -12,6 +12,20 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
+// isLoopbackRequest returns true when the request originated from the server's
+// own loopback interface (127.0.0.0/8 or ::1). This is used to gate the
+// first-time admin credential setup so that only someone with shell access to
+// the host can initialise the credential.
+func isLoopbackRequest(r *http.Request) bool {
+	ip := localClientIP(r)
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback()
+}
+
+
 type localAuthHandler struct {
 	auth   *serviceauth.Service
 	logins *localLoginLimiter
@@ -25,6 +39,13 @@ func (h *localAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	// First-time credential setup must originate from the server itself.
+	// Rejecting remote callers prevents anyone on the network from racing
+	// the legitimate operator to claim the admin account.
+	if !isLoopbackRequest(r) {
+		httptransport.SendErr(w, http.StatusForbidden, "admin setup must be performed from the server terminal")
 		return
 	}
 	var body struct {
