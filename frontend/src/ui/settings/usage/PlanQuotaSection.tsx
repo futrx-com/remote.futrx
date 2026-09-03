@@ -1,15 +1,5 @@
-import { useEffect, useState } from "preact/hooks";
-import { agentQuotaApi } from "../../../api/agentQuotaApi";
-import {
-  agentQuotaLabel,
-  measuredAgo,
-  quotaTone,
-  resetsIn,
-  windowLabel,
-  type AgentQuota,
-  type QuotaTone,
-  type QuotaWindow,
-} from "../../../models/agentQuota";
+import type { PlanQuotaWindow, QuotaTone } from "../../../models/agentQuota";
+import { usePlanQuota } from "../../../state/hooks/usage/usePlanQuota";
 import { Key } from "../../primitives/icons";
 
 const TONE_TEXT: Record<QuotaTone, string> = {
@@ -41,23 +31,7 @@ const TONE_WORD: Record<QuotaTone, string> = {
  * operator ends up planning a day's work against yesterday's number.
  */
 export function PlanQuotaSection() {
-  const [agents, setAgents] = useState<AgentQuota[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const now = Date.now();
-
-  useEffect(() => {
-    let cancelled = false;
-    agentQuotaApi
-      .list()
-      .then((value) => !cancelled && setAgents(value))
-      .catch(() => !cancelled && setAgents([]))
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const rows = (agents ?? []).filter((agent) => agent.session || agent.weekly);
+  const { rows, loading } = usePlanQuota();
   if (loading || rows.length === 0) return null;
 
   return (
@@ -74,14 +48,15 @@ export function PlanQuotaSection() {
           <li key={row.provider} class="py-2.5 first:pt-0 last:pb-0">
             <div class="flex flex-wrap items-baseline gap-x-2">
               <span class="text-[13px] font-medium text-ink-100">
-                {agentQuotaLabel(row.provider)}
+                {row.label}
               </span>
               <span class="text-[11px] text-ink-400">
-                measured {measuredAgo(row.session ?? row.weekly, now)}
+                measured {row.measured}
               </span>
             </div>
-            <WindowRow win={row.session} kind="session" now={now} />
-            <WindowRow win={row.weekly} kind="weekly" now={now} />
+            {row.windows.map((window) => (
+              <WindowRow key={window.kind} window={window} />
+            ))}
           </li>
         ))}
       </ul>
@@ -97,37 +72,28 @@ export function PlanQuotaSection() {
  * drawn at zero would read as "none of your plan is used", which is a claim
  * the CLI never made.
  */
-function WindowRow({
-  win,
-  kind,
-  now,
-}: {
-  win?: QuotaWindow;
-  kind: "session" | "weekly";
-  now: number;
-}) {
-  if (!win) return null;
-  const tone = quotaTone(win);
-  const percent = typeof win.usedPercent === "number" ? Math.round(win.usedPercent) : null;
-  const reset = resetsIn(win, now);
-
+function WindowRow({ window }: { window: PlanQuotaWindow }) {
   return (
     <div class="mt-1.5">
       <div class="flex items-baseline justify-between gap-2">
-        <span class="text-[11.5px] text-ink-300">{windowLabel(kind)}</span>
-        <span class={`text-[11.5px] tabular-nums ${TONE_TEXT[tone]}`}>
-          {percent == null ? TONE_WORD[tone] : `${percent}% used`}
+        <span class="text-[11.5px] text-ink-300">{window.label}</span>
+        <span class={`text-[11.5px] tabular-nums ${TONE_TEXT[window.tone]}`}>
+          {window.percent == null
+            ? TONE_WORD[window.tone]
+            : `${window.percent}% used`}
         </span>
       </div>
-      {percent != null && (
+      {window.barPercent != null && (
         <div class="mt-1 h-1.5 overflow-hidden rounded-full bg-tint">
           <div
-            class={`h-full rounded-full bg-current ${TONE_TEXT[tone]}`}
-            style={{ width: `${Math.min(100, Math.max(2, percent))}%` }}
+            class={`h-full rounded-full bg-current ${TONE_TEXT[window.tone]}`}
+            style={{ width: `${window.barPercent}%` }}
           />
         </div>
       )}
-      {reset && <p class="mt-0.5 text-[11px] text-ink-400">{reset}</p>}
+      {window.reset && (
+        <p class="mt-0.5 text-[11px] text-ink-400">{window.reset}</p>
+      )}
     </div>
   );
 }
