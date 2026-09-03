@@ -54,22 +54,26 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | POST | `/api/{provider}/login/code` | Submit a managed authorization code; currently Claude; admin only |
 | POST | `/api/{provider}/login/cancel` | Cancel a managed authorization-code flow; currently Claude; admin only |
 | POST | `/api/{provider}/login/device` | Start a managed device flow; currently Codex and Kimi; admin only |
+| POST | `/api/{provider}/login/api-key` | Validate and save a managed provider API key; currently MiniMax; admin only; response never includes the key |
+| DELETE | `/api/{provider}/login/api-key` | Remove a managed provider API key; currently MiniMax; admin only |
 | GET | `/api/agent-capabilities[?projectId=<id>&refresh=1]` | Discover normalized provider/model controls on the host or in an accessible project; `refresh=1` bypasses the current backend cache entry |
 | GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
 
 The module descriptor chooses one auth mode: managed authorization code,
-managed device flow, external, or none. Route registration follows the built
+managed device flow, managed API key, external, or none. Route registration follows the built
 auth binding, so a provider exposes only operations valid for its declared
-flow. Antigravity uses an external binding that supplies instructions but has
-no observable status, status stream, or managed host-login route because users
-authenticate `agy` inside each project.
+flow. MiniMax uses a write-only managed API-key binding whose status exposes
+only configured/unconfigured. Antigravity uses an external binding with no
+observable status, status stream, or managed host-login route; users
+authenticate it with `agy` inside each project.
 
 `GET /api/agent-auth` is the frontend's authoritative auth registry. Each row
 contains `provider`, `label`, optional `default`, `executionScopes`, an
 `authentication` object (`mode`, optional `instructions`, and
-`satisfiesAccessGate`), and a normalized `status` object. Status contains
+`satisfiesAccessGate`, and optional API-key creation metadata), and a normalized `status` object. Status contains
 `authenticated`, an optional warning, and one login shape shared by managed
 code/device flows (`active`, URL, optional code/timestamps/completion/error).
+Managed API-key status contains only the configured boolean.
 No-auth modules report authenticated immediately. External modules publish
 their instructions but no managed status stream or mutation controls.
 
@@ -80,10 +84,10 @@ model-catalog TTL.
 
 The access gate uses descriptor policy rather than a fixed provider list. A
 no-auth module marked `satisfiesAccessGate` opens it immediately; managed
-code/device modules require an authenticated binding. External authentication
+code/device/API-key modules require an authenticated binding. External authentication
 cannot satisfy the gate because Remote cannot observe it reliably. The current
-built-ins mark Claude, Codex, and Kimi as gate providers; Antigravity is
-external and does not open onboarding.
+built-ins mark Claude, Codex, and Kimi as gate providers; MiniMax is managed
+but not a gate provider, and Antigravity is external.
 
 The capability response has a `providers` array in registry order. Each
 provider includes its `source` (`live` or `fallback`), optional warning and
@@ -142,6 +146,7 @@ Every `{id}` project route first requires admin status or project membership. Re
 | GET, POST | `/api/chats` | List visible chats or create a chat |
 | GET, PATCH, DELETE | `/api/chats/{id}` | Read, update, or delete chat metadata/history |
 | GET | `/api/chats/{id}/events?limit=&before=` | Page persisted events backward by sequence |
+| GET | `/api/chats/{id}/transcript?limit=&before=` | Page complete transcript turns backward; adjacent text deltas are compacted |
 | POST | `/api/chats/{id}/rewind` | Remove a selected prompt and later events |
 | POST | `/api/chats/{id}/fork` | Copy metadata/history and defer provider-session fork |
 | POST | `/api/chats/{id}/read` | Mark current history read |

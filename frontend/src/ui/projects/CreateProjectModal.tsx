@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProjectMeta } from "../../models/project";
-import { createProjectForm } from "../../state/projects/createProjectForm";
+import { PROJECT_MAX_SLUG_LEN } from "../../config/project";
+import { createProjectForm } from "./createProjectForm";
 import { Loader, X } from "../primitives/icons";
 
 const MAX_NAME_LEN = 40;
@@ -34,14 +35,19 @@ export function CreateProjectModal({
     return () => clearTimeout(timer);
   }, [open]);
 
+  // close() reads `creating`, so the handler is held in a ref rather than keyed
+  // on: an Escape during an in-flight create must see it and do nothing.
+  const closeRef = useRef(close);
+  closeRef.current = close;
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") closeRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [open]);
 
   if (!open) return null;
 
@@ -142,7 +148,7 @@ export function CreateProjectModal({
             <div class="flex min-h-[18px] items-center justify-between gap-3">
               <div class={`text-xs ${showError ? "text-accent-red" : "text-ink-400"}`}>{hint}</div>
               <div class="text-[11.5px] tabular-nums text-ink-400">
-                {name ? `${name.trim().length}/${createProjectForm.maxSlugLen}` : ""}
+                {name ? `${name.trim().length}/${PROJECT_MAX_SLUG_LEN}` : ""}
               </div>
             </div>
           </div>

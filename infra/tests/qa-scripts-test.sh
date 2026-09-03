@@ -131,15 +131,16 @@ if grep -Eq 'git (fetch|reset)|infra/(install|update|upgrade-workspaces)[.]sh|FO
     fail "deploy-local.sh changes the installed checkout, host, or workspaces"
 fi
 for package_contract in \
-    '"qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/install.sh"' \
-    '"qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/update.sh"' \
-    '"qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-app.sh"' \
-    '"qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-local.sh"' \
+    '"qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/install.sh"' \
+    '"qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/update.sh"' \
+    '"qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-app.sh"' \
+    '"qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-local.sh"' \
     '"qa:test": "bash infra/tests/qa-scripts-test.sh"'; do
     grep -Fq "$package_contract" "$ROOT_PACKAGE_JSON" || \
         fail "root package is missing QA command: $package_contract"
 done
 
+bash "$TESTS_DIR/qa-resolve-test.sh"
 bash "$TESTS_DIR/lxd-host-test.sh"
 
 echo "QA install/update/app-deploy/local-deploy script tests passed"

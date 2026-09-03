@@ -29,7 +29,7 @@ This is the compact inventory of current Remote behavior. “Page” means the l
 
 | Feature | How to use it | Important behavior |
 | --- | --- | --- |
-| Provider | Choose **Codex**, **Claude**, **Kimi**, or **Antigravity** | Cannot change while streaming |
+| Provider | Choose **Codex**, **MiniMax**, **Claude**, **Kimi**, or **Antigravity** | MiniMax is project-only; cannot change while streaming |
 | Model | Open the provider/model picker and select a discovered model or Auto | Stored per chat; choices come from the current host/project CLI catalog |
 | Refresh models | Use the refresh action at the bottom of the provider/model picker | Force-probes the current scope; use after CLI, configuration, account, entitlement, or terminal-login changes |
 | Thinking | Select one of the efforts reported for the current provider/model | Hidden when no effort control is advertised; Kimi currently stores but does not forward the selection |
@@ -54,7 +54,7 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | Feature | Visible behavior |
 | --- | --- |
 | Streaming text | Assistant output appears incrementally |
-| Reasoning | Provider reasoning/thinking parts are rendered when emitted |
+| Reasoning | Consecutive provider reasoning deltas are grouped into collapsed, live-updating blocks that can be expanded at any time |
 | Tool groups | Consecutive tools are grouped and expandable |
 | Specialized tools | Read, write, edit, search, shell, and questions have tailored cards |
 | Generic tools | Unknown tools use a generic renderer |
@@ -63,7 +63,7 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | AskUserQuestion | Agent questions become a paged single/multi-select form with **Other** |
 | Usage | Supported providers report accumulated token usage |
 | Working state | Header dot, provider label, sidebar spinner, and composer state update |
-| Load older | Older JSONL events page backward |
+| Load older | Complete older conversation turns page backward |
 | Jump to latest | Appears when reading above the newest output |
 | Reconnect/replay | Chat socket resumes from the last event sequence |
 | Automatic title | Remote can title a new chat from its early content; it is persisted, and the current UI has no manual rename control |
@@ -76,23 +76,26 @@ There is no approval workflow in the current chat transport. Project agents run 
 
 ## Providers and current differences
 
-| Capability | Claude | Codex | Kimi | Antigravity |
-| --- | ---: | ---: | ---: | ---: |
-| Sign-in | Host authorization URL and pasted code | Host device flow | Host device flow | Run `agy` in each project Terminal |
-| Model picker | Live `/model` list with attempted version resolution | Live paginated app-server list | Configured models from the provider catalog | Models/variants returned by signed-in `agy` |
-| Thinking control | Forwarded | Forwarded | Displayed/stored per model, not yet forwarded | Forwarded as Auto, Low, Medium, or High |
-| Speed/service tier | Fast for Auto and Opus | Yes | No | No |
-| Plan mode | Declared native mode | Discovered app-server mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
-| Usage telemetry | Yes | Yes | No | No |
-| Provider session fork | Yes | Yes, native app-server fork | No; starts fresh | No; starts fresh |
-| Selected skill trigger | Slash command | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |
-| Browser MCP | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
-| Structured tool stream | Yes | Yes | Yes | No; plain streamed text |
+| Capability | Claude | Codex | MiniMax | Kimi | Antigravity |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sign-in | Host authorization URL and pasted code | Host device flow | Host-managed write-only API-key form | Host device flow | Run `agy` in each project Terminal |
+| Model picker | Live `/model` list with attempted version resolution | Live paginated app-server list | Provider-owned `MiniMax-M3` catalog | Configured models from the provider catalog | Models/variants returned by signed-in `agy` |
+| Thinking control | Forwarded | Forwarded | Think-Off or Adaptive | Displayed/stored per model, not yet forwarded | Forwarded as Auto, Low, Medium, or High |
+| Speed/service tier | Fast for Auto and Opus | Yes | No | No | No |
+| Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
+| Usage telemetry | Yes | Yes | Yes | No | No |
+| Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | No; starts fresh | No; starts fresh |
+| Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |
+| Browser MCP | Yes | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
+| Structured tool stream | Yes | Yes | Yes | Yes | No; plain streamed text |
 
 Antigravity's project-local `/root/.gemini/antigravity-cli` state survives
 stop/start and container replacement. After signing in with `agy` in the
 project Terminal, choose **Refresh models** so the picker replaces any
 signed-out fallback.
+
+MiniMax's `/root/.minimax` model catalog and sessions also survive replacement,
+separately from `/root/.codex`. Its key remains in the project secret store.
 
 ## Workspace tools
 
@@ -158,7 +161,7 @@ coalesce into one follow-up under the default overlap policy.
 | Feature | How to use it | Boundary |
 | --- | --- | --- |
 | Start human browser view | Toggle the key control in Browser | Starts project Chromium/noVNC as needed |
-| Share login with agent | Sign in visually, then select `browser` skill | Claude/Codex share the same profile/window |
+| Share login with agent | Sign in visually, then select `browser` skill | Claude, Codex, and MiniMax share the same profile/window |
 | Human intervention | Type or click in the live pane | Same session as agent |
 | Reload view | Use reload while ready | Reloads noVNC iframe |
 | Close drawer | Close Browser | Stops only the human view |

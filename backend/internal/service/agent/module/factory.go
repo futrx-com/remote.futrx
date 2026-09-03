@@ -6,6 +6,7 @@ package module
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ type AuthMode string
 const (
 	AuthManagedCode   AuthMode = "managed-code"
 	AuthManagedDevice AuthMode = "managed-device"
+	AuthManagedAPIKey AuthMode = "managed-api-key"
 	AuthExternal      AuthMode = "external"
 	AuthNone          AuthMode = "none"
 )
@@ -60,6 +62,12 @@ type Features struct {
 	ScheduledTools bool
 }
 
+type APIKeyAuth struct {
+	CreateURL       string
+	CreateLabel     string
+	CredentialLabel string
+}
+
 // Descriptor is the stable, provider-neutral declaration consumed by runtime
 // policy and presentation. Installation and filesystem policy is deliberately
 // kept in the factory's separate provisioning profile.
@@ -70,6 +78,7 @@ type Descriptor struct {
 	ExecutionScopes     []ExecutionScope
 	Auth                AuthMode
 	AuthInstructions    string
+	APIKeyAuth          *APIKeyAuth
 	SatisfiesAccessGate bool
 	LegacySkillRoots    []string
 	Features            Features
@@ -80,6 +89,7 @@ type Descriptor struct {
 type BuildDependencies struct {
 	Projects              agent.ProjectResolver
 	Containers            provisioning.ContainerDependencies
+	APIKeys               agentauth.APIKeyStore
 	CredentialSyncTimeout time.Duration
 }
 
@@ -89,6 +99,8 @@ type BuildDependencies struct {
 type Dependencies struct {
 	ProjectPreparer       agent.ProjectPreparer
 	CredentialCollector   provisioning.CredentialCollector
+	RuntimeAssets         provisioning.RuntimeAssetProvisioner
+	APIKeys               agentauth.APIKeyStore
 	CredentialSyncTimeout time.Duration
 }
 
@@ -198,6 +210,8 @@ func (f Factory) buildComponents(deps BuildDependencies) (Components, error) {
 	}
 	providerDependencies := Dependencies{
 		CredentialCollector:   deps.Containers.Credentials,
+		RuntimeAssets:         deps.Containers.RuntimeAssets,
+		APIKeys:               deps.APIKeys,
 		CredentialSyncTimeout: deps.CredentialSyncTimeout,
 	}
 	if supportsExecutionScope(f.descriptor, ScopeProject) {
@@ -392,20 +406,42 @@ func validateProfile(id agent.ProviderID, profile *provisioning.Profile, project
 		seenHosts[state.HostDirectory] = true
 		seenTargets[state.ContainerPath] = true
 	}
+	for _, asset := range profile.RuntimeAssets {
+		if err := asset.Validate(); err != nil {
+			return fmt.Errorf("%w: provider %q has an invalid runtime template: %v", ErrInvalidFactory, id, err)
+		}
+	}
 	return nil
 }
 
 func validateAuthMode(descriptor Descriptor) error {
 	switch descriptor.Auth {
-	case AuthManagedCode, AuthManagedDevice, AuthExternal:
+	case AuthManagedCode, AuthManagedDevice, AuthManagedAPIKey, AuthExternal:
 		if strings.TrimSpace(descriptor.AuthInstructions) == "" {
 			return fmt.Errorf("%w: provider %q auth has no instructions", ErrInvalidFactory, descriptor.ID)
+		}
+		if descriptor.Auth == AuthManagedAPIKey {
+			if descriptor.APIKeyAuth == nil {
+				return fmt.Errorf("%w: provider %q API-key auth has no configuration", ErrInvalidFactory, descriptor.ID)
+			}
+			createURL, err := url.ParseRequestURI(strings.TrimSpace(descriptor.APIKeyAuth.CreateURL))
+			if err != nil || createURL.Scheme != "https" || createURL.Host == "" {
+				return fmt.Errorf("%w: provider %q API-key URL must be absolute HTTPS", ErrInvalidFactory, descriptor.ID)
+			}
+			if strings.TrimSpace(descriptor.APIKeyAuth.CreateLabel) == "" {
+				return fmt.Errorf("%w: provider %q API-key link has no label", ErrInvalidFactory, descriptor.ID)
+			}
+			if strings.TrimSpace(descriptor.APIKeyAuth.CredentialLabel) == "" {
+				return fmt.Errorf("%w: provider %q API-key credential has no label", ErrInvalidFactory, descriptor.ID)
+			}
+		} else if descriptor.APIKeyAuth != nil {
+			return fmt.Errorf("%w: provider %q has API-key configuration for auth mode %q", ErrInvalidFactory, descriptor.ID, descriptor.Auth)
 		}
 		if descriptor.Auth == AuthExternal && descriptor.SatisfiesAccessGate {
 			return fmt.Errorf("%w: provider %q external auth cannot satisfy the access gate", ErrInvalidFactory, descriptor.ID)
 		}
 	case AuthNone:
-		if strings.TrimSpace(descriptor.AuthInstructions) != "" {
+		if strings.TrimSpace(descriptor.AuthInstructions) != "" || descriptor.APIKeyAuth != nil {
 			return fmt.Errorf("%w: provider %q has instructions for auth mode %q", ErrInvalidFactory, descriptor.ID, descriptor.Auth)
 		}
 	default:
@@ -430,6 +466,7 @@ func validateAuth(descriptor Descriptor, binding *agentauth.Binding) error {
 	wantFlow := map[AuthMode]agentauth.Flow{
 		AuthManagedCode:   agentauth.FlowCode,
 		AuthManagedDevice: agentauth.FlowDevice,
+		AuthManagedAPIKey: agentauth.FlowAPIKey,
 		AuthExternal:      agentauth.FlowExternal,
 	}[descriptor.Auth]
 	if binding.Flow() != wantFlow {
@@ -447,6 +484,10 @@ func validateAuth(descriptor Descriptor, binding *agentauth.Binding) error {
 func cloneDescriptor(descriptor Descriptor) Descriptor {
 	descriptor.ExecutionScopes = append([]ExecutionScope(nil), descriptor.ExecutionScopes...)
 	descriptor.LegacySkillRoots = append([]string(nil), descriptor.LegacySkillRoots...)
+	if descriptor.APIKeyAuth != nil {
+		apiKeyAuth := *descriptor.APIKeyAuth
+		descriptor.APIKeyAuth = &apiKeyAuth
+	}
 	return descriptor
 }
 

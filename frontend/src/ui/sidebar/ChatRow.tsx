@@ -1,5 +1,5 @@
 import type { ChatMeta } from "../../models/chat";
-import { shortTimeAgo, timeAgo } from "../../shared/format";
+import { relativeTimeService } from "../../services/platform/relativeTimeService.ts";
 import { Eye, EyeOff, GitFork, Loader, MessageSquare, X } from "../primitives/icons";
 
 const rowActionClass =
@@ -56,9 +56,9 @@ export function ChatRow({
       <span
         class="pointer-events-none hidden flex-none pr-2.5 text-[11px] tabular-nums text-ink-400
                md:block md:group-hover:hidden md:group-focus-within:hidden"
-        title={timeAgo(chat.lastMessageAt)}
+        title={relativeTimeService.ago(chat.lastMessageAt)}
       >
-        {shortTimeAgo(chat.lastMessageAt)}
+        {relativeTimeService.shortAgo(chat.lastMessageAt)}
       </span>
 
       <div

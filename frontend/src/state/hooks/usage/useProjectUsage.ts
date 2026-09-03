@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { usageApi } from "../../../api/usageApi";
 import type { UsageSummary } from "../../../models/usage";
-import { usageRangeForPreset } from "../../usage/usageRangeState";
+import { usageRangeService } from "../../../services/usage/usageRangeService.ts";
 
 export interface ProjectUsage {
   summary: UsageSummary | null;
@@ -28,7 +28,7 @@ export function useProjectUsage(projectId: string | undefined): ProjectUsage {
     }
     setLoading(true);
     try {
-      const range = usageRangeForPreset("month", Date.now());
+      const range = usageRangeService.forPreset("month", Date.now());
       setSummary(await usageApi.projectSummary(projectId, range.from, range.to));
       setError(null);
     } catch (cause) {

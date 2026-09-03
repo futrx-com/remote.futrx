@@ -1,5 +1,5 @@
-import { requestJson } from "../apiRequest";
-import { API_ROUTES } from "../../config/routes";
+import { requestJson } from "../apiRequest.ts";
+import { API_ROUTES } from "../../config/routes.ts";
 import type { AgentCapabilitiesCatalog } from "../../models/agentCapabilities";
 
 export const capabilitiesApi = {

@@ -1,4 +1,5 @@
-import { buildUsageChart, type UsageChartMetric } from "../../../state/usage/usageChartModel";
+import type { UsageChartMetric } from "../../../models/usage";
+import { usageChartService } from "../../../services/usage/usageChartService.ts";
 import type { UsageDayPoint } from "../../../models/usage";
 
 const VIEW_WIDTH = 720;
@@ -19,7 +20,7 @@ export function UsageBarChart({
   metric: UsageChartMetric;
   onMetricChange: (metric: UsageChartMetric) => void;
 }) {
-  const chart = buildUsageChart(daily, metric);
+  const chart = usageChartService.build(daily, metric);
   const slot = chart.bars.length > 0 ? VIEW_WIDTH / chart.bars.length : VIEW_WIDTH;
   const barWidth = Math.max(1, slot * 0.62);
 

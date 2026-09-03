@@ -1,5 +1,4 @@
 import type { ChatMeta } from "../../../models/chat";
-import type { ProjectMeta } from "../../../models/project";
 import { useConfirm } from "../../context/ConfirmContext";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 import { chatApi } from "../../../api/chatApi";
@@ -60,24 +59,6 @@ export function useWorkspaceCommands() {
     }
   }
 
-  async function startProject(project: ProjectMeta, event: Event) {
-    event.stopPropagation();
-    try {
-      await workspace.startProject(project.id);
-    } catch (error) {
-      alert("start failed: " + (error as Error).message);
-    }
-  }
-
-  async function stopProject(project: ProjectMeta, event: Event) {
-    event.stopPropagation();
-    try {
-      await workspace.stopProject(project.id);
-    } catch (error) {
-      alert("stop failed: " + (error as Error).message);
-    }
-  }
-
   return {
     newProject,
     newChatInProject,
@@ -85,7 +66,5 @@ export function useWorkspaceCommands() {
     toggleChatUnread,
     forkChat,
     reorderProjects,
-    startProject,
-    stopProject,
   };
 }

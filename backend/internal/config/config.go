@@ -16,6 +16,7 @@ type Config struct {
 	InstallDir string
 	BaseURL    string
 	Agent      AgentOptions
+	Auth       AuthOptions
 	Schedule   ScheduleLimits
 }
 
@@ -38,6 +39,22 @@ type AgentOptions struct {
 	// BrowserIdleTTL controls how long an agent browser stack may remain idle
 	// before the project service stops it.
 	BrowserIdleTTL time.Duration
+}
+
+// AuthOptions are application-wide policies for optional account security
+// features. Protocol constants such as the TOTP period and code width remain
+// owned by the auth package.
+type AuthOptions struct {
+	// PendingLoginTTL is the lifetime of the token bridging a successful first
+	// factor and the second-factor challenge.
+	PendingLoginTTL time.Duration
+	// EnrollmentTTL is the lifetime of a pending TOTP enrollment token.
+	EnrollmentTTL time.Duration
+	// RecoveryCodeCount is the number of one-time recovery codes issued as a
+	// set during enrollment or regeneration.
+	RecoveryCodeCount int
+	// SessionHistoryLimit bounds the newest-first sign-in history per account.
+	SessionHistoryLimit int
 }
 
 // ScheduleLimits are the scheduled-task guardrails. Zero disables a limit;
@@ -69,6 +86,12 @@ func Load() Config {
 			DegradedCapabilityCacheTTL: 2 * time.Hour,
 			CredentialSyncTimeout:      30 * time.Second,
 			BrowserIdleTTL:             20 * time.Minute,
+		},
+		Auth: AuthOptions{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
 		},
 		Schedule: ScheduleLimits{
 			MinInterval:        envDuration("SCHEDULE_MIN_INTERVAL", 5*time.Minute),

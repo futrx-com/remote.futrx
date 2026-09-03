@@ -140,6 +140,7 @@ type Service struct {
 	scheduleTools ScheduleToolIssuer
 	usage         UsageRecorder
 	quota         QuotaRecorder
+	interactions  interactionResponseRouter
 }
 
 func New(
@@ -154,11 +155,12 @@ func New(
 		hub = runhub.New(store)
 	}
 	service := &Service{
-		store:    store,
-		tmux:     tmux,
-		projects: projects,
-		hub:      hub,
-		agents:   agents,
+		store:        store,
+		tmux:         tmux,
+		projects:     projects,
+		hub:          hub,
+		agents:       agents,
+		interactions: newInteractionResponseRouter(),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -190,17 +192,20 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 		})
 		return RunHandle{}, ErrPromptAlreadyRunning
 	}
+	responses := rnr.interactions.open(input.ChatID, runID)
 
 	done := make(chan RunResult, 1)
 	ledgerRunID := newLedgerRunID()
 	go func() {
 		defer close(done)
 		defer rnr.hub.FinishRun(input.ChatID, runID)
+		defer rnr.interactions.remove(input.ChatID, runID)
 		var output strings.Builder
 		err := rnr.runPromptAs(
 			ctx,
 			input,
 			ledgerRunID,
+			responses,
 			func(ev ChatEvent) {
 				// Stamp the originating task so a scheduled run's events stay
 				// distinguishable from an interactive turn's downstream.
@@ -221,6 +226,10 @@ func (rnr *Service) CancelPrompt(id servicechat.ID) bool {
 	return rnr.hub.CancelRun(id)
 }
 
+func (rnr *Service) RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error {
+	return rnr.interactions.respond(id, response)
+}
+
 func (rnr *Service) runPrompt(
 	ctx context.Context,
 	id servicechat.ID,
@@ -232,6 +241,7 @@ func (rnr *Service) runPrompt(
 		ctx,
 		StartInput{ChatID: id, Prompt: prompt},
 		newLedgerRunID(),
+		nil,
 		emit,
 		emitTransient,
 	)
@@ -241,9 +251,11 @@ func (rnr *Service) runPromptAs(
 	ctx context.Context,
 	input StartInput,
 	ledgerRunID string,
+	interactionResponses <-chan agent.InteractionResponse,
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
 ) error {
+	emit = withTurnID(ledgerRunID, emit)
 	id := input.ChatID
 	prompt := input.Prompt
 	meta, err := rnr.store.Get(ctx, id)
@@ -259,9 +271,14 @@ func (rnr *Service) runPromptAs(
 		})
 	}
 
-	// Resolve a fresh cwd: live tmux pane_current_path if linked, else stored.
+	// Project metadata stores the host-side bind-mount source, but provider
+	// processes run inside the project container where that workspace is always
+	// mounted at /workspace. Never pass the host path into an in-container CLI:
+	// Codex-harness tools and MCP servers use this request cwd when they spawn.
 	cwd := meta.Cwd
-	if meta.TmuxSession != "" {
+	if meta.ProjectID != "" {
+		cwd = agent.ProjectWorkspacePath
+	} else if meta.TmuxSession != "" {
 		if c, err := rnr.tmux.Cwd(meta.TmuxSession); err == nil && c != "" {
 			cwd = c
 		}
@@ -394,10 +411,13 @@ func (rnr *Service) runPromptAs(
 			Preferences: agent.RunPreferences{
 				ReasoningEffort: agent.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     agent.ServiceTier(meta.ServiceTier),
+				ApprovalPolicy:  servicechat.NormalizeApprovalPolicy(meta.ApprovalPolicy),
+				SandboxPolicy:   servicechat.NormalizeSandboxPolicy(meta.SandboxPolicy),
 			},
-			EnableBrowser:       enableBrowser,
-			EnableScheduleTools: enableScheduleTools,
-			RuntimeEnv:          runtimeEnv,
+			EnableBrowser:        enableBrowser,
+			EnableScheduleTools:  enableScheduleTools,
+			RuntimeEnv:           runtimeEnv,
+			InteractionResponses: interactionResponses,
 		}, func(ev agent.Event) {
 			// qa added the provider argument; the ledger hook is this
 			// branch's and sits after the emit as before.
@@ -430,6 +450,13 @@ func (rnr *Service) runPromptAs(
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: string(providerID) + " exit: " + err.Error()})
 	}
 	return err
+}
+
+func withTurnID(turnID string, emit func(ChatEvent)) func(ChatEvent) {
+	return func(event ChatEvent) {
+		event.TurnID = turnID
+		emit(event)
+	}
 }
 
 func clearSessionIDForProvider(meta *ChatMeta, provider agent.ProviderID) {

@@ -36,6 +36,22 @@ func TestLoadUsesGlobalAgentPolicyDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadUsesAuthPolicyDefaults(t *testing.T) {
+	options := Load().Auth
+	if options.PendingLoginTTL != 5*time.Minute {
+		t.Fatalf("pending login TTL = %s, want 5m", options.PendingLoginTTL)
+	}
+	if options.EnrollmentTTL != 10*time.Minute {
+		t.Fatalf("enrollment TTL = %s, want 10m", options.EnrollmentTTL)
+	}
+	if options.RecoveryCodeCount != 10 {
+		t.Fatalf("recovery code count = %d, want 10", options.RecoveryCodeCount)
+	}
+	if options.SessionHistoryLimit != 20 {
+		t.Fatalf("session history limit = %d, want 20", options.SessionHistoryLimit)
+	}
+}
+
 func TestCodeServerBaseURLUsesInstalledDomain(t *testing.T) {
 	tests := []struct {
 		base string

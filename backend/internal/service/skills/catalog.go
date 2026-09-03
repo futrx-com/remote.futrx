@@ -23,7 +23,7 @@ type ProjectCatalog interface {
 }
 
 type Authorizer interface {
-	CurrentSession(cookieValue string) (*serviceauth.Session, error)
+	CurrentSession(ctx context.Context, cookieValue string) (*serviceauth.Session, error)
 	IsAdmin(ctx context.Context, email string) (bool, error)
 }
 
@@ -65,7 +65,7 @@ func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
 			}
 			return nil, err
 		}
-		session, err := c.auth.CurrentSession(query.SessionCookie)
+		session, err := c.auth.CurrentSession(ctx, query.SessionCookie)
 		if err != nil || session == nil {
 			return nil, ErrAuthenticationRequired
 		}

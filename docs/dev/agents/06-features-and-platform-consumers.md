@@ -18,7 +18,7 @@ runtime: each provider still has to implement the behavior it advertises.
 | `Label` | auth/capability APIs, frontend, instruction-style skill prompts | Human-readable name; descriptor value overrides a label returned by capability probing. |
 | `Default` | chat and user-settings services | Preferred default in every compatible scope. The catalog rejects multiple defaults and a default without host scope. If none is declared, the first compatible module wins. |
 | `ExecutionScopes` | chat create/update/run, capability discovery, skills, profile selection | Controls whether the provider may be used for loose host chats, project chats, or both. |
-| `Auth` and `AuthInstructions` | auth registry, HTTP/WebSocket routes, onboarding and Settings | Selects `managed-code`, `managed-device`, `external`, or `none` behavior. |
+| `Auth`, `AuthInstructions`, and optional `APIKeyAuth` | auth registry, HTTP/WebSocket routes, onboarding and Settings | Selects `managed-code`, `managed-device`, `managed-api-key`, `external`, or `none` behavior and supplies an HTTPS key-creation URL when required. |
 | `SatisfiesAccessGate` | startup validation and auth middleware | Allows an authenticated deployment to open after a managed binding authenticates, or immediately for `none`. External auth cannot satisfy the gate. |
 | `LegacySkillRoots` | skill catalog | Adds provider-specific host skill locations behind the canonical `.agents/skills` root. |
 | `Features.Sessions` | prompt service and chat forking | Enables saved-session resume and, separately, native fork. Fork requires resume. |
@@ -47,10 +47,12 @@ does not change the catalog.
 | --- | ---: | --- | --- | --- | --- | ---: | ---: |
 | Claude | No | host, project | managed code | resume, fork | slash-style skill trigger | Yes | Yes |
 | Codex | Yes | host, project | managed device | resume, fork | dollar mention | Yes | Yes |
+| MiniMax | No | project | managed API key | resume, fork | dollar mention | Yes | Yes |
 | Kimi | No | host, project | managed device | resume | instructions | No | Yes |
 | Antigravity | No | host, project | external | resume | instructions | No | Yes |
 
-All four current modules run local CLIs and attach provisioning profiles. The
+All five current modules run local CLIs and attach provisioning profiles. MiniMax
+reuses Codex's app-server harness with a separate home and provider config. The
 contract also permits a host-only remote integration with no profile and a
 no-auth module with no binding.
 
@@ -73,8 +75,9 @@ Several adjacent contracts are deliberately not fields of `Features`:
   module descriptor policy with their own validation and consumers;
 - models, modes, reasoning efforts, and service tiers are environment/account
   data returned by live capability discovery rather than static promises;
-- CLI installation, credentials, persistent state, instructions, workspace
-  links, and Browser templates are private provisioning-profile policy;
+- CLI installation, credentials, persistent state, instructions, runtime
+  templates, workspace links, and Browser templates are private
+  provisioning-profile policy;
 - parser formats, command flags, protocol deadlines, and fallback behavior are
   provider adapter details unless a shared application workflow needs to see
   them.
@@ -171,12 +174,13 @@ The four supported modes are:
 | --- | --- | --- |
 | `managed-code` | `auth.NewCodeBinding` | Remote starts an interactive code-paste CLI flow and exposes start/submit/cancel actions. |
 | `managed-device` | `auth.NewDeviceBinding` | Remote starts a device login and exposes URL/code/progress. |
+| `managed-api-key` | `auth.NewAPIKeyBinding` | Remote exposes a write-only key form plus configured/unconfigured status and save/remove actions. |
 | `external` | `auth.NewExternalBinding` | Remote shows instructions only; there is no managed status stream or mutation action. |
 | `none` | no binding | Provider is treated as authenticated; instructions must be empty. |
 
 The normalized catalog is `GET /api/agent-auth`. Every non-`none` binding gets
 provider-ID-derived legacy status routes; an external binding has no usable
-status stream. Managed bindings additionally receive their code/device action
+status stream. Managed bindings additionally receive their flow-specific action
 routes and `/ws/agent-auth/<provider>`. Route construction is generic in
 [`AgentAuthHandler`](../../../backend/internal/transport/http/handlers/agent_auth_handler.go)
 and [`AgentAuthSocket`](../../../backend/internal/transport/ws/agent_auth_socket.go).
@@ -324,9 +328,9 @@ the prompt service to set `RunRequest.EnableBrowser` when the user selected the
 4. provider tests must demonstrate that browser wiring appears only when
    enabled.
 
-Claude and Codex currently select the shared preparer's full MCP/core launch
-path. A module must not claim `BrowserTools` merely because the generic browser
-skill exists.
+Claude, Codex, and MiniMax currently select the shared preparer's full MCP/core
+launch path. A module must not claim `BrowserTools` merely because the generic
+browser skill exists.
 The prompt service also keeps project browser activity alive once per minute
 during an enabled run so the browser reaper does not stop an active session.
 
@@ -410,7 +414,7 @@ Use this sequence:
    orchestration, persistence, cancellation, and errors. Add behavior to the
    prompt service only when it is genuinely part of assembling or supervising
    every agent run; otherwise give the capability its own service. Shared
-   services must not import or switch on Claude, Codex, Kimi, or Antigravity.
+   services must not import or switch on Claude, Codex, MiniMax, Kimi, or Antigravity.
 5. **Implement provider adapters.** Translate the neutral operation into each
    native CLI/protocol, and translate native results back into neutral types.
    Keep provider command builders and protocol deadlines local. Change an

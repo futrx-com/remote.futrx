@@ -1,9 +1,6 @@
 import type { ComponentChildren } from "preact";
 import type { UsageGroup, UsageGroupBy, UsageRecord } from "../../../models/usage";
-import {
-  formatTokens,
-  formatUsd,
-} from "../../../state/usage/usageChartModel";
+import { usageFormatService } from "../../../services/usage/usageFormatService.ts";
 import { ChevronRight, Loader, X } from "../../primitives/icons";
 
 const GROUP_HEADINGS: Record<UsageGroupBy, string> = {
@@ -65,7 +62,7 @@ export function UsageGroupTable({
                 <td class="px-2 py-2 text-ink-100 truncate max-w-[220px]">{group.label}</td>
                 <td class="px-2 py-2 text-right text-ink-200 font-mono">{group.runs}</td>
                 <td class="px-2 py-2 text-right text-ink-200 font-mono">
-                  {formatTokens(group.totalTokens)}
+                  {usageFormatService.tokens(group.totalTokens)}
                 </td>
                 <td class="px-2 py-2 text-right font-mono text-ink-50">
                   <CostCell
@@ -168,13 +165,13 @@ export function UsageRecordsTable({
                       {record.model || record.provider || "—"}
                     </td>
                     <td class="px-2 py-2 text-right text-ink-200 font-mono">
-                      {formatTokens(record.inputTokens)}
+                      {usageFormatService.tokens(record.inputTokens)}
                     </td>
                     <td class="px-2 py-2 text-right text-ink-200 font-mono">
-                      {formatTokens(record.outputTokens)}
+                      {usageFormatService.tokens(record.outputTokens)}
                     </td>
                     <td class="px-2 py-2 text-right text-ink-300 font-mono">
-                      {formatTokens(record.cacheReadTokens + record.cacheWriteTokens)}
+                      {usageFormatService.tokens(record.cacheReadTokens + record.cacheWriteTokens)}
                     </td>
                     <td class="px-2 py-2 text-right font-mono text-ink-50">
                       {record.costUsd == null ? (
@@ -184,7 +181,7 @@ export function UsageRecordsTable({
                       ) : (
                         <span title={record.estimated ? "Estimated from the price table" : "Reported by the provider"}>
                           {record.estimated ? "~" : ""}
-                          {formatUsd(record.costUsd)}
+                          {usageFormatService.usd(record.costUsd)}
                         </span>
                       )}
                     </td>
@@ -221,7 +218,7 @@ function CostCell({
 }) {
   const allEstimated = cost > 0 && estimated >= cost;
   const title = [
-    estimated > 0 ? `${formatUsd(estimated)} estimated from the price table` : null,
+    estimated > 0 ? `${usageFormatService.usd(estimated)} estimated from the price table` : null,
     unpriced > 0 ? `${unpriced} run${unpriced === 1 ? "" : "s"} with unknown cost` : null,
   ]
     .filter(Boolean)
@@ -229,7 +226,7 @@ function CostCell({
   return (
     <span title={title || "Reported by the provider"}>
       {allEstimated ? "~" : ""}
-      {formatUsd(cost)}
+      {usageFormatService.usd(cost)}
       {!allEstimated && estimated > 0 && <span class="text-ink-400">*</span>}
     </span>
   );

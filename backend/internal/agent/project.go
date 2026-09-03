@@ -2,6 +2,11 @@ package agent
 
 import "context"
 
+// ProjectWorkspacePath is the stable mount point for a project's workspace
+// inside its execution container. Host-side project paths must never be sent
+// to an in-container agent process.
+const ProjectWorkspacePath = "/workspace"
+
 // ProjectID is the provider-facing identity of a Remote project. It is kept
 // independent from the project service's storage and transport models so agent
 // modules depend only on this narrow execution port.

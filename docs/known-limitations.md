@@ -44,7 +44,9 @@ These are the constraints worth understanding before you deploy or rely on remot
 ## Authentication and access
 
 - **One password account.** Only the first-claimed local admin uses a password; every other user must sign in through Google OAuth. Until an admin configures Google client credentials, the box is effectively single-user, and users without a Google account can never log in. *(`backend/internal/service/auth/`)*
-- **No 2FA, no password reset flow, no session revocation.** Recovering a lost owner password requires manually deleting `local-admin.json` on the host. Individual sessions cannot be revoked (30-day stateless tokens); the only levers are deleting the user or rotating the global session key.
+- **No password reset flow.** Recovering a lost owner password requires manually deleting `local-admin.json` on the host.
+- **TOTP 2FA, single-active-session enforcement, sign-in history, and recovery-code alerting exist but are opt-in per account, off by default, and each independently toggleable** from Settings → Security. An account that leaves all four off is unaffected by any of them: no server-side session lookup, no history file, no alert field, and its sessions remain the plain 30-day stateless tokens described below. There is still no admin-facing "force disable 2FA" affordance for a member who has lost both their authenticator and all recovery codes — the local admin's only lever today is manually deleting that account's `DATA_DIR/twofactor/<hash>.json` file on the host, mirroring the existing `local-admin.json` recovery path above. Note also that TOTP codes are single-use: signing in twice inside the same 30-second step requires waiting for the authenticator to roll to the next code.
+- **Sessions remain stateless by default; single-session revocation is opt-in, not universal.** A session that never turned on "single active session" (the vast majority) still cannot be individually revoked — the only levers for it are deleting the user or rotating the global session key. Turning that preference on makes a new login on any device immediately invalidate the account's previous session.
 - **Flat admin/member roles.** There is no per-project "owner" tier. Any project member can read and change that project's secrets and edit its membership. Sharing a project shares its secrets.
 - **The per-project IDE is reachable by any invited user.** `<slug>.code.<host>` authenticates the registered user but does **not** check project membership, so any invited user can open any project's code editor. This is documented in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md) and analyzed in the [threat model](threat-model.md).
 - **No public/anonymous sharing.** Every preview URL sits behind the platform session, so showing a prototype to an outside stakeholder means inviting them as a user first.
@@ -64,6 +66,11 @@ These are the constraints worth understanding before you deploy or rely on remot
   container, so all users and projects share the same provider accounts and
   subscription quotas. There is no per-user or per-project identity for those
   providers, and each allows only one interactive login at a time.
+- **MiniMax identity is an installation-wide Token Plan subscription key.** The key is stored in a
+  mode-`0600` control-plane file without application-level encryption and is
+  injected into every MiniMax run. MiniMax uses a separate `/root/.minimax`
+  runtime home, but container root can also read the other mounted provider
+  homes; that separation is not a security boundary.
 - **Codex's API-key guard does not inspect newer project-local auth before a
   run.** Remote rejects a host `auth.json` explicitly marked `apikey` and clears
   `OPENAI_API_KEY`, but credential seeding does not overwrite a newer
@@ -87,8 +94,8 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **Session recovery drops context.** When a provider session is missing (or you switch provider mid-chat), the chat is "recovered" by replaying at most the last ~24 KB of visible transcript as plain text into a fresh session — earlier context and all tool-call state are dropped.
 - **Provider Plan modes differ.** Remote forwards provider-native Default and
   Plan modes instead of adding workflow prompts. Claude Plan is read-only;
-  Codex Plan is a provider collaboration-instruction preset rather than an
-  OS-level read-only sandbox. Default project runs bypass provider approvals,
+  Codex and MiniMax Plan use a Codex-harness collaboration-instruction preset
+  rather than an OS-level read-only sandbox. Default project runs bypass provider approvals,
   and Remote has no human-confirmation gate for irreversible or external
   actions.
 - **Provider-specific gaps.** Kimi has no fork primitive (forked Kimi chats

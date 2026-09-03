@@ -12,7 +12,7 @@ import type {
   ResourceInfo,
   WorkspaceInfo,
 } from "../../../models/project";
-import type { ProjectContainerRecord } from "../../../state/projects/projectContainerRecords";
+import type { ProjectContainerRecord } from "../../../models/project";
 import { AlertCircle } from "../../primitives/icons";
 import { Field, Grid, Loading, Panel } from "./ProjectContainerPrimitives";
 import {

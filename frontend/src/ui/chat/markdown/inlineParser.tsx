@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
-import { mediaViewerState } from "../../../state/chat/mediaViewerState";
-import { viewableMediaKind } from "../files/fileMeta";
+import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
+import { fileService } from "../../../services/files/fileService.ts";
 import { internalPathOpenUrl } from "../ideLinks";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
@@ -33,7 +33,7 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       if (end > index + 1) {
         flush();
         nodes.push(
-          <code key={`${keyPrefix}-${nodes.length}`} class="bg-tint-strong text-ink-100 px-1 py-0.5 rounded text-[12.5px] font-mono">
+          <code key={`${keyPrefix}-${nodes.length}`} class="bg-tint-strong text-ink-100 px-1 py-0.5 rounded text-[12.5px] font-mono break-all [overflow-wrap:anywhere]">
             {text.slice(index + 1, end)}
           </code>
         );
@@ -82,7 +82,7 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-accent-blue hover:underline"
+                class="text-accent-blue hover:underline break-all [overflow-wrap:anywhere]"
                 onClick={(event) => maybeOpenMediaViewer(event, href)}
               >
                 {renderInline(text.slice(index + 1, labelEnd), key, context)}
@@ -100,7 +100,7 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       const href = trimTrailingUrlPunctuation(url);
       flush();
       nodes.push(
-        <a key={`${keyPrefix}-${nodes.length}`} href={href} target="_blank" rel="noopener noreferrer" class="text-accent-blue hover:underline">
+        <a key={`${keyPrefix}-${nodes.length}`} href={href} target="_blank" rel="noopener noreferrer" class="text-accent-blue hover:underline break-all [overflow-wrap:anywhere]">
           {href}
         </a>
       );
@@ -149,10 +149,10 @@ function maybeOpenMediaViewer(event: MouseEvent, href: string): void {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   if (!href.includes("/media-open?")) return;
   const name = mediaOpenFileName(href);
-  const kind = name ? viewableMediaKind(name) : null;
+  const kind = name ? fileService.viewableMediaKind(name) : null;
   if (!name || !kind) return;
   event.preventDefault();
-  mediaViewerState.open({ url: href, name, kind });
+  mediaViewerStore.getState().open({ url: href, name, kind });
 }
 
 function mediaOpenFileName(href: string): string {

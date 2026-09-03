@@ -5,11 +5,13 @@ export function AttachButton({
   fileInputRef,
   uploading,
   disconnected,
+  unsupported,
   onFilesSelected,
 }: {
   fileInputRef: RefObject<HTMLInputElement>;
   uploading: boolean;
   disconnected: boolean;
+  unsupported?: boolean;
   onFilesSelected: (files: File[]) => void;
 }) {
   return (
@@ -17,12 +19,12 @@ export function AttachButton({
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        disabled={uploading || disconnected}
+        disabled={uploading || disconnected || unsupported}
         class="codex-icon-button grid h-8 w-8 flex-none place-items-center rounded-control
                text-ink-400 transition-colors hover:bg-tint-strong hover:text-ink-100
                active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100"
-        aria-label="Attach files"
-        title="Attach (or drag-and-drop / paste images)"
+		aria-label={unsupported ? "Attachments are unavailable for this model" : "Attach files"}
+		title={unsupported ? "The selected model reports text-only input" : "Attach (or drag-and-drop / paste images)"}
       >
         <Plus class="w-4 h-4" />
       </button>

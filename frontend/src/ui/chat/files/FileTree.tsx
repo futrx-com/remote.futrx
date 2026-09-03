@@ -14,7 +14,8 @@ import {
   Loader,
   Music,
 } from "../../primitives/icons";
-import { categorize, fileOpenAction, formatBytes, parentDir, type FileCategory } from "./fileMeta";
+import { fileService } from "../../../services/files/fileService.ts";
+import type { FileCategory } from "../../../models/files.ts";
 
 type IconComponent = (props: JSX.SVGAttributes<SVGSVGElement>) => JSX.Element;
 
@@ -133,7 +134,7 @@ function FileRow({
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
-  const { Icon, color } = CATEGORY_META[categorize(node.name)];
+  const { Icon, color } = CATEGORY_META[fileService.category(node.name)];
   return (
     <li>
       <div
@@ -153,7 +154,7 @@ function FileRow({
         <Icon class={`w-4 h-4 flex-none ${color}`} />
         <span class="flex-1 min-w-0 truncate text-[13px] text-ink-100">{node.name}</span>
         {node.size != null && (
-          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{formatBytes(node.size)}</span>
+          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{fileService.formatBytes(node.size)}</span>
         )}
         <a
           href={downloadUrl(node)}
@@ -181,10 +182,10 @@ export function SearchResultRow({
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
-  const dir = parentDir(node.path);
+  const dir = fileService.parentDir(node.path);
   const { Icon, color } = node.isDir
     ? { Icon: Folder as IconComponent, color: "text-accent-blue" }
-    : CATEGORY_META[categorize(node.name)];
+    : CATEGORY_META[fileService.category(node.name)];
   const openable = !node.isDir;
   return (
     <li>
@@ -211,7 +212,7 @@ export function SearchResultRow({
           {dir && <div class="truncate text-[11px] text-ink-500 font-mono">{dir}/</div>}
         </div>
         {!node.isDir && node.size != null && (
-          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{formatBytes(node.size)}</span>
+          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{fileService.formatBytes(node.size)}</span>
         )}
         <a
           href={downloadUrl(node)}
@@ -231,7 +232,7 @@ export function SearchResultRow({
 
 // Hover hint describing what a click will do for this file.
 function openTitle(name: string): string {
-  const target = fileOpenAction(name);
+  const target = fileService.openAction(name);
   if (target.action === "media") return `View ${name}`;
   if (target.action === "ide") return `Open ${name} in IDE`;
   return `Download ${name}`;

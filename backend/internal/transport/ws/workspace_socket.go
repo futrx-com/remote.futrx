@@ -269,4 +269,3 @@ func projectIDSet(projects []serviceproject.Meta) map[serviceproject.ID]struct{}
 	}
 	return m
 }
-

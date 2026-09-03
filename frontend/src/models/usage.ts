@@ -97,3 +97,51 @@ export const EMPTY_USAGE_TOTALS: UsageTotals = {
   runs: 0,
   unpricedRuns: 0,
 };
+
+/**
+ * The Usage page's selected window. Every range resolves to a half-open
+ * millisecond window the backend can filter on; days are bounded in UTC
+ * because the ledger buckets records by UTC day.
+ */
+export type UsageRangePreset = "7d" | "30d" | "month" | "custom";
+
+export interface UsageRange {
+  preset: UsageRangePreset;
+  from: number;
+  to: number;
+}
+
+/** A range as the two `<input type=date>` values that show it. */
+export interface UsageRangeLabels {
+  fromDate: string;
+  toDate: string;
+}
+
+/** The per-project record list opened from a summary row. */
+export interface UsageDrillDown {
+  projectId: string;
+  label: string;
+  records: UsageRecord[];
+  loading: boolean;
+  error: string | null;
+  hasMore: boolean;
+}
+
+export type UsageChartMetric = "tokens" | "cost";
+
+export interface UsageChartBar {
+  day: string;
+  value: number;
+  /** Fraction of the tallest bar, 0..1. */
+  ratio: number;
+  runs: number;
+  label: string;
+}
+
+export interface UsageChartModel {
+  bars: UsageChartBar[];
+  peak: number;
+  peakLabel: string;
+  /** True when every day in the window is empty, so the view can say so. */
+  isEmpty: boolean;
+}

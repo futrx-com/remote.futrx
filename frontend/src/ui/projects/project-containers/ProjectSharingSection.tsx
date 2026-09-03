@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import type { AccessRecord } from "../../../state/projects/projectContainerRecords";
+import type { AccessRecord } from "../../../models/project";
 import { useConfirm } from "../../../state/context/ConfirmContext";
 import { AlertCircle, X } from "../../primitives/icons";
 import { Empty, Loading } from "./ProjectContainerPrimitives";

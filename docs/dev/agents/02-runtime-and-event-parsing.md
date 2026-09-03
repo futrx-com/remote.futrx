@@ -83,10 +83,11 @@ input a provider receives.
 | `ResumeID` | Session ID stored for the selected provider, but only when the descriptor declares resume support. |
 | `Fork` | `ForkPending`, but only when the descriptor declares native fork support. |
 | `ProjectID` | Empty for a loose host chat; otherwise identifies the workspace container. |
-| `Preferences` | Saved reasoning effort and service tier. Adapters decide which supported values to forward. |
+| `Preferences` | Saved reasoning effort, service tier, approval policy, and sandbox policy. Adapters decide which supported values to forward. |
 | `EnableBrowser` | True only when the selected `browser` skill and the module's `BrowserTools` declaration both permit it. |
 | `EnableScheduleTools` | True only for a project run when scheduled tools are declared and selected or the turn itself is scheduled. |
 | `RuntimeEnv` | Short-lived backend-issued schedule API URL and grant. Invalid environment names are discarded and these values override same-named project secrets. |
+| `InteractionResponses` | Run-scoped channel carrying explicit UI responses to provider-initiated requests. Providers without interactive protocols may ignore it. |
 
 If no native session is available, the prompt service prepends visible `user`
 and `assistant_text` history. The transcript is bounded to the last 24,000
@@ -125,9 +126,10 @@ For a project chat, `execution.Preparer` owns this common workflow:
    is either completely wired or completely zero. Production supplies the
    complete set.
 4. Use the exact validated provider profile to ensure the CLI and, where
-   supported, credentials. Publish shared instructions and skill compatibility
-   links; apply the provider factory's browser policy; provision scheduled
-   tooling when requested; enable LXD boot autostart.
+   supported, credentials. Publish shared instructions, the selected profile's
+   non-secret runtime assets, and skill compatibility links; apply the
+   provider factory's browser policy; provision scheduled tooling when
+   requested; enable LXD boot autostart.
 5. Load project secrets. Failure is currently best-effort and yields an empty
    secret list.
 
@@ -157,6 +159,7 @@ Factories express only real policy differences:
 | --- | --- | --- | --- | --- |
 | Claude | Seed from its profile | Best effort | Best effort | Required when Browser is enabled |
 | Codex | Reject host API-key auth, then seed | Fatal | Best effort | Required when Browser is enabled |
+| MiniMax | Require the host-managed Token Plan subscription key before preparation | Fatal | Best effort | Required when Browser is enabled |
 | Kimi | Seed/synchronize its dynamic directory | Best effort | Best effort | Not used |
 | Antigravity | None | Best effort | Not used | Not used |
 
@@ -173,6 +176,7 @@ The provider-specific implementations are in:
 
 - [`claude/command.go`](../../../backend/internal/integration/agents/claude/command.go)
 - [`codex/command.go`](../../../backend/internal/integration/agents/codex/command.go)
+- [`minimax/command.go`](../../../backend/internal/integration/agents/minimax/command.go)
 - [`kimi/command.go`](../../../backend/internal/integration/agents/kimi/command.go)
 - [`antigravity/command.go`](../../../backend/internal/integration/agents/antigravity/command.go)
 
@@ -226,14 +230,21 @@ The prompt projection currently recognizes the following types:
 | `reasoning.delta` | `thinking` | Put only newly produced reasoning text in `Text`. |
 | `tool.started` | `tool_use_start` | Set stable `ItemID`, `ToolName`, and JSON `Input`. |
 | `tool.completed` | `tool_use_end` | Reuse `ItemID`; set `Output` and `IsError`. |
+| `interaction.request` | `interaction_request` | Retain the original request ID, method, input, native IDs, and interaction kind until the UI or server resolves it. |
+| `interaction.resolved` | `interaction_resolved` | Reuse the interaction ID and preserve resolution status without persisting secret response values. |
+| `turn.status` or `run.interrupted` | `turn_status` | Preserve waiting/active/terminal status; interruption must not become successful completion. |
+| `collaboration` | `collaboration` | Preserve provider-native subagent identity, state, and final messages. |
+| `provider.native` | `provider_event` | Persist and render a generic fallback for valid provider activity without a typed projection. |
+| `usage.updated` | `usage_update` | Publish the provider's latest normalized running usage. |
 | `run.completed` | `complete` | Put normalized token data in `Usage` when the provider supplies it. |
 | `run.failed` or `error` | `error` | Put safe user-facing text in `Message`. |
 
-`run.started` and `usage.updated` exist in the agent enum but are not projected
-by [`chatEventFromAgentEvent`](../../../backend/internal/service/prompt/agent_events.go),
-so current adapters must not rely on them for user-visible state. Raw native
-payloads may be kept in `agent.Event.Raw` for diagnostics, but that field is
-not copied into the persisted chat event.
+`run.started` exists in the agent enum but is not projected by
+[`chatEventFromAgentEvent`](../../../backend/internal/service/prompt/agent_events.go),
+so current adapters must not rely on it for user-visible state.
+`agent.Event.Raw` remains diagnostic-only. A provider that needs native data to
+survive persistence must put a bounded, safe payload and its correlation IDs
+in `agent.Event.Native`.
 
 ## Provider parsing behavior
 
@@ -257,17 +268,21 @@ Malformed top-level JSON is returned to `RunProcess`, logged, and skipped.
 Malformed nested messages are ignored after any session event already derived
 from that line.
 
-### Codex: production app-server path
+### Codex and MiniMax: production app-server path
 
-Production Codex runs do **not** use
+Production Codex or MiniMax runs do **not** use
 [`codex/parser.go`](../../../backend/internal/integration/agents/codex/parser.go).
 [`codex.Provider.Run`](../../../backend/internal/integration/agents/codex/provider.go) starts
 one fresh `codex app-server` process per turn and delegates to
-[`runAppServer`](../../../backend/internal/integration/agents/codex/app_server_run.go).
+[`codexharness.Run`](../../../backend/internal/integration/agents/codexharness/app_server_run.go).
+[`minimax.Provider.Run`](../../../backend/internal/integration/agents/minimax/provider.go)
+uses the same neutral harness with MiniMax's provider ID and label, while its
+own adapter retains the endpoint, key environment variable, model catalog,
+and isolated `CODEX_HOME`.
 The process is ephemeral, while a persisted thread can still be resumed or
 forked.
 
-The JSON-RPC sequence is:
+The normal JSON-RPC sequence is:
 
 1. send `initialize` with Remote client information and experimental API
    support;
@@ -275,28 +290,40 @@ The JSON-RPC sequence is:
    or `thread/fork`;
 3. require a non-empty returned thread ID and model, emit `session.updated`
    for a new/different thread, then send `turn/start`;
-4. consume notifications until `turn/completed` emits `run.completed` or
-   `run.failed`; close stdin after that terminal notification.
+4. retain the returned native turn ID, then select concurrently over App Server
+   output, user interaction responses, and Remote cancellation;
+5. consume notifications until `turn/completed` emits `run.completed`,
+   `run.failed`, or `run.interrupted`; close stdin after that authoritative
+   terminal notification.
 
-[`appServerEventParser`](../../../backend/internal/integration/agents/codex/app_server_events.go)
+[`appServerEventParser`](../../../backend/internal/integration/agents/codexharness/app_server_events.go)
 maps agent/plan deltas, reasoning deltas, command execution, file changes, MCP
 and dynamic tools, collaboration tools, web search, last-turn token usage, and
-terminal turn state. It tracks text already emitted for each item so completed
-whole-text snapshots contribute only the missing suffix.
+terminal turn state. It retains a versioned native envelope on typed events and
+emits `provider.native` for unknown valid methods or item types. It tracks text
+already emitted for each item so completed whole-text snapshots contribute
+only the missing suffix.
 
-[`appServerRequestHandler`](../../../backend/internal/integration/agents/codex/app_server_requests.go)
-also answers server-to-client requests:
+[`appServerRequestHandler`](../../../backend/internal/integration/agents/codexharness/app_server_requests.go)
+keeps every server-to-client request pending by its original string or numeric
+JSON-RPC ID. The request is persisted and rendered as an interaction card.
+The browser sends an explicit `interaction_response` WebSocket message, the
+prompt service routes it to the active run, and the handler answers the same
+App Server request. Remote does not infer a decision from Default or Plan mode.
 
-- user-input requests emit an `AskUserQuestion` tool start and receive empty
-  answers; the UI's eventual answer is a later Remote prompt, not a reply on
-  that JSON-RPC request;
-- mutation approvals are accepted in Default and declined/denied in Plan;
-- MCP elicitation is cancelled;
-- unknown requests receive JSON-RPC `-32601`.
+Cancellation also remains inside the native lifecycle. The provider keeps the
+process alive after the Remote context is cancelled, the harness sends
+`turn/interrupt` once it knows both native IDs, and it waits for
+`turn/completed(status=interrupted)`. Process termination is reserved for
+protocol failure or interrupt timeout.
 
 A failed `thread/resume` or `thread/fork` whose message contains `not found` or
 `no rollout` becomes `agent.ErrSessionNotFound`. Other protocol errors are
 wrapped in `runtime.ProcessError` with captured stderr.
+
+See [Codex App Server architecture](08-codex-app-server-architecture.md) for
+the complete component, interaction, persistence, cancellation, subagent, and
+capability-discovery flows.
 
 [`codex/parser.go`](../../../backend/internal/integration/agents/codex/parser.go) parses the
 older `codex exec --json` JSONL shape and remains covered by focused tests, but

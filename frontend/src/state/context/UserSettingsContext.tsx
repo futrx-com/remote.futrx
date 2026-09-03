@@ -9,7 +9,7 @@ import {
 } from "../../models/settings";
 import { settingsApi } from "../../api/settingsApi";
 import { DEFAULT_USER_SETTINGS } from "../../config/settings";
-import { appearanceThemeState } from "../settings/appearanceThemeState";
+import { appearanceThemeState } from "./appearanceThemeState";
 
 interface UserSettingsContextValue {
   settings: UserSettings;
@@ -18,7 +18,10 @@ interface UserSettingsContextValue {
   error: string | null;
   refresh: () => Promise<void>;
   setTheme: (theme: AppearanceTheme) => Promise<void>;
-  setChatSettings: (chat: Partial<ChatSettings>) => Promise<void>;
+  setChatSettings: (
+    scope: "host" | "project",
+    chat: Partial<ChatSettings>
+  ) => Promise<void>;
 }
 
 const UserSettingsContext = createContext<UserSettingsContextValue | null>(null);
@@ -39,12 +42,18 @@ function settingsFromCachedAppearance(): UserSettings {
 }
 
 export function UserSettingsProvider({ children }: { children: ComponentChildren }) {
+  ////////////////
+  // Local State
+  ////////////////
   const { gateOpen } = useAuthContext();
   const [settings, setSettings] = useState<UserSettings>(settingsFromCachedAppearance);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  ////////////////
+  // Handlers
+  ////////////////
   const refresh = useCallback(async () => {
     if (!gateOpen) {
       setSettings(settingsFromCachedAppearance());
@@ -64,15 +73,6 @@ export function UserSettingsProvider({ children }: { children: ComponentChildren
     }
   }, [gateOpen]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    appearanceThemeState.apply(settings.appearance.theme);
-    return appearanceThemeState.observeSystemChanges(settings.appearance.theme);
-  }, [settings.appearance.theme]);
-
   const setTheme = useCallback(async (theme: AppearanceTheme) => {
     const previous = settings;
     setSettings({ ...settings, appearance: { ...settings.appearance, theme } });
@@ -88,12 +88,16 @@ export function UserSettingsProvider({ children }: { children: ComponentChildren
     }
   }, [settings]);
 
-  const setChatSettings = useCallback(async (chat: Partial<ChatSettings>) => {
+  const setChatSettings = useCallback(async (
+    scope: "host" | "project",
+    chat: Partial<ChatSettings>
+  ) => {
     const previous = settings;
-    setSettings({ ...settings, chat: { ...settings.chat, ...chat } });
+    const key = scope === "project" ? "projectChat" : "chat";
+    setSettings({ ...settings, [key]: { ...settings[key], ...chat } });
     setSaving(true);
     try {
-      setSettings(await settingsApi.update({ chat }));
+      setSettings(await settingsApi.update({ [key]: chat }));
       setError(null);
     } catch (e) {
       setSettings(previous);
@@ -103,6 +107,21 @@ export function UserSettingsProvider({ children }: { children: ComponentChildren
     }
   }, [settings]);
 
+  ////////////////
+  // Effects
+  ////////////////
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    appearanceThemeState.apply(settings.appearance.theme);
+    return appearanceThemeState.observeSystemChanges(settings.appearance.theme);
+  }, [settings.appearance.theme]);
+
+  ////////////////
+  // Context Value
+  ////////////////
   const value = useMemo<UserSettingsContextValue>(() => ({
     settings,
     loading,

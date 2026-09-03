@@ -1,6 +1,6 @@
 # Contributing to remote.futrx
 
-Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, Kimi Code, Antigravity, and future agent integrations.
+Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, MiniMax, Kimi Code, Antigravity, and future agent integrations.
 
 Before you start, please read this document. It covers how the repository is laid out, how to build and test each part, and what we expect from commits and pull requests.
 
@@ -108,10 +108,17 @@ npm run qa:deploy-local                    # app-only deploy of the working tree
 npm run qa:test                            # QA wrapper contract tests
 ```
 
-The npm deployment aliases default to `/workspace/remote.futrx/.qa.env`, where
-the shared QA configuration currently lives. Set
-`QA_ENV_FILE=/path/to/.qa.env` to override it. Calling an `infra/qa/*.sh`
-script directly still defaults to `.qa.env` in that script's worktree.
+The npm deployment aliases default to `./.qa.env` in the repo root, matching
+the `infra/qa/*.sh` scripts' own default of `.qa.env` in their worktree. Set
+`QA_ENV_FILE=/path/to/.qa.env` to point at a shared QA configuration
+elsewhere.
+
+These commands are driven from a Linux, macOS, or Windows workstation. They
+need `bash`, `git`, `ssh`, `scp`, `tar`, and `curl` on `PATH` — on Windows,
+run them from Git Bash, which ships all of them. Hostname resolution for the
+pre-flight check uses whichever of `getent`, `dscacheutil`, `dig`, `host`, or
+`nslookup` the platform provides, and falls back to DNS-over-HTTPS through
+`curl` when none is installed.
 
 There is no CI that exercises the installer against a server. `infra/` changes reach a box only when its operator runs `sudo bash infra/update.sh` over SSH or applies a release tag from the in-app updater (both re-detect the box's hostname from the installed unit). Treat changes to `infra/` with extra care since they modify hosts in place.
 

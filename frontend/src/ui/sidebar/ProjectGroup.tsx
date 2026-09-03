@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
-import type { DropPosition } from "../../state/workspace/workspaceSidebarState";
+import type { DropPosition } from "../../models/workspace";
 import { ChevronDown, ChevronRight, Loader, Plus, Settings } from "../primitives/icons";
 import { ChatRow } from "./ChatRow";
 

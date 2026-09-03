@@ -1,13 +1,9 @@
 import { useState } from "preact/hooks";
-import type { UsageGroupBy } from "../../models/usage";
+import { USAGE_RANGE_PRESETS } from "../../config/usage";
+import type { UsageChartMetric, UsageGroupBy } from "../../models/usage";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
-import type { UsageChartMetric } from "../../state/usage/usageChartModel";
-import {
-  formatCostWithConfidence,
-  formatTokens,
-  usageConfidenceNote,
-} from "../../state/usage/usageChartModel";
-import { USAGE_RANGE_PRESETS, usageRangeLabels } from "../../state/usage/usageRangeState";
+import { usageFormatService } from "../../services/usage/usageFormatService.ts";
+import { usageRangeService } from "../../services/usage/usageRangeService.ts";
 import { AlertCircle, Loader, RotateCcw } from "../primitives/icons";
 import { PlanQuotaSection } from "./usage/PlanQuotaSection";
 import { UsageBarChart } from "./usage/UsageBarChart";
@@ -36,9 +32,9 @@ export function UsageSettings({
 }) {
   const [metric, setMetric] = useState<UsageChartMetric>("tokens");
   const { summary, range, groupBy, drillDown } = dashboard;
-  const labels = usageRangeLabels(range);
+  const labels = usageRangeService.labels(range);
   const totals = summary?.totals;
-  const note = totals ? usageConfidenceNote(totals) : null;
+  const note = totals ? usageFormatService.confidenceNote(totals) : null;
 
   if (dashboard.loading && !summary) {
     return (
@@ -148,10 +144,10 @@ export function UsageSettings({
       )}
 
       <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiTile label="Total tokens" value={formatTokens(totals?.totalTokens ?? 0)} />
+        <KpiTile label="Total tokens" value={usageFormatService.tokens(totals?.totalTokens ?? 0)} />
         <KpiTile
           label="Estimated cost"
-          value={totals ? formatCostWithConfidence(totals) : "$0.00"}
+          value={totals ? usageFormatService.costWithConfidence(totals) : "$0.00"}
           detail={note ?? undefined}
         />
         <KpiTile label="Runs" value={String(totals?.runs ?? 0)} />

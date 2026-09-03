@@ -9,18 +9,19 @@ Two things this document is careful about, because getting them wrong makes the 
 
 ## What each provider actually reports
 
-The ledger can only record what a provider CLI prints. The four adapters differ substantially.
+The ledger can only record what a provider CLI prints. The five adapters differ substantially.
 
 | Provider | Tokens | Cost | Duration / turns | Model |
 | --- | --- | --- | --- | --- |
 | **Claude Code** | Exact — `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` on the `result` message | **Exact** — `total_cost_usd` on the same message | Exact — `duration_ms`, `num_turns` | From the stream (`system`/`result` `model` field) |
 | **Codex** | Exact — `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens` on `turn.completed` | **Estimated** from the price table | Not reported | From the chat's selected model |
+| **MiniMax** | Exact — normalized from the Codex app-server token-usage stream | **Unknown by default**; estimated only after an administrator adds a matching `MiniMax-M3` price row | Not reported | `MiniMax-M3` |
 | **Kimi Code** | **Not reported.** `kimi -p --output-format stream-json` emits assistant, tool, and a trailing resume-hint line, with no usage object | **Unknown** — recorded as an unpriced run | Not reported | From the chat's selected model |
 | **Antigravity** | **Not reported.** `agy` print mode streams plain text | **Unknown** — recorded as an unpriced run | Not reported | From the chat's selected model |
 
-Kimi and Antigravity runs therefore appear in the ledger with a provider, a model, and zero tokens. They still count toward **Runs**, and their share shows up in the "unpriced runs" note. The Kimi parser forwards a `usage` object opportunistically if a future CLI release starts emitting one, so no change beyond a CLI upgrade would be needed to start counting those tokens.
+Kimi and Antigravity runs therefore appear in the ledger with a provider, a model, and zero tokens. They still count toward **Runs**, and their share shows up in the "unpriced runs" note. MiniMax reports tokens, but its runs remain unpriced until a matching price row exists. The Kimi parser forwards a `usage` object opportunistically if a future CLI release starts emitting one, so no change beyond a CLI upgrade would be needed to start counting those tokens.
 
-Normalization happens in the provider adapters ([`internal/agent/usage.go`](../../backend/internal/agent/usage.go)), so the `usage` blob persisted on each `complete` chat event already carries tokens, cost, duration, turns, and model in one shared vocabulary. The input, cache-read, and cache-write buckets are disjoint: Codex reports cache tokens as subsets of `input_tokens`, so its adapter subtracts those subsets before emitting the normalized event. Each normalized payload carries a schema version, allowing rebuilds to migrate older Codex events without adding provider conditions to the live ledger. That keeps aggregation and pricing provider-neutral and makes an offline rebuild possible.
+Normalization happens in the provider adapters ([`internal/agent/usage.go`](../../backend/internal/agent/usage.go)), so the `usage` blob persisted on each `complete` chat event already carries tokens, cost, duration, turns, and model in one shared vocabulary. The input, cache-read, and cache-write buckets are disjoint: the Codex app-server harness used by Codex and MiniMax reports cache tokens as subsets of `input_tokens`, so its parser subtracts those subsets before emitting the normalized event. Each normalized payload carries a schema version, allowing rebuilds to migrate older Codex events without adding provider conditions to the live ledger. That keeps aggregation and pricing provider-neutral and makes an offline rebuild possible.
 
 ## Data model
 
@@ -40,7 +41,7 @@ Files rotate **monthly by the UTC month of the run**, so a query for a date rang
 | `projectId`, `projectSlug` | Empty for a loose (project-less) chat |
 | `chatId`, `runId` | `runId` is random per live run; a rebuilt record uses `<chatId>-<seq>` |
 | `userEmail` | The account that started the turn, or the owner of a scheduled task |
-| `provider`, `model` | `claude`, `codex`, `kimi`, `antigravity`, and the model id when known |
+| `provider`, `model` | `claude`, `codex`, `minimax`, `kimi`, `antigravity`, and the model id when known |
 | `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` | Disjoint token buckets; `inputTokens` is uncached input. All are zero when the provider reports nothing |
 | `costUsd` | **Absent** when the cost is unknown |
 | `estimated` | `true` when `costUsd` came from the price table rather than the provider |
@@ -75,7 +76,7 @@ In the UI, an all-estimated total is prefixed with `~`, a partly estimated total
 
 ## Editing the price table
 
-`DATA_DIR/usage/prices.json` is seeded on first use with published list prices for the Claude, GPT-5, Kimi, and Gemini families. **Treat the seed as a starting point, not a billing source of truth** — vendor prices move, and your plan may differ.
+`DATA_DIR/usage/prices.json` is seeded on first use with published list prices for the Claude, GPT-5, Kimi, and Gemini families. It does not currently include MiniMax. **Treat the seed as a starting point, not a billing source of truth** — vendor prices move, and your plan may differ.
 
 ```json
 {

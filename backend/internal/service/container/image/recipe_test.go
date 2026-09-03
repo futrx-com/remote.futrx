@@ -27,16 +27,43 @@ func TestRecipeUsesConfiguredProfiles(t *testing.T) {
 }
 
 func TestInstallScriptRejectsMissingProfilesAndIncompleteCLI(t *testing.T) {
-	if _, err := InstallScript(nil); err == nil || err.Error() != "no agent profiles configured" {
-		t.Fatalf("InstallScript(nil) error = %v", err)
+	tests := []struct {
+		name     string
+		profiles []provisioning.Profile
+		wantErr  string
+	}{
+		{name: "no profiles", wantErr: "no agent profiles configured"},
+		{
+			name: "missing npm package",
+			profiles: []provisioning.Profile{{
+				ID:  "alpha",
+				CLI: provisioning.CLISpec{Binary: "alpha"},
+			}},
+			wantErr: `agent profile "alpha" has an incomplete CLI definition`,
+		},
+		{
+			name: "missing install script",
+			profiles: []provisioning.Profile{{
+				ID: "script-agent",
+				CLI: provisioning.CLISpec{
+					Binary:      "script-agent",
+					InstallMode: provisioning.InstallWithScript,
+				},
+			}},
+			wantErr: `agent profile "script-agent" uses script install but has no install script`,
+		},
 	}
 
-	profiles := []provisioning.Profile{{
-		ID:  "alpha",
-		CLI: provisioning.CLISpec{Binary: "alpha"},
-	}}
-	if _, err := InstallScript(profiles); err == nil || err.Error() != `agent profile "alpha" has an incomplete CLI definition` {
-		t.Fatalf("InstallScript(incomplete) error = %v", err)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			script, err := InstallScript(test.profiles)
+			if script != "" {
+				t.Fatalf("InstallScript() script = %q, want empty script on error", script)
+			}
+			if err == nil || err.Error() != test.wantErr {
+				t.Fatalf("InstallScript() error = %v, want %q", err, test.wantErr)
+			}
+		})
 	}
 }
 
@@ -63,5 +90,70 @@ func TestInstallScriptQuotesProviderOwnedShellArguments(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Fatalf("base image install script is missing quoted argument %q:\n%s", want, script)
 		}
+	}
+}
+
+func TestInstallScriptDeduplicatesSharedHarnessCLI(t *testing.T) {
+	sharedCLI := provisioning.CLISpec{
+		ImageLabel:  "codex",
+		Binary:      "codex",
+		VersionArgs: []string{"--version"},
+		PackageName: "@openai/codex",
+		Version:     "1.2.3",
+	}
+	script, err := InstallScript([]provisioning.Profile{
+		{ID: "codex", CLI: sharedCLI},
+		{ID: "minimax", CLI: sharedCLI},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sharedEntry := range []string{"@openai/codex@1.2.3", "codex --version"} {
+		if count := strings.Count(script, sharedEntry); count != 1 {
+			t.Fatalf("%q appears %d times in script:\n%s", sharedEntry, count, script)
+		}
+	}
+	if !strings.Contains(script, "which codex git") {
+		t.Fatalf("shared binary sanity check was not deduplicated:\n%s", script)
+	}
+}
+
+func TestInstallScriptPreservesPlanOrderAndExactShellRendering(t *testing.T) {
+	alphaCLI := provisioning.CLISpec{
+		Binary:      "alpha cli",
+		VersionArgs: []string{"version; true", "--format=short"},
+		PackageName: "@example/alpha cli",
+		Version:     "1.2.3",
+	}
+	profiles := []provisioning.Profile{
+		{ID: "alpha", CLI: alphaCLI},
+		{ID: "beta", CLI: provisioning.CLISpec{
+			Binary:        "beta",
+			VersionArgs:   []string{"--version"},
+			InstallMode:   provisioning.InstallWithScript,
+			InstallScript: "curl -fsSL https://example.test/beta | bash\ninstall beta",
+		}},
+		{ID: "alpha-alias", CLI: alphaCLI},
+		{ID: "gamma", CLI: provisioning.CLISpec{
+			Binary:      "alpha cli",
+			VersionArgs: []string{"version"},
+			PackageName: "@example/gamma",
+		}},
+	}
+
+	script, err := InstallScript(profiles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.ReplaceAll(baseImageInstallPreamble, "__NODE_MAJOR__", provisioning.MustPin("NODE_MAJOR")) +
+		"\n\n# Agent CLIs.\nnpm install -g '@example/alpha cli@1.2.3' @example/gamma --silent 2>&1 | tail -8" +
+		"\n\n# Script-installed agent CLI.\n(\ncurl -fsSL https://example.test/beta | bash\ninstall beta\n)" +
+		"\n\n# Sanity check the full toolchain.\nwhich 'alpha cli' beta git gh jq node npm python3 ssh\n" +
+		"'alpha cli' 'version; true' --format=short\n" +
+		"beta --version\n" +
+		"'alpha cli' version\n" +
+		"node --version\ngh --version | head -1"
+	if script != want {
+		t.Fatalf("InstallScript() =\n%s\n\nwant:\n%s", script, want)
 	}
 }

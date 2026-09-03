@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import type { ProjectSecret } from "../../../models/project";
-import type { SecretsRecord } from "../../../state/projects/projectContainerRecords";
+import type { SecretsRecord } from "../../../models/project";
 import { useConfirm } from "../../../state/context/ConfirmContext";
 import { AlertCircle, X } from "../../primitives/icons";
 import { Empty, Loading } from "./ProjectContainerPrimitives";

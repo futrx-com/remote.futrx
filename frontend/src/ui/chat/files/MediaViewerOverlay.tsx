@@ -1,25 +1,21 @@
-import { useEffect, useState } from "preact/hooks";
-import {
-  mediaViewerState,
-  type MediaViewerItem,
-} from "../../../state/chat/mediaViewerState";
+import { useEffect } from "preact/hooks";
+import type { MediaViewerItem } from "../../../models/files";
+import { useMediaViewer } from "../../../state/hooks/chat/useMediaViewer";
 import { Download, ExternalLink, X } from "../../primitives/icons";
 
 // Full-screen host for the in-app media viewer. Mounted once per chat view;
-// renders whatever mediaViewerState currently holds.
+// renders whatever mediaViewerStore currently holds.
 export function MediaViewerOverlay() {
-  const [item, setItem] = useState<MediaViewerItem | null>(mediaViewerState.current);
-
-  useEffect(() => mediaViewerState.subscribe(setItem), []);
+  const { item, close } = useMediaViewer();
 
   useEffect(() => {
     if (!item) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") mediaViewerState.close();
+      if (event.key === "Escape") close();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item]);
+  }, [item, close]);
 
   if (!item) return null;
 
@@ -29,7 +25,7 @@ export function MediaViewerOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label={item.name}
-      onClick={() => mediaViewerState.close()}
+      onClick={() => close()}
     >
       <header
         class="flex-none flex items-center gap-2 px-3 md:px-4 py-2.5 bg-surface/90 border-b border-line"
@@ -59,7 +55,7 @@ export function MediaViewerOverlay() {
         </a>
         <button
           type="button"
-          onClick={() => mediaViewerState.close()}
+          onClick={() => close()}
           class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
           title="Close viewer"
           aria-label="Close media viewer"

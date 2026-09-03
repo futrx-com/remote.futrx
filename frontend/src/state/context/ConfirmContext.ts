@@ -37,11 +37,21 @@ export const ConfirmContext = createContext<ConfirmFn | null>(null);
  * is drawn. The app layer binds it to a dialog.
  */
 export function useConfirmController() {
+  //////////////////
+  // Local State
+  ///////////////////
   const [request, setRequest] = useState<ConfirmRequest | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+
+  /////////////////
+  // Refs
+  ////////////////
   const pendingRef = useRef(false);
 
+  ////////////////
+  // Handlers
+  ///////////////
   const confirm = useCallback<ConfirmFn>((options) => {
     return new Promise<boolean>((resolve) => {
       setError("");

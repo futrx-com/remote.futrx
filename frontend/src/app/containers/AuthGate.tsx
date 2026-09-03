@@ -11,7 +11,7 @@ import { useAdminSetupPolling } from "../../state/hooks/auth/useAdminSetupPollin
 import {
   expectsWorkspace,
   rememberWorkspaceBoot,
-} from "../../state/auth/workspaceBootHint";
+} from "./workspaceBootHint";
 
 type WorkspaceRouteComponent = ComponentType<{ enabled: boolean }>;
 

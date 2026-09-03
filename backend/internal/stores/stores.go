@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceagentquota "github.com/futrx-com/remote.futrx.com/internal/service/agentquota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -21,6 +22,8 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusage"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
@@ -28,6 +31,13 @@ import (
 
 type AuthStore interface {
 	serviceauth.Store
+}
+
+// ChatStore retains the complete file-chat capability until composition can
+// project it into each service's narrower repository and transcript contracts.
+type ChatStore interface {
+	servicechat.Repository
+	servicechat.TranscriptEventSource
 }
 
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities
@@ -39,17 +49,20 @@ type PushStore interface {
 }
 
 type Stores struct {
-	Chats          servicechat.Repository
-	Projects       serviceproject.Repository
-	ProjectSecrets serviceproject.SecretsRepository
-	ProjectAccess  serviceproject.AccessRepository
-	Schedules      serviceschedule.Repository
-	Auth           AuthStore
-	Users          serviceuser.Repository
-	UserSettings   serviceusersettings.Repository
-	Push           PushStore
-	Usage          serviceusage.Repository
-	AgentQuota     serviceagentquota.Repository
+	Chats           ChatStore
+	Projects        serviceproject.Repository
+	ProjectSecrets  serviceproject.SecretsRepository
+	ProjectAccess   serviceproject.AccessRepository
+	Schedules       serviceschedule.Repository
+	Auth            AuthStore
+	Users           serviceuser.Repository
+	UserSettings    serviceusersettings.Repository
+	TwoFactor       serviceauth.TwoFactorStore
+	SessionRegistry serviceauth.SessionRegistryStore
+	Push            PushStore
+	Usage           serviceusage.Repository
+	AgentAPIKeys    agentauth.APIKeyStore
+	AgentQuota      serviceagentquota.Repository
 }
 
 func New(dataDir string) (Stores, error) {
@@ -88,30 +101,46 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init user settings store: %w", err)
 	}
 
+	twoFactor, err := filetwofactor.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init two-factor store: %w", err)
+	}
+
+	sessionRegistry, err := filesessions.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init session registry store: %w", err)
+	}
+
 	usage, err := fileusage.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init usage store: %w", err)
 	}
+
 	agentQuota, err := fileagentquota.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init agent quota store: %w", err)
 	}
+
 	push, err := filepush.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init push subscriptions store: %w", err)
 	}
 
+	authStore := fileauth.New(dataDir)
 	return Stores{
-		Chats:          chats,
-		Projects:       projects,
-		ProjectSecrets: projectSecrets,
-		ProjectAccess:  projectAccess,
-		Schedules:      schedules,
-		Auth:           fileauth.New(dataDir),
-		Users:          users,
-		UserSettings:   userSettings,
-		Push:           push,
-		Usage:          usage,
-		AgentQuota:     agentQuota,
+		Chats:           chats,
+		Projects:        projects,
+		ProjectSecrets:  projectSecrets,
+		ProjectAccess:   projectAccess,
+		Schedules:       schedules,
+		Auth:            authStore,
+		Users:           users,
+		UserSettings:    userSettings,
+		TwoFactor:       twoFactor,
+		SessionRegistry: sessionRegistry,
+		Push:            push,
+		Usage:           usage,
+		AgentAPIKeys:    authStore,
+		AgentQuota:      agentQuota,
 	}, nil
 }

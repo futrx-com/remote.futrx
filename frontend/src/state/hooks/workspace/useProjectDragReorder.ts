@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
-import type { DropPosition } from "../../workspace/workspaceSidebarState";
-import { workspaceSidebarState } from "../../workspace/workspaceSidebarState";
+import type { DropPosition } from "../../../models/workspace";
+import { workspaceSidebarService } from "../../../services/workspace/workspaceSidebarService.ts";
 
 interface DropTarget {
   projectId: string;
@@ -75,7 +75,7 @@ export function useProjectDragReorder({
           if (!enabled) return;
           event.preventDefault();
           const sourceId = dragProjectId || event.dataTransfer?.getData("text/plain") || "";
-          const next = workspaceSidebarState.reorderProjectIds(
+          const next = workspaceSidebarService.reorderProjectIds(
             projectIds,
             sourceId,
             projectId,

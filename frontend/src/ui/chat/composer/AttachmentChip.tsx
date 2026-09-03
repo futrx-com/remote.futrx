@@ -1,5 +1,5 @@
 import type { Attachment } from "../../../models/upload";
-import { formatBytes } from "../../../shared/files";
+import { fileService } from "../../../services/files/fileService.ts";
 import { AlertCircle, File as FileIcon, X } from "../../primitives/icons";
 
 export function AttachmentChip({
@@ -78,7 +78,7 @@ export function AttachmentChip({
       )}
       <span class="truncate max-w-[180px] text-ink-100">{attachment.name}</span>
       <span class="text-ink-300 text-[10px] flex-none">
-        {pending && pctLabel ? pctLabel : formatBytes(attachment.size)}
+        {pending && pctLabel ? pctLabel : fileService.formatBytesCompact(attachment.size)}
       </span>
       <button
         type="button"

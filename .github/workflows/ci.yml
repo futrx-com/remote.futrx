@@ -1,0 +1,83 @@
+# Validates pull requests and pushes to main/qa without needing LXD or a server.
+# Backend and frontend unit tests, builds, and infra shell tests only.
+# See CONTRIBUTING.md for the local equivalents of every step below.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, qa]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (go vet/test/build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Check gofmt
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "unformatted Go files:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Go vet
+        run: go vet ./...
+      - name: Go test
+        run: go test ./...
+      - name: Go build
+        run: go build ./...
+
+  frontend:
+    name: frontend (npm test/build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run frontend tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build
+
+  shell:
+    name: infra shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run infra and release classifier tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash infra/tests/health-check-test.sh
+          bash infra/tests/go-toolchain-test.sh
+          bash infra/tests/host-agent-install-test.sh
+          bash infra/tests/dns-resolve-test.sh
+          bash infra/tests/container-forwarding-test.sh
+          bash infra/tests/swap-provision-test.sh
+          bash infra/tests/release-version-test.sh
+          bash infra/tests/deploy-app-script-test.sh
+          bash infra/tests/qa-scripts-test.sh
+          bash .github/scripts/classify-release-test.sh

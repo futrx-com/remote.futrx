@@ -1,5 +1,7 @@
 package agent
 
+import "encoding/json"
+
 type CapabilitySource string
 
 const (
@@ -10,9 +12,12 @@ const (
 // CapabilityOption is the provider-neutral shape used by reasoning-effort,
 // service-tier (speed), and provider-native mode selectors.
 type CapabilityOption struct {
-	Value       string `json:"value"`
-	Label       string `json:"label"`
-	Description string `json:"description,omitempty"`
+	Value           string          `json:"value"`
+	Label           string          `json:"label"`
+	Description     string          `json:"description,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	ReasoningEffort string          `json:"reasoningEffort,omitempty"`
+	Raw             json.RawMessage `json:"raw,omitempty"`
 }
 
 // ModelCapability keeps controls next to the model that supports them. Some
@@ -27,12 +32,28 @@ type ModelCapability struct {
 	DefaultReasoningEffort string             `json:"defaultReasoningEffort,omitempty"`
 	ServiceTiers           []CapabilityOption `json:"serviceTiers"`
 	DefaultServiceTier     string             `json:"defaultServiceTier,omitempty"`
+	InputModalities        []string           `json:"inputModalities,omitempty"`
+	SupportsPersonality    bool               `json:"supportsPersonality,omitempty"`
+	MultiAgentVersion      string             `json:"multiAgentVersion,omitempty"`
+	Hidden                 bool               `json:"hidden,omitempty"`
+	ModelSpecialty         string             `json:"modelSpecialty,omitempty"`
+	Upgrade                string             `json:"upgrade,omitempty"`
+	UpgradeInfo            json.RawMessage    `json:"upgradeInfo,omitempty"`
+	AvailabilityNux        json.RawMessage    `json:"availabilityNux,omitempty"`
+	Raw                    json.RawMessage    `json:"raw,omitempty"`
 }
 
 type CapabilityAuthentication struct {
-	Mode                string `json:"mode"`
-	Instructions        string `json:"instructions,omitempty"`
-	SatisfiesAccessGate bool   `json:"satisfiesAccessGate"`
+	Mode                string                          `json:"mode"`
+	Instructions        string                          `json:"instructions,omitempty"`
+	SatisfiesAccessGate bool                            `json:"satisfiesAccessGate"`
+	APIKey              *CapabilityAPIKeyAuthentication `json:"apiKey,omitempty"`
+}
+
+type CapabilityAPIKeyAuthentication struct {
+	CreateURL       string `json:"createUrl"`
+	CreateLabel     string `json:"createLabel"`
+	CredentialLabel string `json:"credentialLabel"`
 }
 
 type CapabilitySessionSupport struct {
@@ -70,4 +91,36 @@ type CapabilityRequest struct {
 	// its installed CLI, credentials, and account entitlements. Empty means the
 	// provider should inspect the host CLI.
 	ContainerName string
+}
+
+// Clone returns a copy whose provider-owned metadata can be mutated without
+// changing the source catalog.
+func (capabilities Capabilities) Clone() Capabilities {
+	cloned := capabilities
+	cloned.ExecutionScopes = append([]string(nil), capabilities.ExecutionScopes...)
+	cloned.Modes = cloneCapabilityOptions(capabilities.Modes)
+	cloned.Models = make([]ModelCapability, len(capabilities.Models))
+	for index, model := range capabilities.Models {
+		cloned.Models[index] = cloneModelCapability(model)
+	}
+	return cloned
+}
+
+func cloneModelCapability(model ModelCapability) ModelCapability {
+	cloned := model
+	cloned.Raw = append([]byte(nil), model.Raw...)
+	cloned.UpgradeInfo = append([]byte(nil), model.UpgradeInfo...)
+	cloned.AvailabilityNux = append([]byte(nil), model.AvailabilityNux...)
+	cloned.InputModalities = append([]string(nil), model.InputModalities...)
+	cloned.ReasoningEfforts = cloneCapabilityOptions(model.ReasoningEfforts)
+	cloned.ServiceTiers = cloneCapabilityOptions(model.ServiceTiers)
+	return cloned
+}
+
+func cloneCapabilityOptions(options []CapabilityOption) []CapabilityOption {
+	cloned := append([]CapabilityOption(nil), options...)
+	for index := range cloned {
+		cloned[index].Raw = append([]byte(nil), options[index].Raw...)
+	}
+	return cloned
 }

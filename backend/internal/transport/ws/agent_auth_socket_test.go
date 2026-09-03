@@ -1,6 +1,7 @@
 package wstransport
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +33,7 @@ func TestAgentAuthSocketInitialStatusPayloads(t *testing.T) {
 		{path: "/ws/claude/auth-status", want: `{"authenticated":false,"login":{"active":false}}` + "\n"},
 		{path: "/ws/codex/auth-status", want: `{"authenticated":false,"deviceLogin":{"active":false}}` + "\n"},
 		{path: "/ws/kimi/auth-status", want: `{"authenticated":false,"deviceLogin":{"active":false}}` + "\n"},
+		{path: "/ws/minimax/auth-status", want: `{"authenticated":false}` + "\n"},
 	}
 
 	for _, test := range tests {
@@ -138,11 +140,30 @@ func newSocketTestBindings() ([]agentauth.Binding, *agentauth.CodeService) {
 			NotFound: errors.New("not found"),
 		})
 	}
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, socketAPIKeyStore{}, nil)
+	if err != nil {
+		panic(err)
+	}
 	return []agentauth.Binding{
 		agentauth.NewCodeBinding(agent.ProviderClaude, code),
 		agentauth.NewDeviceBinding(agent.ProviderCodex, device()),
 		agentauth.NewDeviceBinding(agent.ProviderKimi, device()),
+		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
 	}, code
+}
+
+type socketAPIKeyStore struct{}
+
+func (socketAPIKeyStore) AgentAPIKey(context.Context, agent.ProviderID) (string, error) {
+	return "", nil
+}
+
+func (socketAPIKeyStore) SaveAgentAPIKey(context.Context, agent.ProviderID, string) error {
+	return nil
+}
+
+func (socketAPIKeyStore) DeleteAgentAPIKey(context.Context, agent.ProviderID) error {
+	return nil
 }
 
 func webSocketURL(serverURL, path string) string {

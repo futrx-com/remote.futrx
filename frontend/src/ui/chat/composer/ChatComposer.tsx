@@ -98,8 +98,21 @@ export function ChatComposer({
   )?.label || modelShortLabel(preferences.model);
   const settingsSummary = `${providerLabel} · ${modelLabel}`;
   const skillsEnabled = capabilityState.providerCapabilities?.features?.skills !== "none";
+	const selectedModelCapability = capabilityState.providerCapabilities?.models.find(
+		(item) => item.id === preferences.model,
+	) ?? capabilityState.providerCapabilities?.models.find((item) => item.id === "");
+	const attachmentsUnsupported = !!selectedModelCapability?.inputModalities?.length
+		&& !selectedModelCapability.inputModalities.includes("image");
+  const capabilityNotice = capabilityError
+    || capabilityState.providerCapabilities?.warning
+    || (capabilityState.providerCapabilities?.source === "fallback"
+      ? "Using fallback capabilities; refresh to retry live discovery"
+      : "");
   const hasExecutionControls =
-    reasoningEffortOptions.length > 0 || serviceTierOptions.length > 0 || modeOptions.length > 1;
+    preferences.provider === "codex"
+    || reasoningEffortOptions.length > 0
+    || serviceTierOptions.length > 0
+    || modeOptions.length > 1;
 
   function toggleMobileSettings() {
     setMobileSettingsOpen((open) => {
@@ -141,6 +154,7 @@ export function ChatComposer({
               fileInputRef={fileInputRef}
               uploading={uploading}
               disconnected={disconnected}
+              unsupported={attachmentsUnsupported}
               onFilesSelected={onFilesSelected}
             />
 
@@ -154,7 +168,7 @@ export function ChatComposer({
                 modelOptions={modelOptions}
                 modelsLoading={modelsLoading}
                 modelsRefreshing={refreshing}
-                modelError={capabilityError}
+                modelError={capabilityNotice}
                 selectedSkills={selectedSkills}
                 providerLabel={providerLabel}
                 skillsEnabled={skillsEnabled}
@@ -222,7 +236,7 @@ export function ChatComposer({
               modelOptions={modelOptions}
               modelsLoading={modelsLoading}
               modelsRefreshing={refreshing}
-              modelError={capabilityError}
+              modelError={capabilityNotice}
               selectedSkills={selectedSkills}
               providerLabel={providerLabel}
               skillsEnabled={skillsEnabled}

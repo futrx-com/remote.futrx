@@ -5,6 +5,7 @@ import type { ChatMessageBlock } from "../../../models/chatMessage";
 import { MessageBlock } from "./MessageBlock";
 import { MessageSkeleton } from "./MessageSkeleton";
 import { ThreadEmptyState } from "./ThreadEmptyState";
+import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 const INITIAL_VISIBLE_BLOCKS = 80;
 const LOAD_MORE_BLOCKS = 80;
@@ -22,6 +23,7 @@ export function MessageList({
   bottomRef,
   onScroll,
   onAnswerQuestion,
+  onRespondInteraction,
   onLoadOlder,
   onRewind,
 }: {
@@ -37,6 +39,7 @@ export function MessageList({
   bottomRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
   onAnswerQuestion: (text: string) => void;
+  onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
 }) {
@@ -73,10 +76,10 @@ export function MessageList({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      class="codex-message-scroll h-full overflow-y-auto touch-scroll scrollbar-thin px-3 pb-6 pt-4 sm:px-5 md:px-8 md:pt-7"
+      class="codex-message-scroll h-full overflow-y-auto overflow-x-hidden touch-scroll scrollbar-thin px-3 pb-6 pt-4 sm:px-5 md:px-8 md:pt-7"
     >
       {/* A measured column: long assistant prose stays readable on wide panes. */}
-      <div ref={contentRef} class="mx-auto w-full max-w-[54rem] space-y-5 md:space-y-6">
+      <div ref={contentRef} class="mx-auto w-full min-w-0 max-w-[54rem] space-y-5 md:space-y-6">
         {status === "loading" && <MessageSkeleton />}
 
         {status !== "loading" && blocks.length === 0 && <ThreadEmptyState cwd={cwd} />}
@@ -108,6 +111,7 @@ export function MessageList({
               chatId={chatId}
               cwd={cwd}
               onAnswerQuestion={onAnswerQuestion}
+              onRespondInteraction={onRespondInteraction}
               onRewind={onRewind}
             />
           );

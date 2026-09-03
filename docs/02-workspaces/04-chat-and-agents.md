@@ -30,7 +30,7 @@ sequenceDiagram
     participant Hub as Run hub
     participant Prompt as Prompt service
     participant Provider as Agent provider
-    participant CLI as Claude, Codex, Kimi, or Antigravity CLI
+    participant CLI as Claude, Codex/MiniMax, Kimi, or Antigravity CLI
     participant Store as Chat store
 
     User->>UI: Send prompt
@@ -121,7 +121,7 @@ For a project-capable agent, the profile is the concrete container contract:
 CLI binary, strict semver pin, version-command arguments, install/repair
 policy, credential synchronization, persistent directories,
 shared instruction destination, workspace-skill compatibility links, and any
-browser MCP templates. The built-ins define their module and provisioning
+non-secret runtime assets or browser MCP templates. The built-ins define their module and provisioning
 policy in protected provider-local `factory*.go`, `profile*.go`, `install*.go`,
 `provisioning*.go`, and `assets/` paths under `internal/integration/agents`.
 Changes there require a minor/major full-infrastructure release.
@@ -134,8 +134,10 @@ or omit one when it calls a remote integration. Codex is the current explicit
 built-in default; if no default is declared, the catalog chooses the first
 compatible module in stable registration order.
 
-Each provider has its own command builder and parser. Claude, Codex, and Kimi
-produce structured streams; Antigravity print mode emits plain text, and its
+Each provider has its own command builder and parser. Claude, Codex, MiniMax,
+and Kimi produce structured streams; MiniMax shares Codex's app-server
+transport while retaining its own provider identity and isolated home.
+Antigravity print mode emits plain text, and its
 adapter recovers the conversation ID from the CLI brain directory. The shared
 layer sees whichever normalized session, text, reasoning, tool, completion,
 usage, and error events that provider can supply.
@@ -144,8 +146,8 @@ usage, and error events that provider can supply.
 
 Remote does not define workflow prompts. The mode selector contains the
 provider-native modes reported by the selected provider adapter. Codex, Kimi,
-and Antigravity derive availability from CLI output; Claude declares its known
-native Default and Plan modes:
+and Antigravity derive availability from CLI output; Claude and MiniMax declare
+their known native Default and Plan modes:
 
 | Mode | Behavior |
 | --- | --- |
@@ -153,7 +155,7 @@ native Default and Plan modes:
 | Plan | Use the provider's native planning mode; shown when the adapter reports it |
 
 The selector is hidden when Default is the provider's only available mode.
-Codex modes are sent through app-server collaboration modes. Claude and
+Codex and MiniMax modes are sent through app-server collaboration modes. Claude and
 Antigravity receive their native Plan CLI flag. Kimi currently advertises Plan
 from CLI help, but the currently pinned Kimi CLI rejects `--plan` together with
 the prompt mode Remote requires; Kimi runs must use Default until that
@@ -185,13 +187,15 @@ conservative fallback. A partial probe preserves usable live data when possible
 and attaches a concise `warning`; provider failures do not make the whole
 catalog request fail.
 
-Each provider owns its parser because the CLIs expose different surfaces. The
-table describes the successful live-discovery path; failures can produce a
-smaller fallback catalog or partially resolved labels and controls.
+Each provider owns its catalog adapter because the CLIs expose different
+surfaces and a provider may instead declare a stable catalog. The table
+describes each primary source; failures can produce a smaller fallback catalog
+or partially resolved labels and controls.
 
 | Provider | Discovery source |
 | --- | --- |
 | Codex | Every page of app-server `model/list` plus `collaborationMode/list`, with `codex debug models` as a structured fallback |
+| MiniMax | Remote's provider-owned `MiniMax-M3` catalog, consumed by the Codex app-server harness at launch |
 | Claude | The `/model` selection list, with each alias resolved through the CLI to a versioned label; `/effort` is queried in parallel, with `--help` as its fallback; native Default/Plan and eligible Auto/Opus Fast controls are declared by the adapter |
 | Kimi | Configured aliases, display/provider models, and effort metadata from `kimi provider list --json`; the plain listing supplies the active default and CLI help supplies the Plan-mode hint |
 | Antigravity | Display names from `agy models`; effort and mode choices from `agy --help` |
@@ -286,9 +290,9 @@ flowchart TD
 
 Persisted events receive a monotonic `seq`. On reconnect, the UI sends its last sequence so the server can replay only missed events. A transient `sync` event communicates the current run lock without entering history.
 
-The UI groups text, reasoning, and tool events into readable assistant messages. Known read, write, edit, search, shell, and question tools receive specialized renderers; unknown tools use a generic view.
+The UI groups text, reasoning, and tool events into readable assistant messages. Consecutive reasoning deltas become one live-updating disclosure that is collapsed by default and remains expandable while the run streams. Known read, write, edit, search, shell, and question tools receive specialized renderers; unknown tools use a generic view.
 
-The thread also provides Markdown and syntax-highlighted code, grouped tool calls, visible reasoning blocks, token-usage totals, a working indicator, older-history loading, jump-to-latest behavior, and an error block. An `AskUserQuestion` tool call becomes a paged answer form whose submitted answer is sent as the next prompt.
+The thread also provides Markdown and syntax-highlighted code, grouped tool calls, expandable reasoning blocks, token-usage totals, a working indicator, older-history loading, jump-to-latest behavior, and an error block. An `AskUserQuestion` tool call becomes a paged answer form whose submitted answer is sent as the next prompt.
 
 Antigravity currently contributes streamed assistant text and session/error
 state, not structured reasoning, tools, or usage.
@@ -301,7 +305,7 @@ flowchart LR
     Catalog --> Selected["Selected skill refs in chat metadata"]
     Selected --> Trigger["Provider-specific prompt trigger"]
     Trigger --> Claude["Claude: /skill-name"]
-    Trigger --> Codex["Codex: $skill-name instruction"]
+    Trigger --> Codex["Codex/MiniMax: $skill-name instruction"]
     Trigger --> Other["Kimi/Antigravity: SKILL.md instruction paths"]
     Selected --> Browser{"browser selected?"}
     Browser -->|"Yes"| MCP["Enable browser MCP and activity keepalive"]
@@ -311,11 +315,11 @@ The catalog reads the canonical host or project skill roots and any
 provider-declared legacy roots after checking execution scope and project
 access. Provider changes clear incompatible selected skills. The module's
 declared skill strategy determines prompt preparation: Claude receives
-slash-style skill triggers, Codex receives dollar mentions, and Kimi and
+slash-style skill triggers, Codex and MiniMax receive dollar mentions, and Kimi and
 Antigravity receive explicit paths to the selected `SKILL.md` files. The
 **Scheduled Tasks** skill also receives a scoped schedule capability. Browser
 MCP preparation is a separate feature flag and is currently declared only by
-Claude and Codex.
+Claude, Codex, and MiniMax.
 
 ## Conversation controls
 
@@ -328,12 +332,18 @@ Claude and Codex.
 | Fork | Copies visible history and provider session IDs; next run forks without mutating the parent |
 | Rewind | Deletes the selected event and everything after it; unavailable while running |
 | Delete | Cancels an active run, then removes chat metadata and history |
-| Load older | Pages backward through the JSONL event log |
+| Load older | Pages backward in complete prompt turns projected from the JSONL event log |
 
 Draft text and queued prompts are mirrored into per-tab `sessionStorage` by
 chat ID. They survive switching chats, navigation, and reloads in the same tab,
 but are not server-authoritative and do not cross tabs, browsers, devices, or
 users. A background chat's queue waits until that chat is active again.
+
+Live replay remains event-based and sequence-addressed. Historical reads use a
+separate turn projection: new runs carry a durable `turnId`, legacy histories
+fall back to `user` event boundaries, and adjacent assistant/reasoning deltas
+are compacted before the page is sent. Provider delta size therefore does not
+change how many conversation turns a history page contains.
 
 ## Scheduled turns
 

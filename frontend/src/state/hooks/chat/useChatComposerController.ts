@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useStore } from "zustand";
+import { useCallback, useEffect, useRef } from "preact/hooks";
 import type { ChatStatus, PromptOutcome } from "../../../models/chat";
 import { useConfirm } from "../../context/ConfirmContext";
-import { chatComposerSessionStore } from "../../chat/composerSessionStore";
+import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
+import { chatComposerSessionStore } from "../../stores/chat/composerSessionStore";
+import { promptQueueState } from "./promptQueueState";
 import { useAttachmentUpload } from "./useAttachmentUpload";
 import { useAutosizeTextarea } from "./useAutosizeTextarea";
 import { useDragUpload } from "./useDragUpload";
@@ -32,19 +35,21 @@ export function useChatComposerController({
   attachmentBasePath: string;
 }) {
   const confirm = useConfirm();
-  // Initialise from the per-chat session store and mirror every change back to it.
-  // ChatContainer remounts on chat switch (it is keyed by chatId), so this is
-  // what makes a half-typed message survive leaving and returning to a chat.
-  const [text, setTextState] = useState(() => chatComposerSessionStore.getDraft(chatId));
+  // ChatContainer remounts on chat switch (it is keyed by chatId), so selecting
+  // the active draft from the session store is what makes a half-typed message
+  // survive leaving and returning to a chat.
+  const text = useStore(
+    chatComposerSessionStore,
+    (state) => state.drafts.get(chatId) ?? "",
+  );
+  const setDraft = useStore(chatComposerSessionStore, (state) => state.setDraft);
   const setText = useCallback(
     (value: string | ((prev: string) => string)) => {
-      setTextState((prev) => {
-        const next = typeof value === "function" ? (value as (prev: string) => string)(prev) : value;
-        chatComposerSessionStore.setDraft(chatId, next);
-        return next;
-      });
+      const previous = chatComposerSessionStore.getState().drafts.get(chatId) ?? "";
+      const next = typeof value === "function" ? value(previous) : value;
+      setDraft(chatId, next);
     },
-    [chatId],
+    [chatId, setDraft],
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { textareaRef, focusInput } = useAutosizeTextarea(text);
@@ -109,14 +114,14 @@ export function useChatComposerController({
   }
 
   function handleSend() {
-    if (upload.uploading || (!chatComposerSessionStore.allowsQueue(status) && !canSendPrompt)) return;
+    if (upload.uploading || (!promptQueueState.allowsQueue(status) && !canSendPrompt)) return;
     const userText = text.trim();
     const paths = upload.attachments
       .filter((attachment) => attachment.serverPath)
       .map((attachment) => attachment.serverPath);
     if (!userText && paths.length === 0) return;
     const finalText = paths.length
-      ? chatComposerSessionStore.promptWithAttachments(userText, paths)
+      ? chatAttachmentService.promptWithAttachments(userText, paths)
       : userText;
 
     if (status === "streaming") {

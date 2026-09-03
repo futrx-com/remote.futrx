@@ -45,14 +45,21 @@ export function ConfirmDialog({
     return () => clearTimeout(timer);
   }, [open, title]);
 
+  // The handler reads `pending` and `onCancel`, so it is held in a ref rather
+  // than keyed on: an Escape mid-confirmation must see the current pending flag.
+  const cancelOnEscapeRef = useRef(() => {});
+  cancelOnEscapeRef.current = () => {
+    if (!pending) onCancel();
+  };
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onCancel();
+      if (event.key === "Escape") cancelOnEscapeRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, [open]);
 
   if (!open) return null;
 

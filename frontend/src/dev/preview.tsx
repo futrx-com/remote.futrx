@@ -4,7 +4,7 @@ import { useRef, useState } from "preact/hooks";
 import type { ChatMeta } from "../models/chat";
 import type { ProjectMeta } from "../models/project";
 import type { ChatMessageBlock } from "../models/chatMessage";
-import type { WorkspaceSidebarModel } from "../state/workspace/workspaceSidebarState";
+import type { WorkspaceSidebarModel } from "../models/workspace";
 import { AppShell } from "../ui/layout/AppShell";
 import { Sidebar } from "../ui/sidebar/Sidebar";
 import { ThreadHeader } from "../ui/chat/header/ThreadHeader";

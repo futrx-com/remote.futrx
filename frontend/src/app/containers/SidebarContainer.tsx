@@ -4,7 +4,7 @@ import { useAuthContext } from "../../state/context/AuthContext";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useSidebarState } from "../../state/hooks/workspace/useSidebarState";
 import { useWorkspaceCommands } from "../../state/hooks/workspace/useWorkspaceCommands";
-import { workspaceSidebarState } from "../../state/workspace/workspaceSidebarState";
+import { workspaceSidebarService } from "../../services/workspace/workspaceSidebarService.ts";
 import { useAccountSignOut } from "../../state/hooks/auth/useAccountSignOut";
 
 export function SidebarContainer() {
@@ -19,7 +19,7 @@ export function SidebarContainer() {
   const commands = useWorkspaceCommands();
   const signOut = useAccountSignOut();
   const model = useMemo(
-    () => workspaceSidebarState.model(workspace.chats, workspace.projects, sidebar.query),
+    () => workspaceSidebarService.model(workspace.chats, workspace.projects, sidebar.query),
     [workspace.chats, workspace.projects, sidebar.query]
   );
 

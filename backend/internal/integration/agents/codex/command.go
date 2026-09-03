@@ -9,39 +9,12 @@ import (
 	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
 func (p *Provider) args(req agent.RunRequest) []string {
-	args := []string{"app-server"}
-	if req.EnableBrowser {
-		args = append(args, browserMCPConfigArgs()...)
-	}
-	return args
-}
-
-func browserMCPConfigArgs() []string {
-	return []string{
-		"-c", `mcp_servers.browser.command="npx"`,
-		"-c", `mcp_servers.browser.args=["@playwright/mcp","--cdp-endpoint","http://127.0.0.1:9222","--caps=vision"]`,
-	}
-}
-
-func sanitizeModel(model string) string {
-	model = strings.TrimSpace(model)
-	if idx := strings.Index(model, "["); idx > 0 {
-		model = strings.TrimSpace(model[:idx])
-	}
-	return model
-}
-
-func reasoningEffortArg(effort agent.ReasoningEffort) string {
-	return agent.NormalizeCapabilityValue(string(effort))
-}
-
-// serviceTierArg syntax-checks the selected or saved service-tier value.
-func serviceTierArg(tier agent.ServiceTier) string {
-	return agent.NormalizeCapabilityValue(string(tier))
+	return codexharness.AppServerArgs(nil, req.EnableBrowser)
 }
 
 func (p *Provider) buildCmd(
@@ -62,7 +35,9 @@ func (p *Provider) buildCmd(
 		if err := ensureHostSubscriptionAuth(); err != nil {
 			return nil, "", err
 		}
-		cmd := exec.CommandContext(ctx, "codex", args...)
+		// The app-server process must outlive request cancellation long enough for
+		// runAppServer to send turn/interrupt and receive the terminal status.
+		cmd := exec.CommandContext(context.WithoutCancel(ctx), "codex", args...)
 		cmd.Dir = cwd
 		cmd.Env = agent.WithRuntimeEnvironment(codexEnv(os.Environ()), req.RuntimeEnv)
 		return cmd, "", nil
@@ -77,7 +52,7 @@ func (p *Provider) buildCmd(
 	if err != nil {
 		return nil, "", err
 	}
-	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
+	cmd := agentruntime.BuildContainerCommand(context.WithoutCancel(ctx), agentruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  []string{"HOME=/root", "CODEX_HOME=/root/.codex"},
 		Secrets:            project.Secrets,

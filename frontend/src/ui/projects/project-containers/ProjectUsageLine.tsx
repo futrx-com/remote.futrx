@@ -1,8 +1,5 @@
 import type { UsageSummary } from "../../../models/usage";
-import {
-  formatCostWithConfidence,
-  formatTokens,
-} from "../../../state/usage/usageChartModel";
+import { usageFormatService } from "../../../services/usage/usageFormatService.ts";
 import { Activity } from "../../primitives/icons";
 
 /**
@@ -25,7 +22,7 @@ export function ProjectUsageLine({
     ? "Loading…"
     : !totals || totals.runs === 0
       ? "No agent runs yet this month"
-      : `${formatCostWithConfidence(totals)} · ${formatTokens(totals.totalTokens)} tokens · ${
+      : `${usageFormatService.costWithConfidence(totals)} · ${usageFormatService.tokens(totals.totalTokens)} tokens · ${
           totals.runs
         } run${totals.runs === 1 ? "" : "s"}`;
 

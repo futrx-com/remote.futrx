@@ -35,7 +35,7 @@ export function ToolShell({
           <span class="w-3.5 flex-none" />
         )}
         <span class={`flex-none ${isError ? "text-accent-red" : "text-ink-300"}`}>{icon}</span>
-        <span class="flex-1 truncate text-[13px] text-ink-200">{label}</span>
+        <span class="flex-1 min-w-0 truncate text-[13px] text-ink-200">{label}</span>
         {badge && <span class="flex-none font-mono text-[11px] text-ink-400">{badge}</span>}
         {status === "running" ? (
           <Loader class="w-3.5 h-3.5 text-ink-300 animate-spin flex-none" />

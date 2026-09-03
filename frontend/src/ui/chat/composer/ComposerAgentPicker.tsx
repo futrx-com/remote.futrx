@@ -3,7 +3,7 @@ import type { ChatProvider } from "../../../models/chat";
 import type {
   ComposerModelOption,
   ComposerProviderOption,
-} from "../../../state/chat/agentCapabilityState";
+} from "../../../models/agentCapabilities";
 import {
   Bot,
   Check,

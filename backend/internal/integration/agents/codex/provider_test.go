@@ -65,56 +65,6 @@ func TestCodexEnvStripsOpenAIAPIKey(t *testing.T) {
 	}
 }
 
-func TestAppServerTurnIncludesReasoningEffort(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ReasoningEffort: "high"},
-	}, "thread-1", "gpt-5.5")
-	if params.Effort != "high" {
-		t.Fatalf("effort = %q, want high", params.Effort)
-	}
-}
-
-func TestAppServerTurnIgnoresInvalidReasoningEffort(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ReasoningEffort: "extreme;invalid"},
-	}, "thread-1", "gpt-5.5")
-
-	if params.Effort != "" {
-		t.Fatalf("invalid reasoning effort should not be sent: %#v", params)
-	}
-}
-
-func TestAppServerTurnIncludesServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ServiceTier: "priority"},
-	}, "thread-1", "gpt-5.5")
-	if params.ServiceTier != "priority" {
-		t.Fatalf("serviceTier = %q, want priority", params.ServiceTier)
-	}
-}
-
-func TestAppServerTurnIncludesReasoningEffortAndServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{
-			ReasoningEffort: "xhigh",
-			ServiceTier:     "default",
-		},
-	}, "thread-1", "gpt-5.5")
-	if params.Effort != "xhigh" || params.ServiceTier != "default" {
-		t.Fatalf("turn params = %#v", params)
-	}
-}
-
-func TestAppServerTurnIgnoresInvalidServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ServiceTier: "turbo;invalid"},
-	}, "thread-1", "gpt-5.5")
-
-	if params.ServiceTier != "" {
-		t.Fatalf("invalid service tier should not be sent: %#v", params)
-	}
-}
-
 func TestArgsIncludeBrowserMCPConfig(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
 	args := provider.args(agent.RunRequest{EnableBrowser: true})
@@ -193,51 +143,6 @@ func TestProfileReturnsIndependentProvisioningPolicy(t *testing.T) {
 	}
 	if second.Credentials.Files[0].HostPath != hostCodexAuth {
 		t.Fatalf("profile mutation escaped clone: %q", second.Credentials.Files[0].HostPath)
-	}
-}
-
-func TestAppServerResumesThread(t *testing.T) {
-	request := buildAppServerThreadRequest(agent.RunRequest{ResumeID: "thread-123"})
-	if request.Method != "thread/resume" || request.Params.ThreadID != "thread-123" {
-		t.Fatalf("thread request = %#v", request)
-	}
-}
-
-func TestNativePlanTurnUsesCollaborationMode(t *testing.T) {
-	params := buildAppServerTurnParams(
-		agent.RunRequest{Mode: agent.RunModePlan},
-		"thread-123",
-		"gpt-5.5",
-	)
-	if params.CollaborationMode.Mode != agent.RunModePlan {
-		t.Fatalf("collaboration mode = %#v", params.CollaborationMode)
-	}
-	settings := params.CollaborationMode.Settings
-	if settings.DeveloperInstructions != nil || settings.ReasoningEffort == nil || *settings.ReasoningEffort != "medium" {
-		t.Fatalf("plan settings = %#v", settings)
-	}
-}
-
-func TestNativeDefaultTurnUsesProviderInstructions(t *testing.T) {
-	params := buildAppServerTurnParams(
-		agent.RunRequest{Mode: agent.RunModeDefault},
-		"thread-123",
-		"gpt-5.5",
-	)
-	mode := params.CollaborationMode
-	if mode.Mode != agent.RunModeDefault {
-		t.Fatalf("collaboration mode = %#v", mode)
-	}
-	settings := mode.Settings
-	if settings.DeveloperInstructions != nil || settings.ReasoningEffort != nil {
-		t.Fatalf("default settings = %#v", settings)
-	}
-}
-
-func TestForkUsesNativeThreadFork(t *testing.T) {
-	request := buildAppServerThreadRequest(agent.RunRequest{ResumeID: "thread-123", Fork: true})
-	if request.Method != "thread/fork" || request.Params.ThreadID != "thread-123" {
-		t.Fatalf("thread request = %#v", request)
 	}
 }
 
@@ -405,6 +310,12 @@ func (fakeCodexWorkspace) EnsureAgentInstructions(context.Context, string) error
 
 func (fakeCodexWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 
+type fakeCodexRuntimeAssets struct{}
+
+func (fakeCodexRuntimeAssets) Ensure(context.Context, string, []provisioning.RuntimeAsset) error {
+	return nil
+}
+
 type fakeCodexBrowser struct {
 	agentBrowserMCPCalls  int
 	agentBrowserCoreCalls int
@@ -443,6 +354,7 @@ func codexContainerDependencies(
 		CLI:           fakeCodexCLI{},
 		Credentials:   credentials,
 		Workspace:     fakeCodexWorkspace{},
+		RuntimeAssets: fakeCodexRuntimeAssets{},
 		Browser:       browser,
 		ScheduleTools: fakeCodexScheduleTools{},
 		Lifecycle:     fakeCodexLifecycle{},

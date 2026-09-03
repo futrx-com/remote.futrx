@@ -59,8 +59,15 @@ func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.logins.Success(key)
-	setSessionCookie(w, h.auth, user)
-	httptransport.SendJSON(w, http.StatusCreated, h.auth.Status(r.Context(), h.auth.SignSession(user)))
+	// A brand-new account cannot have a 2FA record yet, so claim always
+	// issues a session directly rather than going through CompletePasswordLogin.
+	cookieValue, err := h.auth.IssueSession(r.Context(), user, serviceauth.SignInMethodPassword, localClientIP(r), r.UserAgent())
+	if err != nil {
+		httptransport.SendErr(w, http.StatusInternalServerError, "failed to start session")
+		return
+	}
+	setSessionCookie(w, h.auth, cookieValue)
+	httptransport.SendJSON(w, http.StatusCreated, h.auth.Status(r.Context(), cookieValue))
 }
 
 func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
@@ -76,21 +83,26 @@ func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	key := localClientIP(r) + "|login"
+	key := localLoginRateLimitKey(r)
 	if !h.logins.Allow(key) {
 		w.Header().Set("Retry-After", "300")
 		httptransport.SendErr(w, http.StatusTooManyRequests, "too many attempts; try again in a few minutes")
 		return
 	}
-	user, err := h.auth.LoginLocal(r.Context(), body.Email, body.Password)
+	result, err := h.auth.CompletePasswordLogin(r.Context(), body.Email, body.Password, localClientIP(r), r.UserAgent())
 	if err != nil {
 		h.logins.Failure(key)
 		httptransport.SendErr(w, http.StatusUnauthorized, serviceauth.ErrInvalidCredentials.Error())
 		return
 	}
 	h.logins.Success(key)
-	setSessionCookie(w, h.auth, user)
-	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), h.auth.SignSession(user)))
+	if !result.Completed {
+		setPendingCookie(w, h.auth, result.PendingToken)
+		httptransport.SendJSON(w, http.StatusOK, map[string]bool{"twoFactorRequired": true})
+		return
+	}
+	setSessionCookie(w, h.auth, result.CookieValue)
+	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), result.CookieValue))
 }
 
 const localLoginWindow = 5 * time.Minute
@@ -144,4 +156,8 @@ func localClientIP(r *http.Request) string {
 		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
 	}
 	return ip
+}
+
+func localLoginRateLimitKey(r *http.Request) string {
+	return localClientIP(r) + "|login"
 }

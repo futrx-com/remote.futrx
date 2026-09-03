@@ -3,7 +3,7 @@ import type {
   AccessRecord,
   ProjectContainerRecord,
   SecretsRecord,
-} from "../../state/projects/projectContainerRecords";
+} from "../../models/project";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
 import {
