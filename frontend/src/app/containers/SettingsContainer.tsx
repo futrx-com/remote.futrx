@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useCallback, useState } from "preact/hooks";
 import {
   SettingsPage,
   type SettingsTab,
@@ -6,10 +6,13 @@ import {
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
-import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
+import { useUsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
+import { usageApi } from "../../api/usageApi";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
 
 export function SettingsContainer({
   onBack,
@@ -18,15 +21,35 @@ export function SettingsContainer({
   onBack: () => void;
   onHamburger: () => void;
 }) {
-  const { auth, codexAuth, kimiAuth } = useAuthContext();
+  const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
-  const applications = useGlobalApplications(
-    activeTab === "applications" && auth.isAdmin
-  );
+  const security = useSecuritySettings(activeTab === "security");
+  const applications = useGlobalApplications(activeTab === "applications" && auth.isAdmin);
+  const usageDashboard = useUsageDashboard(activeTab === "usage");
+  const [usageRebuilding, setUsageRebuilding] = useState(false);
+  const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
+
+  const rebuildUsage = useCallback(async () => {
+    setUsageRebuilding(true);
+    setUsageRebuildMessage(null);
+    try {
+      const result = await usageApi.rebuild();
+      setUsageRebuildMessage(
+        `Rebuilt ${result.records} record${result.records === 1 ? "" : "s"} from ${result.chats} chat${
+          result.chats === 1 ? "" : "s"
+        }.`
+      );
+      await usageDashboard.refresh();
+    } catch (cause) {
+      setUsageRebuildMessage(`Rebuild failed: ${(cause as Error).message}`);
+    } finally {
+      setUsageRebuilding(false);
+    }
+  }, [usageDashboard]);
   const push = usePushNotifications(activeTab === "notifications");
 
   return (
@@ -46,17 +69,15 @@ export function SettingsContainer({
       selfUpdateRestarting={selfUpdate.restarting}
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
+      usageDashboard={usageDashboard}
+      usageRebuilding={usageRebuilding}
+      usageRebuildMessage={usageRebuildMessage}
+      onRebuildUsage={rebuildUsage}
       appearanceTheme={userSettings.settings.appearance.theme}
       appearanceLoading={userSettings.loading}
       appearanceSaving={userSettings.saving}
       appearanceError={userSettings.error}
       push={push}
-      codexAuthenticated={codexAuth.authenticated}
-      codexUsesApiKey={codexAuth.usesApiKey}
-      codexDeviceLogin={codexAuth.deviceLogin}
-      codexLoading={codexAuth.loading}
-      codexStarting={codexAuth.starting}
-      codexError={codexAuth.error}
       onBack={onBack}
       onHamburger={onHamburger}
       onTabChange={setActiveTab}
@@ -64,13 +85,7 @@ export function SettingsContainer({
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
-      onStartCodexDeviceLogin={codexAuth.startDeviceLogin}
-      kimiAuthenticated={kimiAuth.authenticated}
-      kimiDeviceLogin={kimiAuth.deviceLogin}
-      kimiLoading={kimiAuth.loading}
-      kimiStarting={kimiAuth.starting}
-      kimiError={kimiAuth.error}
-      onStartKimiDeviceLogin={kimiAuth.startDeviceLogin}
+      security={security}
       applications={applications}
     />
   );

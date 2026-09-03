@@ -112,14 +112,14 @@ if [ -z "$HOSTNAME" ]; then
     exit 1
 fi
 
-# Keep install.sh's checkout step (steps/02-app.sh) on the same ref this
+# Keep install.sh's checkout step (steps/00-checkout.sh) on the same ref this
 # updater just checked out, instead of resetting back to origin/main.
 export FUTRX_CHECKOUT_REF="${TARGET_REF:-origin/main}"
 
 if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
     # Rebuild once in install.sh, after the new backend has been built. The
     # workspace upgrader then only needs to recycle containers onto that image.
-    FORCE_REBUILD_BASE_IMAGE=1 \
+    FUTRX_INSTALL_CHECKOUT_SELECTED=1 FORCE_REBUILD_BASE_IMAGE=1 \
         bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
 
     WORKSPACE_ARGS=(--no-rebake)
@@ -128,7 +128,8 @@ if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
     fi
     bash "$INFRA_DIR/upgrade-workspaces.sh" "${WORKSPACE_ARGS[@]}"
 else
-    bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
+    FUTRX_INSTALL_CHECKOUT_SELECTED=1 \
+        bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
 fi
 
 echo

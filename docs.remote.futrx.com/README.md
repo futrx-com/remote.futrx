@@ -27,7 +27,12 @@ npm test
 
 ## Content and navigation
 
-`../docs/01-overview/README.md` is always the home page. First-level numbered documentation folders become top-navigation sections, while their Markdown files become sidebar pages. Numeric prefixes control ordering but are removed from labels and URLs.
+`../docs/01-overview/README.md` is always the home page. First-level
+documentation folders become top-navigation sections, while Markdown files
+below them are discovered recursively and become sidebar pages. Nested folders
+remain in the generated URL, so `../docs/dev/agents/README.md` is published at
+`/dev/agents/`. Numeric prefixes control ordering but are removed from labels
+and URLs.
 
 Root-level Markdown files are included at root URLs and grouped into the Overview sidebar. Internal analysis directories (`codex-analysis` and `fable-analysis`) and the `assets` directory are excluded from documentation discovery.
 

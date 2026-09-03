@@ -29,7 +29,7 @@ func NewAccessVerifier(auth *Service, projects ProjectAccess) *AccessVerifier {
 }
 
 func (v *AccessVerifier) Verify(ctx context.Context, sessionCookie, projectSlug string) error {
-	session, sessionErr := v.auth.CurrentSession(sessionCookie)
+	session, sessionErr := v.auth.CurrentSession(ctx, sessionCookie)
 	authenticated := sessionErr == nil && session != nil
 
 	if projectSlug != "" && v.projects != nil {

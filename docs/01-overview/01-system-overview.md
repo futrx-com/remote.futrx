@@ -42,7 +42,7 @@ flowchart LR
 | --- | --- |
 | Frontend | Authentication gates, workspace navigation, chat rendering, drawers, settings, and API clients |
 | HTTP and WebSocket transport | Routes, JSON responses, upgrades, session checks, and project membership checks |
-| Services | Chat, prompt, schedule, project, user, settings, skills, Git, files, browser, and container policy |
+| Services | Agent module catalog/runtime, auth, capability and execution orchestration, chat, prompt, schedule, project, user, settings, skills, Git, files, browser, and container policy |
 | Integrations | LXD, Git, tmux, host filesystem, Google OAuth, host metrics, and container commands |
 | Stores | File-backed auth, users, settings, chats, scheduled tasks, projects, access lists, and secrets |
 | Infrastructure | Installation, systemd, Caddy, LXD image creation, updates, and recovery timers |
@@ -60,7 +60,7 @@ flowchart TD
     Chat --> Composer["Provider, model, mode, skills, attachments"]
     Chat --> Messages["Text, reasoning, tools, usage"]
     Chat --> Drawers["History, files, schedules, browser"]
-    Chat --> Terminal["Terminal overlay"]
+    Chat --> Terminal["Resizable Terminal pane"]
 
     Projects --> Lifecycle["Start, stop, restart, delete"]
     Projects --> Inspect["Resources, network, agent status"]
@@ -79,6 +79,10 @@ sequenceDiagram
     actor User
     participant UI as Browser UI
     participant API as Go backend
+    participant Prompt as Prompt service
+    participant Runtime as module.Runtime
+    participant Provider as Provider adapter
+    participant Prep as ProjectPreparer
     participant Project as Project service
     participant LXD as LXD container
     participant Agent as Selected agent CLI
@@ -93,17 +97,26 @@ sequenceDiagram
     User->>UI: Create chat and send prompt
     UI->>API: Open /ws/chat/{id}
     UI->>API: prompt message
-    API->>Project: Ensure project is running
-    API->>Agent: Run or resume CLI in /workspace
-    Agent-->>API: Normalized text, reasoning, tool, session, usage events
+    API->>Prompt: Start provider-neutral run
+    Prompt->>Runtime: Validate scope and lookup provider
+    Prompt->>Provider: Run
+    Provider->>Prep: Prepare project and selected features
+    Prep->>Project: Resolve and start/reconcile
+    Project->>LXD: Enforce project lifecycle
+    Prep-->>Provider: Prepared target and secrets
+    Provider->>Agent: Run or resume native CLI in /workspace
+    Agent-->>Provider: Provider-native stream/protocol
+    Provider-->>API: Normalized text, reasoning, tool, session, usage events
     API-->>UI: Persisted event stream
     UI-->>User: Render live progress and result
 
     opt scheduled task
         API->>API: Claim due occurrence
         API->>Project: Re-authorize owner and project
-        API->>Agent: Submit stored prompt through the same run service
-        Agent-->>API: Normalized run events
+        API->>Prompt: Submit stored prompt through the same run service
+        Prompt->>Runtime: Validate scope and lookup provider
+        Prompt->>Provider: Run
+        Provider-->>API: Normalized run events
         API-->>UI: Same persisted chat transcript when connected
     end
 ```
@@ -123,12 +136,20 @@ The main shell switches between three views without browser routing:
 ## Important boundaries
 
 - The host owns authentication, metadata, HTTPS, access decisions, and container orchestration.
+- Each concrete agent adapter owns one factory declaration that binds its
+  runtime, authentication, feature policy, provisioning profile, and
+  preparation policy. The generic module factory constructs shared project
+  preparation and narrows dependencies. Config owns reviewed registration
+  order and application-wide policy; the catalog builds one runtime containing
+  matching provider and auth registries.
 - Each project owns its `/workspace` files and processes.
-- Each project also has durable Codex, Claude, and Kimi homes mounted at their provider-native paths.
+- Each project also has durable Codex, Claude, Kimi, and Antigravity homes
+  mounted at their provider-native paths. Antigravity mounts only
+  `/root/.gemini/antigravity-cli`.
 - Agent-provider credentials are host-managed and synchronized into project credential locations, primarily those homes; Claude also uses `/root/.claude.json` outside its mounted home.
-- Antigravity authenticates inside each project and stores its current
-  `/root/.gemini` state in the replaceable container root rather than a durable
-  provider-home mount.
+- Remote's supported Antigravity flow authenticates inside each project and
+  stores its current state in the durable
+  `/root/.gemini/antigravity-cli` provider mount.
 - Scheduled-task definitions and claims live in the host control plane. A due
   task enters the same project chat and one-run-per-chat path as an interactive
   prompt.

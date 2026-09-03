@@ -1,6 +1,6 @@
 import type { JSX } from "preact";
 import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
-import { ChevronDown } from "../../primitives/icons";
+import { Check, ChevronDown } from "../../primitives/icons";
 
 export interface ComposerOption<T extends string> {
   value: T;
@@ -66,29 +66,29 @@ export function ComposerOptionDropdown<T extends string>({
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        class={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition disabled:cursor-not-allowed disabled:opacity-60
-                ${open ? "bg-accent-blue/[0.14] text-accent-blue" : "bg-white/[0.045] text-ink-200 hover:bg-white/[0.075] hover:text-ink-100"}`}
+        class={`inline-flex h-7 items-center gap-1.5 rounded-control px-2 text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                ${open ? "bg-tint-active text-ink-50" : "text-ink-300 hover:bg-tint-strong hover:text-ink-100"}`}
         disabled={disabled}
         title={`${label}: ${selected?.label || "Auto"}`}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
         <span
-          class="inline-flex h-4 w-4 flex-none items-center justify-center text-ink-400"
+          class="inline-flex h-4 w-4 flex-none items-center justify-center text-current opacity-60"
           title={label}
           aria-label={label}
         >
           <Icon class="h-3 w-3" />
         </span>
         <span class="sr-only">{label}</span>
-        <span class="max-w-[5.5rem] truncate font-semibold text-ink-100">{selected?.label || "Auto"}</span>
-        <ChevronDown class="h-3 w-3 flex-none text-ink-400" />
+        <span class="max-w-[7rem] truncate font-medium">{selected?.label || "Auto"}</span>
+        <ChevronDown class="h-3 w-3 flex-none opacity-50" />
       </button>
 
       {open && (
         <div
           ref={menuRef}
-          class={`theme-menu-surface absolute bottom-full z-40 mb-1.5 w-[min(10rem,calc(100vw-1.5rem))] rounded-lg border border-white/10 bg-[#14161d] p-1 shadow-2xl
+          class={`theme-menu-surface menu-pop-up absolute bottom-full z-40 mb-1.5 w-[min(11rem,calc(100vw-1.5rem))] rounded-card border border-line bg-raised p-1 shadow-pop
                   ${menuAlignment === "end" ? "right-0" : "left-0"}`}
           role="listbox"
         >
@@ -99,12 +99,13 @@ export function ComposerOptionDropdown<T extends string>({
                 key={option.value || "auto"}
                 type="button"
                 onClick={() => pick(option.value)}
-                class={`w-full rounded-md px-2.5 py-2 text-left text-[12px] font-medium transition
-                        ${active ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-100 hover:bg-white/[0.07]"}`}
+                class={`flex w-full items-center justify-between gap-2 rounded-control px-2.5 py-1.5 text-left text-[12.5px] transition-colors
+                        ${active ? "bg-tint-active font-medium text-ink-50" : "text-ink-200 hover:bg-tint-strong"}`}
                 role="option"
                 aria-selected={active}
               >
-                {option.label}
+                <span class="truncate">{option.label}</span>
+                {active && <Check class="h-3 w-3 flex-none text-accent-blue" />}
               </button>
             );
           })}

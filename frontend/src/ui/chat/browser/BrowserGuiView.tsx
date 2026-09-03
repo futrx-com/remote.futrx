@@ -38,7 +38,7 @@ export function BrowserGuiView({
   }
 
   return (
-    <div class="flex-1 min-h-0 grid place-items-center bg-[#101318] px-6 text-center">
+    <div class="flex-1 min-h-0 grid place-items-center bg-surface px-6 text-center">
       <div class="max-w-sm text-[13px] leading-relaxed text-ink-300">
         {status === "error" ? (
           <p class="text-ink-200">{error || "Couldn't start the agent browser."}</p>

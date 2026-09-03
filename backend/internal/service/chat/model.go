@@ -5,23 +5,27 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
 )
 
 type ID string
 type ProjectID string
-type Provider string
+type Provider = agent.ProviderID
+type SessionIDs map[Provider]string
 
 const (
-	ProviderClaude      Provider = "claude"
-	ProviderCodex       Provider = "codex"
-	ProviderKimi        Provider = "kimi"
-	ProviderAntigravity Provider = "antigravity"
+	ProviderClaude      = agent.ProviderClaude
+	ProviderCodex       = agent.ProviderCodex
+	ProviderKimi        = agent.ProviderKimi
+	ProviderAntigravity = agent.ProviderAntigravity
 )
 
 type Meta struct {
 	ID                   ID         `json:"id"`
 	Title                string     `json:"title"`
 	Provider             Provider   `json:"provider,omitempty"`
+	Sessions             SessionIDs `json:"sessions,omitempty"`
 	ClaudeSessionID      string     `json:"claudeSessionId,omitempty"`
 	CodexSessionID       string     `json:"codexSessionId,omitempty"`
 	KimiSessionID        string     `json:"kimiSessionId,omitempty"`
@@ -32,10 +36,10 @@ type Meta struct {
 	LastMessageAt        int64      `json:"lastMessageAt"`
 	LastReadAt           int64      `json:"lastReadAt,omitempty"`
 	Running              bool       `json:"running,omitempty"`
-	Model                string     `json:"model,omitempty"`
-	Mode                 string     `json:"mode,omitempty"`
-	ReasoningEffort      string     `json:"reasoningEffort,omitempty"`
-	ServiceTier          string     `json:"serviceTier,omitempty"`
+	Model                string     `json:"model"`
+	Mode                 string     `json:"mode"`
+	ReasoningEffort      string     `json:"reasoningEffort"`
+	ServiceTier          string     `json:"serviceTier"`
 	ProjectID            ProjectID  `json:"projectId,omitempty"`
 	ForkPending          bool       `json:"forkPending,omitempty"`
 	SelectedSkills       []SkillRef `json:"selectedSkills,omitempty"`
@@ -62,6 +66,7 @@ type Event struct {
 	ToolName             string          `json:"toolName,omitempty"`
 	Subtype              string          `json:"subtype,omitempty"`
 	Data                 json.RawMessage `json:"data,omitempty"`
+	SessionID            string          `json:"sessionId,omitempty"`
 	ClaudeSessionID      string          `json:"claudeSessionId,omitempty"`
 	CodexSessionID       string          `json:"codexSessionId,omitempty"`
 	KimiSessionID        string          `json:"kimiSessionId,omitempty"`
@@ -74,6 +79,169 @@ type Event struct {
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
 	ScheduledTaskID string `json:"scheduledTaskId,omitempty"`
+}
+
+// NormalizeSessions makes the provider-keyed session map authoritative while
+// preserving the four legacy JSON fields during the compatibility window.
+// Legacy records are imported when no generic value exists.
+func (m *Meta) NormalizeSessions() {
+	if m == nil {
+		return
+	}
+	sessions := cloneSessions(m.Sessions)
+	for provider, legacy := range map[Provider]string{
+		ProviderClaude:      m.ClaudeSessionID,
+		ProviderCodex:       m.CodexSessionID,
+		ProviderKimi:        m.KimiSessionID,
+		ProviderAntigravity: m.AntigravitySessionID,
+	} {
+		if _, exists := sessions[provider]; !exists && strings.TrimSpace(legacy) != "" {
+			if sessions == nil {
+				sessions = make(SessionIDs)
+			}
+			sessions[provider] = legacy
+		}
+	}
+	for provider, sessionID := range sessions {
+		sessionID = strings.TrimSpace(sessionID)
+		if sessionID == "" {
+			delete(sessions, provider)
+			continue
+		}
+		sessions[provider] = sessionID
+	}
+	if len(sessions) == 0 {
+		sessions = nil
+	}
+	m.Sessions = sessions
+	m.syncLegacySessions()
+}
+
+func (m Meta) SessionID(provider Provider) string {
+	if sessionID := strings.TrimSpace(m.Sessions[provider]); sessionID != "" {
+		return sessionID
+	}
+	switch provider {
+	case ProviderClaude:
+		return m.ClaudeSessionID
+	case ProviderCodex:
+		return m.CodexSessionID
+	case ProviderKimi:
+		return m.KimiSessionID
+	case ProviderAntigravity:
+		return m.AntigravitySessionID
+	default:
+		return ""
+	}
+}
+
+func (m *Meta) SetSessionID(provider Provider, sessionID string) {
+	if m == nil || provider == "" {
+		return
+	}
+	m.NormalizeSessions()
+	if m.Sessions == nil && strings.TrimSpace(sessionID) != "" {
+		m.Sessions = make(SessionIDs)
+	}
+	if sessionID = strings.TrimSpace(sessionID); sessionID == "" {
+		delete(m.Sessions, provider)
+	} else {
+		m.Sessions[provider] = sessionID
+	}
+	if len(m.Sessions) == 0 {
+		m.Sessions = nil
+	}
+	m.syncLegacySessions()
+}
+
+func (m *Meta) ClearSessionIDs() {
+	if m == nil {
+		return
+	}
+	m.Sessions = nil
+	m.ClaudeSessionID = ""
+	m.CodexSessionID = ""
+	m.KimiSessionID = ""
+	m.AntigravitySessionID = ""
+}
+
+func (m Meta) SessionSnapshot() SessionIDs {
+	m.NormalizeSessions()
+	return cloneSessions(m.Sessions)
+}
+
+func (m *Meta) syncLegacySessions() {
+	m.ClaudeSessionID = m.Sessions[ProviderClaude]
+	m.CodexSessionID = m.Sessions[ProviderCodex]
+	m.KimiSessionID = m.Sessions[ProviderKimi]
+	m.AntigravitySessionID = m.Sessions[ProviderAntigravity]
+}
+
+// SetSession records a generic session event and mirrors known provider IDs to
+// the legacy event fields consumed by older frontend builds.
+func (e *Event) SetSession(provider Provider, sessionID string) {
+	if e == nil {
+		return
+	}
+	e.Provider = provider
+	e.SessionID = strings.TrimSpace(sessionID)
+	e.ClaudeSessionID = ""
+	e.CodexSessionID = ""
+	e.KimiSessionID = ""
+	e.AntigravitySessionID = ""
+	switch provider {
+	case ProviderClaude:
+		e.ClaudeSessionID = e.SessionID
+	case ProviderCodex:
+		e.CodexSessionID = e.SessionID
+	case ProviderKimi:
+		e.KimiSessionID = e.SessionID
+	case ProviderAntigravity:
+		e.AntigravitySessionID = e.SessionID
+	}
+}
+
+// NormalizeSession imports legacy event fields and then mirrors the generic
+// provider/session pair back to those fields for old clients.
+func (e *Event) NormalizeSession() {
+	if e == nil {
+		return
+	}
+	provider := e.Provider
+	sessionID := strings.TrimSpace(e.SessionID)
+	if sessionID == "" {
+		legacy := []struct {
+			provider  Provider
+			sessionID string
+		}{
+			{ProviderClaude, e.ClaudeSessionID},
+			{ProviderCodex, e.CodexSessionID},
+			{ProviderKimi, e.KimiSessionID},
+			{ProviderAntigravity, e.AntigravitySessionID},
+		}
+		for _, candidate := range legacy {
+			if provider != "" && candidate.provider != provider {
+				continue
+			}
+			if strings.TrimSpace(candidate.sessionID) != "" {
+				provider = candidate.provider
+				sessionID = candidate.sessionID
+				break
+			}
+		}
+	}
+	e.SetSession(provider, sessionID)
+}
+
+func cloneSessions(sessions SessionIDs) SessionIDs {
+	if len(sessions) == 0 {
+		return nil
+	}
+	cloned := make(SessionIDs, len(sessions))
+	for provider, sessionID := range sessions {
+		cloned[provider] = sessionID
+	}
+	return cloned
 }
 
 type EventPageQuery struct {
@@ -113,54 +281,33 @@ type UpdateInput struct {
 }
 
 func NormalizeProvider(provider Provider) Provider {
-	switch provider {
-	case ProviderClaude:
-		return ProviderClaude
-	case ProviderKimi:
-		return ProviderKimi
-	case ProviderAntigravity:
-		return ProviderAntigravity
-	default:
+	normalized := agent.NormalizeProviderID(string(provider))
+	if normalized == "" || !agent.ValidProviderID(normalized) {
 		return ProviderCodex
 	}
+	return normalized
 }
 
 func NormalizeReasoningEffort(effort string) string {
-	switch strings.ToLower(strings.TrimSpace(effort)) {
-	case "none":
-		return "none"
-	case "minimal":
-		return "minimal"
-	case "low":
-		return "low"
-	case "medium":
-		return "medium"
-	case "high":
-		return "high"
-	case "xhigh":
-		return "xhigh"
-	case "max":
-		return "max"
-	case "ultra":
-		return "ultra"
-	default:
-		return ""
-	}
+	return normalizeCapabilityValue(effort)
 }
 
-// NormalizeServiceTier maps codex service_tier values we expose (default,
-// priority, fast). "" = Auto (omit the flag). Unknown values collapse to "".
+// NormalizeServiceTier keeps future provider tiers usable without requiring a
+// frontend/backend release for every catalog addition. "" means Auto.
 func NormalizeServiceTier(tier string) string {
-	switch strings.ToLower(strings.TrimSpace(tier)) {
-	case "default":
-		return "default"
-	case "priority":
-		return "priority"
-	case "fast":
-		return "fast"
-	default:
+	return normalizeCapabilityValue(tier)
+}
+
+func normalizeCapabilityValue(value string) string {
+	value = strings.TrimSpace(value)
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.' {
+			continue
+		}
 		return ""
 	}
+	return value
 }
 
 func NormalizeSelectedSkills(skills []SkillRef, fallbackProvider Provider) []SkillRef {

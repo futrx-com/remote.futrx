@@ -26,7 +26,7 @@ export function FileManagerDrawer({
   return (
     <aside
       id="workspace-files-pane"
-      class={`workspace-pane workspace-files-pane relative z-20 h-full flex-none overflow-hidden bg-[#101318] border-l border-white/10 shadow-2xl
+      class={`workspace-pane workspace-files-pane relative z-20 h-full flex-none overflow-hidden bg-surface border-l border-line shadow-2xl
               transition-[width,opacity] duration-200 ease-out ${open ? "opacity-100" : "opacity-0 border-l-0 pointer-events-none"}`}
       aria-hidden={!open}
       aria-label="Files"
@@ -34,8 +34,8 @@ export function FileManagerDrawer({
       <div
         class={`h-full min-h-0 w-full flex flex-col transition-transform duration-200 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <header class="workspace-pane-header codex-header flex-none bg-[#191a1f] border-b border-white/10 px-3 md:px-4 pb-2.5 flex items-center gap-2">
-          <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+        <header class="workspace-pane-header codex-header flex-none bg-surface border-b border-line px-3 md:px-4 pb-2.5 flex items-center gap-2">
+          <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
             <Folder class="w-4 h-4 text-accent-blue" />
           </div>
           <div class="min-w-0 flex-1">
@@ -46,7 +46,7 @@ export function FileManagerDrawer({
             type="button"
             onClick={() => void files.reset()}
             disabled={files.rootLoading}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center disabled:cursor-wait"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:cursor-wait"
             title="Refresh"
             aria-label="Refresh files"
           >
@@ -55,7 +55,7 @@ export function FileManagerDrawer({
           <button
             type="button"
             onClick={onClose}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
             title="Close files"
             aria-label="Close files"
             data-workspace-pane-close
@@ -64,7 +64,7 @@ export function FileManagerDrawer({
           </button>
         </header>
 
-        <div class="flex-none px-3 md:px-4 py-2 border-b border-white/[0.06]">
+        <div class="flex-none px-3 md:px-4 py-2 border-b border-line">
           <div class="relative">
             <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-400 pointer-events-none" />
             <input
@@ -72,7 +72,7 @@ export function FileManagerDrawer({
               value={files.query}
               onInput={(event) => files.setQuery((event.currentTarget as HTMLInputElement).value)}
               placeholder="Search all files..."
-              class="h-8 w-full bg-[#0b0d11] border border-white/10 rounded-md pl-8 pr-8 text-[13px] text-ink-100
+              class="h-8 w-full bg-inset border border-line rounded-md pl-8 pr-8 text-[13px] text-ink-100
                      placeholder:text-ink-500 focus:outline-none focus:border-accent-blue/60"
             />
             {(files.query || files.searching) && (
@@ -134,7 +134,7 @@ function BrowseView({
         </div>
       )}
       {anyTruncated && (
-        <div class="mb-3 text-[12px] text-amber-300/90 bg-amber-400/10 border border-amber-400/25 rounded-md px-3 py-2">
+        <div class="mb-3 text-[12px] text-accent-yellow bg-accent-yellow/[0.08] border border-accent-yellow/25 rounded-md px-3 py-2">
           A folder was large and its listing was truncated. Use search or download the folder as a zip to get everything.
         </div>
       )}
@@ -170,7 +170,7 @@ function SearchView({
         </div>
       )}
       {truncated && (
-        <div class="mb-3 text-[12px] text-amber-300/90 bg-amber-400/10 border border-amber-400/25 rounded-md px-3 py-2">
+        <div class="mb-3 text-[12px] text-accent-yellow bg-accent-yellow/[0.08] border border-accent-yellow/25 rounded-md px-3 py-2">
           Showing the first matches only — refine your search to narrow it down.
         </div>
       )}

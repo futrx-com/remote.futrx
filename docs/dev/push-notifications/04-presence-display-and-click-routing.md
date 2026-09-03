@@ -38,8 +38,9 @@ focused. It waits up to 400 milliseconds:
 - a matching chat suppresses the notification;
 - no matching response displays it.
 
-The worker favors an extra alert over silently losing one. It performs no
-offline caching.
+The worker favors an extra alert over silently losing one. Its only offline
+cache entry is the self-contained `/offline.html` navigation fallback; it does
+not cache the app shell, API responses, or project data.
 
 ## Notification display
 

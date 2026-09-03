@@ -14,6 +14,7 @@ SERVICE_NAME="remote.futrx.service"
 SERVICE_UNIT_PATH="/etc/systemd/system/$SERVICE_NAME"
 LEGACY_SERVICE_NAME="remote.futrx.dev.service"
 LEGACY_SERVICE_UNIT_PATH="/etc/systemd/system/$LEGACY_SERVICE_NAME"
+HOST_CLI_PROFILE_PATH="/etc/profile.d/remote-futrx-host-clis.sh"
 
 # shellcheck source=../lib/install-migration.sh
 . "$INFRA_DIR/lib/install-migration.sh"
@@ -21,6 +22,11 @@ LEGACY_SERVICE_UNIT_PATH="/etc/systemd/system/$LEGACY_SERVICE_NAME"
 . "$INFRA_DIR/lib/health-check.sh"
 
 # ───────────────── systemd unit ─────────────────
+log "Rendering $HOST_CLI_PROFILE_PATH"
+render_template "${INFRA_DIR}/templates/remote-futrx-host-clis.sh.tmpl" \
+                "$HOST_CLI_PROFILE_PATH"
+chmod 0644 "$HOST_CLI_PROFILE_PATH"
+
 log "Rendering $SERVICE_UNIT_PATH"
 render_template "${INFRA_DIR}/templates/remote.futrx.service.tmpl" \
                 "$SERVICE_UNIT_PATH"

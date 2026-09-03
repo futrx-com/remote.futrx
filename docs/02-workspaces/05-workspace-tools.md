@@ -8,7 +8,7 @@ host-control-plane view whose runs return to the same chat.
 
 ```mermaid
 flowchart TD
-    Chat["Project chat"] --> Terminal["Terminal overlay"]
+    Chat["Project chat"] --> Terminal["Resizable Terminal pane"]
     Chat --> Files["File manager"]
     Chat --> History["Git history"]
     Chat --> Browser["Browser drawer"]
@@ -92,7 +92,7 @@ restrictive content security policy.
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as xterm.js overlay
+    participant UI as xterm.js workspace pane
     participant WS as /ws/terminal
     participant Project as Project service
     participant LXD
@@ -109,7 +109,14 @@ sequenceDiagram
     Bash-->>UI: Binary PTY output
 ```
 
-The terminal exists only for chats attached to a project. Each open overlay starts a new interactive `bash -l` process. Closing the socket kills that PTY process; it is not a persistent tmux session.
+The terminal exists only for chats attached to a project. Opening it starts one
+interactive `bash -l` process for that loaded chat. On desktop it is a
+resizable workspace pane beside the chat; its width is retained in browser
+`localStorage`. Terminal, Files, History, Schedules, and Browser panes are
+mutually exclusive. Hiding and reopening Terminal in the same loaded chat
+keeps the socket, shell, and unsubmitted input alive. Switching chats,
+reloading or closing the page, or losing the socket tears the PTY down; it is
+not a persistent tmux session.
 
 The backend also retains lower-level tmux session APIs and a `/ws` tmux PTY bridge. These are not used by the current main workspace UI, but chats can still carry a `tmuxSession` and resolve their working directory from it.
 

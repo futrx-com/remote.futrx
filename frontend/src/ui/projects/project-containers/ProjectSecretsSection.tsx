@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { ProjectSecret } from "../../../models/project";
-import type { SecretsRecord } from "../../../state/projects/projectContainerRecords";
+import type { SecretsRecord } from "../../../models/project";
+import { useConfirm } from "../../../state/context/ConfirmContext";
 import { AlertCircle, X } from "../../primitives/icons";
 import { Empty, Loading } from "./ProjectContainerPrimitives";
 import {
@@ -70,13 +71,13 @@ function SecretEditor({
   };
 
   return (
-    <form onSubmit={submit} class="rounded-md border border-white/10 bg-white/[0.03] p-2.5 space-y-2">
+    <form onSubmit={submit} class="rounded-md border border-line bg-tint p-2.5 space-y-2">
       <div class="grid gap-2 sm:grid-cols-[1fr_2fr_auto] items-start">
         <input
           value={key}
           onInput={(event) => setKey((event.target as HTMLInputElement).value)}
           placeholder="KEY"
-          class="h-9 px-2.5 rounded border border-white/10 bg-black/30 text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
+          class="h-9 px-2.5 rounded border border-line bg-inset text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
         />
         <textarea
           value={value}
@@ -85,13 +86,13 @@ function SecretEditor({
           rows={1}
           spellcheck={false}
           autoComplete="off"
-          class="min-h-9 max-h-48 px-2.5 py-1.5 rounded border border-white/10 bg-black/30 text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50 resize-y leading-[1.45] overflow-y-auto"
+          class="min-h-9 max-h-48 px-2.5 py-1.5 rounded border border-line bg-inset text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50 resize-y leading-[1.45] overflow-y-auto"
           style={{ fieldSizing: "content" } as any}
         />
         <button
           type="submit"
           disabled={submitting}
-          class="h-9 px-3 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50"
+          class="btn btn-primary btn-sm text-[13px] font-medium disabled:opacity-50"
         >
           {submitting ? "Saving…" : "Add"}
         </button>
@@ -132,6 +133,7 @@ function SecretRow({
   onSave: (key: string, value: string) => Promise<void>;
   onDelete: (key: string) => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const [editing, setEditing] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [draft, setDraft] = useState(secret.value);
@@ -152,7 +154,13 @@ function SecretRow({
   };
 
   const remove = async () => {
-    if (!confirm(`Delete secret ${secret.key}?`)) return;
+    const confirmed = await confirm({
+      title: "Delete secret",
+      description: "This action cannot be undone.",
+      message: `${secret.key} will be removed from this project's environment.`,
+      confirmLabel: "Delete secret",
+    });
+    if (!confirmed) return;
     setBusy(true);
     try {
       await onDelete(secret.key);
@@ -164,7 +172,7 @@ function SecretRow({
   };
 
   return (
-    <div class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
+    <div class="rounded-md border border-line bg-tint px-3 py-2 space-y-1">
       <div class="flex items-center gap-2 min-w-0">
         <span class="font-mono text-[12.5px] text-ink-50 truncate">{secret.key}</span>
         <span class="text-[11px] text-ink-400 ml-auto whitespace-nowrap">
@@ -178,13 +186,13 @@ function SecretRow({
             onInput={(event) => setDraft((event.target as HTMLTextAreaElement).value)}
             rows={1}
             spellcheck={false}
-            class="flex-1 min-h-8 max-h-48 px-2 py-1 rounded border border-white/10 bg-black/30 text-[12.5px] font-mono text-ink-50 focus:outline-none focus:border-accent-blue/50 resize-y leading-[1.45] overflow-y-auto"
+            class="flex-1 min-h-8 max-h-48 px-2 py-1 rounded border border-line bg-inset text-[12.5px] font-mono text-ink-50 focus:outline-none focus:border-accent-blue/50 resize-y leading-[1.45] overflow-y-auto"
             style={{ fieldSizing: "content" } as any}
           />
           <button
             type="button"
             onClick={() => setRevealed(!revealed)}
-            class="h-8 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-white/[0.08]"
+            class="h-8 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-tint-strong"
           >
             {revealed ? "hide" : "show"}
           </button>
@@ -192,7 +200,7 @@ function SecretRow({
             type="button"
             onClick={save}
             disabled={busy}
-            class="h-8 px-2.5 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[12px] font-medium disabled:opacity-50"
+            class="btn btn-primary btn-sm text-[12px] font-medium disabled:opacity-50"
           >
             Save
           </button>
@@ -203,7 +211,7 @@ function SecretRow({
               setDraft(secret.value);
               setErr(null);
             }}
-            class="h-8 px-2 rounded text-[12px] text-ink-300 hover:text-ink-100 hover:bg-white/[0.08]"
+            class="h-8 px-2 rounded text-[12px] text-ink-300 hover:text-ink-100 hover:bg-tint-strong"
           >
             Cancel
           </button>
@@ -220,14 +228,14 @@ function SecretRow({
           <button
             type="button"
             onClick={() => setRevealed(!revealed)}
-            class="h-7 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-white/[0.08]"
+            class="h-7 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-tint-strong"
           >
             {revealed ? "hide" : "show"}
           </button>
           <button
             type="button"
             onClick={() => setEditing(true)}
-            class="h-7 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-white/[0.08]"
+            class="h-7 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-tint-strong"
           >
             edit
           </button>
@@ -235,7 +243,7 @@ function SecretRow({
             type="button"
             onClick={remove}
             disabled={busy}
-            class="h-7 w-7 rounded text-ink-300 hover:text-accent-red hover:bg-white/[0.08] grid place-items-center disabled:opacity-50"
+            class="h-7 w-7 rounded text-ink-300 hover:text-accent-red hover:bg-tint-strong grid place-items-center disabled:opacity-50"
             aria-label="Delete"
             title="Delete"
           >

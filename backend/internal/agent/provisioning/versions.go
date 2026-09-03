@@ -40,10 +40,16 @@ func MustCLIVersion(key string) string {
 	if !ok {
 		panic("missing " + key + " in versions.env")
 	}
-	if !semanticVersionPattern.MatchString(value) {
+	if !ValidCLIVersion(value) {
 		panic("invalid " + key + " in versions.env")
 	}
 	return value
+}
+
+// ValidCLIVersion reports whether a provider pin uses the strict semver shape
+// supported by shared host and container version checks.
+func ValidCLIVersion(value string) bool {
+	return semanticVersionPattern.MatchString(value)
 }
 
 // MustPin returns any pinned value from the manifest (versions that are not

@@ -1,6 +1,6 @@
-import { sendHttpRequest } from "../transport/http";
+import { sendHttpRequest } from "../transport/http.ts";
 import type { HttpMethod } from "../types/transport";
-import { API_RESPONSE_STATUS } from "../config/api";
+import { API_RESPONSE_STATUS } from "../config/api.ts";
 
 export async function requestJson<T>(
   method: HttpMethod,

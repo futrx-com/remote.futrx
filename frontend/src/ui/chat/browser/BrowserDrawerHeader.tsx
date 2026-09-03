@@ -45,8 +45,8 @@ export function BrowserDrawerHeader({
   onClose: () => void;
 }) {
   return (
-    <header class="workspace-pane-header codex-header flex flex-none flex-wrap items-center gap-2 border-b border-white/10 bg-[#191a1f] px-3 pb-2.5 md:flex-nowrap md:px-4">
-      <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <header class="workspace-pane-header codex-header flex flex-none flex-wrap items-center gap-2 border-b border-line bg-surface px-3 pb-2.5 md:flex-nowrap md:px-4">
+      <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
         <Monitor class="w-4 h-4 text-accent-blue" />
       </div>
       <div class="min-w-0 flex-1">
@@ -75,7 +75,7 @@ export function BrowserDrawerHeader({
             title={url || "Pick a running app"}
           >
             {apps.map((app) => (
-              <option key={app.port} value={app.port} class="bg-[#191a1f] text-ink-100">
+              <option key={app.port} value={app.port} class="bg-surface text-ink-100">
                 {appLabel(app)}
               </option>
             ))}
@@ -98,7 +98,7 @@ export function BrowserDrawerHeader({
           class={`h-9 w-9 flex-none rounded-md border grid place-items-center
                   ${guiMode
                     ? "bg-accent-blue/[0.18] border-accent-blue/35 text-accent-blue"
-                    : "bg-white/5 hover:bg-white/[0.09] border-white/10 text-ink-200"}`}
+                    : "bg-tint hover:bg-tint-strong border-line text-ink-200"}`}
           title="Agent browser — log into a site and let the agent drive it"
           aria-label="Toggle agent browser"
           aria-pressed={guiMode}
@@ -111,7 +111,7 @@ export function BrowserDrawerHeader({
             type="button"
             onClick={onStopGui}
             disabled={guiStatus !== "ready"}
-            class="h-9 w-9 flex-none rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center disabled:opacity-50 disabled:cursor-not-allowed"
+            class="h-9 w-9 flex-none rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:opacity-50 disabled:cursor-not-allowed"
             title="Stop the agent browser"
             aria-label="Stop the agent browser"
           >
@@ -127,7 +127,7 @@ export function BrowserDrawerHeader({
             class={`h-9 w-9 flex-none rounded-md border grid place-items-center disabled:opacity-50 disabled:cursor-not-allowed
                     ${inspectMode
                       ? "bg-accent-blue/[0.18] border-accent-blue/35 text-accent-blue"
-                      : "bg-white/5 hover:bg-white/[0.09] border-white/10 text-ink-200"}`}
+                      : "bg-tint hover:bg-tint-strong border-line text-ink-200"}`}
             title="Inspect element"
             aria-label="Inspect element"
             aria-pressed={inspectMode}
@@ -140,7 +140,7 @@ export function BrowserDrawerHeader({
           type="button"
           onClick={onRefresh}
           disabled={guiMode ? guiStatus !== "ready" : appsLoading}
-          class="h-9 w-9 flex-none rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center disabled:opacity-50 disabled:cursor-wait"
+          class="h-9 w-9 flex-none rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:opacity-50 disabled:cursor-wait"
           title={guiMode ? "Reload the agent browser" : "Refresh apps and reload preview"}
           aria-label={guiMode ? "Reload the agent browser" : "Refresh apps and reload preview"}
         >
@@ -153,8 +153,8 @@ export function BrowserDrawerHeader({
             target="_blank"
             rel="noopener noreferrer"
             aria-disabled={!canLoad}
-            class={`h-9 w-9 flex-none rounded-md bg-white/5 border border-white/10 text-ink-200 grid place-items-center
-                    ${canLoad ? "hover:bg-white/[0.09]" : "opacity-50 cursor-not-allowed pointer-events-none"}`}
+            class={`h-9 w-9 flex-none rounded-md bg-tint border border-line text-ink-200 grid place-items-center
+                    ${canLoad ? "hover:bg-tint-strong" : "opacity-50 cursor-not-allowed pointer-events-none"}`}
             title="Open in new tab"
             aria-label="Open browser in new tab"
           >
@@ -166,7 +166,7 @@ export function BrowserDrawerHeader({
       <button
         type="button"
         onClick={onClose}
-        class="order-3 h-9 w-9 flex-none rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center md:order-none"
+        class="order-3 h-9 w-9 flex-none rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center md:order-none"
         title="Close browser"
         aria-label="Close browser"
         data-workspace-pane-close

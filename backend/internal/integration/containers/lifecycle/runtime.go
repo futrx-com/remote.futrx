@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	launchTimeout  = 90 * time.Second
+	// TODO: We will need to investigate how to hook into a callback instead of increasing the timeout
+	launchTimeout  = 10 * time.Minute
 	migrateTimeout = 5 * time.Minute
 	startTimeout   = 30 * time.Second
 	stopTimeout    = 30 * time.Second

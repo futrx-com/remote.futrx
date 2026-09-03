@@ -66,7 +66,7 @@ code.${HOSTNAME} {
                 }
                 # Strip the platform admin-session cookies before entering the
                 # container (forward_auth already validated on loopback).
-                header_up Cookie `(?:^|;\s*)(?:remote_session|remote_oauth_state|return_to)=[^;]*` ""
+                header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
             }
         }
         # Bare /<slug> -> add trailing slash so code-server's relative URLs resolve.
@@ -108,7 +108,7 @@ code.${HOSTNAME} {
             # forward_auth above already validated the session on loopback, and
             # in-container code must never see a token replayable against
             # code.${HOSTNAME}.
-            header_up Cookie `(?:^|;\s*)(?:remote_session|remote_oauth_state|return_to)=[^;]*` ""
+            header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
         }
     }
     respond "Use <slug>.code.${HOSTNAME}" 400
@@ -147,7 +147,7 @@ code.${HOSTNAME} {
             # dev server from harvesting the admin session token (which would
             # otherwise be replayable against code.${HOSTNAME} for host root).
             # The app's own cookies pass through untouched.
-            header_up Cookie `(?:^|;\s*)(?:remote_session|remote_oauth_state|return_to)=[^;]*` ""
+            header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
         }
     }
     respond "Use <slug>--<port>.dev.${HOSTNAME} (e.g. myproj--3000.dev.${HOSTNAME})" 400

@@ -30,9 +30,9 @@ export function NotificationSettings({ push }: { push: PushNotifications }) {
   const enabled = push.status === "on";
 
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 flex items-start gap-3 border-b border-white/[0.06]">
-        <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="overflow-hidden rounded-card border border-line bg-surface">
+      <header class="px-4 py-3 flex items-start gap-3 border-b border-line">
+        <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
           {enabled ? (
             <Bell class="w-4 h-4 text-accent-blue" />
           ) : (
@@ -52,7 +52,7 @@ export function NotificationSettings({ push }: { push: PushNotifications }) {
 
       <div class="p-4 space-y-4">
         {push.status === "blocked" && push.blocker ? (
-          <div class="rounded-lg border border-white/10 bg-white/[0.03] p-3 flex items-start gap-3">
+          <div class="rounded-lg border border-line bg-tint p-3 flex items-start gap-3">
             <Smartphone class="w-4 h-4 mt-0.5 flex-none text-ink-300" />
             <div class="min-w-0">
               <div class="text-[13px] text-ink-100">{blockerCopy[push.blocker].title}</div>
@@ -86,8 +86,8 @@ export function NotificationSettings({ push }: { push: PushNotifications }) {
                 class={`h-9 px-3.5 rounded-md text-[13px] font-medium transition inline-flex items-center gap-2
                         disabled:opacity-60 disabled:cursor-wait ${
                           enabled
-                            ? "border border-white/10 text-ink-100 hover:bg-white/[0.07]"
-                            : "bg-accent-blue text-white hover:brightness-110"
+                            ? "border border-line text-ink-100 hover:bg-tint-strong"
+                            : "bg-accent-blue text-on-accent hover:brightness-110"
                         }`}
               >
                 {enabled ? <BellOff class="w-3.5 h-3.5" /> : <Bell class="w-3.5 h-3.5" />}
@@ -99,8 +99,8 @@ export function NotificationSettings({ push }: { push: PushNotifications }) {
                   type="button"
                   disabled={push.testing}
                   onClick={() => void push.sendTest()}
-                  class="h-9 px-3.5 rounded-md text-[13px] border border-white/10 text-ink-200
-                         hover:text-ink-50 hover:bg-white/[0.07] transition
+                  class="h-9 px-3.5 rounded-md text-[13px] border border-line text-ink-200
+                         hover:text-ink-50 hover:bg-tint-strong transition
                          disabled:opacity-60 disabled:cursor-wait"
                 >
                   {push.testing ? "Sending" : "Send a test"}

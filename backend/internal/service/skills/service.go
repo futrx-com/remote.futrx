@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 const skillFileName = "SKILL.md"
@@ -18,6 +21,27 @@ type Service struct {
 	agentsHome string
 	claudeHome string
 	codexHome  string
+	providers  ProviderCatalog
+}
+
+type ProviderCatalog interface {
+	HasProvider(provider string) bool
+	Descriptor(provider string) (agentmodule.Descriptor, bool)
+	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	LegacySkillRoots(provider string) []string
+	WorkspaceSkillHome(provider string) string
+}
+
+type defaultProviderCatalog interface {
+	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+}
+
+type Option func(*Service)
+
+func WithProviderCatalog(providers ProviderCatalog) Option {
+	return func(service *Service) {
+		service.providers = providers
+	}
 }
 
 type rootSpec struct {
@@ -25,27 +49,45 @@ type rootSpec struct {
 	source string
 }
 
-func New() *Service {
-	return NewWithSkillHomes(defaultAgentsHome(), defaultClaudeHome(), defaultCodexHome())
+func New(options ...Option) *Service {
+	return NewWithSkillHomes(defaultAgentsHome(), defaultClaudeHome(), defaultCodexHome(), options...)
 }
 
-func NewWithHomes(claudeHome, codexHome string) *Service {
-	return NewWithSkillHomes("", claudeHome, codexHome)
+func NewWithHomes(claudeHome, codexHome string, options ...Option) *Service {
+	return NewWithSkillHomes("", claudeHome, codexHome, options...)
 }
 
-func NewWithSkillHomes(agentsHome, claudeHome, codexHome string) *Service {
-	return &Service{
+func NewWithSkillHomes(agentsHome, claudeHome, codexHome string, options ...Option) *Service {
+	service := &Service{
 		agentsHome: agentsHome,
 		claudeHome: claudeHome,
 		codexHome:  codexHome,
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace string) ([]Skill, error) {
-	switch provider {
-	case ProviderClaude, ProviderCodex, ProviderKimi, ProviderAntigravity:
-	default:
+	if !agent.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
 		return nil, ErrInvalidProvider
+	}
+	descriptor := agentmodule.Descriptor{}
+	if s.providers != nil {
+		descriptor, _ = s.providers.Descriptor(string(provider))
+		scope := agentmodule.ScopeHost
+		if projectWorkspace != "" {
+			scope = agentmodule.ScopeProject
+		}
+		if !s.providers.SupportsScope(string(provider), scope) {
+			return nil, ErrInvalidProvider
+		}
+		if descriptor.Features.Skills == agentmodule.SkillsNone {
+			return []Skill{}, nil
+		}
 	}
 
 	var skills []Skill
@@ -57,12 +99,13 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	// .agents/skills is the project source of truth. The provider-specific
 	// paths are legacy compatibility fallbacks and are deduped below.
 	if projectWorkspace != "" {
-		for _, root := range projectRoots(projectWorkspace) {
+		for _, root := range s.projectRoots(projectWorkspace, string(provider)) {
 			if err := collectSkills(ctx, provider, root, &skills); err != nil {
 				return nil, err
 			}
 		}
-		if !hasSkillCommand(skills, "scheduled-tasks") {
+		scheduledTools := s.providers == nil || descriptor.Features.ScheduledTools
+		if scheduledTools && !hasSkillCommand(skills, "scheduled-tasks") {
 			skills = append(skills, Skill{
 				Name:        "Scheduled Tasks",
 				Command:     "scheduled-tasks",
@@ -88,6 +131,15 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	return skills, nil
 }
 
+func (s *Service) DefaultProvider(scope agentmodule.ExecutionScope) Provider {
+	if providers, ok := s.providers.(defaultProviderCatalog); ok {
+		if provider := providers.DefaultProvider(scope); provider != "" {
+			return provider
+		}
+	}
+	return ProviderCodex
+}
+
 func hasSkillCommand(skills []Skill, command string) bool {
 	command = strings.ToLower(strings.TrimSpace(command))
 	for _, skill := range skills {
@@ -106,24 +158,42 @@ func (s *Service) roots(provider Provider) []rootSpec {
 	if s.agentsHome != "" {
 		roots = append(roots, rootSpec{path: filepath.Join(s.agentsHome, "skills"), source: "user"})
 	}
-	switch provider {
-	case ProviderClaude:
-		return append(roots, rootSpec{path: filepath.Join(s.claudeHome, "skills"), source: "user"})
-	case ProviderCodex:
-		return append(roots, rootSpec{path: filepath.Join(s.codexHome, "skills"), source: "user"})
-	case ProviderKimi, ProviderAntigravity:
+	if s.providers != nil {
+		for _, path := range s.providers.LegacySkillRoots(string(provider)) {
+			roots = append(roots, rootSpec{path: path, source: "user"})
+		}
 		return roots
-	default:
-		return nil
 	}
+	legacyRoots := map[Provider]string{
+		ProviderClaude: filepath.Join(s.claudeHome, "skills"),
+		ProviderCodex:  filepath.Join(s.codexHome, "skills"),
+	}
+	if path := legacyRoots[provider]; path != "" {
+		roots = append(roots, rootSpec{path: path, source: "user"})
+	}
+	return roots
 }
 
-func projectRoots(projectWorkspace string) []rootSpec {
-	return []rootSpec{
-		{path: filepath.Join(projectWorkspace, ".agents", "skills"), source: "project"},
-		{path: filepath.Join(projectWorkspace, ".claude", "skills"), source: "project"},
-		{path: filepath.Join(projectWorkspace, ".codex", "skills"), source: "project"},
+func (s *Service) projectRoots(projectWorkspace, provider string) []rootSpec {
+	roots := []rootSpec{{path: filepath.Join(projectWorkspace, ".agents", "skills"), source: "project"}}
+	if s.providers == nil {
+		return append(roots,
+			rootSpec{path: filepath.Join(projectWorkspace, ".claude", "skills"), source: "project"},
+			rootSpec{path: filepath.Join(projectWorkspace, ".codex", "skills"), source: "project"},
+		)
 	}
+	configuredHome := s.providers.WorkspaceSkillHome(provider)
+	if configuredHome == "" {
+		return roots
+	}
+	workspaceHome := filepath.Clean(configuredHome)
+	relative, err := filepath.Rel("/workspace", workspaceHome)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return roots
+	}
+	return append(roots, rootSpec{
+		path: filepath.Join(projectWorkspace, relative, "skills"), source: "project",
+	})
 }
 
 func dedupeSkills(skills []Skill) []Skill {

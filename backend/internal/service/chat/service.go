@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 type Service struct {
@@ -13,6 +16,23 @@ type Service struct {
 	projects     ProjectResolver
 	tmux         TmuxResolver
 	runs         RunController
+	sessions     SessionPolicy
+	providers    ProviderPolicy
+}
+
+// SessionPolicy supplies provider-native behavior from the agent module
+// catalog without coupling chat orchestration to concrete adapters.
+type SessionPolicy interface {
+	SupportsNativeFork(provider string) bool
+}
+
+type ProviderPolicy interface {
+	HasProvider(provider string) bool
+	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+}
+
+type defaultProviderPolicy interface {
+	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
 }
 
 // Option configures an optional chat-service collaborator.
@@ -23,6 +43,18 @@ type Option func(*Service)
 func WithCopiedEventAppender(appender CopiedEventAppender) Option {
 	return func(service *Service) {
 		service.copiedEvents = appender
+	}
+}
+
+func WithSessionPolicy(policy SessionPolicy) Option {
+	return func(service *Service) {
+		service.sessions = policy
+	}
+}
+
+func WithProviderPolicy(policy ProviderPolicy) Option {
+	return func(service *Service) {
+		service.providers = policy
 	}
 }
 
@@ -75,9 +107,12 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 
 	mode := in.Mode
 	if mode == "" {
-		mode = "code"
+		mode = "default"
 	}
-	provider := NormalizeProvider(in.Provider)
+	provider, ok := s.providerForScope(in.Provider, in.ProjectID)
+	if !ok {
+		return Meta{}, ErrInvalidProvider
+	}
 
 	cwd := strings.TrimSpace(in.Cwd)
 	if cwd == "" && in.ProjectID != "" && s.projects != nil {
@@ -117,8 +152,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 
 // Fork creates an independent copy of a chat from its latest state: same
 // metadata and full visible history, plus a pending fork of the underlying
-// agent session. The fork materializes on the next prompt — Claude via
-// --fork-session, Codex via a copied rollout — so the parent is never mutated.
+// agent session. The fork materializes on the next prompt through each
+// provider's native fork mechanism, so the parent is never mutated.
 func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
@@ -126,6 +161,9 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Meta{}, err
+	}
+	if !s.validProviderScope(src.Provider, src.ProjectID) {
+		return Meta{}, ErrInvalidProvider
 	}
 	events, err := s.repo.ReadEvents(ctx, id)
 	if err != nil {
@@ -140,14 +178,16 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	// Only pend a fork if there is a session to fork from; otherwise the copy
 	// just starts fresh on first prompt. TmuxSession is intentionally not
 	// copied — a fork must not hijack the parent's terminal.
-	forkPending := src.ClaudeSessionID != "" || src.CodexSessionID != "" || src.KimiSessionID != ""
-
-	forked, err := s.repo.Create(ctx, Meta{
+	sessions := src.SessionSnapshot()
+	nativeFork := s.sessions != nil && s.sessions.SupportsNativeFork(string(src.Provider))
+	forkPending := nativeFork && src.SessionID(src.Provider) != ""
+	if !nativeFork {
+		delete(sessions, src.Provider)
+	}
+	forkMeta := Meta{
 		Title:           title + " (fork)",
 		Provider:        src.Provider,
-		ClaudeSessionID: src.ClaudeSessionID,
-		CodexSessionID:  src.CodexSessionID,
-		KimiSessionID:   src.KimiSessionID,
+		Sessions:        sessions,
 		Cwd:             src.Cwd,
 		Model:           src.Model,
 		Mode:            src.Mode,
@@ -156,7 +196,9 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 		ProjectID:       src.ProjectID,
 		SelectedSkills:  src.SelectedSkills,
 		ForkPending:     forkPending,
-	})
+	}
+	forkMeta.NormalizeSessions()
+	forked, err := s.repo.Create(ctx, forkMeta)
 	if err != nil {
 		return Meta{}, err
 	}
@@ -185,6 +227,19 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		return Meta{}, ErrInvalidID
 	}
 
+	var nextProvider Provider
+	if in.Provider != nil {
+		current, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return Meta{}, err
+		}
+		var valid bool
+		nextProvider, valid = s.providerForScope(*in.Provider, current.ProjectID)
+		if !valid {
+			return Meta{}, ErrInvalidProvider
+		}
+	}
+
 	meta, err := s.repo.Update(ctx, id, func(m *Meta) {
 		if in.Title != nil {
 			m.Title = strings.TrimSpace(*in.Title)
@@ -193,7 +248,6 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 			m.Cwd = *in.Cwd
 		}
 		if in.Provider != nil {
-			nextProvider := NormalizeProvider(*in.Provider)
 			if nextProvider != m.Provider {
 				m.SelectedSkills = nil
 			}
@@ -219,6 +273,38 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		return Meta{}, err
 	}
 	return s.withRunning(meta), nil
+}
+
+func (s *Service) validProviderScope(provider Provider, projectID ProjectID) bool {
+	if s.providers == nil {
+		return true
+	}
+	if !s.providers.HasProvider(string(provider)) {
+		return false
+	}
+	scope := agentmodule.ScopeHost
+	if projectID != "" {
+		scope = agentmodule.ScopeProject
+	}
+	return s.providers.SupportsScope(string(provider), scope)
+}
+
+func (s *Service) providerForScope(input Provider, projectID ProjectID) (Provider, bool) {
+	scope := agentmodule.ScopeHost
+	if projectID != "" {
+		scope = agentmodule.ScopeProject
+	}
+	normalized := agent.NormalizeProviderID(string(input))
+	if normalized == "" {
+		normalized = ProviderCodex
+		if defaults, ok := s.providers.(defaultProviderPolicy); ok {
+			normalized = defaults.DefaultProvider(scope)
+		}
+	}
+	if !agent.ValidProviderID(normalized) || !s.validProviderScope(normalized, projectID) {
+		return "", false
+	}
+	return normalized, true
 }
 
 func (s *Service) MarkRead(ctx context.Context, id ID) (Meta, error) {

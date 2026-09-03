@@ -43,13 +43,18 @@ if [ -n "$previous" ] && [ "${previous%.*}" = "$current_train" ]; then
         infra/lib \
         infra/templates \
         infra/launcher \
-        infra/versions.env \
-        backend/internal/agent/provisioning \
-        backend/internal/agent/antigravity/profile.go \
-        backend/internal/agent/claude/assets \
-        backend/internal/agent/claude/profile.go \
-        backend/internal/agent/codex/provisioning.go \
-        backend/internal/agent/kimi/profile.go \
+		infra/versions.env \
+		backend/internal/agent/provisioning \
+		':(glob)backend/internal/integration/agents/*/assets/**' \
+		':(glob)backend/internal/integration/agents/*/factory*.go' \
+		':(glob)backend/internal/integration/agents/*/profile*.go' \
+		':(glob)backend/internal/integration/agents/*/install*.go' \
+		':(glob)backend/internal/integration/agents/*/provisioning*.go' \
+        backend/internal/config/agents.go \
+        backend/internal/service/agent/module \
+        backend/cmd/install-host-agents \
+        backend/internal/integration/hostcli \
+        backend/internal/service/agent/hostcli \
         backend/internal/service/container/image)"
     if [ -n "$protected_changes" ]; then
         echo "patch release $tag changes infrastructure-managed paths:" >&2

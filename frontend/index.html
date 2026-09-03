@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#18191e" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#08090b" />
     <title>remote.futrx</title>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon-192.png" type="image/png" />
@@ -14,8 +14,36 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="remote" />
+    <script>
+      // The appearance preference lives on the server, so restore the last
+      // known choice before first paint — otherwise every load flashes dark at
+      // light-theme users. The app overwrites this once settings arrive.
+      (function () {
+        try {
+          var choice = localStorage.getItem("remote.futrx.theme") || "system";
+          var resolved =
+            choice === "light" || choice === "dark"
+              ? choice
+              : matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+          var root = document.documentElement;
+          root.dataset.theme = resolved;
+          root.dataset.themeChoice = choice;
+          root.classList.add(resolved);
+          root.style.colorScheme = resolved;
+          if (resolved === "light") {
+            document
+              .querySelector('meta[name="theme-color"]')
+              .setAttribute("content", "#dfe2e7");
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-ink-800 text-ink-100 antialiased">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

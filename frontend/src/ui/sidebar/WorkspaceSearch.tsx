@@ -10,13 +10,14 @@ export function WorkspaceSearch({
   onClear: () => void;
 }) {
   return (
-    <label class="mt-3 flex items-center gap-2 h-10 rounded-md bg-[#0b0d11] border border-white/10 px-3 focus-within:border-accent-blue/70 transition-colors">
-      <Search class="w-4 h-4 text-ink-300 flex-none" />
+    <label class="mt-2 flex h-8 items-center gap-2 rounded-control bg-tint px-2.5 transition-colors
+                  focus-within:bg-inset focus-within:ring-1 focus-within:ring-accent-blue/50">
+      <Search class="h-3.5 w-3.5 flex-none text-ink-400" />
       <input
         value={query}
         onInput={(event) => onQueryChange((event.currentTarget as HTMLInputElement).value)}
-        placeholder="Search projects and chats"
-        class="min-w-0 flex-1 bg-transparent text-[14px] text-ink-100 placeholder:text-ink-300 focus:outline-none"
+        placeholder="Search"
+        class="min-w-0 flex-1 bg-transparent text-[13px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
         autocomplete="off"
         spellcheck={false}
       />
@@ -24,10 +25,10 @@ export function WorkspaceSearch({
         <button
           type="button"
           onClick={onClear}
-          class="w-7 h-7 grid place-items-center rounded text-ink-300 hover:bg-white/10 hover:text-ink-100"
+          class="grid h-5 w-5 flex-none place-items-center rounded text-ink-400 hover:bg-tint-strong hover:text-ink-100"
           aria-label="Clear search"
         >
-          <X class="w-3.5 h-3.5" />
+          <X class="h-3 w-3" />
         </button>
       )}
     </label>

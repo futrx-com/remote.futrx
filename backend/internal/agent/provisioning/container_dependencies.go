@@ -6,17 +6,29 @@ import (
 	"strings"
 )
 
-// CLIProvisioner is the provider-facing port for making an agent CLI
+// CLIProvisioner is the agent-execution port for making an agent CLI
 // available inside a project container.
 type CLIProvisioner interface {
 	Ensure(context.Context, string, CLISpec) error
 }
 
-// CredentialSynchronizer is the provider-facing port for moving agent
-// credentials into and out of a project container.
-type CredentialSynchronizer interface {
+// CredentialProvisioner is the shared-preparation port for seeding credentials
+// into a project container before an agent starts.
+type CredentialProvisioner interface {
 	Ensure(context.Context, string, CredentialSpec) error
+}
+
+// CredentialCollector is the provider-facing port for retaining credentials
+// that a successful project run may have refreshed inside its container.
+type CredentialCollector interface {
 	SyncFromContainer(context.Context, string, CredentialSpec) error
+}
+
+// CredentialSynchronizer combines the preparation and post-run roles for the
+// concrete adapter wired by config. Consumers depend on the narrower role.
+type CredentialSynchronizer interface {
+	CredentialProvisioner
+	CredentialCollector
 }
 
 // WorkspaceProvisioner publishes shared agent assets and workspace links.
@@ -44,8 +56,9 @@ type ContainerLifecycle interface {
 	EnsureBootAutostart(context.Context, string) error
 }
 
-// ContainerDependencies groups the focused container ports used by agent
-// providers. A zero value disables container preparation for host-only runs.
+// ContainerDependencies groups the focused ports used by shared agent project
+// preparation. A zero value lets focused/test composition reconcile a project
+// while skipping the container-provisioning phase.
 type ContainerDependencies struct {
 	CLI           CLIProvisioner
 	Credentials   CredentialSynchronizer
@@ -65,9 +78,9 @@ func (d ContainerDependencies) IsZero() bool {
 		d.Lifecycle == nil
 }
 
-// Validate accepts either the zero value used by host-only providers or a
-// complete set of container ports. Partial wiring is rejected before an agent
-// preparation workflow can dereference a missing collaborator.
+// Validate accepts either that zero value or a complete set of container ports.
+// Partial wiring is rejected before a preparation workflow can dereference a
+// missing collaborator.
 func (d ContainerDependencies) Validate() error {
 	if d.IsZero() {
 		return nil

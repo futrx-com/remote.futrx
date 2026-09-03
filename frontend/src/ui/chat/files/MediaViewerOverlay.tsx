@@ -1,25 +1,21 @@
-import { useEffect, useState } from "preact/hooks";
-import {
-  mediaViewerState,
-  type MediaViewerItem,
-} from "../../../state/chat/mediaViewerState";
+import { useEffect } from "preact/hooks";
+import type { MediaViewerItem } from "../../../models/files";
+import { useMediaViewer } from "../../../state/hooks/chat/useMediaViewer";
 import { Download, ExternalLink, X } from "../../primitives/icons";
 
 // Full-screen host for the in-app media viewer. Mounted once per chat view;
-// renders whatever mediaViewerState currently holds.
+// renders whatever mediaViewerStore currently holds.
 export function MediaViewerOverlay() {
-  const [item, setItem] = useState<MediaViewerItem | null>(mediaViewerState.current);
-
-  useEffect(() => mediaViewerState.subscribe(setItem), []);
+  const { item, close } = useMediaViewer();
 
   useEffect(() => {
     if (!item) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") mediaViewerState.close();
+      if (event.key === "Escape") close();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item]);
+  }, [item, close]);
 
   if (!item) return null;
 
@@ -29,10 +25,10 @@ export function MediaViewerOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label={item.name}
-      onClick={() => mediaViewerState.close()}
+      onClick={() => close()}
     >
       <header
-        class="flex-none flex items-center gap-2 px-3 md:px-4 py-2.5 bg-[#101318]/90 border-b border-white/10"
+        class="flex-none flex items-center gap-2 px-3 md:px-4 py-2.5 bg-surface/90 border-b border-line"
         onClick={(event) => event.stopPropagation()}
       >
         <div class="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink-50" title={item.name}>
@@ -42,7 +38,7 @@ export function MediaViewerOverlay() {
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+          class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
           title="Open in new tab"
           aria-label="Open media in new tab"
         >
@@ -51,7 +47,7 @@ export function MediaViewerOverlay() {
         <a
           href={item.url}
           download={item.name}
-          class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+          class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
           title={`Download ${item.name}`}
           aria-label={`Download ${item.name}`}
         >
@@ -59,8 +55,8 @@ export function MediaViewerOverlay() {
         </a>
         <button
           type="button"
-          onClick={() => mediaViewerState.close()}
-          class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+          onClick={() => close()}
+          class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
           title="Close viewer"
           aria-label="Close media viewer"
         >
@@ -100,7 +96,7 @@ function MediaContent({ item }: { item: MediaViewerItem }) {
     case "audio":
       return (
         <div
-          class="w-[440px] max-w-[86vw] rounded-lg border border-white/10 bg-[#101318] p-4 shadow-2xl"
+          class="w-[440px] max-w-[86vw] rounded-lg border border-line bg-surface p-4 shadow-2xl"
           onClick={stop}
         >
           <div class="mb-3 truncate text-[13px] text-ink-100" title={item.name}>{item.name}</div>

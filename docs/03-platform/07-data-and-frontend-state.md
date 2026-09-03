@@ -29,10 +29,8 @@ The application does not use a database. Durable metadata is stored as JSON file
 └── agent-home/                         durable provider-owned state
     ├── codex/                           mounted at /root/.codex
     ├── claude/                          mounted at /root/.claude
-    └── kimi/                            mounted at /root/.kimi-code
-
-# Antigravity is different:
-# /root/.gemini/antigravity-cli lives in the replaceable container root.
+    ├── kimi/                            mounted at /root/.kimi-code
+    └── antigravity/                     mounted at /root/.gemini/antigravity-cli
 ```
 
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
@@ -129,8 +127,8 @@ Project metadata and workspaces are separate:
 - `data/projects/<id>/meta.json` stores identity, slug, container name, status, order, resource overrides, and timestamps.
 - `/var/lib/remote/projects/<slug>/workspace` stores durable project content.
 - `/var/lib/remote/projects/<slug>/agent-home/*` stores durable provider configuration, authentication, and session state.
-- Antigravity's `/root/.gemini/antigravity-cli` is not in that host tree and
-  does not survive container replacement.
+- `/var/lib/remote/projects/<slug>/agent-home/antigravity` stores durable
+  Antigravity state and is mounted at `/root/.gemini/antigravity-cli`.
 - Access and secrets use separate mode-`0600` files.
 - Metadata writes use a temporary file and rename where implemented.
 
@@ -167,12 +165,42 @@ flowchart TD
 | State | Lifetime |
 | --- | --- |
 | Authentication and user settings | Preact context; reloaded from HTTP after page reload |
+| Agent auth registry | Ordered `GET /api/agent-auth` snapshot in `AuthContext`, updated by one normalized WebSocket per managed provider |
 | Projects and chat summaries | Workspace WebSocket; server is authoritative |
 | Active view, selected chat, sidebar open state | In-memory reducer |
 | Chat events | Initial HTTP page plus reconnecting WebSocket updates |
 | Composer drafts and queued prompts | In-memory map mirrored to per-tab `sessionStorage`, keyed by chat ID |
+| Agent capability catalog | Last response in page memory, keyed by normalized user plus host/project scope; backend process memory owns TTL freshness |
+| Service-worker offline cache | Only the versioned, self-contained `/offline.html`; navigation and application data remain network-first |
 | Browser drawer width | Browser `localStorage` |
 | Answered interactive question state | Browser storage used by the question renderer |
+
+## Agent capability cache ownership
+
+Agent models and their dependent controls are runtime discovery data, not
+durable application records. The backend keeps one process-local entry for the
+host and one for each project ID plus current container name. Live,
+warning-free catalogs expire after 24 hours; a fallback or warning anywhere in
+the catalog reduces its TTL to 2 hours. Expiry is lazy, manual refresh replaces
+the entry, and a backend restart clears all entries. Overlapping requests for
+one scope share a single discovery operation.
+
+The frontend store holds the last response per normalized user and scope only
+in the current page. It leaves that response visible while requesting the
+backend and coalesces duplicate page-level requests, but it neither persists
+the catalog nor decides when backend data is fresh. A managed provider's
+authenticated flag changing, or a login reaching completed with a new start
+revision, requests refreshes for currently subscribed scopes; intermediate
+login-status changes do not. The sidebar's project **Start** action requests
+one for that project, while the Project workspaces lifecycle actions do not. A
+request already in flight remains coalesced. Terminal-driven changes such as
+Antigravity sign-in require the user to choose **Refresh models**.
+
+The capability payload also exposes immutable module metadata alongside live
+CLI discovery: execution scopes, authentication mode and instructions,
+resume/fork support, skill strategy, and browser/scheduled-tool feature flags.
+This metadata is decorated from the validated backend module catalog; it does
+not originate from provider CLI output.
 
 ## Workspace synchronization
 

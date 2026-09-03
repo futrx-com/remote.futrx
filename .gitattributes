@@ -1,0 +1,8 @@
+# Git for Windows checks out CRLF by default. These files are executed by bash
+# and read by systemd, Caddy, and systemd-resolved on the Linux QA and
+# production servers, where a trailing CR is a syntax error rather than
+# whitespace — so pin them to LF in every working tree.
+*.sh text eol=lf
+*.tmpl text eol=lf
+*.env text eol=lf
+*.env.example text eol=lf

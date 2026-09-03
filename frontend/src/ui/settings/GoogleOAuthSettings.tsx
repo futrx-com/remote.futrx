@@ -15,9 +15,9 @@ export function GoogleOAuthSettings() {
   } = useGoogleOAuthSettingsController();
 
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 flex items-start gap-3 border-b border-white/[0.06]">
-        <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface overflow-hidden">
+      <header class="px-4 py-3 flex items-start gap-3 border-b border-line">
+        <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
           <Key class="w-4 h-4 text-ink-200" />
         </div>
         <div class="flex-1 min-w-0">
@@ -40,9 +40,9 @@ export function GoogleOAuthSettings() {
       </header>
 
       <form onSubmit={save} class="p-3 space-y-3">
-        <div class="rounded-md border border-white/10 bg-white/[0.03] p-2.5 text-[12px] text-ink-300 leading-relaxed">
+        <div class="rounded-md border border-line bg-tint p-2.5 text-[12px] text-ink-300 leading-relaxed">
           Create an OAuth 2.0 <span class="text-ink-100">Web application</span> in Google Cloud and add this authorized redirect URI:
-          <code class="block mt-2 break-all rounded bg-black/30 border border-white/10 px-2.5 py-2 text-[11.5px] text-ink-100">
+          <code class="block mt-2 break-all rounded bg-inset border border-line px-2.5 py-2 text-[11.5px] text-ink-100">
             {settings?.redirectUrl || `${location.origin}/auth/google/callback`}
           </code>
           <a
@@ -63,7 +63,7 @@ export function GoogleOAuthSettings() {
             onInput={(event) => setClientId((event.currentTarget as HTMLInputElement).value)}
             autocomplete="off"
             spellcheck={false}
-            class="w-full h-10 rounded-md bg-black/30 border border-white/10 px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
+            class="w-full h-10 rounded-md bg-inset border border-line px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
           />
         </label>
         <label class="block space-y-1.5">
@@ -74,14 +74,14 @@ export function GoogleOAuthSettings() {
             onInput={(event) => setClientSecret((event.currentTarget as HTMLInputElement).value)}
             placeholder={settings?.configured ? "Enter a new secret to replace the current one" : "Client secret"}
             autocomplete="new-password"
-            class="w-full h-10 rounded-md bg-black/30 border border-white/10 px-3 text-sm text-ink-100 placeholder:text-ink-400 focus:outline-none focus:border-accent-blue"
+            class="w-full h-10 rounded-md bg-inset border border-line px-3 text-sm text-ink-100 placeholder:text-ink-400 focus:outline-none focus:border-accent-blue"
           />
         </label>
         {error && <div class="text-xs text-accent-red">{error}</div>}
         <button
           type="submit"
           disabled={saving || loading}
-          class="h-10 px-3 rounded-md bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
+          class="btn btn-primary disabled:opacity-50 inline-flex items-center gap-2"
         >
           {saving && <Loader class="w-3.5 h-3.5 animate-spin" />}
           {settings?.configured ? "Update Google sign-in" : "Save Google sign-in"}

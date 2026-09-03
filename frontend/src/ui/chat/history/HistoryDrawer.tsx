@@ -186,14 +186,14 @@ export function HistoryDrawer({
   return (
     <aside
       id="workspace-history-pane"
-      class={`workspace-pane workspace-history-pane relative z-20 h-full flex-none overflow-hidden bg-[#101318] border-l border-white/10 shadow-2xl
+      class={`workspace-pane workspace-history-pane relative z-20 h-full flex-none overflow-hidden bg-surface border-l border-line shadow-2xl
               transition-[width,opacity] duration-200 ease-out ${open ? "opacity-100" : "opacity-0 border-l-0 pointer-events-none"}`}
       aria-hidden={!open}
       aria-label="History"
     >
       <div class={`h-full min-h-0 w-full flex flex-col transition-transform duration-200 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}>
-        <header class="workspace-pane-header codex-header flex-none bg-[#191a1f] border-b border-white/10 px-3 md:px-4 pb-2.5 flex items-center gap-2">
-          <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+        <header class="workspace-pane-header codex-header flex-none bg-surface border-b border-line px-3 md:px-4 pb-2.5 flex items-center gap-2">
+          <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
             <Clock class="w-4 h-4 text-accent-blue" />
           </div>
           <div class="min-w-0 flex-1">
@@ -209,7 +209,7 @@ export function HistoryDrawer({
             type="button"
             onClick={() => void loadRepos(true)}
             disabled={reposLoading || checkoutLoading}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center disabled:cursor-wait"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:cursor-wait"
             title="Refresh history"
             aria-label="Refresh history"
           >
@@ -218,7 +218,7 @@ export function HistoryDrawer({
           <button
             type="button"
             onClick={onClose}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
             title="Close history"
             aria-label="Close history"
             data-workspace-pane-close
@@ -228,20 +228,20 @@ export function HistoryDrawer({
         </header>
 
         <div class="flex flex-1 min-h-0 flex-col md:grid md:grid-cols-[300px_minmax(0,1fr)]">
-          <section class="h-[42%] min-h-0 flex-none border-b border-white/10 flex flex-col bg-[#0f1217] md:h-auto md:border-b-0 md:border-r">
-            <div class="flex-none p-3 border-b border-white/10 space-y-2">
+          <section class="h-[42%] min-h-0 flex-none border-b border-line flex flex-col bg-inset md:h-auto md:border-b-0 md:border-r">
+            <div class="flex-none p-3 border-b border-line space-y-2">
               <select
                 value={selectedRepoId}
                 onChange={(event) => void selectRepo((event.currentTarget as HTMLSelectElement).value)}
                 disabled={reposLoading || repos.length === 0}
-                class="w-full h-9 bg-[#0b0d11] border border-white/10 rounded-md px-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+                class="w-full h-9 bg-inset border border-line rounded-md px-2 text-[13px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
                 title="Git repository"
               >
                 {repos.length === 0 ? (
                   <option value="">No repositories</option>
                 ) : (
                   repos.map((repo) => (
-                    <option key={repo.id} value={repo.id} class="bg-[#191a1f] text-ink-100">
+                    <option key={repo.id} value={repo.id} class="bg-surface text-ink-100">
                       {repoLabel(repo)}{repo.dirty ? " *" : ""}
                     </option>
                   ))
@@ -270,7 +270,7 @@ export function HistoryDrawer({
                     class={`w-full text-left rounded-md border px-2.5 py-2 transition-colors
                             ${commit.sha === selectedSha
                               ? "bg-accent-blue/[0.14] border-accent-blue/35 text-ink-50"
-                              : "bg-white/[0.03] hover:bg-white/[0.07] border-white/10 text-ink-100"}`}
+                              : "bg-tint hover:bg-tint-strong border-line text-ink-100"}`}
                     title={commit.sha}
                   >
                     <div class="flex items-center gap-2 min-w-0">
@@ -290,7 +290,7 @@ export function HistoryDrawer({
           </section>
 
           <section class="min-h-0 min-w-0 flex flex-col">
-            <div class="flex-none border-b border-white/10 px-3 py-2.5 flex items-center gap-2">
+            <div class="flex-none border-b border-line px-3 py-2.5 flex items-center gap-2">
               <div class="min-w-0 flex-1">
                 <div class="truncate text-[13px] font-medium text-ink-100">
                   {selectedCommit ? selectedCommit.subject || selectedCommit.shortSha : "Select a commit"}
@@ -303,7 +303,7 @@ export function HistoryDrawer({
                 type="button"
                 onClick={() => void switchToCommit()}
                 disabled={!canSwitch}
-                class="h-9 inline-flex items-center gap-2 px-3 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                class="h-9 inline-flex items-center gap-2 px-3 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Switch to selected commit"
               >
                 {checkoutLoading ? <Loader class="w-4 h-4 animate-spin" /> : <Check class="w-4 h-4" />}
@@ -312,12 +312,12 @@ export function HistoryDrawer({
             </div>
 
             {(error || checkoutMessage) && (
-              <div class={`flex-none border-b border-white/10 px-3 py-2 text-[12px] ${error ? "text-red-300 bg-red-500/10" : "text-accent-green bg-accent-green/10"}`}>
+              <div class={`flex-none border-b border-line px-3 py-2 text-[12px] ${error ? "text-accent-red bg-red-500/10" : "text-accent-green bg-accent-green/10"}`}>
                 {error || checkoutMessage}
               </div>
             )}
 
-            <div class="flex-1 min-h-0 min-w-0 overflow-auto touch-scroll bg-[#0b0d11]">
+            <div class="flex-1 min-h-0 min-w-0 overflow-auto touch-scroll bg-inset">
               {diffLoading ? (
                 <div class="h-full grid place-items-center text-ink-300 text-[13px]">Loading diff...</div>
               ) : diff ? (

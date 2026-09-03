@@ -83,6 +83,12 @@ func (s *DeviceService[S]) Status() S {
 	return build(s.deviceSnapshot())
 }
 
+// LoginState returns the provider-neutral device handshake state without the
+// provider-specific status wrapper used by compatibility routes.
+func (s *DeviceService[S]) LoginState() DeviceState {
+	return s.deviceSnapshot()
+}
+
 func (s *DeviceService[S]) Subscribe() (<-chan S, func()) {
 	ch := make(chan S, subscriptionBuffer)
 	s.mu.Lock()

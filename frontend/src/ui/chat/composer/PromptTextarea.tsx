@@ -50,12 +50,10 @@ export function PromptTextarea({
         "Ask anything, @ to add files, / for commands"
       }
       disabled={disconnected}
-      class="codex-composer-textarea flex-1 resize-none rounded-md
-             bg-transparent border-0 text-ink-100 placeholder:text-ink-300
-             focus:outline-none
-             px-2.5 py-2.5 text-[16px] sm:text-[14px] leading-normal
-             min-h-[40px] max-h-[220px]
-             disabled:opacity-60 transition-colors"
+      class="codex-composer-textarea w-full resize-none border-0 bg-transparent px-1.5 py-1.5
+             text-[16px] leading-relaxed text-ink-100 placeholder:text-ink-400
+             focus:outline-none disabled:opacity-60
+             min-h-[44px] max-h-[220px] sm:text-[14.5px]"
     />
   );
 }

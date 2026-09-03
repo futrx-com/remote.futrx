@@ -81,6 +81,29 @@ func TestAgentAuthSocketStreamsBroadcasts(t *testing.T) {
 	}
 }
 
+func TestAgentAuthSocketExposesNormalizedProviderStream(t *testing.T) {
+	bindings, _ := newSocketTestBindings()
+	mux := http.NewServeMux()
+	NewAgentAuthSocket(bindings).RegisterRoutes(mux, websocket.Upgrader{})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial(webSocketURL(server.URL, "/ws/agent-auth/codex"), nil)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, payload, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+	want := `{"authenticated":false,"login":{"active":false}}` + "\n"
+	if string(payload) != want {
+		t.Fatalf("normalized payload = %q, want %q", payload, want)
+	}
+}
+
 func TestAgentAuthSocketUnavailableRoutesKeepProviderError(t *testing.T) {
 	bindings := []agentauth.Binding{
 		agentauth.NewCodeBinding(agent.ProviderClaude, nil),

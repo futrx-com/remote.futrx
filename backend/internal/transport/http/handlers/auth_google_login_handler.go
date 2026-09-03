@@ -75,7 +75,7 @@ func (h *googleLoginHandler) callback(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	user, err := h.auth.LoginGoogle(ctx, code)
+	result, err := h.auth.CompleteGoogleLogin(ctx, code, localClientIP(r), r.UserAgent())
 	if err != nil {
 		var notInvited serviceauth.NotInvitedError
 		if errors.As(err, &notInvited) {
@@ -91,7 +91,13 @@ func (h *googleLoginHandler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setSessionCookie(w, h.auth, user)
+	if !result.Completed {
+		setPendingCookie(w, h.auth, result.PendingToken)
+		http.Redirect(w, r, h.auth.BaseURL()+"/?twoFactorRequired=1", http.StatusFound)
+		return
+	}
+
+	setSessionCookie(w, h.auth, result.CookieValue)
 
 	target := "/"
 	if cookie, err := r.Cookie(returnToCookieName); err == nil && isSafeReturnTo(cookie.Value, h.auth.BaseURL()) {

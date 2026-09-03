@@ -35,11 +35,11 @@ function FileCard({ file }: { file: DiffFile }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <section class="rounded-lg border border-white/10 bg-[#0f1217] overflow-hidden">
+    <section class="rounded-lg border border-line bg-inset overflow-hidden">
       <button
         type="button"
         onClick={() => setCollapsed((value) => !value)}
-        class="w-full flex items-center gap-2 px-3 py-2 bg-white/[0.04] hover:bg-white/[0.06] text-left"
+        class="w-full flex items-center gap-2 px-3 py-2 bg-tint hover:bg-tint text-left"
         title={collapsed ? "Expand file diff" : "Collapse file diff"}
       >
         <ChevronRight
@@ -50,7 +50,7 @@ function FileCard({ file }: { file: DiffFile }) {
         </span>
         {isNewFile(file) && <FileBadge label="new" tone="text-accent-green border-accent-green/40 bg-accent-green/10" />}
         {isDeletedFile(file) && <FileBadge label="deleted" tone="text-accent-red border-accent-red/40 bg-accent-red/10" />}
-        {file.binary && <FileBadge label="binary" tone="text-ink-300 border-white/15 bg-white/[0.06]" />}
+        {file.binary && <FileBadge label="binary" tone="text-ink-300 border-line-strong bg-tint" />}
         {file.additions > 0 && (
           <span class="flex-none text-[11.5px] font-mono text-accent-green">+{file.additions}</span>
         )}
@@ -71,7 +71,7 @@ function FileCard({ file }: { file: DiffFile }) {
                 {file.hunks.map((hunk, hunkIndex) => (
                   <>
                     <tr key={`h-${hunkIndex}`}>
-                      <td colSpan={3} class="px-3 py-1 bg-accent-blue/[0.08] text-accent-blue/90 text-[11.5px] whitespace-pre border-y border-white/[0.06]">
+                      <td colSpan={3} class="px-3 py-1 bg-accent-blue/[0.08] text-accent-blue/90 text-[11.5px] whitespace-pre border-y border-line">
                         {hunk.header}
                       </td>
                     </tr>
@@ -92,9 +92,9 @@ function FileCard({ file }: { file: DiffFile }) {
 function DiffRow({ line }: { line: DiffLine }) {
   const tone =
     line.kind === "add"
-      ? "bg-accent-green/[0.10] text-emerald-100"
+      ? "bg-accent-green/[0.10] text-ink-100"
       : line.kind === "del"
-        ? "bg-accent-red/[0.10] text-red-100"
+        ? "bg-accent-red/[0.10] text-ink-100"
         : line.kind === "meta"
           ? "text-ink-500"
           : "text-ink-200";
@@ -102,10 +102,10 @@ function DiffRow({ line }: { line: DiffLine }) {
 
   return (
     <tr class={tone}>
-      <td class="w-11 min-w-11 px-2 text-right text-[11px] text-ink-500 select-none border-r border-white/[0.05] tabular-nums">
+      <td class="w-11 min-w-11 px-2 text-right text-[11px] text-ink-500 select-none border-r border-line tabular-nums">
         {line.oldNo ?? ""}
       </td>
-      <td class="w-11 min-w-11 px-2 text-right text-[11px] text-ink-500 select-none border-r border-white/[0.05] tabular-nums">
+      <td class="w-11 min-w-11 px-2 text-right text-[11px] text-ink-500 select-none border-r border-line tabular-nums">
         {line.newNo ?? ""}
       </td>
       <td class="px-3 whitespace-pre">

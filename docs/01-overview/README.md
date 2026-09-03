@@ -11,7 +11,7 @@ This documentation maps the complete `remote.futrx` application: how to use ever
 | Product user | [User guide](../02-user-guide/README.md) |
 | Server operator | [Deployment and operations](../04-operations/09-deployment-and-operations.md) |
 | Architect or security reviewer | [Philosophy](00-philosophy.md), then [System overview](01-system-overview.md) and the [Threat model](../threat-model.md) |
-| Contributor | [API and realtime](../03-platform/08-api-and-realtime.md), [Data and frontend state](../03-platform/07-data-and-frontend-state.md), then the code maps |
+| Contributor | [Agent integration guide](../dev/agents/README.md), [API and realtime](../03-platform/08-api-and-realtime.md), [Data and frontend state](../03-platform/07-data-and-frontend-state.md), then the code maps |
 
 ## Read in this order
 
@@ -25,10 +25,12 @@ This documentation maps the complete `remote.futrx` application: how to use ever
 | [04-chat-and-agents.md](../02-workspaces/04-chat-and-agents.md) | Chats, prompt execution, providers, modes, skills, streaming, fork, and rewind |
 | [05-workspace-tools.md](../02-workspaces/05-workspace-tools.md) | Attachments, files, terminal, Git history, and browser IDE |
 | [06-scheduled-tasks.md](../02-workspaces/06-scheduled-tasks.md) | Host scheduler, task state, capability-scoped agent tools, overlap, guardrails, and recovery |
+| [10-usage-and-cost.md](../02-workspaces/10-usage-and-cost.md) | Token and cost ledger, per-provider accuracy, price table, aggregation API, and rebuild |
 | [06-previews-and-browser.md](../03-platform/06-previews-and-browser.md) | App discovery, HTTPS preview URLs, element inspection, and Agent Browser |
 | [07-data-and-frontend-state.md](../03-platform/07-data-and-frontend-state.md) | File-backed persistence, workspace files, entities, and UI state |
 | [08-api-and-realtime.md](../03-platform/08-api-and-realtime.md) | HTTP endpoints, WebSockets, events, and access gates |
 | [09-deployment-and-operations.md](../04-operations/09-deployment-and-operations.md) | Install, proxying, base images, updates, recovery, and security hardening |
+| [Agent integration developer guide](../dev/agents/README.md) | Module factory contract, concrete adapter boundary, parsing, capabilities, authentication, provisioning, and adding a provider |
 
 ## Cross-cutting references
 
@@ -37,6 +39,7 @@ This documentation maps the complete `remote.futrx` application: how to use ever
 | [../../ARCHITECTURE.md](../../ARCHITECTURE.md) | Top-level architecture: topology, layers, data flow, and trust boundaries |
 | [../threat-model.md](../threat-model.md) | STRIDE threat model per trust boundary, with mitigations and residual gaps |
 | [../known-limitations.md](../known-limitations.md) | Current scaling, operational, and functional constraints |
+| [../dev/agents/README.md](../dev/agents/README.md) | Complete contributor guide for registering and implementing agent integrations |
 
 ## Feature map
 

@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
-import type { AccessRecord } from "../../../state/projects/projectContainerRecords";
+import type { AccessRecord } from "../../../models/project";
+import { useConfirm } from "../../../state/context/ConfirmContext";
 import { AlertCircle, X } from "../../primitives/icons";
 import { Empty, Loading } from "./ProjectContainerPrimitives";
 
@@ -66,7 +67,7 @@ function AddMemberForm({
   };
 
   return (
-    <form onSubmit={submit} class="rounded-md border border-white/10 bg-white/[0.03] p-2.5 space-y-2">
+    <form onSubmit={submit} class="rounded-md border border-line bg-tint p-2.5 space-y-2">
       <div class="grid gap-2 sm:grid-cols-[1fr_auto] items-center">
         <input
           type="email"
@@ -75,12 +76,12 @@ function AddMemberForm({
           placeholder="someone@example.com"
           spellcheck={false}
           autoComplete="off"
-          class="h-9 px-2.5 rounded border border-white/10 bg-black/30 text-[13px] text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
+          class="h-9 px-2.5 rounded border border-line bg-inset text-[13px] text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
         />
         <button
           type="submit"
           disabled={submitting}
-          class="h-9 px-3 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50"
+          class="btn btn-primary btn-sm text-[13px] font-medium disabled:opacity-50"
         >
           {submitting ? "Adding…" : "Add"}
         </button>
@@ -119,9 +120,16 @@ function MemberRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const remove = async () => {
-    if (!confirm(`Remove ${email} from this project?`)) return;
+    const confirmed = await confirm({
+      title: "Remove member",
+      description: "They lose access to this project immediately.",
+      message: `${email} will no longer see this project or its chats.`,
+      confirmLabel: "Remove member",
+    });
+    if (!confirmed) return;
     setBusy(true);
     setErr(null);
     try {
@@ -134,7 +142,7 @@ function MemberRow({
   };
 
   return (
-    <div class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1">
+    <div class="rounded-md border border-line bg-tint px-3 py-2 space-y-1">
       <div class="flex items-center gap-2 min-w-0">
         <span class="text-[12.5px] text-ink-50 truncate" title={email}>
           {email}
@@ -143,7 +151,7 @@ function MemberRow({
           type="button"
           onClick={remove}
           disabled={busy}
-          class="h-7 w-7 ml-auto rounded text-ink-300 hover:text-accent-red hover:bg-white/[0.08] grid place-items-center disabled:opacity-50"
+          class="h-7 w-7 ml-auto rounded text-ink-300 hover:text-accent-red hover:bg-tint-strong grid place-items-center disabled:opacity-50"
           aria-label={`Remove ${email}`}
           title="Remove member"
         >

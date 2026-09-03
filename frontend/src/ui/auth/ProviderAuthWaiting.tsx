@@ -2,7 +2,7 @@ import { Key, Loader } from "../primitives/icons";
 
 export function ProviderAuthWaiting({ adminEmail }: { adminEmail?: string }) {
   return (
-    <div class="app-shell grid place-items-center bg-[#090b0f] text-ink-100 p-5">
+    <div class="app-shell grid place-items-center bg-app text-ink-100 p-5">
       <div class="w-full max-w-md space-y-6 text-center">
         <div class="flex flex-col items-center gap-3">
           <div class="w-14 h-14 rounded-lg bg-accent-blue/[0.14] border border-accent-blue/25 grid place-items-center">
@@ -15,8 +15,9 @@ export function ProviderAuthWaiting({ adminEmail }: { adminEmail?: string }) {
               {adminEmail ? (
                 <> (<span class="font-mono text-ink-100">{adminEmail}</span>)</>
               ) : null}{" "}
-              must connect Claude, Codex, or Kimi before the workspace opens.
-              This page will continue automatically once one is ready.
+              must finish setting up one of the configured coding agents before
+              the workspace opens. This page will continue automatically once
+              an access-gate agent is ready.
             </div>
           </div>
         </div>

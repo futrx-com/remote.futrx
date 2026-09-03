@@ -5,9 +5,10 @@ import {
 } from "../../ui/projects/ProjectContainersPage";
 import type { ProjectMeta } from "../../models/project";
 import { useProjectContainersController } from "../../state/hooks/projects/useProjectContainersController";
-import { useProjectApplications } from "../../state/hooks/applications/useApplications";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
+import { useProjectUsage } from "../../state/hooks/usage/useProjectUsage";
+import { useProjectApplications } from "../../state/hooks/applications/useApplications";
 
 export function ProjectContainersContainer({
   projects,
@@ -27,10 +28,8 @@ export function ProjectContainersContainer({
   const { selectedProject, info, secrets, access } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
   const serverInfo = useServerInfo(activeTab === "settings");
-  const applications = useProjectApplications(
-    selectedProject,
-    activeTab === "applications"
-  );
+  const usage = useProjectUsage(selectedProject?.id);
+  const applications = useProjectApplications(selectedProject, activeTab === "applications");
 
   const deleteSelectedProject = useCallback(async () => {
     if (!selectedProject) return;
@@ -49,6 +48,9 @@ export function ProjectContainersContainer({
       isAdmin={auth.isAdmin}
       serverMemoryTotalBytes={serverInfo.info?.memory.totalBytes}
       serverMemoryLoading={serverInfo.loading}
+      usageSummary={usage.summary}
+      usageLoading={usage.loading}
+      usageError={usage.error}
       onRefresh={() => void controller.refresh()}
       onBack={onBack}
       onHamburger={onHamburger}

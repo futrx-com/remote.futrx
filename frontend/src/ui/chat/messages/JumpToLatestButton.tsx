@@ -5,8 +5,8 @@ export function JumpToLatestButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      class="absolute right-4 bottom-4 h-10 w-10 rounded-md bg-[#151922] border border-white/[0.12]
-             text-ink-100 shadow-xl grid place-items-center hover:bg-[#1b202b] active:scale-[0.98] transition"
+      class="absolute bottom-4 right-4 grid h-9 w-9 place-items-center rounded-full border border-line
+             bg-raised text-ink-200 shadow-pop transition hover:text-ink-50 active:scale-[0.97]"
       aria-label="Jump to latest message"
       title="Jump to latest"
     >

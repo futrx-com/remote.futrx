@@ -1,16 +1,20 @@
 package skills
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+)
 
 var ErrInvalidProvider = errors.New("invalid skill provider")
 
-type Provider string
+type Provider = agent.ProviderID
 
 const (
-	ProviderClaude      Provider = "claude"
-	ProviderCodex       Provider = "codex"
-	ProviderKimi        Provider = "kimi"
-	ProviderAntigravity Provider = "antigravity"
+	ProviderClaude      = agent.ProviderClaude
+	ProviderCodex       = agent.ProviderCodex
+	ProviderKimi        = agent.ProviderKimi
+	ProviderAntigravity = agent.ProviderAntigravity
 )
 
 type Skill struct {

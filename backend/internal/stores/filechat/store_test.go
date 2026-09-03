@@ -139,9 +139,13 @@ func TestStoreRewindClearsProviderSessionIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := store.Create(context.Background(), servicechat.Meta{
-		ID:              "abcd",
-		CreatedAt:       10,
-		LastMessageAt:   10,
+		ID:            "abcd",
+		CreatedAt:     10,
+		LastMessageAt: 10,
+		Sessions: servicechat.SessionIDs{
+			servicechat.ProviderAntigravity: "agy-session",
+			"future-agent":                  "future-session",
+		},
 		ClaudeSessionID: "claude-session",
 		CodexSessionID:  "codex-session",
 	}); err != nil {
@@ -190,11 +194,99 @@ func TestStoreRewindClearsProviderSessionIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.ClaudeSessionID != "" || meta.CodexSessionID != "" {
+	if len(meta.Sessions) != 0 || meta.ClaudeSessionID != "" || meta.CodexSessionID != "" ||
+		meta.AntigravitySessionID != "" {
 		t.Fatalf("session ids were not cleared: %#v", meta)
 	}
 	if meta.LastMessageAt != 20 {
 		t.Fatalf("LastMessageAt = %d, want 20", meta.LastMessageAt)
+	}
+}
+
+func TestStorePersistsGenericAndLegacySessionShapes(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := store.Create(context.Background(), servicechat.Meta{
+		ID:       "abcd",
+		Provider: servicechat.ProviderAntigravity,
+		Sessions: servicechat.SessionIDs{
+			servicechat.ProviderAntigravity: "agy-session",
+			"future-agent":                  "future-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.AntigravitySessionID != "agy-session" {
+		t.Fatalf("legacy Antigravity session = %q", created.AntigravitySessionID)
+	}
+	event := servicechat.Event{T: 10, Type: "session"}
+	event.SetSession("future-agent", "event-session")
+	if _, err := store.AppendEvent(context.Background(), "abcd", event); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := reopened.Get(context.Background(), "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.SessionID(servicechat.ProviderAntigravity) != "agy-session" || meta.SessionID("future-agent") != "future-session" {
+		t.Fatalf("reloaded sessions = %#v", meta.Sessions)
+	}
+	events, err := reopened.ReadEvents(context.Background(), "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Provider != "future-agent" || events[0].SessionID != "event-session" {
+		t.Fatalf("reloaded events = %#v", events)
+	}
+}
+
+func TestStoreImportsLegacySessionFields(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "chats", "abcd")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "meta.json"),
+		[]byte(`{"id":"abcd","title":"Legacy","createdAt":1,"lastMessageAt":1,"antigravitySessionId":"agy-legacy"}`),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(dir, "events.jsonl"),
+		[]byte("{\"t\":2,\"type\":\"session\",\"kimiSessionId\":\"kimi-legacy\"}\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.Get(context.Background(), "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.SessionID(servicechat.ProviderAntigravity) != "agy-legacy" {
+		t.Fatalf("legacy metadata sessions = %#v", meta.Sessions)
+	}
+	events, err := store.ReadEvents(context.Background(), "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Provider != servicechat.ProviderKimi || events[0].SessionID != "kimi-legacy" {
+		t.Fatalf("legacy event = %#v", events)
 	}
 }
 
@@ -251,5 +343,40 @@ func TestStorePersistsSelectedSkills(t *testing.T) {
 	}
 	if len(loaded.SelectedSkills) != 2 || loaded.SelectedSkills[0].Provider != servicechat.ProviderCodex {
 		t.Fatalf("reloaded skills = %#v", loaded.SelectedSkills)
+	}
+}
+
+func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(context.Background(), servicechat.Meta{
+		ID:              "abcd",
+		Provider:        servicechat.ProviderClaude,
+		Model:           "claude-opus-current",
+		Mode:            "plan",
+		ReasoningEffort: "high",
+		ServiceTier:     "fast",
+		ProjectID:       "project-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := New(store.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := reopened.Get(context.Background(), "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Provider != servicechat.ProviderClaude ||
+		loaded.Model != "claude-opus-current" ||
+		loaded.Mode != "plan" ||
+		loaded.ReasoningEffort != "high" ||
+		loaded.ServiceTier != "fast" ||
+		loaded.ProjectID != "project-1" {
+		t.Fatalf("reloaded selections = %#v", loaded)
 	}
 }

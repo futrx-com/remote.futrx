@@ -7,20 +7,25 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 type recoveryProvider struct {
-	requests []agent.RunRequest
+	requests  []agent.RunRequest
+	failFirst bool
 }
 
 func (p *recoveryProvider) ID() agent.ProviderID                     { return agent.ProviderCodex }
 func (p *recoveryProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
+func (p *recoveryProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
+	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+}
 func (p *recoveryProvider) Run(_ context.Context, req agent.RunRequest, emit func(agent.Event)) error {
 	p.requests = append(p.requests, req)
-	if len(p.requests) == 1 {
+	if p.failFirst && len(p.requests) == 1 {
 		return agent.ErrSessionNotFound
 	}
 	emit(agent.Event{
@@ -55,7 +60,7 @@ func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T)
 		}
 	}
 
-	provider := &recoveryProvider{}
+	provider := &recoveryProvider{failFirst: true}
 	registry := agent.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
@@ -104,10 +109,92 @@ func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T)
 	}
 }
 
+func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
+	ctx := context.Background()
+	store, err := filechat.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.Create(ctx, servicechat.Meta{
+		ID: "abcdef123456", Provider: servicechat.ProviderCodex,
+		CodexSessionID: "old-thread", Cwd: t.TempDir(), ForkPending: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendEvent(ctx, meta.ID, servicechat.Event{
+		T: 1, Type: "assistant_text", Text: "visible history",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &recoveryProvider{}
+	registry := agent.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	policy := testAgentPolicy{"codex": {
+		ID: agent.ProviderCodex, Label: "Codex",
+		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+		Features:        agentmodule.Features{Skills: agentmodule.SkillsNone},
+	}}
+	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service.runPrompt(ctx, meta.ID, "continue", func(ChatEvent) {}, func(ChatEvent) {})
+
+	if len(provider.requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(provider.requests))
+	}
+	request := provider.requests[0]
+	if request.ResumeID != "" {
+		t.Fatalf("resume ID = %q, want empty", request.ResumeID)
+	}
+	if request.Fork {
+		t.Fatal("fork = true for module that disables native sessions")
+	}
+	if !strings.Contains(request.Prompt, "visible history") {
+		t.Fatalf("fresh prompt does not include visible history: %q", request.Prompt)
+	}
+}
+
 func TestClearSessionIDForProvider(t *testing.T) {
-	meta := &ChatMeta{ClaudeSessionID: "c", CodexSessionID: "o", KimiSessionID: "k"}
+	meta := &ChatMeta{
+		Sessions:        servicechat.SessionIDs{"future-agent": "future", servicechat.ProviderCodex: "o"},
+		ClaudeSessionID: "c",
+		CodexSessionID:  "o",
+		KimiSessionID:   "k",
+	}
 	clearSessionIDForProvider(meta, agent.ProviderCodex)
-	if meta.CodexSessionID != "" || meta.ClaudeSessionID != "c" || meta.KimiSessionID != "k" {
+	if meta.CodexSessionID != "" || meta.ClaudeSessionID != "c" || meta.KimiSessionID != "k" || meta.Sessions["future-agent"] != "future" {
 		t.Fatalf("wrong provider session cleared: %#v", meta)
+	}
+}
+
+func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
+	ctx := context.Background()
+	store, err := filechat.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.Create(ctx, servicechat.Meta{
+		ID: "abcdef123456", Provider: servicechat.ProviderCodex, ProjectID: "abcd", Cwd: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := &recoveryProvider{}
+	registry := agent.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	policy := testAgentPolicy{"codex": {
+		ID: agent.ProviderCodex, Label: "Codex", ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+	}}
+	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	err = service.runPrompt(ctx, meta.ID, "do work", func(ChatEvent) {}, func(ChatEvent) {})
+	if err != ErrUnsupportedAgentScope {
+		t.Fatalf("runPrompt error = %v, want ErrUnsupportedAgentScope", err)
+	}
+	if len(provider.requests) != 0 {
+		t.Fatalf("provider ran outside its scope: %#v", provider.requests)
 	}
 }

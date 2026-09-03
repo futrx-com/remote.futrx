@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -31,13 +32,70 @@ type UserDirectoryEntry struct {
 	Email string
 }
 
+var (
+	ErrSessionSuperseded   = errors.New("session superseded by a newer sign-in")
+	ErrInvalidPendingLogin = errors.New("invalid or expired pending login")
+)
+
+// pendingLogin is the signed, stateless payload carried between
+// CompletePasswordLogin/CompleteGoogleLogin (once credentials check out but
+// before the second factor is checked) and CompleteTwoFactorChallenge.
+type pendingLogin struct {
+	Email  string       `json:"email"`
+	Sub    string       `json:"sub"`
+	Method SignInMethod `json:"method"`
+	Exp    int64        `json:"exp"`
+}
+
+func (p pendingLogin) expired(now time.Time) bool {
+	return now.Unix() > p.Exp
+}
+
+// LoginResult is returned by the Complete*Login methods: either a login
+// completed outright (CookieValue set) or it needs a second factor
+// (PendingToken set, to be presented back to CompleteTwoFactorChallenge).
+type LoginResult struct {
+	Completed    bool
+	CookieValue  string
+	PendingToken string
+}
+
+// Options are application-wide account security policies supplied by the
+// composition root. Cryptographic protocol parameters remain package-owned.
+type Options struct {
+	PendingLoginTTL     time.Duration
+	EnrollmentTTL       time.Duration
+	RecoveryCodeCount   int
+	SessionHistoryLimit int
+}
+
+func (o Options) validate() error {
+	if o.PendingLoginTTL <= 0 {
+		return errors.New("pending login TTL must be positive")
+	}
+	if o.EnrollmentTTL <= 0 {
+		return errors.New("enrollment TTL must be positive")
+	}
+	if o.RecoveryCodeCount <= 0 {
+		return errors.New("recovery code count must be positive")
+	}
+	if o.SessionHistoryLimit <= 0 {
+		return errors.New("session history limit must be positive")
+	}
+	return nil
+}
+
 type Service struct {
-	users        UserDirectory
-	local        *LocalAdminAuthenticator
-	google       *GoogleAuthenticator
-	baseURL      string
-	cookieDomain string
-	sessions     *SessionCodec
+	users             UserDirectory
+	local             *LocalAdminAuthenticator
+	google            *GoogleAuthenticator
+	baseURL           string
+	cookieDomain      string
+	codec             *sessionCodec
+	twoFactor         *twoFactorAuthenticator
+	registry          *sessionRegistry
+	pendingLoginCodec signedPayload[pendingLogin]
+	pendingLoginTTL   time.Duration
 }
 
 func NormalizeBaseURL(baseURL string) (string, error) {
@@ -54,12 +112,24 @@ func New(
 	oauthFactory OAuthProviderFactory,
 	baseURL string,
 	sessionKey []byte,
+	twoFactorStore TwoFactorStore,
+	sessionRegistryStore SessionRegistryStore,
+	options Options,
 ) (*Service, error) {
 	if store == nil {
 		return nil, errors.New("auth store is required")
 	}
 	if oauthFactory == nil {
 		return nil, errors.New("OAuth provider factory is required")
+	}
+	if twoFactorStore == nil {
+		return nil, errors.New("two-factor store is required")
+	}
+	if sessionRegistryStore == nil {
+		return nil, errors.New("session registry store is required")
+	}
+	if err := options.validate(); err != nil {
+		return nil, fmt.Errorf("auth options: %w", err)
 	}
 	baseURL, err := NormalizeBaseURL(baseURL)
 	if err != nil {
@@ -94,7 +164,17 @@ func New(
 		google:       google,
 		baseURL:      baseURL,
 		cookieDomain: cookieDomain,
-		sessions:     newSessionCodec(sessionKey),
+		codec:        newSessionCodec(sessionKey),
+		twoFactor: newTwoFactorAuthenticator(
+			twoFactorStore,
+			"remote.futrx",
+			sessionKey,
+			options.EnrollmentTTL,
+			options.RecoveryCodeCount,
+		),
+		registry:          newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
+		pendingLoginCodec: newPendingLoginPayload(sessionKey),
+		pendingLoginTTL:   options.PendingLoginTTL,
 	}
 	return service, nil
 }
@@ -143,15 +223,106 @@ func (s *Service) IsLocalAdmin(email string) bool {
 	return s.local.isLocalAdmin(email)
 }
 
-func (s *Service) SignSession(user User) string {
-	return s.sessions.sign(user)
+// IssueSession signs a new session for user, first consulting the account's
+// SecurityPreferences: if any of the three flags (single-session, history,
+// recovery-code alert) is on, it registers the sign-in with the session registry
+// and embeds the resulting session id; otherwise it behaves exactly like
+// SignSession (no registry write, no per-request registry lookup cost for
+// accounts that opt into nothing).
+func (s *Service) IssueSession(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (string, error) {
+	prefs, err := s.registry.Preferences(ctx, user.Email)
+	if err != nil {
+		return "", err
+	}
+	sid := ""
+	if prefs.SingleSessionEnabled || prefs.HistoryEnabled || prefs.RecoveryCodeAlertEnabled {
+		sid, err = s.registry.IssueForAccount(ctx, user.Email, method, ip, userAgent)
+		if err != nil {
+			return "", err
+		}
+	}
+	return s.codec.sign(user, sid), nil
 }
 
-func (s *Service) CurrentSession(cookieValue string) (*Session, error) {
+// CompletePasswordLogin verifies credentials and either issues a session
+// outright (2FA off for this account) or returns a pending token that must
+// be completed via CompleteTwoFactorChallenge.
+func (s *Service) CompletePasswordLogin(ctx context.Context, email, password, ip, userAgent string) (LoginResult, error) {
+	user, err := s.LoginLocal(ctx, email, password)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return s.completeLogin(ctx, user, SignInMethodPassword, ip, userAgent)
+}
+
+// CompleteGoogleLogin is the Google analogue of CompletePasswordLogin.
+func (s *Service) CompleteGoogleLogin(ctx context.Context, code, ip, userAgent string) (LoginResult, error) {
+	user, err := s.LoginGoogle(ctx, code)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return s.completeLogin(ctx, user, SignInMethodGoogle, ip, userAgent)
+}
+
+func (s *Service) completeLogin(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (LoginResult, error) {
+	if s.twoFactor.Enabled(ctx, user.Email) {
+		token := s.pendingLoginCodec.sign(pendingLogin{
+			Email:  user.Email,
+			Sub:    user.Sub,
+			Method: method,
+			Exp:    time.Now().Add(s.pendingLoginTTL).Unix(),
+		})
+		return LoginResult{Completed: false, PendingToken: token}, nil
+	}
+	cookieValue, err := s.IssueSession(ctx, user, method, ip, userAgent)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return LoginResult{Completed: true, CookieValue: cookieValue}, nil
+}
+
+// CompleteTwoFactorChallenge verifies a pending login's second factor and,
+// on success, issues the real session with the combined SignInMethod
+// (e.g. "password+totp", "google+recovery-code").
+func (s *Service) CompleteTwoFactorChallenge(ctx context.Context, pendingToken, code, ip, userAgent string) (LoginResult, error) {
+	pending, err := s.pendingLoginCodec.verify(pendingToken)
+	if err != nil {
+		return LoginResult{}, ErrInvalidPendingLogin
+	}
+	usedRecoveryCode, err := s.twoFactor.VerifyChallenge(ctx, pending.Email, code)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	method := combineSignInMethod(pending.Method, usedRecoveryCode)
+	cookieValue, err := s.IssueSession(ctx, User{Email: pending.Email, Sub: pending.Sub}, method, ip, userAgent)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return LoginResult{Completed: true, CookieValue: cookieValue}, nil
+}
+
+func combineSignInMethod(base SignInMethod, usedRecoveryCode bool) SignInMethod {
+	switch base {
+	case SignInMethodPassword:
+		if usedRecoveryCode {
+			return SignInMethodPasswordRecoveryCode
+		}
+		return SignInMethodPasswordTOTP
+	case SignInMethodGoogle:
+		if usedRecoveryCode {
+			return SignInMethodGoogleRecoveryCode
+		}
+		return SignInMethodGoogleTOTP
+	default:
+		return base
+	}
+}
+
+func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Session, error) {
 	if cookieValue == "" {
 		return nil, errors.New("missing session cookie")
 	}
-	session, err := s.sessions.verify(cookieValue)
+	session, err := s.codec.verify(cookieValue)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +332,19 @@ func (s *Service) CurrentSession(cookieValue string) (*Session, error) {
 	if s.IsLocalAdmin(session.Email) && session.Sub != "local-admin" {
 		return nil, ErrLocalAdminPasswordOnly
 	}
+	// Single active session is one more account-scoped rule here, consulted
+	// only when the account has independently turned SingleSessionEnabled on
+	// (sessionRegistry.IsActive treats every session as active otherwise).
+	if !s.registry.IsActive(ctx, session.Email, session.SID) {
+		return nil, ErrSessionSuperseded
+	}
 	return session, nil
+}
+
+// RevokeSession replaces email's active session id with an unissued id (used
+// on logout), a no-op for an account with no session registry record.
+func (s *Service) RevokeSession(ctx context.Context, email string) error {
+	return s.registry.Revoke(ctx, email)
 }
 
 func (s *Service) IsAdmin(ctx context.Context, email string) (bool, error) {
@@ -203,7 +386,7 @@ func (s *Service) Status(ctx context.Context, cookieValue string) Status {
 		}
 	}
 
-	session, err := s.CurrentSession(cookieValue)
+	session, err := s.CurrentSession(ctx, cookieValue)
 	if err != nil {
 		return status
 	}
@@ -212,9 +395,18 @@ func (s *Service) Status(ctx context.Context, cookieValue string) Status {
 	status.Sub = session.Sub
 	status.IsAdmin, _ = s.IsAdmin(ctx, session.Email)
 	status.IsRegistered, _ = s.IsRegistered(ctx, session.Email)
+	if prefs, _ := s.registry.Preferences(ctx, session.Email); prefs.RecoveryCodeAlertEnabled {
+		if alert, _ := s.registry.PendingAlert(ctx, session.Email); alert != nil {
+			status.SecurityAlert = alert
+		}
+	}
 	return status
 }
 
 func SessionDuration() time.Duration {
 	return sessionDuration
+}
+
+func (s *Service) PendingTwoFactorDuration() time.Duration {
+	return s.pendingLoginTTL
 }

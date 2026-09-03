@@ -7,11 +7,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/googleoauth"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -24,6 +24,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
+	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspacehub"
@@ -55,10 +56,16 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	TwoFactor         serviceauth.TwoFactorStore
+	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
+	Usage             serviceusage.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
+	AgentModules      *agentmodule.Catalog
+	AgentOptions      AgentOptions
+	AuthOptions       AuthOptions
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
@@ -80,30 +87,59 @@ type ScheduleLimits struct {
 	MaxTasksPerProject int
 }
 
+// AgentOptions mirrors application-wide agent policy without coupling the
+// service layer to the config package.
+type AgentOptions struct {
+	CapabilityTimeout          time.Duration
+	CapabilityCacheTTL         time.Duration
+	DegradedCapabilityCacheTTL time.Duration
+	CredentialSyncTimeout      time.Duration
+	BrowserIdleTTL             time.Duration
+}
+
+// AuthOptions mirrors application-wide account security policy without
+// coupling the service layer to the config package.
+type AuthOptions struct {
+	PendingLoginTTL     time.Duration
+	EnrollmentTTL       time.Duration
+	RecoveryCodeCount   int
+	SessionHistoryLimit int
+}
+
 type Services struct {
-	Chats        *servicechat.Service
-	ChatAccess   *servicechat.AccessService
-	Projects     *serviceproject.Service
-	Prompt       *prompt.Service
-	Schedules    *serviceschedule.Service
-	ScheduleCaps *schedulecapability.Registry
-	AgentAuth    *agentauth.Registry
-	Runs         *runhub.Hub
-	Workspace    *workspacehub.Hub
-	Auth         *serviceauth.Service
-	Users        *serviceuser.Service
-	UserSettings *serviceusersettings.Service
-	Skills       *serviceskills.Catalog
-	Tmux         *servicetmux.Service
-	Access       *serviceauth.AccessVerifier
-	Applications *serviceapplications.Service
-	Push         *servicepush.Service
-	Presence     *servicepresence.Service
+	Chats             *servicechat.Service
+	ChatAccess        *servicechat.AccessService
+	Projects          *serviceproject.Service
+	Prompt            *prompt.Service
+	Schedules         *serviceschedule.Service
+	ScheduleCaps      *schedulecapability.Registry
+	Agents            *agentmodule.Runtime
+	AgentCapabilities *agentcapability.Service
+	Runs              *runhub.Hub
+	Workspace         *workspacehub.Hub
+	Auth              *serviceauth.Service
+	Users             *serviceuser.Service
+	UserSettings      *serviceusersettings.Service
+	Skills            *serviceskills.Catalog
+	Tmux              *servicetmux.Service
+	Access            *serviceauth.AccessVerifier
+	Applications      *serviceapplications.Service
+	Push              *servicepush.Service
+	Presence          *servicepresence.Service
+	Usage             *serviceusage.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if err := deps.AgentContainers.Validate(); err != nil {
 		return Services{}, fmt.Errorf("agent container dependencies: %w", err)
+	}
+	if deps.AgentModules == nil {
+		return Services{}, errors.New("agent module catalog is required")
+	}
+	if deps.Auth != nil {
+		if err := deps.AgentModules.ValidateAccessGate(); err != nil {
+			return Services{}, fmt.Errorf("agent module catalog: %w", err)
+		}
 	}
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
@@ -125,10 +161,16 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		push: pushNotifier,
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
-	definitions := agentDefinitions()
-	profiles := profilesFromDefinitions(definitions)
 	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
-	projectService.StartAgentBrowserReaper(ctx, 20*time.Minute)
+	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
+		Projects:              agentProjectResolver{projects: projectService},
+		Containers:            deps.AgentContainers,
+		CredentialSyncTimeout: deps.AgentOptions.CredentialSyncTimeout,
+	})
+	if err != nil {
+		return Services{}, fmt.Errorf("build agent modules: %w", err)
+	}
+	projectService.StartAgentBrowserReaper(ctx, deps.AgentOptions.BrowserIdleTTL)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
 		chats.publishChat(context.Background(), id)
@@ -145,52 +187,49 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxResolver,
 		runs,
 		servicechat.WithCopiedEventAppender(chats),
+		servicechat.WithSessionPolicy(agentRuntime),
+		servicechat.WithProviderPolicy(agentRuntime),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
-	agents := agent.NewRegistry()
-	agentAuth := agentauth.NewRegistry()
-	for index, definition := range definitions {
-		provider := definition.provider(projectService, deps.AgentContainers)
-		if string(provider.ID()) != profiles[index].ID {
-			return Services{}, fmt.Errorf(
-				"agent registration mismatch: provider %q has profile %q",
-				provider.ID(), profiles[index].ID,
-			)
-		}
-		if err := agents.Register(provider); err != nil {
-			return Services{}, err
-		}
-		authBinding := definition.authBinding()
-		if authBinding.ID() != provider.ID() {
-			return Services{}, fmt.Errorf(
-				"agent auth registration mismatch: binding %q has provider %q",
-				authBinding.ID(), provider.ID(),
-			)
-		}
-		if err := agentAuth.Register(authBinding); err != nil {
-			return Services{}, err
-		}
-	}
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
 	userService := serviceuser.New(
 		deps.Users,
 		serviceuser.WithRemovalCleanup(userRemovalCleanup{
-			projects:      projectService,
-			subscriptions: deps.Push,
+			projects:        projectService,
+			subscriptions:   deps.Push,
+			twoFactor:       deps.TwoFactor,
+			sessionRegistry: deps.SessionRegistry,
 		}),
 	)
-	authService, err := newAuth(ctx, deps.Auth, userService, deps.AuthBaseURL)
+	authService, err := newAuth(
+		ctx,
+		deps.Auth,
+		userService,
+		deps.AuthBaseURL,
+		deps.TwoFactor,
+		deps.SessionRegistry,
+		deps.AuthOptions,
+	)
 	if err != nil {
 		return Services{}, err
 	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
+	var usageService *serviceusage.Service
+	promptOptions := []prompt.Option{
+		prompt.WithScheduleToolIssuer(scheduleCaps),
+		prompt.WithAgentPolicy(agentRuntime),
+	}
+	if deps.Usage != nil {
+		usageService = serviceusage.New(deps.Usage, projectService, chats)
+		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
+	}
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
 		projectService,
 		runs,
-		agents,
-		prompt.WithScheduleToolIssuer(scheduleCaps),
+		agentRuntime,
+		promptOptions...,
 	)
 	scheduleService := serviceschedule.New(
 		deps.Schedules,
@@ -205,9 +244,23 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if err := scheduleService.Start(ctx); err != nil {
 		return Services{}, fmt.Errorf("start scheduled tasks: %w", err)
 	}
-	userSettingsService := serviceusersettings.New(deps.UserSettings)
-	skillService := serviceskills.New()
+	userSettingsService := serviceusersettings.New(
+		deps.UserSettings,
+		serviceusersettings.WithProviderCatalog(agentRuntime),
+	)
+	skillService := serviceskills.New(serviceskills.WithProviderCatalog(agentRuntime))
 	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
+	agentCapabilities := agentcapability.New(
+		agentRuntime,
+		projectService,
+		authService,
+		agentcapability.Settings{
+			CapabilityTimeout:          deps.AgentOptions.CapabilityTimeout,
+			CapabilityCacheTTL:         deps.AgentOptions.CapabilityCacheTTL,
+			DegradedCapabilityCacheTTL: deps.AgentOptions.DegradedCapabilityCacheTTL,
+		},
+		agentcapability.WithModulePolicy(agentRuntime),
+	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
 		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
@@ -232,24 +285,26 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	pushNotifier.audience.users = userService
 
 	return Services{
-		Chats:        chatService,
-		ChatAccess:   chatAccessService,
-		Projects:     projectService,
-		Prompt:       promptService,
-		Schedules:    scheduleService,
-		ScheduleCaps: scheduleCaps,
-		AgentAuth:    agentAuth,
-		Runs:         runs,
-		Workspace:    workspace,
-		Auth:         authService,
-		Users:        userService,
-		UserSettings: userSettingsService,
-		Skills:       skillCatalog,
-		Tmux:         tmuxService,
-		Access:       accessVerifier,
-		Applications: applicationsService,
-		Push:         pushService,
-		Presence:     presenceService,
+		Chats:             chatService,
+		ChatAccess:        chatAccessService,
+		Projects:          projectService,
+		Prompt:            promptService,
+		Schedules:         scheduleService,
+		ScheduleCaps:      scheduleCaps,
+		Agents:            agentRuntime,
+		AgentCapabilities: agentCapabilities,
+		Runs:              runs,
+		Workspace:         workspace,
+		Auth:              authService,
+		Users:             userService,
+		UserSettings:      userSettingsService,
+		Skills:            skillCatalog,
+		Tmux:              tmuxService,
+		Access:            accessVerifier,
+		Applications:      applicationsService,
+		Push:              pushService,
+		Presence:          presenceService,
+		Usage:             usageService,
 	}, nil
 }
 
@@ -415,6 +470,9 @@ func newAuth(
 	store AuthStore,
 	users *serviceuser.Service,
 	baseURL string,
+	twoFactor serviceauth.TwoFactorStore,
+	sessionRegistry serviceauth.SessionRegistryStore,
+	options AuthOptions,
 ) (*serviceauth.Service, error) {
 	if store == nil {
 		return nil, errors.New("authentication store is required")
@@ -441,6 +499,14 @@ func newAuth(
 		},
 		baseURL,
 		sessionKey,
+		twoFactor,
+		sessionRegistry,
+		serviceauth.Options{
+			PendingLoginTTL:     options.PendingLoginTTL,
+			EnrollmentTTL:       options.EnrollmentTTL,
+			RecoveryCodeCount:   options.RecoveryCodeCount,
+			SessionHistoryLimit: options.SessionHistoryLimit,
+		},
 	)
 }
 

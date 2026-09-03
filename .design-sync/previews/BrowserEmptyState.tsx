@@ -2,13 +2,13 @@
 import { BrowserEmptyState } from "remote.futrx-web";
 
 export const Pane = () => (
-  <div className="w-full max-w-xl border border-white/10 rounded-lg overflow-hidden" style={{ height: 320 }}>
+  <div className="w-full max-w-xl border border-line rounded-lg overflow-hidden" style={{ height: 320 }}>
     <BrowserEmptyState />
   </div>
 );
 
 export const ShortPane = () => (
-  <div className="w-full max-w-xl border border-white/10 rounded-lg overflow-hidden" style={{ height: 160 }}>
+  <div className="w-full max-w-xl border border-line rounded-lg overflow-hidden" style={{ height: 160 }}>
     <BrowserEmptyState />
   </div>
 );

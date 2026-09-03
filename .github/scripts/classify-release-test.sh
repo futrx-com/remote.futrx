@@ -50,12 +50,60 @@ fi
 grep -Fq "patch release 0.3.3 changes infrastructure-managed paths:" <<<"$error" \
     || fail "protected-path rejection did not explain the failure"
 
+commit_file backend/cmd/install-host-agents/main.go host-installer protected-host-installer
+git -C "$TEST_REPO" tag 0.3.4
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.4 2>&1)"; then
+    fail "host installer change was accepted as an application release"
+fi
+grep -Fq "backend/cmd/install-host-agents/main.go" <<<"$error" || \
+    fail "host installer rejection did not identify the protected path"
+
+commit_file backend/internal/integration/agents/future/profile.go future-profile protected-future-profile
+git -C "$TEST_REPO" tag 0.3.5
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.5 2>&1)"; then
+    fail "future agent profile was accepted as an application release"
+fi
+grep -Fq "backend/internal/integration/agents/future/profile.go" <<<"$error" || \
+    fail "future agent profile rejection did not identify the protected path"
+
+commit_file backend/internal/integration/agents/future/install_linux.go future-installer protected-future-installer
+git -C "$TEST_REPO" tag 0.3.6
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.6 2>&1)"; then
+    fail "future agent install helper was accepted as an application release"
+fi
+grep -Fq "backend/internal/integration/agents/future/install_linux.go" <<<"$error" || \
+    fail "future agent install-helper rejection did not identify the protected path"
+
+commit_file backend/internal/integration/agents/future/factory.go future-factory protected-future-factory
+git -C "$TEST_REPO" tag 0.3.7
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.7 2>&1)"; then
+    fail "future agent factory was accepted as an application release"
+fi
+grep -Fq "backend/internal/integration/agents/future/factory.go" <<<"$error" || \
+    fail "future agent factory rejection did not identify the protected path"
+
+commit_file backend/internal/service/agent/module/catalog.go module-contract protected-module-contract
+git -C "$TEST_REPO" tag 0.3.8
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.8 2>&1)"; then
+    fail "agent module contract was accepted as an application release"
+fi
+grep -Fq "backend/internal/service/agent/module/catalog.go" <<<"$error" || \
+    fail "agent module rejection did not identify the protected path"
+
+commit_file backend/internal/config/agents.go agent-composition protected-agent-composition
+git -C "$TEST_REPO" tag 0.3.9
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.9 2>&1)"; then
+    fail "agent composition was accepted as an application release"
+fi
+grep -Fq "backend/internal/config/agents.go" <<<"$error" || \
+    fail "agent composition rejection did not identify the protected path"
+
 commit_file README.md next-minor minor
 git -C "$TEST_REPO" tag 0.4.0
 output="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.4.0)"
 assert_output "$output" "kind=infrastructure"
 assert_output "$output" "label=Infrastructure"
-assert_output "$output" "previous=0.3.3"
+assert_output "$output" "previous=0.3.9"
 
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.4 2>&1)"; then
     fail "malformed release tag was accepted"

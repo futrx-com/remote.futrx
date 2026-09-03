@@ -7,6 +7,7 @@ func TestSetAgentStatusesPreservesLegacyInspectFields(t *testing.T) {
 	inspect.SetAgentStatuses([]AgentContainerStatus{
 		{
 			ID:                    "claude",
+			Label:                 "Claude Code",
 			Installed:             true,
 			Version:               "2.1.206",
 			InstructionsInstalled: true,
@@ -15,6 +16,13 @@ func TestSetAgentStatusesPreservesLegacyInspectFields(t *testing.T) {
 		{ID: "codex", Installed: true, Version: "0.144.1"},
 		{ID: "kimi", Installed: true, Version: "0.19.2"},
 	})
+	if len(inspect.Agents) != 3 || inspect.Agents[2].ID != "kimi" {
+		t.Fatalf("generic agent statuses = %#v", inspect.Agents)
+	}
+	inspect.Agents[0].Version = "changed"
+	if inspect.Claude.Version != "2.1.206" {
+		t.Fatalf("legacy status aliases generic slice: %#v", inspect.Claude)
+	}
 
 	if !inspect.Claude.Installed || inspect.Claude.Version != "2.1.206" ||
 		!inspect.Claude.ClaudeMDInstalled || !inspect.Claude.ClaudeMDInSync {

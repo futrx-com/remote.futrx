@@ -14,18 +14,19 @@ import {
   Loader,
   Music,
 } from "../../primitives/icons";
-import { categorize, fileOpenAction, formatBytes, parentDir, type FileCategory } from "./fileMeta";
+import { fileService } from "../../../services/files/fileService.ts";
+import type { FileCategory } from "../../../models/files.ts";
 
 type IconComponent = (props: JSX.SVGAttributes<SVGSVGElement>) => JSX.Element;
 
 const CATEGORY_META: Record<FileCategory, { Icon: IconComponent; color: string }> = {
-  image: { Icon: Image, color: "text-[#34d399]" },
-  video: { Icon: Film, color: "text-[#a78bfa]" },
-  audio: { Icon: Music, color: "text-[#f472b6]" },
-  pdf: { Icon: FileText, color: "text-[#f87171]" },
-  archive: { Icon: Archive, color: "text-[#fbbf24]" },
-  code: { Icon: Code, color: "text-[#38bdf8]" },
-  data: { Icon: FileText, color: "text-[#2dd4bf]" },
+  image: { Icon: Image, color: "text-accent-green" },
+  video: { Icon: Film, color: "text-accent-purple" },
+  audio: { Icon: Music, color: "text-accent-orange" },
+  pdf: { Icon: FileText, color: "text-accent-red" },
+  archive: { Icon: Archive, color: "text-accent-yellow" },
+  code: { Icon: Code, color: "text-accent-blue" },
+  data: { Icon: FileText, color: "text-accent-green" },
   text: { Icon: FileText, color: "text-ink-300" },
 };
 
@@ -39,7 +40,7 @@ export function FileTreeNodes({
   state: WorkspaceFileTreeState;
 }) {
   return (
-    <ul class={depth > 0 ? "ml-3 border-l border-white/[0.07] pl-1" : ""}>
+    <ul class={depth > 0 ? "ml-3 border-l border-line pl-1" : ""}>
       {nodes.map((node) =>
         node.isDir ? (
           <FolderRow key={node.path} node={node} depth={depth} state={state} />
@@ -73,7 +74,7 @@ function FolderRow({
   return (
     <li>
       <div
-        class="group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white/[0.05] cursor-pointer select-none"
+        class="group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-tint cursor-pointer select-none"
         role="button"
         tabIndex={0}
         onClick={() => state.onToggle(node.path)}
@@ -103,7 +104,7 @@ function FolderRow({
         <a
           href={state.downloadUrl(node)}
           onClick={(event) => event.stopPropagation()}
-          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-white/[0.08]
+          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-tint-strong
                  opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-none"
           title={`Download ${node.name} as zip`}
           aria-label={`Download ${node.name} as zip`}
@@ -133,11 +134,11 @@ function FileRow({
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
-  const { Icon, color } = CATEGORY_META[categorize(node.name)];
+  const { Icon, color } = CATEGORY_META[fileService.category(node.name)];
   return (
     <li>
       <div
-        class="group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white/[0.05] cursor-pointer select-none"
+        class="group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-tint cursor-pointer select-none"
         role="button"
         tabIndex={0}
         title={openTitle(node.name)}
@@ -153,13 +154,13 @@ function FileRow({
         <Icon class={`w-4 h-4 flex-none ${color}`} />
         <span class="flex-1 min-w-0 truncate text-[13px] text-ink-100">{node.name}</span>
         {node.size != null && (
-          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{formatBytes(node.size)}</span>
+          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{fileService.formatBytes(node.size)}</span>
         )}
         <a
           href={downloadUrl(node)}
           download={node.name}
           onClick={(event) => event.stopPropagation()}
-          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-white/[0.08]
+          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-tint-strong
                  opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-none"
           title={`Download ${node.name}`}
           aria-label={`Download ${node.name}`}
@@ -181,15 +182,15 @@ export function SearchResultRow({
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
-  const dir = parentDir(node.path);
+  const dir = fileService.parentDir(node.path);
   const { Icon, color } = node.isDir
     ? { Icon: Folder as IconComponent, color: "text-accent-blue" }
-    : CATEGORY_META[categorize(node.name)];
+    : CATEGORY_META[fileService.category(node.name)];
   const openable = !node.isDir;
   return (
     <li>
       <div
-        class={`group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-white/[0.05] ${openable ? "cursor-pointer select-none" : ""}`}
+        class={`group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-tint ${openable ? "cursor-pointer select-none" : ""}`}
         role={openable ? "button" : undefined}
         tabIndex={openable ? 0 : undefined}
         title={openable ? openTitle(node.name) : undefined}
@@ -211,13 +212,13 @@ export function SearchResultRow({
           {dir && <div class="truncate text-[11px] text-ink-500 font-mono">{dir}/</div>}
         </div>
         {!node.isDir && node.size != null && (
-          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{formatBytes(node.size)}</span>
+          <span class="text-[11px] text-ink-500 tabular-nums flex-none">{fileService.formatBytes(node.size)}</span>
         )}
         <a
           href={downloadUrl(node)}
           download={node.isDir ? undefined : node.name}
           onClick={(event) => event.stopPropagation()}
-          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-white/[0.08]
+          class="h-6 w-6 grid place-items-center rounded text-ink-400 hover:text-accent-blue hover:bg-tint-strong
                  opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-none"
           title={node.isDir ? `Download ${node.name} as zip` : `Download ${node.name}`}
           aria-label={node.isDir ? `Download ${node.name} as zip` : `Download ${node.name}`}
@@ -231,7 +232,7 @@ export function SearchResultRow({
 
 // Hover hint describing what a click will do for this file.
 function openTitle(name: string): string {
-  const target = fileOpenAction(name);
+  const target = fileService.openAction(name);
   if (target.action === "media") return `View ${name}`;
   if (target.action === "ide") return `Open ${name} in IDE`;
   return `Download ${name}`;

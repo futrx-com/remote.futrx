@@ -91,10 +91,9 @@ flowchart LR
 The durable center is the project, not one chat or one container generation.
 
 - `/workspace` survives normal stop, restart, and container replacement.
-- Claude, Codex, and Kimi provider homes are separate durable mounts.
-- Antigravity stores its sign-in and conversation state in the replaceable
-  container root; it survives ordinary stop/start but not container
-  replacement.
+- Claude, Codex, Kimi, and Antigravity provider homes are separate durable
+  mounts. Antigravity persists only `/root/.gemini/antigravity-cli`, not the
+  entire `.gemini` tree.
 - The Agent Browser profile lives in the workspace, so site sessions can survive container replacement.
 - Chat metadata and event history live in the host control plane.
 - Scheduled-task definitions, claims, and run state live in the host control

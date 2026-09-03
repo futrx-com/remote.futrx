@@ -17,19 +17,19 @@ export function SelectedSkillChips({
         {skills.map((skill) => (
           <span
             key={`${skill.provider || "skill"}:${skill.source || ""}:${skill.command || skill.name}`}
-            class="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md bg-white/[0.06] px-2 text-[12px] text-ink-200"
+            class="inline-flex h-7 max-w-full items-center gap-1.5 rounded-md bg-tint px-2 text-[12px] text-ink-200"
             title={skillTitle(skill)}
           >
             <span class="truncate">{skill.name || skill.command}</span>
             {skill.source && (
-              <span class="hidden rounded bg-white/[0.08] px-1 py-0.5 text-[9px] uppercase text-ink-500 sm:inline">
+              <span class="hidden rounded bg-tint-strong px-1 py-0.5 text-[9px] uppercase text-ink-500 sm:inline">
                 {skill.source}
               </span>
             )}
             <button
               type="button"
               onClick={() => onRemove(skill)}
-              class="inline-flex h-5 w-5 flex-none items-center justify-center rounded text-ink-500 hover:bg-white/[0.08] hover:text-ink-100"
+              class="inline-flex h-5 w-5 flex-none items-center justify-center rounded text-ink-500 hover:bg-tint-strong hover:text-ink-100"
               title={`Remove ${skill.name || skill.command}`}
               aria-label={`Remove ${skill.name || skill.command}`}
             >

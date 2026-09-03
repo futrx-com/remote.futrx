@@ -38,7 +38,7 @@ type Dependencies struct {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
-	agentAuthBindings := deps.Services.AgentAuth.Bindings()
+	agentAuthBindings := deps.Services.Agents.Bindings()
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
 	if deps.Services.Auth != nil {
@@ -52,10 +52,11 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 				"/ws/"+provider+"/auth-status",
 			)
 		}
+		providerAuthPrefixes = append(providerAuthPrefixes, "/api/agent-auth", "/ws/agent-auth/")
 		middleware = httpmiddleware.NewAuth(deps.Services.Auth).
 			RequireLocalAdminSetup(deps.Services.Auth.LocalAdminConfigured).
 			RequireProviderLogin(
-				deps.Services.AgentAuth.AnyAuthenticated,
+				deps.Services.Agents.AccessReady,
 				providerAuthPrefixes...,
 			)
 	}
@@ -83,6 +84,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.ScheduleCaps,
 		deps.Services.Auth,
 	)
+	usageHandler := httphandlers.NewUsageHandler(deps.Services.Usage, deps.Services.Auth)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,
 		deps.Services.ChatAccess,
@@ -104,19 +106,22 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.Services.Projects,
 			deps.Services.Users,
 			deps.Services.Auth,
-			applicationsHandler,
 			deps.PublicHostname,
-		),
+			applicationsHandler,
+		).WithUsage(usageHandler),
 		Applications: applicationsHandler,
-		Users: httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
+		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
+			deps.Services.Agents,
 		),
+		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
 			deps.Services.Auth,
 		),
+		Security: httphandlers.NewSecurityHandler(deps.Services.Auth),
 		Push: httphandlers.NewPushHandler(
 			deps.Services.Push,
 			deps.Services.Auth,
@@ -127,6 +132,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Skills:           httphandlers.NewSkillHandler(deps.Services.Skills),
 		BrowserInspector: httphandlers.NewBrowserInspectorHandler(),
 		Schedules:        scheduleHandler,
+		Usage:            usageHandler,
 		Uploads:          uploads,
 		TmuxWS:           wstransport.NewTmuxSocket(deps.TmuxClient),
 		TerminalWS:       terminalSocket,

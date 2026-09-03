@@ -6,9 +6,12 @@ The supported deployment is a root-managed Ubuntu or Debian server with DNS poin
 
 ```mermaid
 flowchart TD
-    Start["Run infra/install.sh with hostname"] --> Validate["Validate root, distro, DNS, and options"]
+    Start["Run infra/install.sh with hostname"] --> Root["Validate root and options"]
+    Root --> Checkout["Select target checkout and re-execute its installer"]
+    Checkout --> Validate["Validate distro and DNS"]
     Validate --> Deps["Install pinned host dependencies"]
-    Deps --> Build["Clone or update repo; build frontend and Go backend"]
+    Deps --> Agents["Converge catalog-declared host agent CLIs"]
+    Agents --> Build["Build frontend and Go backend"]
     Build --> Proxy["Render, validate, and reload Caddy"]
     Proxy --> Service["Install and start systemd backend service"]
     Service --> Health["Poll backend health for up to 30 seconds"]
@@ -18,7 +21,10 @@ flowchart TD
     Heal --> Ready["Open app and claim administrator"]
 ```
 
-The curl bootstrap installs Git if needed, clones into `/opt/remote.futrx`, and re-executes the checked-out installer.
+The curl bootstrap installs Git if needed, clones into `/opt/remote.futrx`, and
+re-executes the checked-out installer. Direct repair runs follow the same
+select-and-re-execute rule before reading version pins or the agent catalog, so
+one convergence cannot mix policy from two commits.
 
 ## Installed components
 
@@ -28,9 +34,11 @@ The curl bootstrap installs Git if needed, clones into `/opt/remote.futrx`, and 
 | `remote.futrx.service` | Go backend on loopback port `7682` by default |
 | Caddy | Public HTTPS, compression, authentication, and proxy routing |
 | LXD | Project-container runtime and base-image store |
+| Catalog-declared host agent CLIs | Local binaries for host-scoped execution and managed authentication |
 | `futrx-remote-dev-base` | Reusable Ubuntu workspace image |
 | `.lxd` DNS integration | Resolves container names through the LXD bridge |
 | `lxc-ipv4-heal.timer` | Repairs running containers that lose IPv4 |
+| Main application PWA | Installable chat/control surface, Web Push, and a network-failure offline page |
 | code-server launcher PWA | One installable entry point for project IDEs |
 
 ## Build flow
@@ -46,6 +54,47 @@ flowchart LR
 ```
 
 The backend embeds the compiled frontend, so Caddy only needs to proxy the main origin to the Go process.
+
+## Host agent CLI convergence
+
+After the host toolchain is available and the target checkout is selected, the
+application step builds the explicit compiled-in agent module catalog and runs
+`backend/cmd/install-host-agents`, which selects profiles for modules declaring
+the `host` execution scope. A host-scoped local CLI module supplies a profile;
+a host-only remote integration may omit one and requires no local install.
+Each profile originates from the provider's local `NewFactory()`/`Profile()`;
+the installer applies the catalog without provider-specific branches.
+
+For each selected profile, the installer runs the provider-declared version
+arguments against its application-managed executable under
+`/opt/remote.futrx/data/host-clis/bin` and compares the detected semver with the
+exact pin (or checks binary existence when version checks are disabled). npm
+and standalone-script installers target the same managed prefix. The installer
+and backend service put that directory first on `PATH`, and convergence rejects
+any state where ordinary command resolution selects a different executable.
+The global
+`config.AgentOptions.HostCLIVersionTimeout` currently caps each host version
+command at 15 seconds. The installer
+installs stale/missing npm CLIs at the exact package pin or runs the profile's
+pinned install script, then applies the profile's post-install verification
+policy with a fresh version-probe budget from that same global setting. The
+provider-declared profile timeout bounds only the mutating install command.
+Providers are converged sequentially because they share the managed prefix.
+Each install runs in an
+isolated process group; cancellation terminates its descendants before the
+updater returns. Any provider-scoped install or verification error aborts the
+infrastructure step. Preview the derived plan without changing the host:
+
+```bash
+cd /opt/remote.futrx/backend
+go run ./cmd/install-host-agents --plan
+```
+
+The same profile CLI policy is consumed by the project base-image and runtime
+repair paths, preventing a second provider list from drifting away from host
+execution. A CLI pin or module-profile change therefore requires the full
+infrastructure update; the application-only deployer does not rerun host
+convergence or rebuild project images.
 
 ## Public routing
 
@@ -78,7 +127,7 @@ sequenceDiagram
 
     Builder->>LXD: Delete leftover builder if present
     Builder->>Ubuntu: Launch temporary container
-    Builder->>Ubuntu: Install system tools, Node, GitHub CLI, four agent CLIs
+    Builder->>Ubuntu: Install system tools, Node, GitHub CLI, catalog-declared project CLIs
     Builder->>Ubuntu: Install Chromium and Agent Browser
     Builder->>Ubuntu: Install code-server
     Builder->>Ubuntu: Stop container
@@ -86,7 +135,10 @@ sequenceDiagram
     Builder->>LXD: Remove temporary builder
 ```
 
-The recipe is generated from the same provider profiles used by runtime CLI repair, keeping agent package versions consistent.
+The recipe is generated from the project-scoped module profiles used by
+runtime CLI repair. Host convergence uses the host-scoped subset of the same
+catalog, keeping provider packages and pins consistent across execution
+environments.
 
 ## Update flow
 
@@ -131,7 +183,10 @@ the conservative infrastructure path.
 
 The intended default is to skip active agent containers. The current busy-process matcher expects a different `lxc exec` argument order than the provider commands use, so it may classify an active run as idle. Until that detector is corrected, treat workspace recycling as disruptive: coordinate a maintenance window or use `--skip-workspaces` while runs are active.
 
-The updater intentionally resets the installed application checkout to `origin/main`. Persistent application data and project workspaces live outside the tracked source tree.
+The updater intentionally resets the installed application checkout to the
+requested tag/ref, defaulting to `origin/main` when none is supplied. The
+in-app updater supplies its selected release tag. Persistent application data
+and project workspaces live outside the tracked source tree.
 
 ## Startup reconciliation
 
@@ -145,6 +200,27 @@ When the backend starts, it:
 6. starts the Agent Browser idle reaper;
 7. starts the scheduled-task loop and restores persisted deadlines/claims;
 8. begins serving the embedded SPA, API, and WebSockets.
+
+## Agent capability discovery timeout
+
+Capability discovery probes all registered agents compatible with the selected
+host/project execution scope concurrently. One global
+deadline applies to each provider's complete probe, including any primary and
+fallback commands it runs:
+
+| Environment variable | Default | Meaning |
+| --- | ---: | --- |
+| `AGENT_CAPABILITY_TIMEOUT` | `30s` | Maximum duration of one provider capability probe; Go duration syntax; `0` disables the deadline |
+
+Set it with a systemd override when slower provider CLIs need more time:
+
+```ini
+[Service]
+Environment=AGENT_CAPABILITY_TIMEOUT=45s
+```
+
+Restarting the service applies the value and also clears the process-local
+capability cache. Invalid or negative values fall back to 30 seconds.
 
 ## Scheduled-task guardrails
 

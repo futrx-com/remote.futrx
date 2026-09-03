@@ -14,7 +14,7 @@ export function BrowserResizeHandle({
       title="Resize browser preview"
       aria-label="Resize browser preview"
     >
-      <span class="absolute left-1/2 top-1/2 h-12 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/30" />
+      <span class="absolute left-1/2 top-1/2 h-12 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-500" />
     </button>
   );
 }

@@ -1,10 +1,11 @@
 import { useCallback, useState } from "preact/hooks";
 import { projectApi } from "../../../api/projectApi";
-import type { ContainerLimits, ProjectMeta } from "../../../models/project";
 import type {
+  ContainerLimits,
   ProjectContainerRecord,
   ProjectDataLoadSignal,
-} from "../../projects/projectContainerRecords";
+  ProjectMeta,
+} from "../../../models/project";
 
 export function useProjectContainerInfo(project: ProjectMeta | null) {
   const [record, setRecord] = useState<ProjectContainerRecord>({ loading: false });

@@ -1,7 +1,10 @@
 import type { ChatMeta } from "../../models/chat";
-import { modelShortLabel } from "../../config/chat";
-import { timeAgo } from "../../shared/format";
-import { Clock, Eye, EyeOff, GitFork, Loader, MessageSquare, X } from "../primitives/icons";
+import { relativeTimeService } from "../../services/platform/relativeTimeService.ts";
+import { Eye, EyeOff, GitFork, Loader, MessageSquare, X } from "../primitives/icons";
+
+const rowActionClass =
+  "w-7 grid place-items-center rounded-control text-ink-400 transition-colors " +
+  "hover:bg-tint-strong hover:text-ink-50";
 
 export function ChatRow({
   chat,
@@ -23,72 +26,73 @@ export function ChatRow({
 
   return (
     <div
-      class={`group flex items-stretch gap-0.5 rounded transition-colors
-              ${active
-                ? "bg-accent-blue/[0.14] border border-accent-blue/[0.32]"
-                : "border border-transparent hover:bg-white/[0.04]"}`}
+      class={`group flex items-center rounded-control transition-colors
+              ${active ? "bg-tint-active" : "hover:bg-tint"}`}
     >
       <button
         type="button"
         onClick={onSelect}
-        class="flex-1 min-w-0 text-left px-2.5 py-2"
+        class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 pr-2 text-left"
       >
-        <div class="flex items-start gap-2">
+        <span class="grid h-4 w-4 flex-none place-items-center">
           {chat.running ? (
-            <Loader class="mt-0.5 w-3.5 h-3.5 flex-none text-accent-blue animate-spin" />
+            <Loader class="h-3.5 w-3.5 animate-spin text-accent-blue" />
           ) : unread ? (
-            <span class="mt-0.5 w-3.5 h-3.5 flex-none grid place-items-center" title="Unread">
-              <span class="w-2.5 h-2.5 rounded-full bg-accent-green shadow-[0_0_0_3px_rgba(43,213,118,0.12)]" />
-            </span>
+            <span class="h-2 w-2 rounded-full bg-accent-green" title="Unread" />
           ) : (
-            <MessageSquare
-              class={`mt-0.5 w-3.5 h-3.5 flex-none ${active ? "text-accent-blue" : "text-ink-400"}`}
-            />
+            <MessageSquare class={`h-3.5 w-3.5 ${active ? "text-ink-100" : "text-ink-400"}`} />
           )}
-          <div class="flex-1 min-w-0">
-            <div class={`text-[13px] leading-snug truncate ${active ? "text-ink-50 font-medium" : "text-ink-100"}`}>
-              {chat.title || "Untitled"}
-            </div>
-            <div class="mt-0.5 flex items-center gap-1.5 text-[11px] text-ink-400">
-              <span class={`px-1 py-0.5 rounded bg-white/[0.06] text-[10px] leading-none whitespace-nowrap flex-none ${active ? "text-accent-blue" : ""}`}>
-                {modelShortLabel(chat.model)}
-              </span>
-              <Clock class="w-3 h-3 flex-none" />
-              <span class="truncate">{timeAgo(chat.lastMessageAt)}</span>
-            </div>
-          </div>
-        </div>
+        </span>
+        <span
+          class={`min-w-0 flex-1 truncate text-[13px] leading-5
+                  ${active ? "font-medium text-ink-50" : unread ? "text-ink-100" : "text-ink-200"}`}
+        >
+          {chat.title || "Untitled"}
+        </span>
       </button>
-      <button
-        type="button"
-        onClick={onToggleUnread}
-        class="w-8 grid place-items-center text-ink-300 hover:text-ink-50 hover:bg-white/[0.08]
-               opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-        aria-label={rawUnread ? `Mark ${chat.title || "chat"} read` : `Mark ${chat.title || "chat"} unread`}
-        title={rawUnread ? "Mark read" : "Mark unread"}
+
+      {/* Age hands its slot to the row actions on hover — same pattern the row
+          uses on touch, where the actions are simply always present. */}
+      <span
+        class="pointer-events-none hidden flex-none pr-2.5 text-[11px] tabular-nums text-ink-400
+               md:block md:group-hover:hidden md:group-focus-within:hidden"
+        title={relativeTimeService.ago(chat.lastMessageAt)}
       >
-        {rawUnread ? <Eye class="w-3.5 h-3.5" /> : <EyeOff class="w-3.5 h-3.5" />}
-      </button>
-      <button
-        type="button"
-        onClick={onFork}
-        class="w-8 grid place-items-center text-ink-300 hover:text-accent-blue hover:bg-white/[0.08]
-               opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-        aria-label={`Fork ${chat.title || "chat"}`}
-        title="Fork from last message"
+        {relativeTimeService.shortAgo(chat.lastMessageAt)}
+      </span>
+
+      <div
+        class="flex flex-none items-stretch gap-0.5 pr-1
+               md:hidden md:group-hover:flex md:group-focus-within:flex"
       >
-        <GitFork class="w-3.5 h-3.5" />
-      </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        class="w-8 grid place-items-center rounded-r text-ink-300 hover:text-accent-red hover:bg-accent-red/10
-               opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-        aria-label={`Delete ${chat.title || "chat"}`}
-        title="Delete chat"
-      >
-        <X class="w-3.5 h-3.5" />
-      </button>
+        <button
+          type="button"
+          onClick={onToggleUnread}
+          class={rowActionClass}
+          aria-label={rawUnread ? `Mark ${chat.title || "chat"} read` : `Mark ${chat.title || "chat"} unread`}
+          title={rawUnread ? "Mark read" : "Mark unread"}
+        >
+          {rawUnread ? <Eye class="h-3.5 w-3.5" /> : <EyeOff class="h-3.5 w-3.5" />}
+        </button>
+        <button
+          type="button"
+          onClick={onFork}
+          class={rowActionClass}
+          aria-label={`Fork ${chat.title || "chat"}`}
+          title="Fork from last message"
+        >
+          <GitFork class="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          class={`${rowActionClass} hover:bg-accent-red/10 hover:text-accent-red`}
+          aria-label={`Delete ${chat.title || "chat"}`}
+          title="Delete chat"
+        >
+          <X class="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

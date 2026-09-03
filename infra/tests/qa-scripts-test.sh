@@ -8,6 +8,7 @@ DEPLOY_APP_SCRIPT="$TESTS_DIR/../qa/deploy-app.sh"
 DEPLOY_LOCAL_SCRIPT="$TESTS_DIR/../qa/deploy-local.sh"
 COMMON_SCRIPT="$TESTS_DIR/../qa/common.sh"
 CORE_INSTALL_SCRIPT="$TESTS_DIR/../install.sh"
+HOST_DEPS_SCRIPT="$TESTS_DIR/../steps/01-host-deps.sh"
 ROOT_PACKAGE_JSON="$TESTS_DIR/../../package.json"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_DIR"' EXIT
@@ -98,9 +99,20 @@ grep -Fq 'raw.githubusercontent.com/futrx-com/remote.futrx/${CANDIDATE_SHA}/infr
     fail "install.sh does not download the installer from the immutable candidate commit"
 grep -Fq '"--ref=$candidate_sha"' "$INSTALL_SCRIPT" || \
     fail "install.sh does not pin the bootstrap clone to the candidate commit"
+grep -Fq 'git clone --depth=1 --branch main --single-branch "$CLONE_URL" "$TARGET"' "$CORE_INSTALL_SCRIPT" || \
+    fail "core install.sh does not pin production bootstrap clones to main"
+grep -Fq 'MAIN_REFSPEC="+refs/heads/main:refs/remotes/origin/main"' "$CORE_INSTALL_SCRIPT" || \
+    fail "core install.sh does not explicitly fetch main for existing narrow clones"
+if [ "$(grep -Fc 'config remote.origin.fetch "$MAIN_REFSPEC"' "$CORE_INSTALL_SCRIPT")" -ne 2 ]; then
+    fail "core install.sh does not persist the main refspec for both existing-checkout repair paths (legacy + primary), so later plain fetches would go stale"
+fi
 if grep -Eq 'apt-get|git clone' "$INSTALL_SCRIPT"; then
     fail "install.sh bootstraps dependencies or clones the repository itself"
 fi
+grep -Fq 'apt-get install -y -qq lxd lxd-client' "$HOST_DEPS_SCRIPT" || \
+    fail "host dependencies do not use native Debian LXD inside nested LXC"
+grep -Fq 'lxc profile set default security.idmap.base "$LXD_IDMAP_BASE"' "$HOST_DEPS_SCRIPT" || \
+    fail "nested LXD does not preserve Remote's expected unprivileged idmap"
 if grep -Eq 'infra/tests|npm --prefix|go (test|vet)' "$COMMON_SCRIPT"; then
     fail "QA install/update scripts run local project tests"
 fi
@@ -119,13 +131,16 @@ if grep -Eq 'git (fetch|reset)|infra/(install|update|upgrade-workspaces)[.]sh|FO
     fail "deploy-local.sh changes the installed checkout, host, or workspaces"
 fi
 for package_contract in \
-    '"qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/install.sh"' \
-    '"qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/update.sh"' \
-    '"qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-app.sh"' \
-    '"qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-local.sh"' \
+    '"qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/install.sh"' \
+    '"qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/update.sh"' \
+    '"qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-app.sh"' \
+    '"qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-local.sh"' \
     '"qa:test": "bash infra/tests/qa-scripts-test.sh"'; do
     grep -Fq "$package_contract" "$ROOT_PACKAGE_JSON" || \
         fail "root package is missing QA command: $package_contract"
 done
+
+bash "$TESTS_DIR/qa-resolve-test.sh"
+bash "$TESTS_DIR/lxd-host-test.sh"
 
 echo "QA install/update/app-deploy/local-deploy script tests passed"

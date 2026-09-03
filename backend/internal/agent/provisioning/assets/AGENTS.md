@@ -9,18 +9,17 @@ crashed processes, and deleted files stay within this project.
 
 - `/workspace` - your project files. Persistent, survives container
   restarts and reprovisions.
-- `/root/.codex`, `/root/.claude`, and `/root/.kimi-code` - persistent,
-  project-specific provider homes. The host mounts and manages these paths so
-  provider configuration, authentication, and session state survive container
-  replacement. Keep project artifacts in `/workspace`, not in these homes.
-- Antigravity stores its project sign-in under
-  `/root/.gemini/antigravity-cli`. It survives a normal stop/start, but it is
-  not a durable mount and is lost when the container is replaced.
+- `/root/.codex`, `/root/.claude`, `/root/.kimi-code`, and
+  `/root/.gemini/antigravity-cli` - persistent, project-specific provider
+  homes. The host mounts and manages these paths so provider configuration,
+  authentication, and session state survive container replacement. Only the
+  Antigravity subdirectory is mounted, not all of `/root/.gemini`. Keep project
+  artifacts in `/workspace`, not in these homes.
 - `/root/.claude/CLAUDE.md` AND `/root/.codex/AGENTS.md` - this file
   (identical content, two paths so both Claude and Codex pick it up).
   The host re-pushes both whenever the template changes; don't edit
   them expecting changes to stick.
-- Everything else outside the four durable mounts: replaceable.
+- Everything else outside the five durable mounts: replaceable.
 
 ## Capabilities
 
@@ -45,7 +44,7 @@ crashed processes, and deleted files stay within this project.
 `python3` + `pip`, `node 22` + `npm`, `claude`, `codex`, `kimi`, `agy`. Anything else:
 `apt-get install` or `npm i -g` freely.
 
-**Persistence rule.** `/workspace/**` and the three provider homes listed
+**Persistence rule.** `/workspace/**` and the four provider homes listed
 above are host bind-mounts and survive container replacement. Other paths
 (`/usr/local/`, unmounted paths under `/root/`, and packages you apt-install)
 are gone if the container is recreated. If you install a tool the project

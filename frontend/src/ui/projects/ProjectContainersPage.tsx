@@ -3,7 +3,7 @@ import type {
   AccessRecord,
   ProjectContainerRecord,
   SecretsRecord,
-} from "../../state/projects/projectContainerRecords";
+} from "../../models/project";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
 import {
@@ -13,10 +13,12 @@ import {
 import { ProjectSecretsSection } from "./project-containers/ProjectSecretsSection";
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
+import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
+import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
+import type { UsageSummary } from "../../models/usage";
 import { ApplicationsSection } from "../applications/ApplicationsSection";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
-import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
 import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Server, Settings, Users } from "../primitives/icons";
 
 export type ProjectSettingsTab = "info" | "settings" | "secrets" | "applications" | "sharing";
@@ -69,6 +71,9 @@ export function ProjectContainersPage({
   isAdmin,
   serverMemoryTotalBytes,
   serverMemoryLoading,
+  usageSummary,
+  usageLoading,
+  usageError,
   onRefresh,
   onBack,
   onHamburger,
@@ -94,6 +99,9 @@ export function ProjectContainersPage({
   isAdmin: boolean;
   serverMemoryTotalBytes?: number;
   serverMemoryLoading: boolean;
+  usageSummary: UsageSummary | null;
+  usageLoading: boolean;
+  usageError: string | null;
   onRefresh: () => void;
   onBack: () => void;
   onHamburger: () => void;
@@ -114,11 +122,11 @@ export function ProjectContainersPage({
 
   return (
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <header class="codex-header top-chrome flex-none z-20 bg-[#101318] border-b border-white/10 px-3 pb-2 flex items-center gap-2 min-h-[52px]">
+      <header class="codex-header top-chrome z-20 flex-none border-b border-line px-3 pb-2 flex items-center gap-2 min-h-[52px]">
         <button
           type="button"
           onClick={onHamburger}
-          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-white/[0.08] grid place-items-center"
+          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-tint-strong grid place-items-center"
           aria-label="Toggle sidebar"
         >
           <Menu class="w-5 h-5" />
@@ -127,7 +135,7 @@ export function ProjectContainersPage({
           type="button"
           onClick={onBack}
           class="hidden md:inline-flex items-center gap-1.5 h-10 px-2 text-ink-200 hover:text-ink-50
-                 hover:bg-white/[0.08] rounded-md text-sm"
+                 hover:bg-tint-strong rounded-md text-sm"
         >
           <ChevronLeft class="w-4 h-4" /> Chats
         </button>
@@ -141,7 +149,7 @@ export function ProjectContainersPage({
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          class="h-10 w-10 rounded-md text-ink-300 hover:text-ink-50 hover:bg-white/[0.08]
+          class="h-10 w-10 rounded-md text-ink-300 hover:text-ink-50 hover:bg-tint-strong
                  disabled:cursor-wait grid place-items-center"
           aria-label="Refresh"
           title="Refresh"
@@ -154,13 +162,13 @@ export function ProjectContainersPage({
         <ProjectSettingsNavigation
           activeTab={activeTab}
           onTabChange={onTabChange}
-          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-white/10 bg-[#0f1217] p-3"
+          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <ProjectSettingsNavigation
           activeTab={activeTab}
           onTabChange={onTabChange}
           mobile
-          className="theme-submenu-surface md:hidden flex-none border-b border-white/10 bg-[#0f1217] px-3 py-2 overflow-x-auto no-scrollbar"
+          className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
         />
 
         <main
@@ -186,6 +194,9 @@ export function ProjectContainersPage({
                       project={project}
                       info={infoRecord.data}
                       refreshedAt={infoRecord.refreshedAt}
+                      usageSummary={usageSummary}
+                      usageLoading={usageLoading}
+                      usageError={usageError}
                     />
                     <ProjectInfoSection
                       project={project}
@@ -299,8 +310,8 @@ function ProjectSettingsNavigation({
               onClick={() => onTabChange(id)}
               class={`${mobile ? "h-9 px-3" : "w-full h-10 px-3"} rounded-md inline-flex items-center gap-2.5 border text-[13px] font-medium transition-colors ${
                 active
-                  ? "border-white/10 bg-white/[0.08] text-ink-50"
-                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-white/[0.05]"
+                  ? "border-line bg-tint-strong text-ink-50"
+                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-tint"
               }`}
             >
               <Icon class={`w-4 h-4 flex-none ${active ? "text-accent-blue" : "text-ink-400"}`} />
@@ -325,9 +336,9 @@ function ProjectSettingsPanel({
   children: ComponentChildren;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 flex items-start gap-3 border-b border-white/[0.06]">
-        <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface overflow-hidden">
+      <header class="px-4 py-3 flex items-start gap-3 border-b border-line">
+        <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
           <Icon class="w-4 h-4 text-ink-200" />
         </div>
         <div class="flex-1 min-w-0">
@@ -358,14 +369,20 @@ function ProjectHeader({
   project,
   info,
   refreshedAt,
+  usageSummary,
+  usageLoading,
+  usageError,
 }: {
   project: ProjectMeta;
   info?: ProjectContainerInfo;
   refreshedAt?: number;
+  usageSummary: UsageSummary | null;
+  usageLoading: boolean;
+  usageError: string | null;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] px-4 py-3 flex items-start gap-3">
-      <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface px-4 py-3 flex items-start gap-3">
+      <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
         <Settings class="w-4 h-4 text-ink-200" />
       </div>
       <div class="flex-1 min-w-0">
@@ -376,6 +393,7 @@ function ProjectHeader({
         <div class="text-[12.5px] text-ink-300 mt-0.5 leading-snug font-mono truncate">
           {project.containerName || project.slug}
         </div>
+        <ProjectUsageLine summary={usageSummary} loading={usageLoading} error={usageError} />
       </div>
       {refreshedAt && (
         <div class="text-[11px] text-ink-400 mt-1.5">refreshed {fmtRelative(refreshedAt)}</div>

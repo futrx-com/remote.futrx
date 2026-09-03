@@ -2,6 +2,127 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Design tokens
+
+   One block per theme, and nothing below this point hard-codes a colour. The
+   elevation scale runs app -> canvas -> surface -> raised, with `inset` for
+   wells (inputs, code bodies) that sit *below* their container. `line` and
+   `tint` are polarity-flipping translucents: white-on-dark, ink-on-light.
+--------------------------------------------------------------------------- */
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-app-rgb: 8 9 11;
+  --bg-canvas-rgb: 14 15 18;
+  --bg-surface-rgb: 20 21 25;
+  --bg-raised-rgb: 27 28 33;
+  --bg-inset-rgb: 11 12 15;
+
+  --fg-bright: 244 244 246;
+  --fg: 227 227 231;
+  --fg-dim: 181 182 189;
+  --fg-muted: 142 143 153;
+  --fg-subtle: 106 107 117;
+  --fg-faint: 62 63 71;
+
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.13);
+  --tint: rgba(255, 255, 255, 0.035);
+  --tint-strong: rgba(255, 255, 255, 0.07);
+  --tint-active: rgba(255, 255, 255, 0.11);
+
+  /* Placeholder material. The base is the resting fill; the sheen is the light
+     that crosses it, bright in the core and falling off wide so it reads as a
+     glow behind the surface rather than a stripe on top of it. */
+  --skeleton-base: rgba(255, 255, 255, 0.06);
+  --skeleton-crest: rgba(255, 255, 255, 0.05);
+  --skeleton-sheen: rgba(255, 255, 255, 0.30);
+  --skeleton-sheen-soft: rgba(255, 255, 255, 0.09);
+
+  --accent-blue: 138 180 255;
+  --accent-green: 123 216 143;
+  --accent-red: 255 123 114;
+  --accent-yellow: 226 184 109;
+  --accent-orange: 240 164 93;
+  --accent-purple: 184 168 255;
+  /* Text/iconography that sits on top of a filled accent. */
+  --on-accent: 8 9 11;
+
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.14);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.24);
+  --selection-bg: rgba(138, 180, 255, 0.28);
+
+  --code-plain: #e4e4e7;
+  --code-comment: #8e8f99;
+  --code-keyword: #ff9b96;
+  --code-string: #a7c7ff;
+  --code-number: #8ab4ff;
+  --code-added: #b7f7c2;
+  --code-removed: #ffc4bf;
+  --code-meta: #c8bbff;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-app-rgb: 223 226 231;
+  --bg-canvas-rgb: 255 255 255;
+  --bg-surface-rgb: 244 245 248;
+  --bg-raised-rgb: 255 255 255;
+  --bg-inset-rgb: 240 242 245;
+
+  --fg-bright: 13 17 23;
+  --fg: 31 36 44;
+  --fg-dim: 65 72 82;
+  --fg-muted: 94 100 110;
+  --fg-subtle: 131 138 148;
+  --fg-faint: 176 181 189;
+
+  --line: rgba(15, 20, 28, 0.1);
+  --line-strong: rgba(15, 20, 28, 0.17);
+  --tint: rgba(15, 20, 28, 0.035);
+  --tint-strong: rgba(15, 20, 28, 0.065);
+  --tint-active: rgba(15, 20, 28, 0.1);
+
+  /* Same idea inverted: the fill darkens the page, the sheen lifts back toward
+     white, so the light still travels in the same direction. */
+  --skeleton-base: rgba(15, 20, 28, 0.09);
+  --skeleton-crest: rgba(255, 255, 255, 0.45);
+  --skeleton-sheen: rgba(255, 255, 255, 0.6);
+  --skeleton-sheen-soft: rgba(255, 255, 255, 0.18);
+
+  --accent-blue: 47 111 235;
+  --accent-green: 31 136 61;
+  --accent-red: 207 34 46;
+  --accent-yellow: 154 103 0;
+  --accent-orange: 188 76 0;
+  --accent-purple: 102 57 186;
+  --on-accent: 255 255 255;
+
+  --shadow-pop: 0 8px 24px rgba(15, 20, 28, 0.12), 0 1px 2px rgba(15, 20, 28, 0.08);
+  --shadow-modal: 0 24px 64px rgba(15, 20, 28, 0.18), 0 2px 8px rgba(15, 20, 28, 0.08);
+  --shadow-card: 0 1px 2px rgba(15, 20, 28, 0.05);
+
+  --scrollbar-thumb: rgba(15, 20, 28, 0.18);
+  --scrollbar-thumb-hover: rgba(15, 20, 28, 0.3);
+  --selection-bg: rgba(47, 111, 235, 0.18);
+
+  --code-plain: #1f242c;
+  --code-comment: #5e646e;
+  --code-keyword: #cf222e;
+  --code-string: #116329;
+  --code-number: #0550ae;
+  --code-added: #116329;
+  --code-removed: #cf222e;
+  --code-meta: #8250df;
+}
+
 @layer base {
   html, body, #root {
     width: 100%;
@@ -10,13 +131,13 @@
     overflow: hidden;
   }
   html {
-    color-scheme: dark;
-    background: #0f1014;
+    background: rgb(var(--bg-app-rgb));
   }
   body {
     margin: 0;
     overscroll-behavior: none;
-    background: #0f1014;
+    background: rgb(var(--bg-app-rgb));
+    color: rgb(var(--fg));
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     touch-action: manipulation;
@@ -24,6 +145,17 @@
   button, input, textarea, select {
     font: inherit;
     letter-spacing: 0;
+    color: inherit;
+  }
+  ::selection {
+    background: var(--selection-bg);
+  }
+  /* One focus treatment for the whole app: a soft accent ring, never the
+     default browser outline, and never on mouse interaction. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent-blue) / 0.75);
+    outline-offset: 1px;
+    border-radius: 0.375rem;
   }
   * { -webkit-tap-highlight-color: transparent; }
 }
@@ -96,25 +228,96 @@
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: theme(colors.ink.500) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
-  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: theme(colors.ink.500);
-    border-radius: 3px;
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: padding-box;
   }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 
+  /* Placeholder material. A slow workspace should look like it is filling in,
+     so unresolved regions carry a lit fill of their own — never a spinner over
+     an empty page. The crest is a fixed top highlight that keeps a resting bar
+     from reading as a flat hole punched in the panel. */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, var(--skeleton-crest), transparent 60%),
+      var(--skeleton-base);
+  }
+
+  /* Off-vertical so tall placeholders catch the light across a diagonal, and
+     held wide — a narrow core inside a long falloff — so what travels reads as
+     a glow rather than a band. Transform-only, so it stays on the compositor. */
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      100deg,
+      transparent 0%,
+      var(--skeleton-sheen-soft) 35%,
+      var(--skeleton-sheen) 50%,
+      var(--skeleton-sheen-soft) 65%,
+      transparent 100%
+    );
+    animation: skeleton-sweep 1.9s cubic-bezier(0.45, 0.05, 0.35, 1) infinite;
+  }
+
+  /* The two window cards (sidebar, main) and the composer share one edge so
+     the workspace reads as a single piece of hardware. */
+  .codex-window-frame {
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+  }
+
+  .sidebar-project-chat-frame {
+    --sidebar-chat-row-height: 2rem;
+  }
+
   .sidebar-project-chat-list {
-    --sidebar-chat-row-height: 3.5rem;
-    max-height: calc((var(--sidebar-chat-row-height) * 3) + 0.25rem);
+    /* Rows are separated by space-y-px, so a row costs its height plus 1px.
+       Ignoring that made the "half row" peek land on a row boundary. */
+    --sidebar-chat-row-step: calc(var(--sidebar-chat-row-height) + 1px);
+    max-height: calc((var(--sidebar-chat-row-step) * 7) + (var(--sidebar-chat-row-height) * 0.5));
     overscroll-behavior: contain;
   }
 
   .sidebar-project-chat-list > .group {
     min-height: var(--sidebar-chat-row-height);
+  }
+
+  /* Ghosts the row sitting on the fold so the cut reads as "more below"
+     rather than as the end of the list. */
+  .sidebar-project-chat-fade {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    height: calc(var(--sidebar-chat-row-height) * 1.25);
+    pointer-events: none;
+    /* Ramps hard across the half-row peek so that row visibly dissolves into
+       the surface, then clears before it touches the last whole row. */
+    background: linear-gradient(
+      to top,
+      rgb(var(--bg-surface-rgb) / 0.96) 0%,
+      rgb(var(--bg-surface-rgb) / 0.62) 40%,
+      rgb(var(--bg-surface-rgb) / 0.18) 72%,
+      rgb(var(--bg-surface-rgb) / 0) 100%
+    );
   }
 
   .codex-tool-group-list > .codex-tool-shell {
@@ -134,15 +337,151 @@
     box-shadow: none !important;
   }
 
-  .md-code { color: #e4e4e7; }
-  .md-code-comment { color: #9b9ba3; }
-  .md-code-keyword { color: #ff9b96; }
-  .md-code-string { color: #a7c7ff; }
+  /* Prose rhythm inside assistant replies: headings breathe, lists indent
+     predictably, and the measure stays readable on wide screens. */
+  /* Long unbroken runs — namespaced class names, deploy paths, bare URLs, a
+     pasted stack trace — carry no break opportunity, and `overflow-wrap:
+     break-word` does not shrink a box's min-content width. An auto-width or
+     flex-sized container therefore still grows to fit the longest run and
+     spills off the pane. `anywhere` is the one value that feeds back into
+     intrinsic sizing, so the box stays inside its column and the run wraps.
+     Fenced code opts back out: it scrolls inside its own frame instead. */
+  .codex-prose,
+  .codex-user-bubble {
+    overflow-wrap: anywhere;
+  }
+
+  .codex-prose pre {
+    overflow-wrap: normal;
+  }
+
+  .codex-prose > * + * { margin-top: 0.85em; }
+  .codex-prose h1,
+  .codex-prose h2,
+  .codex-prose h3 {
+    margin-top: 1.6em;
+    line-height: 1.3;
+    font-weight: 600;
+    color: rgb(var(--fg-bright));
+    letter-spacing: -0.01em;
+  }
+  .codex-prose h1 { font-size: 1.3em; }
+  .codex-prose h2 { font-size: 1.15em; }
+  .codex-prose h3 { font-size: 1.02em; }
+  .codex-prose > *:first-child { margin-top: 0; }
+
+
+  /* -------------------------------------------------------------------------
+     Buttons
+
+     One geometry and four intents. Every filled action in the app resolves to
+     these, so height, radius, and weight can never drift between screens.
+  ------------------------------------------------------------------------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 2.25rem;
+    padding-inline: 0.875rem;
+    border-radius: 0.5rem;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    transition: background-color 120ms ease, color 120ms ease, filter 120ms ease, opacity 120ms ease;
+  }
+  .btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .btn:not(:disabled):active {
+    transform: scale(0.985);
+  }
+  .btn-sm {
+    height: 2rem;
+    padding-inline: 0.625rem;
+    font-size: 12.5px;
+  }
+  .btn-lg {
+    height: 2.75rem;
+    padding-inline: 1.125rem;
+    font-size: 14px;
+  }
+  .btn-block {
+    width: 100%;
+  }
+
+  .btn-primary {
+    background: rgb(var(--accent-blue));
+    color: rgb(var(--on-accent));
+  }
+  .btn-primary:not(:disabled):hover {
+    filter: brightness(1.08);
+  }
+
+  .btn-secondary {
+    background: var(--tint-strong);
+    color: rgb(var(--fg));
+  }
+  .btn-secondary:not(:disabled):hover {
+    background: var(--tint-active);
+    color: rgb(var(--fg-bright));
+  }
+
+  .btn-ghost {
+    color: rgb(var(--fg-muted));
+  }
+  .btn-ghost:not(:disabled):hover {
+    background: var(--tint-strong);
+    color: rgb(var(--fg-bright));
+  }
+
+  .btn-danger {
+    background: rgb(var(--accent-red) / 0.14);
+    color: rgb(var(--accent-red));
+  }
+  .btn-danger:not(:disabled):hover {
+    background: rgb(var(--accent-red) / 0.22);
+  }
+
+  /* A segmented control: one row of mutually exclusive options. */
+  .segmented {
+    display: grid;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-radius: 0.625rem;
+    background: var(--tint);
+  }
+  .segmented-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    height: 2rem;
+    border-radius: 0.4375rem;
+    font-size: 13px;
+    color: rgb(var(--fg-dim));
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  .segmented-option:not(:disabled):hover {
+    color: rgb(var(--fg-bright));
+  }
+  .segmented-option[aria-checked="true"] {
+    background: rgb(var(--bg-raised-rgb));
+    color: rgb(var(--fg-bright));
+    box-shadow: var(--shadow-card);
+  }
+
+  .md-code { color: var(--code-plain); }
+  .md-code-comment { color: var(--code-comment); }
+  .md-code-keyword { color: var(--code-keyword); }
+  .md-code-string { color: var(--code-string); }
   .md-code-number,
-  .md-code-literal { color: #8ab4ff; }
-  .md-code-addition { color: #b7f7c2; }
-  .md-code-deletion { color: #ffc4bf; }
-  .md-code-meta { color: #c8bbff; }
+  .md-code-literal { color: var(--code-number); }
+  .md-code-addition { color: var(--code-added); }
+  .md-code-deletion { color: var(--code-removed); }
+  .md-code-meta { color: var(--code-meta); }
 }
 
 @layer utilities {
@@ -161,144 +500,37 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Mobile composer
+
+   Colour and the card's stacked layout are shared with desktop; phones only
+   need a rounder card, a taller prompt, and the folded settings sheet.
+--------------------------------------------------------------------------- */
 @media (max-width: 767px) {
-  html,
-  body {
-    background: #0f1014;
-  }
-
-  .codex-app,
-  .codex-main,
-  .codex-thread {
-    background: #0f1014 !important;
-    color: #e4e4e7 !important;
-  }
-
-  .codex-header {
-    background: rgba(25, 26, 31, 0.98) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #f4f4f5 !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04);
-  }
-
-  .codex-header .text-ink-50,
-  .codex-header .text-ink-100,
-  .codex-header .text-ink-200,
-  .codex-header .text-ink-300,
-  .codex-header .text-ink-400,
-  .codex-header button {
-    color: #f4f4f5 !important;
-  }
-
-  .codex-header .bg-white\/\[0\.06\],
-  .codex-header .bg-white\/5 {
-    background: rgba(255, 255, 255, 0.06) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-  }
-
-  .codex-message-scroll {
-    background: #121317 !important;
-  }
-
-  .codex-message-scroll .text-ink-50,
-  .codex-message-scroll .text-ink-100,
-  .codex-message-scroll .text-ink-200 {
-    color: #e4e4e7 !important;
-  }
-
-  .codex-message-scroll .text-ink-300,
-  .codex-message-scroll .text-ink-400 {
-    color: #9b9ba3 !important;
-  }
-
-  .codex-user-bubble {
-    background: rgba(255, 255, 255, 0.065) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #f4f4f5 !important;
-    box-shadow: none !important;
-  }
-
-  .codex-assistant-block {
-    color: #e4e4e7 !important;
-  }
-
-  .codex-tool-shell {
-    background: #191a1f !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #e4e4e7 !important;
-    box-shadow: none !important;
-  }
-
-  .codex-tool-trigger {
-    background: rgba(255, 255, 255, 0.03) !important;
-    color: #e4e4e7 !important;
-  }
-
-  .codex-composer-shell {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    background: linear-gradient(to top, #121317 82%, rgba(18, 19, 23, 0.9)) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #e4e4e7 !important;
-  }
-
   .codex-composer-card {
-    margin: 0.5rem 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
-    border: 1px solid #3f4047;
+    margin: 0 0.75rem max(0.5rem, env(safe-area-inset-bottom, 0px)) !important;
     border-radius: 1.25rem;
-    background: #191a1f;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), 0 1px 0 rgba(255, 255, 255, 0.04);
   }
 
-  .codex-composer-form {
-    display: grid !important;
-    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
-    align-items: center !important;
-    gap: 0.5rem !important;
-    margin: 0;
-    padding: 0.625rem !important;
-  }
-
-  .codex-composer-agent-controls {
-    padding: 0 !important;
-  }
-
-  .codex-composer-execution-controls {
-    padding: 0 !important;
-  }
-
-  .codex-composer-control-deck {
-    padding: 0.4rem 0.625rem 0.625rem !important;
-  }
-
-  .codex-mobile-settings-trigger {
-    display: inline-flex !important;
-    grid-column: 2;
-    grid-row: 2;
-    height: 2.25rem;
+  .codex-composer-textarea {
+    min-height: 3.25rem;
   }
 
   .codex-mobile-settings-panel .codex-composer-agent-controls {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 0.5rem !important;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 8.5rem;
+    gap: 0.5rem;
   }
 
-  .codex-mobile-settings-panel .codex-provider-control {
-    grid-column: 1 / -1;
+  .codex-mobile-settings-panel .codex-agent-picker,
+  .codex-mobile-settings-panel .codex-skill-control-root {
     width: 100%;
   }
 
-  .codex-mobile-settings-panel .codex-model-control,
-  .codex-mobile-settings-panel .codex-skill-control-root {
-    width: 100% !important;
-  }
-
   .codex-mobile-settings-panel .codex-composer-execution-controls {
-    display: grid !important;
+    display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem !important;
+    gap: 0.5rem;
   }
 
   .codex-mobile-settings-panel .codex-option-control,
@@ -313,377 +545,17 @@
   }
 
   .codex-mode-control {
-    height: 2rem !important;
-    border: 0 !important;
-    border-radius: 1rem !important;
-    background: #303137 !important;
-    color: #e4e4e7 !important;
-    padding-inline: 0.75rem !important;
-  }
-
-  .codex-mode-control select {
-    color: #e4e4e7 !important;
-  }
-
-  .codex-composer-textarea {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    width: 100%;
-    min-height: 3.75rem !important;
-    max-height: min(8rem, 28dvh) !important;
-    padding: 0.25rem 0.125rem 0.5rem !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    color: #f4f4f5 !important;
-  }
-
-  .codex-composer-textarea::placeholder {
-    color: #9b9ba3 !important;
-  }
-
-  .codex-icon-button,
-  .codex-cancel-button {
-    width: 2.25rem !important;
-    height: 2.25rem !important;
-    border: 0 !important;
-    border-radius: 9999px !important;
-    background: transparent !important;
-    color: #e4e4e7 !important;
-  }
-
-  .codex-icon-button {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .codex-send-controls {
-    grid-column: 3;
-    grid-row: 2;
-  }
-
-  .codex-send-button {
-    width: 2.5rem !important;
-    height: 2.5rem !important;
-    border-radius: 9999px !important;
-    background: #3fb950 !important;
-    color: #ffffff !important;
-  }
-
-  .codex-sidebar {
-    background: #191a1f !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-    color: #e4e4e7 !important;
-  }
-
-  .codex-sidebar header,
-  .codex-sidebar footer {
-    background: transparent !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
-  }
-
-  .codex-sidebar .text-ink-50,
-  .codex-sidebar .text-ink-100,
-  .codex-sidebar .text-ink-200,
-  .codex-sidebar .text-ink-300,
-  .codex-sidebar .text-ink-400,
-  .codex-sidebar button,
-  .codex-sidebar input {
-    color: #f4f4f5 !important;
-  }
-
-  .codex-sidebar input::placeholder {
-    color: #9b9ba3 !important;
-  }
-
-  .codex-sidebar .bg-\[\#0b0d11\],
-  .codex-sidebar .bg-white\/\[0\.03\],
-  .codex-sidebar .bg-white\/5 {
-    background: rgba(255, 255, 255, 0.06) !important;
-    border-color: rgba(255, 255, 255, 0.1) !important;
+    height: 2rem;
+    border: 0;
+    border-radius: 1rem;
+    background: var(--tint-strong);
+    padding-inline: 0.75rem;
   }
 }
 
-html[data-theme="dark"],
-html[data-theme="dark"] body {
-  color-scheme: dark;
-  background: #0f1014;
-}
-
-html[data-theme="dark"] .codex-app {
-  background: #0f1014 !important;
-  color: #e4e4e7 !important;
-}
-
-html[data-theme="dark"] .codex-main,
-html[data-theme="dark"] .codex-thread,
-html[data-theme="dark"] .codex-message-scroll {
-  background: #121317 !important;
-  color: #e4e4e7 !important;
-}
-
-html[data-theme="dark"] .codex-header,
-html[data-theme="dark"] .codex-sidebar,
-html[data-theme="dark"] .codex-sidebar header,
-html[data-theme="dark"] .codex-sidebar footer,
-html[data-theme="dark"] section.bg-\[\#101318\],
-html[data-theme="dark"] .bg-\[\#101318\] {
-  background: #191a1f !important;
-  border-color: rgba(255, 255, 255, 0.09) !important;
-  color: #e4e4e7 !important;
-}
-
-html[data-theme="dark"] .bg-\[\#090b0f\] {
-  background-color: #0f1014 !important;
-}
-
-html[data-theme="dark"] .bg-\[\#0b0d11\] {
-  background-color: #121317 !important;
-}
-
-html[data-theme="dark"] .bg-\[\#151922\],
-html[data-theme="dark"] .bg-\[\#1b202b\] {
-  background-color: #202126 !important;
-}
-
-html[data-theme="dark"] .bg-\[\#0d1015\] {
-  background-color: #17181d !important;
-}
-
-html[data-theme="dark"] .codex-composer-shell {
-  background: linear-gradient(to top, #121317 82%, rgba(18, 19, 23, 0.92)) !important;
-  border-color: rgba(255, 255, 255, 0.09) !important;
-}
-
-html[data-theme="dark"] .codex-composer-card {
-  background: #191a1f !important;
-  border-color: rgba(255, 255, 255, 0.11) !important;
-}
-
-html[data-theme="dark"] .codex-composer-form,
-html[data-theme="dark"] .codex-composer-textarea,
-html[data-theme="dark"] .codex-tool-shell {
-  background: #191a1f !important;
-  border-color: rgba(255, 255, 255, 0.09) !important;
-}
-
-html[data-theme="dark"] .codex-tool-trigger {
-  background: rgba(255, 255, 255, 0.035) !important;
-}
-
-html[data-theme="dark"] .codex-user-bubble {
-  background: rgba(255, 255, 255, 0.065) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  color: #f4f4f5 !important;
-}
-
-html[data-theme="dark"] .text-ink-50,
-html[data-theme="dark"] .text-ink-100,
-html[data-theme="dark"] .text-ink-200 {
-  color: #e4e4e7 !important;
-}
-
-html[data-theme="dark"] .text-ink-300,
-html[data-theme="dark"] .text-ink-400 {
-  color: #9b9ba3 !important;
-}
-
-html[data-theme="dark"] [class*="border-white"] {
-  border-color: rgba(255, 255, 255, 0.09) !important;
-}
-
-html[data-theme="dark"] [class*="bg-white/"],
-html[data-theme="dark"] .bg-white\/5,
-html[data-theme="dark"] .bg-white\/10 {
-  background-color: rgba(255, 255, 255, 0.055) !important;
-}
-
-html[data-theme="light"],
-html[data-theme="light"] body {
-  color-scheme: light;
-  background: #f6f8fa;
-}
-
-html[data-theme="light"] .codex-app,
-html[data-theme="light"] .codex-main,
-html[data-theme="light"] .codex-thread,
-html[data-theme="light"] .codex-message-scroll {
-  background: #ffffff !important;
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .codex-header,
-html[data-theme="light"] .codex-sidebar,
-html[data-theme="light"] .codex-sidebar header,
-html[data-theme="light"] .codex-sidebar footer,
-html[data-theme="light"] .codex-tool-shell,
-html[data-theme="light"] section.bg-\[\#101318\],
-html[data-theme="light"] .bg-\[\#101318\] {
-  background: #f6f8fa !important;
-  border-color: rgba(31, 35, 40, 0.12) !important;
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .codex-composer-shell {
-  background: linear-gradient(to top, #ffffff 82%, rgba(255, 255, 255, 0.92)) !important;
-  border-color: rgba(31, 35, 40, 0.12) !important;
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .codex-composer-card {
-  background: #ffffff !important;
-  border-color: #d0d7de !important;
-  box-shadow: 0 8px 24px rgba(140, 149, 159, 0.18) !important;
-}
-
-html[data-theme="light"] .codex-composer-form {
-  background: #ffffff !important;
-  border-color: #d0d7de !important;
-  box-shadow: 0 10px 28px rgba(140, 149, 159, 0.2);
-}
-
-html[data-theme="light"] .codex-composer-textarea,
-html[data-theme="light"] input,
-html[data-theme="light"] textarea,
-html[data-theme="light"] select {
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .codex-composer-textarea::placeholder,
-html[data-theme="light"] input::placeholder,
-html[data-theme="light"] textarea::placeholder {
-  color: #6e7781 !important;
-}
-
-html[data-theme="light"] .text-ink-50,
-html[data-theme="light"] .text-ink-100,
-html[data-theme="light"] .text-ink-200,
-html[data-theme="light"] .codex-header button,
-html[data-theme="light"] .codex-sidebar button,
-html[data-theme="light"] .codex-sidebar input {
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .text-ink-300,
-html[data-theme="light"] .text-ink-400 {
-  color: #57606a !important;
-}
-
-html[data-theme="light"] [class*="border-white"] {
-  border-color: rgba(31, 35, 40, 0.12) !important;
-}
-
-html[data-theme="light"] [class*="bg-white/"],
-html[data-theme="light"] .bg-white\/5,
-html[data-theme="light"] .bg-white\/10 {
-  background-color: rgba(31, 35, 40, 0.06) !important;
-}
-
-html[data-theme="light"] .theme-submenu-surface {
-  background: #f6f8fa !important;
-  border-color: rgba(31, 35, 40, 0.12) !important;
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .theme-menu-surface {
-  background: #ffffff !important;
-  border-color: #d0d7de !important;
-  color: #24292f !important;
-  box-shadow: 0 12px 32px rgba(31, 35, 40, 0.18) !important;
-}
-
-html[data-theme="light"] .theme-menu-surface .bg-\[\#191a1f\] {
-  background: #f6f8fa !important;
-}
-
-html[data-theme="light"] .workspace-action-tooltip {
-  background: #24292f !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-  color: #ffffff !important;
-}
-
-html[data-theme="light"] .workspace-action:focus-visible {
-  --tw-ring-color: rgba(9, 105, 218, 0.9);
-}
-
-html[data-theme="light"] .bg-\[\#090b0f\],
-html[data-theme="light"] .bg-\[\#0b0d11\] {
-  background-color: #ffffff !important;
-}
-
-html[data-theme="light"] .codex-user-bubble {
-  background: rgba(9, 105, 218, 0.1) !important;
-  border-color: rgba(9, 105, 218, 0.25) !important;
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .codex-assistant-block,
-html[data-theme="light"] .codex-tool-trigger {
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .md-code {
-  color: #24292f !important;
-}
-
-/* The workspace's primary surfaces share one subtle, dimensional edge. */
-.codex-window-frame,
-.codex-composer-card {
-  border: 1px solid transparent !important;
-}
-
-.codex-window-frame {
-  overflow: hidden;
-}
-
-html[data-theme] .codex-composer-card > .codex-composer-form {
-  background: transparent !important;
-}
-
-html[data-theme="dark"] .codex-main {
-  --codex-window-surface: #121317;
-}
-
-html[data-theme="dark"] .codex-sidebar,
-html[data-theme="dark"] .codex-composer-card {
-  --codex-window-surface: #191a1f;
-}
-
-html[data-theme="dark"] .codex-window-frame,
-html[data-theme="dark"] .codex-composer-card {
-  background:
-    linear-gradient(var(--codex-window-surface), var(--codex-window-surface)) padding-box,
-    linear-gradient(145deg, rgba(255, 255, 255, 0.19), rgba(255, 255, 255, 0.07) 52%, rgba(126, 166, 255, 0.24)) border-box !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 1px 2px rgba(0, 0, 0, 0.42),
-    0 12px 34px rgba(0, 0, 0, 0.2) !important;
-}
-
-html[data-theme="light"] .codex-main {
-  --codex-window-surface: #ffffff;
-}
-
-html[data-theme="light"] .codex-sidebar {
-  --codex-window-surface: #f6f8fa;
-}
-
-html[data-theme="light"] .codex-composer-card {
-  --codex-window-surface: #ffffff;
-}
-
-html[data-theme="light"] .codex-window-frame,
-html[data-theme="light"] .codex-composer-card {
-  background:
-    linear-gradient(var(--codex-window-surface), var(--codex-window-surface)) padding-box,
-    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(208, 215, 222, 0.86) 52%, rgba(9, 105, 218, 0.2)) border-box !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    0 1px 2px rgba(31, 35, 40, 0.11),
-    0 12px 32px rgba(140, 149, 159, 0.14) !important;
-}
-
+/* ---------------------------------------------------------------------------
+   Desktop window chrome
+--------------------------------------------------------------------------- */
 @media (min-width: 768px) {
   .codex-app {
     gap: 0.5rem;
@@ -692,7 +564,7 @@ html[data-theme="light"] .codex-composer-card {
 
   .codex-main,
   .codex-sidebar {
-    border-radius: 1rem;
+    border-radius: 0.875rem;
   }
 
   .codex-sidebar {
@@ -735,40 +607,8 @@ html[data-theme="light"] .codex-composer-card {
   }
 }
 
-html[data-theme="light"] .md-code-comment {
-  color: #57606a !important;
-}
-
-html[data-theme="light"] .md-code-keyword,
-html[data-theme="light"] .md-code-deletion {
-  color: #cf222e !important;
-}
-
-html[data-theme="light"] .md-code-string,
-html[data-theme="light"] .md-code-addition {
-  color: #116329 !important;
-}
-
-html[data-theme="light"] .md-code-number,
-html[data-theme="light"] .md-code-literal {
-  color: #0550ae !important;
-}
-
-html[data-theme="light"] .md-code-meta {
-  color: #8250df !important;
-}
-
-html[data-theme="light"] .codex-assistant-block pre,
-html[data-theme="light"] .codex-assistant-block code {
-  color: #24292f !important;
-}
-
-html[data-theme="light"] .scrollbar-thin {
-  scrollbar-color: #afb8c1 transparent;
-}
-
-html[data-theme="light"] .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #afb8c1;
+@keyframes skeleton-sweep {
+  to { transform: translateX(100%); }
 }
 
 @keyframes modal-card-pop {
@@ -783,11 +623,18 @@ html[data-theme="light"] .scrollbar-thin::-webkit-scrollbar-thumb {
 }
 
 @keyframes modal-backdrop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes menu-pop {
   from {
     opacity: 0;
+    transform: translateY(-4px) scale(0.975);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 
@@ -799,9 +646,23 @@ html[data-theme="light"] .scrollbar-thin::-webkit-scrollbar-thumb {
   animation: modal-backdrop-fade 0.18s ease both;
 }
 
+/* Popovers rise from their trigger; menus that open upward flip the origin. */
+.menu-pop {
+  animation: menu-pop 0.13s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  transform-origin: top;
+}
+
+.menu-pop-up {
+  animation: menu-pop 0.13s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  transform-origin: bottom;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .modal-card-pop,
-  .modal-backdrop-fade {
+  .modal-backdrop-fade,
+  .menu-pop,
+  .menu-pop-up,
+  .skeleton::after {
     animation: none;
   }
 }

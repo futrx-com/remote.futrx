@@ -1,65 +1,30 @@
 #!/usr/bin/env bash
-# Application checkout, frontend/backend build, and Google OAuth config seed.
+# Catalog-driven host agent convergence, frontend/backend build, and Google
+# OAuth config seed. Checkout selection is completed by 00-checkout.sh.
 #
-# On a fresh install this clones the repository. On a full convergence it
-# selects FUTRX_CHECKOUT_REF (set by update.sh) or origin/main, hard-resets the
-# installed checkout to that commit, and rebuilds the embedded application.
+# The selected checkout is immutable for this run, so host CLIs and the
+# embedded application are built from the same module catalog.
 #
 # Expects from caller:
 #   - log / ok / err helpers
-#   - $INSTALL_DIR, $REPO_URL, $GITHUB_TOKEN, $HOSTNAME
+#   - $INSTALL_DIR, $HOSTNAME
 #   - $GOOGLE_CLIENT_ID, $GOOGLE_CLIENT_SECRET (optional)
 #
 # Sets:
 #   - $AUTH_NOTE — string for the install summary
 set -euo pipefail
 
-# ───────────────── clone / update ─────────────────
-if [ -d "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
-    err "$INSTALL_DIR exists but is not a git checkout. Remove it and re-run."
-    exit 1
-fi
-
-CLONE_URL="$REPO_URL"
-if [ -n "${GITHUB_TOKEN:-}" ]; then
-    CLONE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/futrx-com/remote.futrx.git"
-fi
-
-if [ -d "$INSTALL_DIR/.git" ]; then
-    # FUTRX_CHECKOUT_REF pins the deploy to the tag or commit selected by
-    # `update.sh --ref=<ref>`; default stays tracking origin/main.
-    CHECKOUT_REF="${FUTRX_CHECKOUT_REF:-origin/main}"
-    log "Updating repo at $INSTALL_DIR (ref: $CHECKOUT_REF)"
-    git -C "$INSTALL_DIR" fetch --quiet --tags origin
-    if ! git -C "$INSTALL_DIR" rev-parse --verify --quiet "refs/tags/${CHECKOUT_REF}^{commit}" >/dev/null && \
-       ! git -C "$INSTALL_DIR" rev-parse --verify --quiet "${CHECKOUT_REF}^{commit}" >/dev/null; then
-        git -C "$INSTALL_DIR" fetch --quiet --depth=1 origin "$CHECKOUT_REF"
-    fi
-    CHECKOUT_COMMIT="$(git -C "$INSTALL_DIR" rev-parse --verify --quiet "refs/tags/${CHECKOUT_REF}^{commit}" \
-        || git -C "$INSTALL_DIR" rev-parse --verify "${CHECKOUT_REF}^{commit}")"
-    git -C "$INSTALL_DIR" reset --hard "$CHECKOUT_COMMIT"
-else
-    log "Cloning repo to $INSTALL_DIR"
-    if ! git clone --depth=1 "$CLONE_URL" "$INSTALL_DIR" 2>&1; then
-        err "git clone failed."
-        if [ -z "${GITHUB_TOKEN:-}" ]; then
-            cat <<EOF >&2
-
-  This repo is private. Provide a GitHub Personal Access Token:
-    1. https://github.com/settings/personal-access-tokens → Generate (fine-grained)
-    2. Select repo futrx-com/remote.futrx.com → Contents: Read
-    3. Re-run: sudo $0 $HOSTNAME --github-token=ghp_xxx
-EOF
-        fi
-        exit 1
-    fi
-    chmod 0600 "$INSTALL_DIR/.git/config"
-    if [ -n "${FUTRX_CHECKOUT_REF:-}" ]; then
-        git -C "$INSTALL_DIR" fetch --quiet --depth=1 origin "$FUTRX_CHECKOUT_REF"
-        git -C "$INSTALL_DIR" reset --hard "$FUTRX_CHECKOUT_REF"
-    fi
-fi
 cd "$INSTALL_DIR"
+
+# ───────────────── agent CLIs (host-side execution/auth) ─────────────────
+# This must run after checkout selection: the validated module catalog in the
+# selected commit is the source of truth for host-scoped CLI policy.
+log "Converging configured host agent CLIs"
+(
+    cd backend
+    go run ./cmd/install-host-agents --prefix "$HOST_CLI_PREFIX"
+)
+ok "configured host agent CLIs match the selected module catalog"
 
 # ───────────────── build ─────────────────
 log "Building frontend (frontend/ → backend/public/)"

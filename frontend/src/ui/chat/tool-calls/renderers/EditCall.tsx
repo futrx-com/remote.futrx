@@ -1,5 +1,5 @@
 import { useMemo } from "preact/hooks";
-import { diffLines } from "../../../../shared/diff";
+import { diffService } from "../../../../services/platform/diffService.ts";
 import { Edit as EditIcon } from "../../../primitives/icons";
 import type { ToolCallProps } from "../ToolCallTypes";
 import { ToolShell } from "../ToolShell";
@@ -13,9 +13,9 @@ export function EditCall({ input, output, status, isError }: Omit<ToolCallProps,
 
   const patches = useMemo(() => {
     if (edits && Array.isArray(edits)) {
-      return edits.map((edit) => diffLines(edit.old_string ?? "", edit.new_string ?? ""));
+      return edits.map((edit) => diffService.lines(edit.old_string ?? "", edit.new_string ?? ""));
     }
-    return [diffLines(oldStr, newStr)];
+    return [diffService.lines(oldStr, newStr)];
   }, [oldStr, newStr, edits]);
 
   return (

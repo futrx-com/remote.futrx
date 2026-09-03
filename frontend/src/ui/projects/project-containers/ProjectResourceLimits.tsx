@@ -81,9 +81,9 @@ export function ProjectResourceLimits({
   };
 
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 flex items-start gap-3 border-b border-white/[0.06]">
-        <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface overflow-hidden">
+      <header class="px-4 py-3 flex items-start gap-3 border-b border-line">
+        <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
           <Cpu class="w-4 h-4 text-ink-200" />
         </div>
         <div class="flex-1 min-w-0">
@@ -111,7 +111,7 @@ export function ProjectResourceLimits({
             <Loader class="w-4 h-4 animate-spin" /> Loading current limits…
           </div>
         ) : !isAdmin ? (
-          <div class="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-[12.5px] text-ink-300">
+          <div class="rounded-md border border-line bg-tint px-3 py-2.5 text-[12.5px] text-ink-300">
             Only an administrator can change container resources.
           </div>
         ) : (
@@ -158,14 +158,14 @@ export function ProjectResourceLimits({
                 type="button"
                 onClick={reset}
                 disabled={saving}
-                class="h-9 px-3 rounded-md border border-white/10 text-[13px] font-medium text-ink-200 hover:bg-white/[0.06] disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                class="h-9 px-3 rounded-md border border-line text-[13px] font-medium text-ink-200 hover:bg-tint disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 <RotateCcw class="w-3.5 h-3.5" /> Reset to defaults
               </button>
               <button
                 type="submit"
                 disabled={saving || !!validationError}
-                class="h-9 px-4 rounded-md bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                class="btn btn-primary btn-sm text-[13px] font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 {saving && <Loader class="w-3.5 h-3.5 animate-spin" />}
                 Save limits
@@ -188,7 +188,7 @@ function EffectiveLimit({
   value: string;
 }) {
   return (
-    <div class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+    <div class="rounded-md border border-line bg-tint px-3 py-2.5">
       <div class="flex items-center gap-1.5 text-[11px] text-ink-400">
         <Icon class="w-3.5 h-3.5" /> {label}
       </div>
@@ -219,7 +219,7 @@ function LimitInput({
         placeholder={placeholder}
         onInput={(event) => onInput(event.currentTarget.value)}
         spellcheck={false}
-        class="mt-1.5 h-10 w-full rounded-md border border-white/10 bg-[#0c0f13] px-3 font-mono text-[13px] text-ink-50 outline-none placeholder:text-ink-500 focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/25"
+        class="mt-1.5 h-10 w-full rounded-md border border-line bg-inset px-3 font-mono text-[13px] text-ink-50 outline-none placeholder:text-ink-500 focus:border-accent-blue/60 focus:ring-1 focus:ring-accent-blue/25"
       />
       <span class="mt-1 block text-[11px] text-ink-400">{hint}</span>
     </label>

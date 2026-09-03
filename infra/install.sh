@@ -3,8 +3,9 @@
 # remote.futrx — fresh installer and full host-convergence entry point.
 #
 # Use this for a first installation or an intentional repair/re-convergence of
-# an existing host. It runs infra/steps/*.sh in order to converge host packages
-# and pinned toolchains, select and build the application checkout, render
+# an existing host. Step 00 selects and re-executes the application checkout;
+# the remaining infra/steps/*.sh converge host packages and pinned toolchains,
+# apply that commit's host agent catalog, build the application, render
 # Caddy and systemd configuration, ensure the LXD base image exists, harden
 # SSH, and install the container-network repair timer.
 #
@@ -58,6 +59,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
 
     TARGET="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
     LEGACY_TARGET="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
+    MAIN_REFSPEC="+refs/heads/main:refs/remotes/origin/main"
 
     # Parse bootstrap-only values before touching either checkout. The full
     # argument loop below parses them again after we re-exec from disk.
@@ -87,9 +89,17 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
                 git -C "$LEGACY_TARGET" fetch --quiet --depth=1 origin "$BOOTSTRAP_REF"
                 git -C "$LEGACY_TARGET" reset --hard "$BOOTSTRAP_REF"
             else
+                # Existing shallow clones may follow a different default branch,
+                # so fetch main explicitly instead of relying on their refspec.
+                # Persist that refspec too — otherwise remote.origin.fetch stays
+                # on the stale branch and a later plain `git fetch origin` (in
+                # update.sh, steps/00-checkout.sh, ...) silently stops refreshing
+                # origin/main.
+                git -C "$LEGACY_TARGET" config remote.origin.fetch "$MAIN_REFSPEC"
                 git -C "$LEGACY_TARGET" fetch --quiet --tags origin
                 git -C "$LEGACY_TARGET" reset --hard origin/main
             fi
+            export FUTRX_INSTALL_CHECKOUT_SELECTED=1
             exec bash "$LEGACY_TARGET/infra/install.sh" "$@"
         fi
     fi
@@ -108,7 +118,9 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
             exit 1
         fi
         mkdir -p "$TARGET"
-        git clone --depth=1 "$CLONE_URL" "$TARGET"
+        # Production installs track main regardless of the repository's GitHub
+        # default branch (which may temporarily point at a QA branch).
+        git clone --depth=1 --branch main --single-branch "$CLONE_URL" "$TARGET"
         chmod 0600 "$TARGET/.git/config"
         if [ -n "$BOOTSTRAP_REF" ]; then
             echo "==> bootstrapping candidate commit $BOOTSTRAP_REF"
@@ -122,11 +134,17 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
             git -C "$TARGET" reset --hard "$BOOTSTRAP_REF"
         else
             echo "==> repo already at $TARGET, pulling latest"
+            # Persist the main refspec (not just this one-off fetch) so later
+            # plain `git fetch origin` calls — update.sh, steps/00-checkout.sh —
+            # keep refreshing origin/main instead of silently going stale on a
+            # checkout whose remote.origin.fetch still points at another branch.
+            git -C "$TARGET" config remote.origin.fetch "$MAIN_REFSPEC"
             git -C "$TARGET" fetch --quiet --tags origin
             git -C "$TARGET" reset --hard origin/main
         fi
     fi
 
+    export FUTRX_INSTALL_CHECKOUT_SELECTED=1
     exec bash "$TARGET/infra/install.sh" "$@"
 fi
 
@@ -185,12 +203,20 @@ INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
 LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
 REPO_URL="https://github.com/futrx-com/remote.futrx.git"
 SERVICE_PORT="${SERVICE_PORT:-7682}"
+HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"
+HOST_CLI_BIN_DIR="$HOST_CLI_PREFIX/bin"
+
+# Host agent installation and the backend must resolve the same executables.
+# Use an application-owned prefix ahead of host-global locations so legacy or
+# manually installed binaries cannot shadow Remote's pinned toolchain.
+PATH="$HOST_CLI_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
 # Escape dots in HOSTNAME for Caddy regex (dots match any char in regex; we
 # want literal matches).
 HOSTNAME_RE="$(printf '%s' "$HOSTNAME" | sed 's/\./\\./g')"
 
 export INFRA_DIR INSTALL_DIR LEGACY_INSTALL_DIR REPO_URL SERVICE_PORT HOSTNAME_RE
+export HOST_CLI_PREFIX HOST_CLI_BIN_DIR PATH
 
 # ───────────────── helpers (sourced by steps) ─────────────────
 log()  { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
@@ -205,7 +231,7 @@ export -f log warn ok err
 # regex `\$` anchors) survive untouched.
 render_template() {
     local tmpl="$1" dest="$2"
-    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE' \
+    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE $HOST_CLI_BIN_DIR' \
         < "$tmpl" > "$dest"
 }
 export -f render_template
@@ -218,6 +244,12 @@ if [ "$FUTRX_INSTALL_PATH_MIGRATED" -eq 1 ]; then
     INFRA_DIR="$INSTALL_DIR/infra"
     export INFRA_DIR
 fi
+
+# ───────────────── select checkout and re-exec ─────────────────
+# This precedes every version/catalog consumer so direct installer reruns are
+# as commit-consistent as update.sh.
+# shellcheck source=steps/00-checkout.sh
+. "$INFRA_DIR/steps/00-checkout.sh"
 
 # ───────────────── optional Google user authentication ─────────────────
 # The administrator always claims the server with a local email/password.
@@ -277,7 +309,7 @@ if [ "$SKIP_DNS_CHECK" -eq 0 ]; then
     fi
 fi
 
-# ───────────────── run the steps ─────────────────
+# ───────────────── run the convergence steps ─────────────────
 # shellcheck source=steps/01-host-deps.sh
 . "$INFRA_DIR/steps/01-host-deps.sh"
 # shellcheck source=steps/02-app.sh
@@ -309,7 +341,7 @@ cat <<EOF
  Next:
    1. Open https://$HOSTNAME (Caddy fetches the cert on first hit, ~10s)
    2. Create the administrator email and password
-   3. Connect at least one AI provider: Claude, Codex, or Kimi
+   3. Finish setup for at least one access-gate coding agent
    4. Before inviting users, configure Google sign-in in Settings → Users
 
  If you're on a cloud VPS with its own firewall, open 80/443 in the

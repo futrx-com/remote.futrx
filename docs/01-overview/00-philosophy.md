@@ -169,9 +169,9 @@ Maximum agency does not mean the agent controls both planes. It means the capabi
 
 ## The project home and provider homes
 
-Remote gives the agent a home in the product sense: the durable project. It is the continuity that lets an agent or human return to the same work, skills, browser identity, provider state, and host-stored history. In filesystem terms, **provider homes** are narrower: they are the three CLI-owned directories mounted under `/root`.
+Remote gives the agent a home in the product sense: the durable project. It is the continuity that lets an agent or human return to the same work, skills, browser identity, provider state, and host-stored history. In filesystem terms, **provider homes** are narrower: they are CLI-owned directories declared by registered module profiles and mounted under `/root`. The current built-in catalog contributes four.
 
-Each converged project currently has four required writable mounts. They live on the host under the project root and are attached before a new container's first work run. A legacy migration may briefly start an existing container to recover old provider state before stopping it, attaching the missing homes, and returning it to the converged layout.
+Each converged project currently has five required writable mounts. They live on the host under the project root and are attached before a new container's first work run. A legacy migration may briefly start an existing container to recover old provider state before stopping it, attaching the missing homes, and returning it to the converged layout.
 
 ```mermaid
 flowchart LR
@@ -180,6 +180,7 @@ flowchart LR
         CodexHost["agent-home/codex/"]
         ClaudeHost["agent-home/claude/"]
         KimiHost["agent-home/kimi/"]
+        AntigravityHost["agent-home/antigravity/"]
     end
 
     subgraph Container["Unprivileged LXD project container"]
@@ -187,6 +188,7 @@ flowchart LR
         Codex["/root/.codex"]
         Claude["/root/.claude"]
         Kimi["/root/.kimi-code"]
+        Antigravity["/root/.gemini/antigravity-cli"]
         RootFS["Replaceable Ubuntu root filesystem"]
     end
 
@@ -194,6 +196,7 @@ flowchart LR
     CodexHost -->|"read/write bind mount"| Codex
     ClaudeHost -->|"read/write bind mount"| Claude
     KimiHost -->|"read/write bind mount"| Kimi
+    AntigravityHost -->|"read/write bind mount"| Antigravity
 ```
 
 | Durable layer | Container path | Purpose |
@@ -202,15 +205,17 @@ flowchart LR
 | Codex home | `/root/.codex` | Codex provider configuration, authentication, sessions, and provider-owned state |
 | Claude home | `/root/.claude` | Claude provider configuration, authentication, sessions, and provider-owned state |
 | Kimi home | `/root/.kimi-code` | Kimi provider configuration, authentication, sessions, and provider-owned state |
+| Antigravity home | `/root/.gemini/antigravity-cli` | Project-local Antigravity authentication, conversations, and provider-owned state |
 | Host control-plane data | Application data directory | Project metadata, chats, event logs, scheduled tasks, access lists, settings, and the authoritative secret store |
-| Replaceable runtime | Container root filesystem outside the mounts | Base image, installed packages, temporary files, Antigravity state, and operating-system state |
+| Replaceable runtime | Container root filesystem outside the mounts | Base image, installed packages, temporary files, and operating-system state |
 
-The workspace is shared by all agents in the project. The three mounted
-provider homes are separate because Claude, Codex, and Kimi own different
-configuration and session formats; they are **format-separated, not
-security-separated**. Container root can read and modify all three regardless
-of the selected provider. Antigravity currently keeps its state under
-`/root/.gemini` in the replaceable rootfs rather than a fourth durable mount.
+The workspace is shared by all agents in the project. The four currently
+mounted provider homes are separate because each CLI owns a different
+configuration and session format; they are **format-separated, not
+security-separated**.
+Container root can read and modify all four regardless of the selected
+provider. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+whole `.gemini` directory.
 Project skills have one canonical source at `/workspace/.agents/skills`;
 provider-specific paths are compatibility links rather than competing copies.
 
@@ -231,7 +236,7 @@ The capability envelope should be complete enough that the agent can move from i
 | Package installation | `apt`, `npm`, `pip`, and project-local package managers may install what the work requires |
 | Core toolchain | Git, SSH client, `gh`, `jq`, build tools, Python, Node.js 22, npm, and npx |
 | Agent choice | Claude Code, Codex, Kimi Code, and Antigravity at pinned versions, behind one provider-neutral run model |
-| Skills | Project-authored procedures under `/workspace/.agents/skills`, including skills the agent creates for future work. Claude and Codex receive general selected-skill triggers; Kimi and Antigravity do not. Scheduled Tasks is the explicit provider-neutral exception |
+| Skills | Project-authored procedures under `/workspace/.agents/skills`, including skills the agent creates for future work. Claude receives slash triggers, Codex dollar mentions, and Kimi/Antigravity explicit `SKILL.md` instruction paths; Scheduled Tasks additionally receives a scoped capability |
 | Processes | Foreground and background processes; background work may continue between prompts while the container stays running |
 | Network | Outbound networking and project app listeners; the current project instructions describe network access as open |
 | Web applications | Any non-loopback TCP listener on an allowed preview port from 1024 through 65535 can be discovered and exposed through an authenticated project URL |
@@ -250,7 +255,7 @@ Broad agent authority is paired with a complete control envelope. The human shou
 | Control | Human or host capability |
 | --- | --- |
 | Identity | Claim the server, sign in, manage registered users, and separate administrators from members |
-| Provider identity | Administrators connect, refresh, or replace host-wide Claude, Codex, and Kimi identities; Antigravity signs in per project and has no global card |
+| Provider identity | Administrators connect, refresh, or replace host-wide Claude, Codex, and Kimi identities; Antigravity has an instruction-only global card and its supported sign-in flow remains per project |
 | Project access | Current members can add or remove registered project members; the backend gates project API, chat, upload, terminal, and preview resources |
 | Project secrets | Current members can create, read, change, or delete the authoritative secret record; propagation to and removal from managed copies is currently best-effort |
 | Agent selection | Choose provider, model, reasoning effort, service tier or speed, mode, and selected skills |
@@ -278,7 +283,7 @@ flowchart TD
     Upgrade --> Prompt["Receive prompt and acquire per-chat run lock"]
     Prompt --> Project["Resolve project and converge lifecycle"]
     Project --> LXD["Create, migrate, start, or repair LXD container"]
-    LXD --> Mounts["Verify workspace and three provider-home mounts"]
+    LXD --> Mounts["Verify workspace and registered provider-home mounts"]
     Mounts --> Limits["Apply configured resource envelope"]
     Limits --> Prep["Prepare selected provider, credentials, instructions, and supported skills/browser integration"]
     Prep --> Exec["Run selected CLI as container root in /workspace"]
@@ -294,7 +299,7 @@ sequenceDiagram
     participant Adapter as Provider adapter
     participant Events as Event store
 
-    CLI-->>Adapter: Provider-specific JSON stream
+    CLI-->>Adapter: Provider-native stream/protocol
     Adapter-->>Run: Normalized agent event
     Run->>Events: Append sequence-numbered event
     Run-->>UI: Broadcast live chat event
@@ -311,9 +316,11 @@ The agent is not simulated by the web application. Remote launches the real prov
 Preparation happens before every run where correctness requires it. That allows
 a missing container to be recreated, a stale CLI to be repaired, current
 shared instructions to be republished, and compatibility links to be
-converged. General selected-skill prompt triggers and per-run browser MCP
-preparation currently apply to Claude and Codex, not Kimi or Antigravity.
-Scheduled Tasks is the explicit provider-neutral exception.
+converged. Selected-skill preparation follows each module's strategy: Claude
+slash commands, Codex dollar mentions, and canonical `SKILL.md` instruction
+paths for Kimi and Antigravity. Per-run browser MCP preparation currently
+applies only to Claude and Codex. Scheduled Tasks additionally receives its
+provider-neutral scoped capability.
 
 ## Persistence and replaceability
 
@@ -323,7 +330,7 @@ Remote separates valuable state from replaceable machinery. This lets the runtim
 flowchart TB
     Intent["Human intent and conversation history"] --> ProjectState["Durable project state"]
     ProjectState --> Workspace["Workspace, skills, artifacts, browser profile"]
-    ProjectState --> AgentHomes["Codex, Claude, and Kimi homes"]
+    ProjectState --> AgentHomes["Codex, Claude, Kimi, and Antigravity homes"]
     ProjectState --> Scheduled["Scheduled task definitions and claims"]
     ProjectState --> Metadata["Metadata, access, secrets, event logs"]
 
@@ -332,7 +339,6 @@ flowchart TB
     AgentHomes --> Runtime
     Runtime --> Processes["Ephemeral process generation"]
     Runtime --> Packages["Replaceable rootfs packages"]
-    Runtime --> AntigravityState["Antigravity /root/.gemini state"]
 
     Runtime -->|"rebuild"| NextRuntime["Next container generation"]
     Workspace --> NextRuntime
@@ -348,7 +354,6 @@ flowchart TB
 | Background processes | May continue | Stop | Stop | Stop | Stop |
 | Chat metadata and event history | Survive | Survive | Survive | Survive | Stored separately; current project deletion does not cascade chat deletion |
 | Scheduled task definitions and run claims | Survive | Survive | Survive | Survive | Stored separately; invalid project/chat ownership is detected when the task next fires |
-| Antigravity state under `/root/.gemini` | Survive | Survive | Survive | Lost | Removed with the container |
 
 If a project depends on a package added to the replaceable root filesystem, the durable project should describe how to restore it—for example in `/workspace/setup.sh`. Reproducibility converts a one-off machine mutation into project knowledge.
 
@@ -380,7 +385,7 @@ Remote has four credential classes, each with a different scope:
 | Credential class | Scope | Current behavior |
 | --- | --- | --- |
 | Platform session | User and Remote control plane | Kept in secure HTTP-only cookies and stripped before requests enter project-controlled apps and IDEs |
-| Agent-provider identity | Host-wide for Claude, Codex, and Kimi; project runtime for Antigravity | The three host providers are connected by an administrator and synchronized bidirectionally with project state. Antigravity is authenticated inside each project and its current state is not durable across container replacement |
+| Agent-provider identity | Host-wide for Claude, Codex, and Kimi; supported project runtime for Antigravity | The three host providers are connected by an administrator and synchronized bidirectionally with project state. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
 | Project secret | One project | Stored in a host file with mode `0600` but without application-level encryption; passed to agent runs, persisted as container environment when single-line, and mirrored into the managed `.env` file |
 | Browser-session identity | One project browser profile | Created through human login and persisted with the project so the agent can use the authenticated session |
 
@@ -547,8 +552,8 @@ If those questions have no concrete answers, the feature is not yet compatible w
 - Resource envelope: [`backend/internal/integration/containers/resources/manager.go`](../../backend/internal/integration/containers/resources/manager.go)
 - Agent provisioning contract: [`backend/internal/agent/provisioning/container_dependencies.go`](../../backend/internal/agent/provisioning/container_dependencies.go)
 - Shared agent instructions: [`backend/internal/agent/provisioning/assets/AGENTS.md`](https://github.com/futrx-com/remote.futrx.com/blob/main/backend/internal/agent/provisioning/assets/AGENTS.md)
-- Codex execution: [`backend/internal/agent/codex/command.go`](../../backend/internal/agent/codex/command.go)
-- Claude execution: [`backend/internal/agent/claude/command.go`](../../backend/internal/agent/claude/command.go)
-- Kimi execution: [`backend/internal/agent/kimi/command.go`](../../backend/internal/agent/kimi/command.go)
+- Codex execution: [`backend/internal/integration/agents/codex/command.go`](../../backend/internal/integration/agents/codex/command.go)
+- Claude execution: [`backend/internal/integration/agents/claude/command.go`](../../backend/internal/integration/agents/claude/command.go)
+- Kimi execution: [`backend/internal/integration/agents/kimi/command.go`](../../backend/internal/integration/agents/kimi/command.go)
 - Project secrets and `.env`: [`backend/internal/service/project/env_writer.go`](../../backend/internal/service/project/env_writer.go)
 - Reverse-proxy boundary: [`infra/templates/Caddyfile.tmpl`](../../infra/templates/Caddyfile.tmpl)

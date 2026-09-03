@@ -187,7 +187,12 @@ The scheduletools adapter ([`adapter.go`](../../backend/internal/integration/con
 - `/workspace/scripts/remote-schedule` — a curl+jq wrapper over the agent API (`create`, `list`, `pause`, `resume`, `run-now`, `delete`, `complete-current`).
 - `/workspace/.agents/skills/scheduled-tasks/SKILL.md` — the playbook: only schedule on explicit user request, write self-contained durable prompts (goal, per-fire actions, observable completion condition, safety constraints), prefer `--max-runs` for monitoring, prefer pause over delete, and never guess that a standing goal is complete.
 
-Both live under `/workspace`, so they survive container replacement. All four provider command builders (`claude`, `codex`, `kimi`, `antigravity`) ensure these assets and pass the runtime env, which is what makes the power provider-neutral.
+Both live under `/workspace`, so they survive container replacement. Shared
+project preparation ensures these assets for an enabled run, and the common
+container-command builder passes the runtime environment. A future module that
+declares scheduled-tool support must use that preparation contract and forward
+the runtime environment; the descriptor alone does not grant the CLI access to
+those tools.
 
 ## HTTP surface
 

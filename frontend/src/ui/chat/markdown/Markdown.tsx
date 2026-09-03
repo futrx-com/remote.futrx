@@ -23,9 +23,9 @@ function renderBlock(block: MarkdownBlock, key: string, context: MarkdownRenderC
       return renderHeading(block.level, block.text, key, context);
     case "code":
       return (
-        <div key={key} class="relative my-3 rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
+        <div key={key} class="relative my-3 rounded-lg border border-line bg-surface overflow-hidden">
           {block.lang && (
-            <div class="px-3 py-1 text-[11px] text-ink-300 border-b border-white/10 bg-white/[0.04]">
+            <div class="px-3 py-1 text-[11px] text-ink-300 border-b border-line bg-tint">
               {block.lang}
             </div>
           )}
@@ -44,12 +44,12 @@ function renderBlock(block: MarkdownBlock, key: string, context: MarkdownRenderC
       return renderList(block, key, context);
     case "table":
       return (
-        <div key={key} class="overflow-x-auto touch-scroll my-3 border border-white/10 rounded-lg">
+        <div key={key} class="overflow-x-auto touch-scroll my-3 border border-line rounded-lg">
           <table class="w-full text-sm border-collapse">
-            <thead class="bg-white/[0.04]">
+            <thead class="bg-tint">
               <tr>
                 {block.header.map((cell, index) => (
-                  <th key={index} class="text-left px-3 py-1.5 font-semibold border-b border-white/10 text-ink-100">
+                  <th key={index} class="text-left px-3 py-1.5 font-semibold border-b border-line text-ink-100">
                     {renderInline(cell, `${key}-h-${index}`, context)}
                   </th>
                 ))}
@@ -59,7 +59,7 @@ function renderBlock(block: MarkdownBlock, key: string, context: MarkdownRenderC
               {block.rows.map((row, rowIndex) => (
                 <tr key={rowIndex}>
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex} class="px-3 py-1.5 border-b border-white/10">
+                    <td key={cellIndex} class="px-3 py-1.5 border-b border-line">
                       {renderInline(cell, `${key}-r-${rowIndex}-${cellIndex}`, context)}
                     </td>
                   ))}
@@ -70,7 +70,7 @@ function renderBlock(block: MarkdownBlock, key: string, context: MarkdownRenderC
         </div>
       );
     case "hr":
-      return <hr key={key} class="my-3 border-white/10" />;
+      return <hr key={key} class="my-3 border-line" />;
   }
 }
 

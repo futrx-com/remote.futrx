@@ -20,5 +20,18 @@ export default {
       pattern: /^(bg|text|border|ring|divide)-(ink|accent)-.+$/,
       variants: ["hover", "focus", "group-hover", "disabled"],
     },
+    // Semantic surface/line/tint tokens: the app's real vocabulary since the
+    // theme moved to CSS custom properties.
+    {
+      pattern: /^bg-(app|canvas|surface|raised|inset|tint|tint-strong|tint-active)$/,
+      variants: ["hover", "focus", "group-hover", "disabled"],
+    },
+    {
+      pattern: /^(border|divide|ring)-(line|line-strong)$/,
+      variants: ["hover", "focus", "group-hover"],
+    },
+    "text-on-accent",
+    { pattern: /^rounded-(control|card|panel)$/ },
+    { pattern: /^shadow-(pop|modal)$/ },
   ],
 };

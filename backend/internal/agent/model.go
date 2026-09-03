@@ -45,9 +45,15 @@ const (
 
 type ReasoningEffort string
 type ServiceTier string
+type RunMode string
 
-// RunPreferences contains provider-neutral launch preferences. Provider
-// adapters remain responsible for accepting only the values their CLI supports.
+const (
+	RunModeDefault RunMode = "default"
+	RunModePlan    RunMode = "plan"
+)
+
+// RunPreferences contains provider-neutral launch preferences. Each provider
+// adapter decides which preferences to forward and how to translate them.
 type RunPreferences struct {
 	ReasoningEffort ReasoningEffort
 	ServiceTier     ServiceTier
@@ -61,7 +67,7 @@ type RunRequest struct {
 	Prompt         string
 	Cwd            string
 	Model          string
-	Mode           string
+	Mode           RunMode
 	ResumeID       string
 	ProjectID      string
 	Fork           bool
@@ -103,8 +109,12 @@ type Event struct {
 	Raw            json.RawMessage `json:"raw,omitempty"`
 }
 
-type Provider interface {
+type CapabilityProvider interface {
 	ID() ProviderID
-	Parser(req RunRequest) LineParser
+	Capabilities(ctx context.Context, req CapabilityRequest) (Capabilities, error)
+}
+
+type Provider interface {
+	CapabilityProvider
 	Run(ctx context.Context, req RunRequest, emit func(Event)) error
 }

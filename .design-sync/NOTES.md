@@ -24,7 +24,7 @@
 - Tiny text (9px badges) can look blank on downscaled sheets — zoom-crop the native PNG before failing a cell.
 - **Popover components** (ModelPicker `open` is a controlled prop): flex wrappers need `items-start` (stretch detaches `absolute top-full` menus) and an explicit `minHeight` to contain the open menu. `modelRef` accepts `{current: null}`.
 - **Full-bleed panes** (BrowserEmptyState, NoChatSelected): frame with `border border-white/10 rounded-lg overflow-hidden` + explicit height so the pane edge reads intentionally.
-- Realistic data sources: model catalogs in `frontend/src/config/chatCatalog.ts`; default cwd `/opt/remote.futrx` in `frontend/src/ui/chat/ideLinks.ts`.
+- Realistic data sources: capability shapes in `frontend/src/models/agentCapabilities.ts` and provider fixtures under `backend/internal/agent/*/capabilities_test.go`; default cwd `/opt/remote.futrx` in `frontend/src/ui/chat/ideLinks.ts`. Runtime model catalogs come from the backend API, not a compiled frontend catalog.
 
 ## App-level findings (for the maintainers, not sync issues)
 - WorkspaceActions expanded state: `text-accent-blue`/`border-accent-blue/40` are dead — the base `text-ink-200`/`border-white/10` utilities come later in the generated Tailwind CSS and win, so an expanded button only gets the brighter background (`frontend/src/ui/chat/header/WorkspaceActions.tsx:193`).

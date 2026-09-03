@@ -25,7 +25,7 @@ const signature = await crypto.subtle.sign("HMAC", sessionKey, payload);`;
 
 const Frame = ({ children }: { children?: any }) => (
   <div className="w-full max-w-xl">
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] overflow-hidden">
+    <div className="rounded-lg border border-line bg-tint overflow-hidden">
       {children}
     </div>
   </div>

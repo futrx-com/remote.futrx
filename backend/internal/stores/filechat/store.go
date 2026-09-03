@@ -85,11 +85,12 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 		meta.Title = "New chat"
 	}
 	meta.Provider = servicechat.NormalizeProvider(meta.Provider)
+	meta.NormalizeSessions()
 	meta.ReasoningEffort = servicechat.NormalizeReasoningEffort(meta.ReasoningEffort)
 	meta.ServiceTier = servicechat.NormalizeServiceTier(meta.ServiceTier)
 	meta.SelectedSkills = servicechat.NormalizeSelectedSkills(meta.SelectedSkills, meta.Provider)
 	if meta.Mode == "" {
-		meta.Mode = "code"
+		meta.Mode = "default"
 	}
 	dir := s.chatDir(meta.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -153,6 +154,7 @@ func (s *Store) Update(
 	}
 	fn(&meta)
 	meta.Provider = servicechat.NormalizeProvider(meta.Provider)
+	meta.NormalizeSessions()
 	meta.ReasoningEffort = servicechat.NormalizeReasoningEffort(meta.ReasoningEffort)
 	meta.ServiceTier = servicechat.NormalizeServiceTier(meta.ServiceTier)
 	meta.SelectedSkills = servicechat.NormalizeSelectedSkills(meta.SelectedSkills, meta.Provider)
@@ -192,6 +194,7 @@ func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicech
 	if ev.T == 0 {
 		ev.T = time.Now().UnixMilli()
 	}
+	ev.NormalizeSession()
 	lk := s.lock(id)
 	lk.Lock()
 	defer lk.Unlock()
@@ -364,9 +367,7 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 		if lastT == 0 {
 			lastT = meta.CreatedAt
 		}
-		meta.ClaudeSessionID = ""
-		meta.CodexSessionID = ""
-		meta.KimiSessionID = ""
+		meta.ClearSessionIDs()
 		meta.LastMessageAt = lastT
 		if err := s.writeMeta(meta); err == nil {
 			s.setCachedMeta(meta)

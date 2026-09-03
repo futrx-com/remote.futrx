@@ -5,9 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 )
 
 type authTestDirectory struct{}
@@ -27,6 +30,14 @@ func (authTestOAuth) ExchangeUser(context.Context, string) (serviceauth.User, er
 }
 
 func TestProviderLoginGate(t *testing.T) {
+	twoFactorStore, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init two-factor store: %v", err)
+	}
+	sessionRegistryStore, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init session registry store: %v", err)
+	}
 	auth, err := serviceauth.New(
 		context.Background(),
 		fileauth.New(t.TempDir()),
@@ -34,6 +45,14 @@ func TestProviderLoginGate(t *testing.T) {
 		func(string, string, string) serviceauth.OAuthProvider { return authTestOAuth{} },
 		"https://remote.example.com",
 		[]byte("test-session-key"),
+		twoFactorStore,
+		sessionRegistryStore,
+		serviceauth.Options{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
+		},
 	)
 	if err != nil {
 		t.Fatalf("New auth service: %v", err)
@@ -43,11 +62,20 @@ func TestProviderLoginGate(t *testing.T) {
 	localAdminReady := true
 	handler := NewAuth(auth).
 		RequireLocalAdminSetup(func() bool { return localAdminReady }).
-		RequireProviderLogin(func() bool { return providerReady }, "/api/claude/", "/ws/claude/auth-status").
+		RequireProviderLogin(
+			func() bool { return providerReady },
+			"/api/claude/",
+			"/ws/claude/auth-status",
+			"/api/agent-auth",
+			"/ws/agent-auth/",
+		).
 		Wrap(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
-	session := auth.SignSession(serviceauth.User{Email: "admin@example.com", Sub: "admin"})
+	session, err := auth.IssueSession(context.Background(), serviceauth.User{Email: "admin@example.com", Sub: "admin"}, serviceauth.SignInMethodGoogle, "", "")
+	if err != nil {
+		t.Fatalf("IssueSession: %v", err)
+	}
 
 	request := func(path string) int {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -62,6 +90,12 @@ func TestProviderLoginGate(t *testing.T) {
 	}
 	if got := request("/api/claude/auth-status"); got != http.StatusNoContent {
 		t.Fatalf("provider auth status = %d, want %d", got, http.StatusNoContent)
+	}
+	if got := request("/api/agent-auth"); got != http.StatusNoContent {
+		t.Fatalf("agent auth catalog = %d, want %d", got, http.StatusNoContent)
+	}
+	if got := request("/ws/agent-auth/future-agent"); got != http.StatusNoContent {
+		t.Fatalf("normalized provider stream = %d, want %d", got, http.StatusNoContent)
 	}
 	localAdminReady = false
 	if got := request("/api/claude/auth-status"); got != http.StatusPreconditionRequired {
