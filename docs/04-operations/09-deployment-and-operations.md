@@ -116,6 +116,15 @@ flowchart TD
 
 Caddy validates its rendered configuration before replacing the live file. On-demand certificate requests are accepted only for existing project slugs and permitted hostname formats.
 
+### Custom Caddy configuration (`/etc/caddy/conf.d/`)
+
+To support setups such as private LANs, Tailscale tailnets, or DNS-01 ACME challenges (e.g. `acme_dns cloudflare <token>`) without maintaining a fork of `Caddyfile.tmpl`, Remote automatically imports optional custom Caddy snippets:
+
+- `/etc/caddy/conf.d/global/*.caddy`: Imported inside Caddy's global options block. Use this for global ACME DNS plugins, custom certificates, or global TLS options.
+- `/etc/caddy/conf.d/sites/*.caddy`: Imported as additional top-level site blocks. Use this for extra domain names, custom reverse proxies, or dedicated subdomains.
+
+Files in these directories persist across host convergence, updates, and `infra/install.sh` runs.
+
 ## Base-image build
 
 ```mermaid

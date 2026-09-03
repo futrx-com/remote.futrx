@@ -8,6 +8,10 @@
 set -euo pipefail
 
 log "Rendering /etc/caddy/Caddyfile for $HOSTNAME"
+# Ensure user snippet directories exist so Caddy can safely import them.
+mkdir -p /etc/caddy/conf.d/global /etc/caddy/conf.d/sites
+chmod 0755 /etc/caddy/conf.d /etc/caddy/conf.d/global /etc/caddy/conf.d/sites 2>/dev/null || true
+
 # Render to a temp file first, validate, then atomically replace. This way a
 # bad template doesn't blow away a working live config.
 TMP_CADDYFILE="$(mktemp)"
