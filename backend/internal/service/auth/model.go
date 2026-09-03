@@ -58,6 +58,11 @@ type Session struct {
 type Status struct {
 	Authenticated        bool           `json:"authenticated"`
 	Claimed              bool           `json:"claimed"`
+	// ClaimAllowed is true only when the local admin credential has not been
+	// set yet and the current request originates from the server's loopback
+	// interface (127.0.0.1 or ::1). Remote visitors receive false so the web
+	// UI does not expose the first-time setup form to arbitrary network clients.
+	ClaimAllowed         bool           `json:"claimAllowed"`
 	LocalAdminConfigured bool           `json:"localAdminConfigured"`
 	GoogleOAuthEnabled   bool           `json:"googleOAuthEnabled"`
 	GoogleClientID       string         `json:"googleClientId,omitempty"`

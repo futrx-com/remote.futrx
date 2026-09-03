@@ -1,6 +1,8 @@
 export interface AuthSession {
   authenticated: boolean;
   claimed: boolean;
+  /** True only when the admin credential is unclaimed and this browser is connecting from localhost. */
+  claimAllowed: boolean;
   localAdminConfigured: boolean;
   googleOAuthEnabled: boolean;
   googleClientId: string;
