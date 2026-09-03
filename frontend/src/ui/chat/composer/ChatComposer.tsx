@@ -1,5 +1,5 @@
 import type { RefObject } from "preact";
-import { useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { modelShortLabel, providerDisplayLabel } from "../../../config/chat";
 import type { QueuedPrompt, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
@@ -8,6 +8,8 @@ import { useComposerAgentCapabilities } from "../../../state/hooks/chat/useCompo
 import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
+import { CommandPalette, type CommandPaletteHandle } from "./CommandPalette";
+import { commandQuery } from "./commandQuery";
 import { ComposerAgentControls } from "./ComposerAgentControls";
 import { ComposerDropOverlay } from "./ComposerDropOverlay";
 import { ComposerExecutionControls } from "./ComposerExecutionControls";
@@ -87,6 +89,9 @@ export function ChatComposer({
     refresh: refreshCapabilities,
   } = capabilityState;
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const commandPaletteRef = useRef<CommandPaletteHandle | null>(null);
+  const commandQueryText = useMemo(() => commandQuery(text), [text]);
+  const showCommandPalette = commandQueryText !== null;
   const disconnected = !canSendPrompt && !streaming;
   const hasContent = text.trim().length > 0 || attachments.some((attachment) => attachment.serverPath);
   const canSend = !uploading && !disconnected && hasContent;
@@ -108,9 +113,29 @@ export function ChatComposer({
     });
   }
 
+  function handleCommandKeyDown(event: KeyboardEvent): boolean {
+    if (!showCommandPalette) return false;
+    return commandPaletteRef.current?.handleKeyDown(event) ?? false;
+  }
+
+  function dismissCommandPalette() {
+    onTextChange("");
+  }
+
   return (
     <div class="codex-composer-shell relative z-20 flex-none bg-canvas">
       {dragging && <ComposerDropOverlay />}
+
+      {showCommandPalette && commandQueryText !== null && (
+        <CommandPalette
+          ref={commandPaletteRef}
+          provider={preferences.provider}
+          projectId={projectId}
+          query={commandQueryText}
+          onSelect={onSelectSkill}
+          onDismiss={dismissCommandPalette}
+        />
+      )}
 
       <SelectedSkillChips skills={selectedSkills} onRemove={onRemoveSelectedSkill} />
       <QueuedPromptList queuedPrompts={queuedPrompts} onRemove={onRemoveQueued} />
@@ -134,6 +159,7 @@ export function ChatComposer({
             onTextChange={onTextChange}
             onPaste={onPaste}
             onSend={onSend}
+            onKeyDown={handleCommandKeyDown}
           />
 
           <div class="codex-composer-control-deck flex min-w-0 items-center gap-1.5 pt-1.5">

@@ -9,6 +9,7 @@ export function PromptTextarea({
   onTextChange,
   onPaste,
   onSend,
+  onKeyDown,
 }: {
   textareaRef: RefObject<HTMLTextAreaElement>;
   text: string;
@@ -18,6 +19,7 @@ export function PromptTextarea({
   onTextChange: (text: string) => void;
   onPaste: (event: ClipboardEvent) => void;
   onSend: () => void;
+  onKeyDown?: (event: KeyboardEvent) => boolean;
 }) {
   return (
     <textarea
@@ -25,6 +27,7 @@ export function PromptTextarea({
       value={text}
       onInput={(event) => onTextChange((event.currentTarget as HTMLTextAreaElement).value)}
       onKeyDown={(event) => {
+        if (onKeyDown?.(event as KeyboardEvent)) return;
         if (
           event.key === "Enter" &&
           (event.ctrlKey || event.metaKey) &&
