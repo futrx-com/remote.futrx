@@ -392,7 +392,6 @@ func (rnr *Service) runPromptAs(
 		chatID:    id,
 		projectID: string(meta.ProjectID),
 		userEmail: input.Actor.Email,
-		provider:  providerID,
 		model:     meta.Model,
 		scheduled: input.ScheduledTaskID != "",
 	}
@@ -419,11 +418,10 @@ func (rnr *Service) runPromptAs(
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
 		}, func(ev agent.Event) {
-			// qa added the provider argument; the ledger hook is this
-			// branch's and sits after the emit as before.
-			rnr.emitAgentEvent(ctx, id, providerID, ev, emit)
+			ev = withDefaultProvider(ev, providerID)
+			rnr.emitAgentEvent(ctx, id, ev, emit)
 			rnr.recordRunUsage(ctx, ledger, ev)
-			rnr.recordQuota(ctx, ledger, ev)
+			rnr.recordQuota(ctx, ev)
 		})
 	}
 

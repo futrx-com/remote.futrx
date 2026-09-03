@@ -15,13 +15,9 @@ import (
 func (rnr *Service) emitAgentEvent(
 	ctx context.Context,
 	id servicechat.ID,
-	provider agent.ProviderID,
 	ev agent.Event,
 	emit func(ChatEvent),
 ) {
-	if ev.Provider == "" {
-		ev.Provider = provider
-	}
 	if ev.Type == agent.EventSessionUpdated && ev.SessionID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			m.SetSessionID(servicechat.Provider(ev.Provider), ev.SessionID)
@@ -36,6 +32,13 @@ func (rnr *Service) emitAgentEvent(
 	if ok {
 		emit(chatEvent)
 	}
+}
+
+func withDefaultProvider(ev agent.Event, provider agent.ProviderID) agent.Event {
+	if ev.Provider == "" {
+		ev.Provider = provider
+	}
+	return ev
 }
 
 func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
@@ -135,7 +138,6 @@ type ledgerRun struct {
 	chatID    servicechat.ID
 	projectID string
 	userEmail string
-	provider  agent.ProviderID
 	model     string
 	scheduled bool
 }
@@ -145,20 +147,16 @@ type ledgerRun struct {
 // It is separate from recordRunUsage because the two measure different things:
 // the ledger counts what this platform spent, and this is the vendor saying
 // how much of the operator's plan is left across everywhere they work.
-func (rnr *Service) recordQuota(ctx context.Context, run ledgerRun, ev agent.Event) {
+func (rnr *Service) recordQuota(ctx context.Context, ev agent.Event) {
 	if rnr.quota == nil || ev.Type != agent.EventQuotaUpdated || ev.Quota == nil {
 		return
-	}
-	provider := ev.Provider
-	if provider == "" {
-		provider = run.provider
 	}
 	// A cancelled request context must not throw away a reading that arrived
 	// before the cancel: the window is real whether or not the turn finished.
 	if ctx == nil || ctx.Err() != nil {
 		ctx = context.Background()
 	}
-	rnr.quota.Record(ctx, provider, *ev.Quota)
+	rnr.quota.Record(ctx, ev.Provider, *ev.Quota)
 }
 
 // recordRunUsage forwards a finished turn to the usage ledger. Only completed
@@ -173,10 +171,6 @@ func (rnr *Service) recordRunUsage(ctx context.Context, run ledgerRun, ev agent.
 	if at == 0 {
 		at = time.Now().UnixMilli()
 	}
-	provider := ev.Provider
-	if provider == "" {
-		provider = run.provider
-	}
 	// The turn is over, so a cancelled request context must not stop the
 	// ledger write that describes it.
 	rnr.usage.RecordRun(context.WithoutCancel(ctx), serviceusage.RunEvent{
@@ -185,7 +179,7 @@ func (rnr *Service) recordRunUsage(ctx context.Context, run ledgerRun, ev agent.
 		ProjectID: run.projectID,
 		RunID:     run.runID,
 		UserEmail: run.userEmail,
-		Provider:  string(provider),
+		Provider:  string(ev.Provider),
 		Model:     run.model,
 		Usage:     ev.Usage,
 		Scheduled: run.scheduled,

@@ -39,9 +39,10 @@ func TestEmitAgentEventUsesSelectedProviderWhenAdapterOmitsIt(t *testing.T) {
 
 	service := &Service{store: store}
 	var emitted ChatEvent
-	service.emitAgentEvent(ctx, meta.ID, "future-agent", agent.Event{
+	event := withDefaultProvider(agent.Event{
 		Type: agent.EventSessionUpdated, SessionID: "future-session",
-	}, func(event ChatEvent) {
+	}, "future-agent")
+	service.emitAgentEvent(ctx, meta.ID, event, func(event ChatEvent) {
 		emitted = event
 	})
 
