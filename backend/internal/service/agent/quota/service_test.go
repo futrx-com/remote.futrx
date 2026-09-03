@@ -1,4 +1,4 @@
-package agentquota
+package quota
 
 import (
 	"context"

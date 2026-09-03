@@ -18,10 +18,10 @@ import (
 	"path/filepath"
 	"sync"
 
-	serviceagentquota "github.com/futrx-com/remote.futrx.com/internal/service/agentquota"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 )
 
-var _ serviceagentquota.Repository = (*Store)(nil)
+var _ agentquota.Repository = (*Store)(nil)
 
 const fileName = "agent-quota.json"
 
@@ -42,7 +42,7 @@ func (s *Store) path() string { return filepath.Join(s.root, fileName) }
 // Load returns what was last seen. A missing or unreadable file is an empty
 // map, not an error: the readings are a convenience, and refusing to start the
 // platform because a cache of percentages will not parse would be absurd.
-func (s *Store) Load(ctx context.Context) (map[string]serviceagentquota.AgentQuota, error) {
+func (s *Store) Load(ctx context.Context) (map[string]agentquota.AgentQuota, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -55,21 +55,21 @@ func (s *Store) Load(ctx context.Context) (map[string]serviceagentquota.AgentQuo
 	raw, err := os.ReadFile(s.path())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return map[string]serviceagentquota.AgentQuota{}, nil
+			return map[string]agentquota.AgentQuota{}, nil
 		}
-		return map[string]serviceagentquota.AgentQuota{}, nil
+		return map[string]agentquota.AgentQuota{}, nil
 	}
 	if len(raw) == 0 {
-		return map[string]serviceagentquota.AgentQuota{}, nil
+		return map[string]agentquota.AgentQuota{}, nil
 	}
-	readings := map[string]serviceagentquota.AgentQuota{}
+	readings := map[string]agentquota.AgentQuota{}
 	if err := json.Unmarshal(raw, &readings); err != nil {
-		return map[string]serviceagentquota.AgentQuota{}, nil
+		return map[string]agentquota.AgentQuota{}, nil
 	}
 	return readings, nil
 }
 
-func (s *Store) Save(ctx context.Context, readings map[string]serviceagentquota.AgentQuota) error {
+func (s *Store) Save(ctx context.Context, readings map[string]agentquota.AgentQuota) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

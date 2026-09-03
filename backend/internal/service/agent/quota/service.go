@@ -16,7 +16,7 @@
 // It is also not the usage ledger. The ledger knows what this platform spent;
 // the plan is spent from everywhere the operator works. Only the vendor knows
 // the total, and these events are the vendor talking.
-package agentquota
+package quota
 
 import (
 	"context"

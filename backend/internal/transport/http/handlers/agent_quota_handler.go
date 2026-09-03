@@ -3,14 +3,14 @@ package httphandlers
 import (
 	"net/http"
 
-	serviceagentquota "github.com/futrx-com/remote.futrx.com/internal/service/agentquota"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 // AgentQuotaService reports the last subscription window each agent mentioned.
 type AgentQuotaService interface {
-	View() []serviceagentquota.AgentQuota
+	View() []agentquota.AgentQuota
 }
 
 // AgentQuotaHandler serves the home screen's plan card.
@@ -38,7 +38,7 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h == nil || h.quota == nil {
-		httptransport.SendJSON(w, http.StatusOK, map[string]any{"agents": []serviceagentquota.AgentQuota{}})
+		httptransport.SendJSON(w, http.StatusOK, map[string]any{"agents": []agentquota.AgentQuota{}})
 		return
 	}
 	email, _, err := httptransport.NewPrincipalResolver(h.auth).EmailAndAdmin(r.Context(), r)
@@ -48,7 +48,7 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	agents := h.quota.View()
 	if agents == nil {
-		agents = []serviceagentquota.AgentQuota{}
+		agents = []agentquota.AgentQuota{}
 	}
 	httptransport.SendJSON(w, http.StatusOK, map[string]any{"agents": agents})
 }

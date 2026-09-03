@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	serviceagentquota "github.com/futrx-com/remote.futrx.com/internal/service/agentquota"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -62,7 +62,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
-	AgentQuota      serviceagentquota.Repository
+	AgentQuota      agentquota.Repository
 }
 
 func New(dataDir string) (Stores, error) {
