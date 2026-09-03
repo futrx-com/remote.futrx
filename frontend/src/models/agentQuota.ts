@@ -3,9 +3,9 @@
  *
  * This is not the usage dashboard. That counts what this platform spent; a
  * plan is spent from everywhere the operator works, so only the vendor knows
- * the total — and the agent CLIs are the vendor talking. They mention their
- * rolling windows in the middle of a run and offer no way to ask, so every
- * reading is a snapshot from the last run and carries when it was taken.
+ * the total. Provider integrations obtain that total through their native
+ * protocols, so every reading is a last-seen snapshot and carries when it was
+ * taken.
  */
 export type QuotaWindowKind = "session" | "weekly";
 

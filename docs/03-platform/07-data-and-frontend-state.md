@@ -16,6 +16,7 @@ The application does not use a database. Durable metadata is stored as JSON file
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── agent-quota.json                    last provider-reported plan windows
 ├── session.key
 ├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
 └── uploads/tmp/                        tus chunks and sidecars

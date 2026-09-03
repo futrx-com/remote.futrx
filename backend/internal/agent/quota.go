@@ -8,18 +8,17 @@ package agent
 // spent; the plan is spent from everywhere the operator works, including their
 // laptop, so only the vendor can say how much is left.
 //
-// Both CLIs volunteer it mid-run and neither offers a way to ask:
+// Provider integrations expose it through their native protocols:
 //
 //   - claude emits a top-level {"type":"rate_limit_event"} line carrying one
 //     window at a time — "five_hour" or "seven_day" — with an absolute reset
 //     time and a status.
-//   - codex reports rate_limits inside its token_count event, as a primary and
-//     a secondary window, each with a percentage used and a window length in
-//     minutes.
+//   - codex app-server describes primary and secondary rate-limit windows,
+//     including percentage used, reset time, and window length.
 //
-// Neither is a request this platform can make, so a window is only as fresh as
-// the last run that touched it. Anything built on this must say when it was
-// measured rather than implying it is live.
+// The normalized value is a last-seen observation, not a live counter.
+// Anything built on it must say when it was measured rather than implying it
+// is current.
 
 // QuotaWindow names a rolling allowance. The two CLIs use different vocabulary
 // for the same two shapes, and this is the platform's.

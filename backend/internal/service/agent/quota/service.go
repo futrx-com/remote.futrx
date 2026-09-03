@@ -1,10 +1,8 @@
-// Package agentquota remembers the last subscription-quota reading each agent
-// CLI volunteered, so the dashboard can show how much of a plan is left.
+// Package quota remembers the last subscription-quota reading each agent
+// integration reports, so the dashboard can show how much of a plan is left.
 //
-// The whole package exists because this number cannot be asked for. Claude and
-// Codex each mention their rolling windows in the middle of a run and offer no
-// endpoint, so the platform's only move is to notice what goes past and keep
-// it. Two consequences shape everything here:
+// Integrations obtain quota through provider-specific protocols and submit
+// normalized observations here. Two consequences shape this service:
 //
 //   - A reading is a snapshot, not a live figure. Every reading carries when
 //     it was taken and the UI is expected to say so; a stale number presented
@@ -61,9 +59,9 @@ func New(ctx context.Context, store Repository) *Service {
 
 // Record files one reading against one agent.
 //
-// Persisting is best effort and deliberately not on the run's critical path:
-// losing the last reading of a window costs a stale dashboard until the next
-// run, and failing a turn over it would cost the operator their actual work.
+// Persisting is synchronous but best effort. Losing the last reading of a
+// window costs a stale dashboard until the next observation, while failing a
+// turn over it would cost the operator their actual work.
 func (s *Service) Record(ctx context.Context, provider agent.ProviderID, quota agent.Quota) {
 	if s == nil || quota.Window == "" {
 		return

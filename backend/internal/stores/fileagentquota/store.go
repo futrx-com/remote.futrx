@@ -1,13 +1,12 @@
-package fileagentquota
-
-// File-backed storage for the last subscription-quota reading each agent CLI
-// volunteered, at <dataDir>/agent-quota.json.
+// Package fileagentquota stores the last subscription-quota reading from each
+// agent integration at <dataDir>/agent-quota.json.
 //
 // Mode 0600 like the other settings stores, though this document holds no
 // secret — a percentage and a reset time. The file exists so the dashboard has
 // something to show after a restart: readings only arrive during a run, so
 // without it an operator who restarts the platform sees an empty card until
 // they happen to run an agent.
+package fileagentquota
 
 import (
 	"context"

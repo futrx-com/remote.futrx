@@ -25,10 +25,10 @@ const TONE_WORD: Record<QuotaTone, string> = {
  * the operator works — their laptop included — which is why it can move while
  * the ledger does not.
  *
- * The CLIs mention their windows during a run and offer no way to ask, so
- * every row is a snapshot with an age on it. The alternative — polling — does
- * not exist, and printing a stale figure as though it were current is how an
- * operator ends up planning a day's work against yesterday's number.
+ * Provider integrations report normalized observations, so every row is a
+ * last-seen snapshot with an age on it. Printing a stale figure as though it
+ * were current is how an operator ends up planning a day's work against
+ * yesterday's number.
  */
 export function PlanQuotaSection() {
   const { rows, loading } = usePlanQuota();
