@@ -383,9 +383,8 @@ type codexRateLimits struct {
 }
 
 type codexRateWindow struct {
-	UsedPercent    *float64 `json:"used_percent"`
-	WindowMinutes  int64    `json:"window_minutes"`
-	ResetsInSecond *int64   `json:"resets_in_seconds"`
+	UsedPercent     *float64 `json:"used_percent"`
+	ResetsInSeconds *int64   `json:"resets_in_seconds"`
 }
 
 // quotaEvents turns codex's two windows into platform readings.
@@ -419,8 +418,8 @@ func (p *Parser) quotaEvents(now int64, rawLine []byte, limits json.RawMessage) 
 			UsedPercent: pair.source.UsedPercent,
 			MeasuredAt:  now,
 		}
-		if pair.source.ResetsInSecond != nil && *pair.source.ResetsInSecond > 0 {
-			quota.ResetsAt = now/1000 + *pair.source.ResetsInSecond
+		if pair.source.ResetsInSeconds != nil && *pair.source.ResetsInSeconds > 0 {
+			quota.ResetsAt = now/1000 + *pair.source.ResetsInSeconds
 		}
 		events = append(events, p.event(now, agent.EventQuotaUpdated, rawLine, func(ev *agent.Event) {
 			ev.Quota = &quota

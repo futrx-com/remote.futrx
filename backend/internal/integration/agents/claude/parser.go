@@ -271,7 +271,7 @@ func parseRateLimit(payload json.RawMessage, now int64) (agent.Quota, bool) {
 	if err := json.Unmarshal(payload, &info); err != nil {
 		return agent.Quota{}, false
 	}
-	window := agent.NormalizeQuotaWindow(info.RateLimitType)
+	window := normalizeQuotaWindow(info.RateLimitType)
 	if window == "" {
 		return agent.Quota{}, false
 	}
@@ -291,4 +291,17 @@ func parseRateLimit(payload json.RawMessage, now int64) (agent.Quota, bool) {
 		quota.UsedPercent = &percent
 	}
 	return quota, true
+}
+
+// normalizeQuotaWindow keeps Claude's wire vocabulary inside its adapter.
+// Unknown names stay unknown so the caller drops them instead of guessing.
+func normalizeQuotaWindow(name string) agent.QuotaWindow {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "five_hour", "5h", "primary", "session":
+		return agent.QuotaWindowSession
+	case "seven_day", "weekly", "7d", "secondary":
+		return agent.QuotaWindowWeekly
+	default:
+		return ""
+	}
 }

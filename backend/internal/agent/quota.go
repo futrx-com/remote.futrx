@@ -1,7 +1,5 @@
 package agent
 
-import "strings"
-
 // Subscription quota, as the agent CLIs report it.
 //
 // This is the operator's *plan* allowance — the rolling window a Claude Max or
@@ -52,18 +50,4 @@ type Quota struct {
 	// the honest half of the reading: the rest is a snapshot from whenever
 	// the last run happened.
 	MeasuredAt int64 `json:"measuredAt"`
-}
-
-// NormalizeQuotaWindow maps a CLI's own name onto the platform's two. An
-// unrecognized name returns "" so a caller drops the reading rather than
-// filing it under the wrong window.
-func NormalizeQuotaWindow(name string) QuotaWindow {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "five_hour", "5h", "primary", "session":
-		return QuotaWindowSession
-	case "seven_day", "weekly", "7d", "secondary":
-		return QuotaWindowWeekly
-	default:
-		return ""
-	}
 }
