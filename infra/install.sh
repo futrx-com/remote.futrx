@@ -106,9 +106,9 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
 
     # Honor --github-token / GITHUB_TOKEN for the bootstrap clone of a private
     # repo.
-    CLONE_URL="https://github.com/futrx-com/remote.futrx.git"
+    CLONE_URL="${FUTRX_REPO_URL:-https://github.com/futrx-com/remote.futrx.git}"
     if [ -n "$BOOTSTRAP_TOKEN" ]; then
-        CLONE_URL="https://x-access-token:${BOOTSTRAP_TOKEN}@github.com/futrx-com/remote.futrx.git"
+        CLONE_URL="${CLONE_URL/https:\/\//https:\/\/x-access-token:${BOOTSTRAP_TOKEN}@}"
     fi
 
     if [ ! -d "$TARGET/.git" ]; then
@@ -201,7 +201,7 @@ fi
 INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
 LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
-REPO_URL="https://github.com/futrx-com/remote.futrx.git"
+REPO_URL="${FUTRX_REPO_URL:-https://github.com/futrx-com/remote.futrx.git}"
 SERVICE_PORT="${SERVICE_PORT:-7682}"
 HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"
 HOST_CLI_BIN_DIR="$HOST_CLI_PREFIX/bin"
@@ -324,6 +324,10 @@ fi
 . "$INFRA_DIR/steps/06-ssh-hardening.sh"
 # shellcheck source=steps/07-lxc-ipv4-heal.sh
 . "$INFRA_DIR/steps/07-lxc-ipv4-heal.sh"
+# shellcheck source=steps/08-backup.sh
+. "$INFRA_DIR/steps/08-backup.sh"
+# shellcheck source=steps/09-host-swap.sh
+. "$INFRA_DIR/steps/09-host-swap.sh"
 
 # ───────────────── summary ─────────────────
 cat <<EOF
@@ -346,6 +350,10 @@ cat <<EOF
 
  If you're on a cloud VPS with its own firewall, open 80/443 in the
  provider's console as well as UFW.
+
+ Backups:
+   remote-backup              (nightly via remote-backup.timer -> /var/backups/remote)
+   remote-restore <snapshot>  (retention / offsite: /etc/remote-backup.env)
 
  Manage:
    systemctl status   remote.futrx
