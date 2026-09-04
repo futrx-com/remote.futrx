@@ -13,13 +13,14 @@ import (
 type Parser struct {
 	req          agent.RunRequest
 	sawSessionID string
+	sawModel     string
 }
 
 func NewParser(req agent.RunRequest) *Parser {
 	if req.Provider == "" {
 		req.Provider = agent.ProviderClaude
 	}
-	return &Parser{req: req, sawSessionID: req.ResumeID}
+	return &Parser{req: req, sawSessionID: req.ResumeID, sawModel: req.Model}
 }
 
 func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
@@ -31,6 +32,9 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 
 	now := time.Now().UnixMilli()
 	events := make([]agent.Event, 0, 2)
+	if raw.Model != "" {
+		p.sawModel = raw.Model
+	}
 	if raw.SessionID != "" && raw.SessionID != p.sawSessionID {
 		p.sawSessionID = raw.SessionID
 		events = append(events, p.event(now, agent.EventSessionUpdated, rawLine, func(ev *agent.Event) {
@@ -109,15 +113,34 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 			events = append(events, p.event(now, agent.EventRunFailed, rawLine, func(ev *agent.Event) {
 				ev.Message = message
 				ev.IsError = true
-				ev.Usage = raw.Usage
+				ev.Usage = p.normalizeUsage(raw).Raw()
 			}))
 			return events, nil
 		}
 		events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
-			ev.Usage = raw.Usage
+			ev.Usage = p.normalizeUsage(raw).Raw()
 		}))
 	}
 	return events, nil
+}
+
+// normalizeUsage folds Claude's `result` message into the shared usage shape.
+// Claude is the only provider that prices a turn itself: `total_cost_usd` is
+// authoritative and must never be replaced by an estimate downstream.
+func (p *Parser) normalizeUsage(raw streamMsg) agent.Usage {
+	usage := agent.Usage{
+		CostUSD:    raw.TotalCostUSD,
+		DurationMs: raw.DurationMs,
+		Turns:      raw.NumTurns,
+		Model:      p.sawModel,
+	}
+	if parsed, ok := agent.ParseUsage(raw.Usage); ok {
+		usage.InputTokens = parsed.InputTokens
+		usage.OutputTokens = parsed.OutputTokens
+		usage.CacheReadTokens = parsed.CacheReadTokens
+		usage.CacheWriteTokens = parsed.CacheWriteTokens
+	}
+	return usage
 }
 
 func (p *Parser) event(
@@ -152,6 +175,10 @@ type streamMsg struct {
 	IsError   bool            `json:"is_error,omitempty"`
 	Result    string          `json:"result,omitempty"`
 	Usage     json.RawMessage `json:"usage,omitempty"`
+	// The `result` message prices and times the whole turn outside `usage`.
+	TotalCostUSD *float64 `json:"total_cost_usd,omitempty"`
+	DurationMs   int64    `json:"duration_ms,omitempty"`
+	NumTurns     int64    `json:"num_turns,omitempty"`
 }
 
 type streamInner struct {

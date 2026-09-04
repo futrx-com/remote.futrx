@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { useConfirm } from "../../../state/context/ConfirmContext";
 import type { ProjectMeta } from "../../../models/project";
 import type { ApiError } from "../../../api/apiRequest";
 import { AlertCircle } from "../../primitives/icons";
@@ -23,13 +24,22 @@ export function ProjectActions({
   const [busy, setBusy] = useState<"start" | "stop" | "restart" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const confirm = useConfirm();
   const [refusedForCapacity, setRefusedForCapacity] = useState(false);
   const canStart = project.status === "stopped" || project.status === "missing" || project.status === "error";
   const canStop = project.status === "running";
   const canRestart = project.status === "running" || project.status === "error";
 
   async function run(action: "start" | "stop" | "restart", operation: () => Promise<void>) {
-    if (action === "restart" && !confirm(`Force-restart "${project.name}"? All processes inside the container are killed immediately — use this to recover a workspace stuck at its resource limits.`)) return;
+    if (action === "restart") {
+      const confirmed = await confirm({
+        title: "Force-restart project",
+        description: "Unsaved work inside the container is lost.",
+        message: `Every process inside “${project.name}” is killed immediately — use this to recover a workspace stuck at its resource limits.`,
+        confirmLabel: "Force-restart",
+      });
+      if (!confirmed) return;
+    }
     setBusy(action);
     setErr(null);
     setRefusedForCapacity(false);
@@ -74,7 +84,7 @@ export function ProjectActions({
           type="button"
           onClick={() => void run("start", onStart)}
           disabled={!canStart || busy !== null}
-          class="h-10 rounded-md border border-white/10 bg-white/[0.04] px-3 text-[13px] font-medium text-ink-100 hover:bg-white/[0.08] disabled:opacity-45 disabled:cursor-not-allowed"
+          class="h-10 rounded-md border border-line bg-tint px-3 text-[13px] font-medium text-ink-100 hover:bg-tint-strong disabled:opacity-45 disabled:cursor-not-allowed"
         >
           {busy === "start" ? "Starting..." : "Start project"}
         </button>
@@ -82,7 +92,7 @@ export function ProjectActions({
           type="button"
           onClick={() => void run("stop", onStop)}
           disabled={!canStop || busy !== null}
-          class="h-10 rounded-md border border-white/10 bg-white/[0.04] px-3 text-[13px] font-medium text-ink-100 hover:bg-white/[0.08] disabled:opacity-45 disabled:cursor-not-allowed"
+          class="h-10 rounded-md border border-line bg-tint px-3 text-[13px] font-medium text-ink-100 hover:bg-tint-strong disabled:opacity-45 disabled:cursor-not-allowed"
         >
           {busy === "stop" ? "Stopping..." : "Stop project"}
         </button>
@@ -92,7 +102,7 @@ export function ProjectActions({
         onClick={() => void run("restart", onRestart)}
         disabled={!canRestart || busy !== null}
         title="Host-side kill + fresh boot. Works even when the workspace is unresponsive at its resource limits."
-        class="h-10 w-full rounded-md border border-white/10 bg-white/[0.04] px-3 text-[13px] font-medium text-ink-100 hover:bg-white/[0.08] disabled:opacity-45 disabled:cursor-not-allowed"
+        class="h-10 w-full rounded-md border border-line bg-tint px-3 text-[13px] font-medium text-ink-100 hover:bg-tint-strong disabled:opacity-45 disabled:cursor-not-allowed"
       >
         {busy === "restart" ? "Restarting..." : "Force restart"}
       </button>

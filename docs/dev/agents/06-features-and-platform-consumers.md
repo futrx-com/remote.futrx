@@ -18,13 +18,14 @@ runtime: each provider still has to implement the behavior it advertises.
 | `Label` | auth/capability APIs, frontend, instruction-style skill prompts | Human-readable name; descriptor value overrides a label returned by capability probing. |
 | `Default` | chat and user-settings services | Preferred default in every compatible scope. The catalog rejects multiple defaults and a default without host scope. If none is declared, the first compatible module wins. |
 | `ExecutionScopes` | chat create/update/run, capability discovery, skills, profile selection | Controls whether the provider may be used for loose host chats, project chats, or both. |
-| `Auth` and `AuthInstructions` | auth registry, HTTP/WebSocket routes, onboarding and Settings | Selects `managed-code`, `managed-device`, `external`, or `none` behavior. |
+| `Auth`, `AuthInstructions`, and optional `APIKeyAuth` | auth registry, HTTP/WebSocket routes, onboarding and Settings | Selects `managed-code`, `managed-device`, `managed-api-key`, `external`, or `none` behavior and supplies an HTTPS key-creation URL when required. |
 | `SatisfiesAccessGate` | startup validation and auth middleware | Allows an authenticated deployment to open after a managed binding authenticates, or immediately for `none`. External auth cannot satisfy the gate. |
 | `LegacySkillRoots` | skill catalog | Adds provider-specific host skill locations behind the canonical `.agents/skills` root. |
 | `Features.Sessions` | prompt service and chat forking | Enables saved-session resume and, separately, native fork. Fork requires resume. |
 | `Features.Skills` | skill catalog and prompt preparation | Chooses no selected-skill injection, slash-style skill triggers, dollar mentions, or `SKILL.md` instructions. `slash-command` describes skill delivery; it is not a general composer-command system. |
 | `Features.BrowserTools` | capability API and prompt service | Allows the selected `browser` skill to request browser provisioning and provider launch wiring. |
 | `Features.ScheduledTools` | skill catalog, prompt service, capability API/frontend | Advertises the Scheduled Tasks skill and permits issue/provisioning of a scoped schedule grant. |
+| `Features.ExecutionPolicies` | capability API and frontend composer | Exposes approval and sandbox policy controls for providers whose harness accepts both normalized policies. |
 
 The provisioning `Profile` is a separate private field of `module.Factory`,
 not descriptor metadata. Only `Profiles()` and `HostProfiles()` expose cloned
@@ -43,14 +44,16 @@ does not change the catalog.
 
 ## Current built-in declarations
 
-| Provider | Default | Scopes | Auth | Sessions | Skills | Browser | Scheduled Tasks |
-| --- | ---: | --- | --- | --- | --- | ---: | ---: |
-| Claude | No | host, project | managed code | resume, fork | slash-style skill trigger | Yes | Yes |
-| Codex | Yes | host, project | managed device | resume, fork | dollar mention | Yes | Yes |
-| Kimi | No | host, project | managed device | resume | instructions | No | Yes |
-| Antigravity | No | host, project | external | resume | instructions | No | Yes |
+| Provider | Default | Scopes | Auth | Sessions | Skills | Browser | Scheduled Tasks | Execution policies |
+| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
+| Claude | No | host, project | managed code | resume, fork | slash-style skill trigger | Yes | Yes | No |
+| Codex | Yes | host, project | managed device | resume, fork | dollar mention | Yes | Yes | Yes |
+| MiniMax | No | project | managed API key | resume, fork | dollar mention | Yes | Yes | Yes |
+| Kimi | No | host, project | managed device | resume | instructions | No | Yes | No |
+| Antigravity | No | host, project | external | resume | instructions | No | Yes | No |
 
-All four current modules run local CLIs and attach provisioning profiles. The
+All five current modules run local CLIs and attach provisioning profiles. MiniMax
+reuses Codex's app-server harness with a separate home and provider config. The
 contract also permits a host-only remote integration with no profile and a
 no-auth module with no binding.
 
@@ -66,6 +69,7 @@ starts. The current feature contracts are:
 | Skills | `Features.Skills` strategy | Discovers skill metadata, stores explicit chat selections, and renders the selected skills into the effective prompt. | Make the declared slash, dollar, or instruction-path form usable in the provider runtime. | User selection in the skill picker; scheduled runs may add the reserved Scheduled Tasks skill. |
 | Browser tools | `Features.BrowserTools` | Publishes support metadata and gates browser preparation and activity keepalive after the Browser skill is selected. | Pass working native MCP/tool configuration into the run. | The `browser` skill is selected and the provider declaration permits it. |
 | Scheduled Tasks | `Features.ScheduledTools` | Advertises the reserved project skill, issues and revokes a scoped grant, provisions the schedule CLI/skill, and injects runtime-only variables. | Preserve the runtime environment through the native host/container launch. | The Scheduled Tasks skill is selected, or the turn is executing a scheduled task. |
+| Execution policies | `Features.ExecutionPolicies` | Shows the Approvals and Sandbox composer controls and persists the selected normalized policies. | Forward both policies through the provider harness on thread and turn requests. | Automatic for every turn when the provider declares support. |
 
 Several adjacent contracts are deliberately not fields of `Features`:
 
@@ -73,8 +77,9 @@ Several adjacent contracts are deliberately not fields of `Features`:
   module descriptor policy with their own validation and consumers;
 - models, modes, reasoning efforts, and service tiers are environment/account
   data returned by live capability discovery rather than static promises;
-- CLI installation, credentials, persistent state, instructions, workspace
-  links, and Browser templates are private provisioning-profile policy;
+- CLI installation, credentials, persistent state, instructions, runtime
+  templates, workspace links, and Browser templates are private
+  provisioning-profile policy;
 - parser formats, command flags, protocol deadlines, and fallback behavior are
   provider adapter details unless a shared application workflow needs to see
   them.
@@ -171,12 +176,13 @@ The four supported modes are:
 | --- | --- | --- |
 | `managed-code` | `auth.NewCodeBinding` | Remote starts an interactive code-paste CLI flow and exposes start/submit/cancel actions. |
 | `managed-device` | `auth.NewDeviceBinding` | Remote starts a device login and exposes URL/code/progress. |
+| `managed-api-key` | `auth.NewAPIKeyBinding` | Remote exposes a write-only key form plus configured/unconfigured status and save/remove actions. |
 | `external` | `auth.NewExternalBinding` | Remote shows instructions only; there is no managed status stream or mutation action. |
 | `none` | no binding | Provider is treated as authenticated; instructions must be empty. |
 
 The normalized catalog is `GET /api/agent-auth`. Every non-`none` binding gets
 provider-ID-derived legacy status routes; an external binding has no usable
-status stream. Managed bindings additionally receive their code/device action
+status stream. Managed bindings additionally receive their flow-specific action
 routes and `/ws/agent-auth/<provider>`. Route construction is generic in
 [`AgentAuthHandler`](../../../backend/internal/transport/http/handlers/agent_auth_handler.go)
 and [`AgentAuthSocket`](../../../backend/internal/transport/ws/agent_auth_socket.go).
@@ -324,9 +330,9 @@ the prompt service to set `RunRequest.EnableBrowser` when the user selected the
 4. provider tests must demonstrate that browser wiring appears only when
    enabled.
 
-Claude and Codex currently select the shared preparer's full MCP/core launch
-path. A module must not claim `BrowserTools` merely because the generic browser
-skill exists.
+Claude, Codex, and MiniMax currently select the shared preparer's full MCP/core
+launch path. A module must not claim `BrowserTools` merely because the generic
+browser skill exists.
 The prompt service also keeps project browser activity alive once per minute
 during an enabled run so the browser reaper does not stop an active session.
 
@@ -410,7 +416,7 @@ Use this sequence:
    orchestration, persistence, cancellation, and errors. Add behavior to the
    prompt service only when it is genuinely part of assembling or supervising
    every agent run; otherwise give the capability its own service. Shared
-   services must not import or switch on Claude, Codex, Kimi, or Antigravity.
+   services must not import or switch on Claude, Codex, MiniMax, Kimi, or Antigravity.
 5. **Implement provider adapters.** Translate the neutral operation into each
    native CLI/protocol, and translate native results back into neutral types.
    Keep provider command builders and protocol deadlines local. Change an
@@ -513,6 +519,7 @@ Before enabling a feature flag, verify both sides of the contract:
 | `Skills` | Generated trigger/path is valid for the provider's CLI and provisioned filesystem. |
 | `BrowserTools` | Provider command receives working browser MCP/tool configuration. |
 | `ScheduledTools` | Shared project preparation provisions the tool; the provider forwards the issued environment through the common command builder. |
+| `ExecutionPolicies` | The provider forwards both normalized approval and sandbox policies, and supports the resulting interaction requests. |
 | capability model/effort/tier/mode | The run adapter actually forwards every selectable value, or deliberately omits it from discovery. |
 | project scope | Profile plus `ProjectPreparer` policy and provider command can prepare, run, and preserve state in a project container. |
 | host scope | Host auth, command environment, cwd, and CLI availability are supported. |

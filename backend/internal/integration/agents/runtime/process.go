@@ -118,8 +118,10 @@ func RunProcess(
 		})
 	}
 
-	err = cmd.Wait()
+	// Drain stderr before Wait: Wait closes the pipes returned by StderrPipe,
+	// which can truncate an in-flight read in the goroutine above.
 	stderrText := <-stderrDone
+	err = cmd.Wait()
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
 	}

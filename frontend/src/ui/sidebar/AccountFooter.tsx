@@ -15,16 +15,16 @@ export function AccountFooter({
   }
 
   return (
-    <footer class="safe-bottom-control border-t border-white/10 px-3 pt-3 flex items-center gap-2 text-sm bg-[#0d1015]">
-      <div class="w-9 h-9 rounded-md bg-accent-green/15 text-accent-green grid place-items-center font-semibold flex-none">
+    <footer class="safe-bottom-control flex items-center gap-2 border-t border-line px-2.5 pt-2.5 text-sm">
+      <div class="grid h-7 w-7 flex-none place-items-center rounded-full bg-tint-strong text-[12px] font-semibold text-ink-200">
         {(email[0] || "?").toUpperCase()}
       </div>
-      <span class="flex-1 min-w-0 truncate text-ink-200" title={email}>{email}</span>
+      <span class="min-w-0 flex-1 truncate text-[12.5px] text-ink-300" title={email}>{email}</span>
       {onOpenSettings && (
         <button
           type="button"
           onClick={onOpenSettings}
-          class="h-9 w-9 rounded-md text-ink-300 hover:text-ink-50 hover:bg-white/[0.08] grid place-items-center flex-none"
+          class="grid h-8 w-8 flex-none place-items-center rounded-control text-ink-400 transition-colors hover:bg-tint-strong hover:text-ink-50"
           title="Settings"
           aria-label="Settings"
         >
@@ -34,7 +34,7 @@ export function AccountFooter({
       <a
         href="/auth/logout"
         onClick={signOut}
-        class="h-9 w-9 rounded-md text-ink-300 hover:text-accent-red hover:bg-accent-red/10 grid place-items-center flex-none"
+        class="grid h-8 w-8 flex-none place-items-center rounded-control text-ink-400 transition-colors hover:bg-accent-red/10 hover:text-accent-red"
         title="Sign out"
         aria-label="Sign out"
       >

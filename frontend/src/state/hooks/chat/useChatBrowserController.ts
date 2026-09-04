@@ -5,8 +5,8 @@ import type { ChatMeta } from "../../../models/chat";
 import type { ContainerApp, ProjectMeta } from "../../../models/project";
 import type { ChatMessageBlock } from "../../../models/chatMessage";
 import { projectApi } from "../../../api/projectApi";
-import { projectPreviewPort } from "../../../shared/projectPreviewUrls";
-import { chatBrowserState } from "../../chat/chatBrowserState";
+import { projectPreviewUrlService } from "../../../services/projects/projectPreviewUrlService.ts";
+import { chatBrowserState } from "./chatBrowserState";
 
 export function useChatBrowserController({
   chat,
@@ -51,7 +51,7 @@ export function useChatBrowserController({
       setSelectedAppPort((prev) => {
         if (apps.length === 0) return null;
         if (prev != null && apps.some((app) => app.port === prev)) return prev;
-        const hinted = projectPreviewPort(browserUrl);
+        const hinted = projectPreviewUrlService.port(browserUrl);
         if (hinted != null && apps.some((app) => app.port === hinted)) return hinted;
         return apps[apps.length - 1].port;
       });

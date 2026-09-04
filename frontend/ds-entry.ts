@@ -4,6 +4,7 @@
 // components that render standalone (no state/transport imports).
 export { DsSurface } from "./ds-surface";
 export { LoadingScreen } from "./src/ui/primitives/LoadingScreen";
+export { Skeleton } from "./src/ui/primitives/Skeleton";
 export {
   Loading,
   Empty,
@@ -19,6 +20,8 @@ export { ErrorMessage } from "./src/ui/chat/messages/ErrorMessage";
 export { ThinkingIndicator } from "./src/ui/chat/messages/ThinkingIndicator";
 export { ThreadEmptyState } from "./src/ui/chat/messages/ThreadEmptyState";
 export { JumpToLatestButton } from "./src/ui/chat/messages/JumpToLatestButton";
+export { MessageSkeleton } from "./src/ui/chat/messages/MessageSkeleton";
+export { ChatSkeleton } from "./src/ui/chat/ChatSkeleton";
 
 export { ToolShell } from "./src/ui/chat/tool-calls/ToolShell";
 export { CodeBlock } from "./src/ui/chat/tool-calls/CodeBlock";
@@ -43,6 +46,7 @@ export { ProjectGroup } from "./src/ui/sidebar/ProjectGroup";
 export { AccountFooter } from "./src/ui/sidebar/AccountFooter";
 export { WorkspaceSearch } from "./src/ui/sidebar/WorkspaceSearch";
 export { SidebarEmptyState, SidebarNoMatches } from "./src/ui/sidebar/SidebarEmptyState";
+export { SidebarSkeleton } from "./src/ui/sidebar/SidebarSkeleton";
 
 export { NoChatSelected } from "./src/ui/layout/NoChatSelected";
 export { BrowserEmptyState } from "./src/ui/chat/browser/BrowserEmptyState";

@@ -18,6 +18,26 @@ func TestNormalizeCapabilityValue(t *testing.T) {
 	}
 }
 
+func TestPreferenceValueGrammarPreservesStoredSelections(t *testing.T) {
+	for input, want := range map[string]string{
+		" Future.V2 ": "Future.V2",
+		"Burst_2":     "Burst_2",
+		"":            "",
+		"bad value":   "",
+		"future-速":    "",
+	} {
+		if got := NormalizePreferenceValue(input); got != want {
+			t.Fatalf("NormalizePreferenceValue(%q) = %q, want %q", input, got, want)
+		}
+	}
+	if !ValidPreferenceValue(" Auto.V2 ") || !ValidPreferenceValue("") {
+		t.Fatal("expected trimmed and Auto preference values to remain valid")
+	}
+	if ValidPreferenceValue("bad value") || ValidPreferenceValue("future-速") {
+		t.Fatal("expected unsafe preference values to remain invalid")
+	}
+}
+
 func TestNormalizeModelIDAllowsNamespacedModels(t *testing.T) {
 	for input, want := range map[string]string{
 		" openai/gpt-5 ": "openai/gpt-5",

@@ -1,11 +1,14 @@
 import { requestJson } from "../apiRequest";
 import type {
   ContainerLimits,
-  ProjectContainerInfo,
   ProjectMeta,
 } from "../../models/project";
 import type { ProjectResources } from "../../models/resources";
 import { API_ROUTES } from "../../config/routes";
+import {
+  normalizeProjectContainerInfo,
+  type ProjectContainerInfoPayload,
+} from "./projectContainerInfo.ts";
 
 export const projectContainerApi = {
   // force skips the aggregate host-memory guard. Admin only, and rejected
@@ -20,10 +23,10 @@ export const projectContainerApi = {
     requestJson<ProjectMeta>("POST", API_ROUTES.projects.restart(id), {}),
 
   fetchContainerInfo: (id: string) =>
-    requestJson<ProjectContainerInfo>(
+    requestJson<ProjectContainerInfoPayload>(
       "GET",
       API_ROUTES.projects.container(id)
-    ),
+    ).then(normalizeProjectContainerInfo),
 
   fetchProjectResources: (id: string) =>
     requestJson<ProjectResources>("GET", API_ROUTES.projects.resources(id)),
@@ -32,9 +35,9 @@ export const projectContainerApi = {
     requestJson<ProjectResources>("PUT", API_ROUTES.projects.resources(id), limits),
 
   repairNetwork: (id: string) =>
-    requestJson<ProjectContainerInfo>(
+    requestJson<ProjectContainerInfoPayload>(
       "POST",
       API_ROUTES.projects.repairNetwork(id),
       {}
-    ),
+    ).then(normalizeProjectContainerInfo),
 };

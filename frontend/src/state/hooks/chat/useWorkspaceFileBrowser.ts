@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "preact/hooks";
 import { chatFilesApi } from "../../../api/chat/chatFilesApi";
+import { WORKSPACE_FILE_SEARCH_DEBOUNCE_MS } from "../../../config/api";
 import { API_ROUTES } from "../../../config/routes";
 import type { FileNode } from "../../../models/files";
-import { mediaViewerState } from "../../chat/mediaViewerState";
-import { workspaceFileBrowserState } from "../../chat/workspaceFileBrowserState";
-import { fileOpenAction } from "../../../ui/chat/files/fileMeta";
+import { mediaViewerStore } from "../../stores/media/mediaViewerStore";
+import { workspaceFileBrowserState } from "./workspaceFileBrowserState";
+import { fileService } from "../../../services/files/fileService.ts";
 
 export interface WorkspaceFileTreeState {
   expanded: Set<string>;
@@ -91,7 +92,7 @@ export function useWorkspaceFileBrowser({ chatId, active }: { chatId: string; ac
         if (!activeSearch) return;
         dispatch({ type: "search-failed", error: (error as Error).message });
       }
-    }, 250);
+    }, WORKSPACE_FILE_SEARCH_DEBOUNCE_MS);
     return () => {
       activeSearch = false;
       clearTimeout(timer);
@@ -116,10 +117,10 @@ export function useWorkspaceFileBrowser({ chatId, active }: { chatId: string; ac
   const openFile = useCallback(
     (node: FileNode) => {
       if (node.isDir) return;
-      const target = fileOpenAction(node.name);
+      const target = fileService.openAction(node.name);
       const containerPath = `/workspace/${node.path}`;
       if (target.action === "media") {
-        mediaViewerState.open({
+        mediaViewerStore.getState().open({
           url: API_ROUTES.chats.mediaOpen(chatId, containerPath),
           name: node.name,
           kind: target.kind,

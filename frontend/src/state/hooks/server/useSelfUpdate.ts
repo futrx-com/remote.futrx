@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { selfUpdateApi } from "../../../api/selfUpdateApi";
+import { SELF_UPDATE_RUNNING_POLL_INTERVAL_MS } from "../../../config/server";
 import type { SelfUpdateStatus } from "../../../models/selfUpdate";
-
-const runningPollMs = 3_000;
 
 export function useSelfUpdate(enabled: boolean) {
   const [status, setStatus] = useState<SelfUpdateStatus | null>(null);
@@ -86,7 +85,7 @@ export function useSelfUpdate(enabled: boolean) {
           setRestarting(true);
         }
       })();
-    }, runningPollMs);
+    }, SELF_UPDATE_RUNNING_POLL_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [enabled, running]);
 

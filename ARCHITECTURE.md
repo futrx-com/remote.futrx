@@ -4,8 +4,8 @@ This document describes how remote.futrx is put together: its runtime topology, 
 
 ## What it is
 
-remote.futrx is a **single-server, self-hosted** workspace for the Claude
-Code, Codex, Kimi Code, and Antigravity agent CLIs. A user creates a project,
+remote.futrx is a **single-server, self-hosted** workspace for Claude Code,
+Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -68,7 +68,7 @@ Caddy ([`infra/templates/Caddyfile.tmpl`](infra/templates/Caddyfile.tmpl)) termi
 Two properties of this table are load-bearing and both are analyzed in the threat model:
 
 1. **Wildcard subdomains use on-demand TLS**, gated by the backend's `/internal/tls-ask` so only slugs of existing projects can mint certificates ([`project_handler.go` `HandleTLSAsk`](backend/internal/transport/http/handlers/project_handler.go)).
-2. **Caddy strips the platform cookies** (`remote_session`, `remote_oauth_state`, `return_to`) via `header_up` before proxying any request into a container, so untrusted in-container code can never see a replayable session token. This is the mechanism behind the "isolated previews" claim.
+2. **Caddy strips the platform cookies** (`remote_session`, `remote_2fa_pending`, `remote_oauth_state`, `return_to`) via `header_up` before proxying any request into a container, so untrusted in-container code can never see a replayable session token. This is the mechanism behind the "isolated previews" claim.
 
 ## Backend layering
 
@@ -95,15 +95,18 @@ Composition roots: [`backend/cmd/remote/main.go`](backend/cmd/remote/main.go) (s
 
 Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-workspaces/02-auth-users-and-access.md)):
 
-1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup.
+1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup. The first claim is gated on a one-time token generated at startup and printed only to the server terminal (`setup-token.json` holds its SHA-256, never the token), so an unclaimed server cannot be taken over by whoever loads the page first; once an administrator exists, that administrator authorises any further claim instead.
 2. **Agent-provider credentials.** Host-wide OAuth tokens for
    Claude/Codex/Kimi, connected once by an admin and **shared by all projects
-   and users** on the box. Antigravity instead authenticates through `agy`
+   and users** on the box. MiniMax instead reads `MINIMAX_API_KEY` from each
+   project's secret store, while Antigravity authenticates through `agy`
    inside one project and stores that state in its project-specific durable
    provider mount.
 3. **Per-project membership.** A flat email access-list per project (`projectaccess/<id>.json`). Any member — not only admins — can read/write that project's secrets and edit its member list.
 
-**Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches the preview/IDE subdomains for `forward_auth`. There is no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
+**Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp, sid}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches the preview/IDE subdomains for `forward_auth`. By default there is still no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
+
+An account can opt in, from Settings → Security, to a small tracked-session model layered on top of the same stateless cookie, via three independent per-account toggles held in `SessionRegistry` ([`session_registry.go`](backend/internal/service/auth/session_registry.go)): **single active session** (a new login supersedes the account's previous session id, checked inside `CurrentSession` alongside the existing local-admin-vs-Google rule), **sign-in history** (a bounded, newest-first record of past logins), and **recovery-code alert** (settable only while TOTP 2FA is also enabled; flags a login that used a recovery code instead of the authenticator app, surfaced on `/auth/me`). TOTP 2FA itself is a fourth, independent toggle (`twofactor.go`) that adds a second factor to the login flow (`/auth/2fa/verify`) without requiring any of the other three. None of the four toggles affects an account that has not turned it on: `CurrentSession`'s registry lookup, the history write, and the alert check are all short-circuited by the account's cached `SecurityPreferences`/2FA-enrollment state, so the stateless, zero-lookup path described above is exactly what unopted accounts still get.
 
 **Request gating** ([`middleware/auth.go`](backend/internal/transport/http/middleware/auth.go)): the middleware covers `/api/*` and `/ws*` only. It requires a valid session for a registered user, then two setup preconditions: local admin claimed, and at least one module marked `SatisfiesAccessGate` ready. A no-auth gate module is ready immediately; managed code/device modules require an authenticated binding; external auth cannot be a gate because Remote has no authoritative status signal for it. The module-driven auth catalog and streams remain reachable while this gate is closed. Admin-only routes and project-membership routes re-check authorization per handler.
 
@@ -152,9 +155,10 @@ enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
 adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
 [`integration/agents/codex`](backend/internal/integration/agents/codex),
+[`integration/agents/minimax`](backend/internal/integration/agents/minimax),
 [`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
 [`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
-CLI's available output into a shared event stream. Antigravity print mode
+provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
 Agent composition uses the validated provider-owned factory contract in
@@ -232,6 +236,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
+| MiniMax project state | `/var/lib/remote/projects/<slug>/agent-home/minimax` | Codex-harness files | bind-mounted to `/root/.minimax`; its API key remains in the project secret store |
 | Antigravity project auth/session | `/var/lib/remote/projects/<slug>/agent-home/antigravity` | provider files | bind-mounted to `/root/.gemini/antigravity-cli`; survives container replacement |
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
@@ -242,16 +247,16 @@ JSON and metadata writes use temp-file + rename. Chat events are different: they
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Five bind mounts per project:** `workspace` → `/workspace`, plus the
-  provider-declared persistent directories for Claude, Codex, Kimi, and
-  Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+- **Six bind mounts per project:** `workspace` → `/workspace`, plus the
+  provider-declared persistent directories for Claude, Codex, MiniMax, Kimi,
+  and Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
   whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
   unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
   races.
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) targets **4 GiB memory, 6 CPUs, 2000 processes** and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. Default/profile resource convergence is best-effort because errors from the default `resources.Ensure` path are discarded; explicit per-project overrides fail launch when they cannot be applied. There is **no default disk quota.**
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) carries the fleet resource envelope and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. The envelope itself is **operator policy at runtime** ([`service/resources`](backend/internal/service/resources/), persisted to `DATA_DIR/resources.json`, derived from host capacity on first run) rather than a compiled constant, and an aggregate guard refuses a start that would commit more memory than the host has outside its reserve. Profile convergence on the launch path stays best-effort because errors from `resources.Ensure` are discarded; explicit per-project overrides fail launch when they cannot be applied. The **root-disk quota** needs a btrfs/zfs/lvm/ceph pool; on a `dir` pool it is reported unsupported and skipped. See [Resource limits](docs/02-workspaces/11-resource-limits.md).
 - **Networking:** containers share LXD's default bridge; Caddy reaches them by `<slug>.lxd:<port>` DNS. The bridge has no inter-container ACLs by default.
-- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, and skill links.
+- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, provider runtime assets, and skill links.
 
 The rootfs is disposable — [`upgrade-workspaces`](backend/cmd/upgrade-workspaces/main.go) replaces containers wholesale onto a new base image, so anything installed outside `/workspace` and the agent homes is lost on upgrade.
 
@@ -278,7 +283,7 @@ Three capabilities live inside each container ([deep dive](docs/03-platform/06-p
 
 - **App previews:** the backend runs `ss` inside the container to discover listening ports ([`listeners/scanner.go`](backend/internal/integration/containers/listeners/scanner.go), loopback binds excluded), and each becomes a `<slug>--<port>.dev.<host>` URL. No per-app proxy config is written — DNS + Caddy regex do the routing.
 - **Per-project IDE:** a pinned code-server listens on `127.0.0.1:8081` with `auth: none`, reachable only through a socket-activated proxy on `:8842` that scales to zero when idle. Authentication is entirely at the Caddy edge.
-- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude or Codex.
+- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude, Codex, or MiniMax.
 
 ## Frontend
 
@@ -309,7 +314,12 @@ Deployment is a single-box, root-driven, idempotent-converge model ([deep dive](
   converges every host-scoped module with
   a local profile using that profile's binary, provider-declared version
   arguments, exact semver pin, npm package or install script, timeout, and
-  verification policy. Host-only remote integrations may
+  verification policy. Every installer mode targets the application-owned
+  `data/host-clis` prefix; the installer, systemd service, and login-shell
+  profile all put its `bin` directory first and verify that ordinary command
+  resolution selects the same absolute executable that was installed. This
+  prevents a stale host-global binary from shadowing a newly installed pin.
+  Host-only remote integrations may
   omit a profile and install nothing. The base image and runtime repair consume
   the same profiles for project-scoped modules.
 - **[`infra/update.sh`](infra/update.sh)** fetches and hard-resets to the

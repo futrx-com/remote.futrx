@@ -3,6 +3,7 @@ package hostcli
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,25 +12,44 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 )
 
+const testManagedPrefix = "/managed/host-clis"
+
 type fakeRuntime struct {
 	exists           map[string]bool
+	executablePaths  map[string]string
 	versions         map[string]string
-	npmInstalls      []string
-	scriptInstalls   []string
+	npmInstalls      []npmInstall
+	scriptInstalls   []scriptInstall
 	installErr       error
 	installedOutput  string
 	waitForCancel    bool
 	installHook      func()
+	versionBinaries  []string
 	versionCalls     [][]string
 	versionTimeout   []time.Duration
 	blockVersionCall int
 }
 
-func (r *fakeRuntime) CommandExists(binary string) bool {
-	return r.exists[binary]
+type npmInstall struct {
+	prefix     string
+	npmPackage string
+}
+
+type scriptInstall struct {
+	script     string
+	executable string
+}
+
+func (r *fakeRuntime) CommandExists(executablePath string) bool {
+	return r.exists[executablePath]
+}
+
+func (r *fakeRuntime) ExecutablePath(binary string) string {
+	return r.executablePaths[binary]
 }
 
 func (r *fakeRuntime) Version(ctx context.Context, binary string, arguments ...string) (string, error) {
+	r.versionBinaries = append(r.versionBinaries, binary)
 	r.versionCalls = append(r.versionCalls, append([]string(nil), arguments...))
 	r.versionTimeout = append(r.versionTimeout, remainingContextTimeout(ctx))
 	if r.blockVersionCall == len(r.versionCalls) {
@@ -43,8 +63,8 @@ func (r *fakeRuntime) Version(ctx context.Context, binary string, arguments ...s
 	return version, nil
 }
 
-func (r *fakeRuntime) InstallNPM(ctx context.Context, npmPackage string) (string, error) {
-	r.npmInstalls = append(r.npmInstalls, npmPackage)
+func (r *fakeRuntime) InstallNPM(ctx context.Context, prefix, npmPackage string) (string, error) {
+	r.npmInstalls = append(r.npmInstalls, npmInstall{prefix: prefix, npmPackage: npmPackage})
 	if r.waitForCancel {
 		<-ctx.Done()
 		return "", ctx.Err()
@@ -53,8 +73,10 @@ func (r *fakeRuntime) InstallNPM(ctx context.Context, npmPackage string) (string
 		r.installHook()
 	}
 	if r.installErr == nil {
-		r.versions["future"] = r.installedOutput
-		r.exists["future"] = true
+		executable := filepath.Join(prefix, "bin", "future")
+		r.versions[executable] = r.installedOutput
+		r.exists[executable] = true
+		r.executablePaths["future"] = executable
 	}
 	return "npm output", r.installErr
 }
@@ -67,18 +89,19 @@ func remainingContextTimeout(ctx context.Context) time.Duration {
 	return time.Until(deadline)
 }
 
-func (r *fakeRuntime) InstallScript(_ context.Context, script string) (string, error) {
-	r.scriptInstalls = append(r.scriptInstalls, script)
+func (r *fakeRuntime) InstallScript(_ context.Context, script, executable string) (string, error) {
+	r.scriptInstalls = append(r.scriptInstalls, scriptInstall{script: script, executable: executable})
 	if r.installErr == nil {
-		r.versions["future"] = r.installedOutput
-		r.exists["future"] = true
+		r.versions[executable] = r.installedOutput
+		r.exists[executable] = true
+		r.executablePaths["future"] = executable
 	}
 	return "script output", r.installErr
 }
 
 func TestEnsureAllSkipsMatchingPinnedVersion(t *testing.T) {
 	runtime := newFakeRuntime("future 1.2.3")
-	results, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
+	results, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +114,9 @@ func TestEnsureAllSkipsMatchingPinnedVersion(t *testing.T) {
 	if len(runtime.versionCalls) != 1 || !slices.Equal(runtime.versionCalls[0], []string{"version"}) {
 		t.Fatalf("version calls = %#v", runtime.versionCalls)
 	}
+	if len(runtime.versionBinaries) != 1 || runtime.versionBinaries[0] != testManagedExecutable("future") {
+		t.Fatalf("version binaries = %#v", runtime.versionBinaries)
+	}
 }
 
 func TestEnsureAllInstallsNPMModesAtExactPin(t *testing.T) {
@@ -101,11 +127,12 @@ func TestEnsureAllInstallsNPMModesAtExactPin(t *testing.T) {
 		t.Run(string(mode), func(t *testing.T) {
 			runtime := newFakeRuntime("future 1.2.2")
 			runtime.installedOutput = "future version 1.2.3"
-			results, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(mode)})
+			results, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(mode)})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runtime.npmInstalls) != 1 || runtime.npmInstalls[0] != "future-cli@1.2.3" {
+			wantInstall := npmInstall{prefix: testManagedPrefix, npmPackage: "future-cli@1.2.3"}
+			if len(runtime.npmInstalls) != 1 || runtime.npmInstalls[0] != wantInstall {
 				t.Fatalf("npm installs = %#v", runtime.npmInstalls)
 			}
 			if len(results) != 1 || !results[0].Changed || results[0].DetectedVersion != "1.2.3" {
@@ -121,10 +148,11 @@ func TestEnsureAllRunsPinnedScriptPolicy(t *testing.T) {
 	profile.CLI.InstallScript = "install future 1.2.3"
 	runtime := newFakeRuntime("")
 	runtime.installedOutput = "1.2.3"
-	if _, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile}); err != nil {
+	if _, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile}); err != nil {
 		t.Fatal(err)
 	}
-	if len(runtime.scriptInstalls) != 1 || runtime.scriptInstalls[0] != profile.CLI.InstallScript {
+	wantInstall := scriptInstall{script: profile.CLI.InstallScript, executable: testManagedExecutable("future")}
+	if len(runtime.scriptInstalls) != 1 || runtime.scriptInstalls[0] != wantInstall {
 		t.Fatalf("script installs = %#v", runtime.scriptInstalls)
 	}
 	if len(runtime.npmInstalls) != 0 {
@@ -135,16 +163,53 @@ func TestEnsureAllRunsPinnedScriptPolicy(t *testing.T) {
 func TestEnsureAllRejectsSuccessfulInstallWithWrongVersion(t *testing.T) {
 	runtime := newFakeRuntime("future 1.2.2")
 	runtime.installedOutput = "future 1.2.4"
-	_, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
-	if err == nil || !strings.Contains(err.Error(), "required binary/version is unavailable") {
+	_, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
+	if err == nil || !strings.Contains(err.Error(), "managed executable") ||
+		!strings.Contains(err.Error(), `detected "1.2.4", want "1.2.3"`) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestEnsureAllRejectsPATHThatDoesNotSelectManagedExecutable(t *testing.T) {
+	runtime := newFakeRuntime("future 1.2.3")
+	runtime.executablePaths["future"] = "/legacy/bin/future"
+
+	_, err := newTestInstaller(runtime, time.Second).EnsureAll(
+		context.Background(),
+		[]provisioning.Profile{testProfile(provisioning.InstallWithNPM)},
+	)
+	if err == nil || !strings.Contains(err.Error(), `managed executable "/managed/host-clis/bin/future"`) ||
+		!strings.Contains(err.Error(), `PATH resolves "future" to "/legacy/bin/future"`) {
+		t.Fatalf("error = %v", err)
+	}
+	if len(runtime.npmInstalls) != 0 {
+		t.Fatalf("installer should not reinstall a current managed executable: %#v", runtime.npmInstalls)
+	}
+}
+
+func TestEnsureAllMigratesLegacyPATHExecutableIntoManagedPrefix(t *testing.T) {
+	runtime := newFakeRuntime("")
+	runtime.executablePaths["future"] = "/usr/bin/future"
+	runtime.versions["/usr/bin/future"] = "future 1.2.2"
+	runtime.exists["/usr/bin/future"] = true
+	runtime.installedOutput = "future 1.2.3"
+
+	results, err := newTestInstaller(runtime, time.Second).EnsureAll(
+		context.Background(),
+		[]provisioning.Profile{testProfile(provisioning.InstallWithNPM)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || !results[0].Changed || runtime.executablePaths["future"] != testManagedExecutable("future") {
+		t.Fatalf("results = %#v, executable = %q", results, runtime.executablePaths["future"])
 	}
 }
 
 func TestEnsureAllReturnsProviderScopedInstallFailure(t *testing.T) {
 	runtime := newFakeRuntime("")
 	runtime.installErr = errors.New("registry unavailable")
-	_, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
+	_, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
 	if err == nil || !strings.Contains(err.Error(), `converge host agent "future-agent"`) ||
 		!strings.Contains(err.Error(), "registry unavailable") {
 		t.Fatalf("error = %v", err)
@@ -155,8 +220,9 @@ func TestEnsureAllSupportsExistenceOnlyPolicies(t *testing.T) {
 	profile := testProfile(provisioning.InstallWithNPM)
 	profile.CLI.CheckVersion = false
 	runtime := newFakeRuntime("")
-	runtime.exists["future"] = true
-	results, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile})
+	runtime.exists[testManagedExecutable("future")] = true
+	runtime.executablePaths["future"] = testManagedExecutable("future")
+	results, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +240,7 @@ func TestEnsureAllBoundsEachInstallation(t *testing.T) {
 	runtime := newFakeRuntime("")
 	runtime.waitForCancel = true
 	started := time.Now()
-	_, err := New(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile})
+	_, err := newTestInstaller(runtime, time.Second).EnsureAll(context.Background(), []provisioning.Profile{profile})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want deadline exceeded", err)
 	}
@@ -195,7 +261,7 @@ func TestEnsureAllBoundsVersionChecks(t *testing.T) {
 			runtime := newFakeRuntime("future 1.2.2")
 			runtime.installedOutput = "future 1.2.3"
 			runtime.blockVersionCall = testCase.blockedCall
-			installer := New(runtime, 20*time.Millisecond)
+			installer := newTestInstaller(runtime, 20*time.Millisecond)
 			started := time.Now()
 			_, err := installer.EnsureAll(context.Background(), []provisioning.Profile{testProfile(provisioning.InstallWithNPM)})
 			if (err != nil) != testCase.wantError {
@@ -209,12 +275,38 @@ func TestEnsureAllBoundsVersionChecks(t *testing.T) {
 }
 
 func TestEnsureAllRejectsNonPositiveVersionTimeout(t *testing.T) {
-	_, err := New(newFakeRuntime("future 1.2.3"), 0).EnsureAll(
+	_, err := New(newFakeRuntime("future 1.2.3"), 0, testManagedPrefix).EnsureAll(
 		context.Background(),
 		[]provisioning.Profile{testProfile(provisioning.InstallWithNPM)},
 	)
 	if err == nil || !strings.Contains(err.Error(), "version timeout must be positive") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestEnsureAllRejectsUnsafeManagedPrefix(t *testing.T) {
+	for _, prefix := range []string{"", ".", "/"} {
+		_, err := New(newFakeRuntime(""), time.Second, prefix).EnsureAll(
+			context.Background(),
+			[]provisioning.Profile{testProfile(provisioning.InstallWithNPM)},
+		)
+		if err == nil || !strings.Contains(err.Error(), "managed prefix must be an absolute path below root") {
+			t.Fatalf("prefix %q error = %v", prefix, err)
+		}
+	}
+}
+
+func TestEnsureAllRejectsBinaryOutsideManagedBinDirectory(t *testing.T) {
+	for _, binary := range []string{"", ".", "..", "../future", "/usr/bin/future"} {
+		profile := testProfile(provisioning.InstallWithNPM)
+		profile.CLI.Binary = binary
+		_, err := newTestInstaller(newFakeRuntime(""), time.Second).EnsureAll(
+			context.Background(),
+			[]provisioning.Profile{profile},
+		)
+		if err == nil || !strings.Contains(err.Error(), "binary must be a plain file name") {
+			t.Fatalf("binary %q error = %v", binary, err)
+		}
 	}
 }
 
@@ -226,7 +318,7 @@ func TestEnsureAllGivesPostInstallVerificationAnIndependentDeadline(t *testing.T
 	}
 	profile := testProfile(provisioning.InstallWithNPM)
 	profile.CLI.InstallTimeout = 200 * time.Millisecond
-	installer := New(runtime, time.Second)
+	installer := newTestInstaller(runtime, time.Second)
 
 	if _, err := installer.EnsureAll(context.Background(), []provisioning.Profile{profile}); err != nil {
 		t.Fatal(err)
@@ -262,14 +354,25 @@ func TestMatchSemanticVersionRecognizesCLIOutputForms(t *testing.T) {
 
 func newFakeRuntime(version string) *fakeRuntime {
 	runtime := &fakeRuntime{
-		exists:   make(map[string]bool),
-		versions: make(map[string]string),
+		exists:          make(map[string]bool),
+		executablePaths: make(map[string]string),
+		versions:        make(map[string]string),
 	}
 	if version != "" {
-		runtime.exists["future"] = true
-		runtime.versions["future"] = version
+		executable := testManagedExecutable("future")
+		runtime.exists[executable] = true
+		runtime.executablePaths["future"] = executable
+		runtime.versions[executable] = version
 	}
 	return runtime
+}
+
+func newTestInstaller(runtime Runtime, versionTimeout time.Duration) *Installer {
+	return New(runtime, versionTimeout, testManagedPrefix)
+}
+
+func testManagedExecutable(binary string) string {
+	return filepath.Join(testManagedPrefix, "bin", binary)
 }
 
 func testProfile(mode provisioning.InstallMode) provisioning.Profile {

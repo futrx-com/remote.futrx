@@ -43,7 +43,7 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 	}
 	wantCalls := []string{
 		"get", "start", "cli:future", "before-credentials", "credentials",
-		"instructions", "skill-links", "browser-skill", "browser-script",
+		"instructions", "runtime-assets", "skill-links", "browser-skill", "browser-script",
 		"browser-mcp", "browser-core", "schedule", "lifecycle", "secrets",
 	}
 	if !slices.Equal(recorder.calls, wantCalls) {
@@ -58,6 +58,12 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 	if prepared.ID != "project-id" || prepared.ContainerName != "project-container" ||
 		len(prepared.Secrets) != 1 || prepared.Secrets[0].Key != "PROJECT_SECRET" {
 		t.Fatalf("prepared project = %#v", prepared)
+	}
+	if recorder.runtimeAssetContainer != "project-container" || len(recorder.runtimeAssets) != 1 ||
+		recorder.runtimeAssets[0].Path != "/root/.future/runtime.json" ||
+		string(recorder.runtimeAssets[0].Content) != "runtime-template" {
+		t.Fatalf("runtime asset request = container %q, templates %#v",
+			recorder.runtimeAssetContainer, recorder.runtimeAssets)
 	}
 }
 
@@ -82,9 +88,36 @@ func TestPreparerPreservesStrictSkillLinkPolicy(t *testing.T) {
 	}
 }
 
+func TestPreparerRuntimeAssetFailurePreservesErrorAndShortCircuits(t *testing.T) {
+	recorder := &preparationRecorder{runtimeAssetError: errors.New("publish failed")}
+	preparer := New(
+		preparationProjects{recorder: recorder},
+		preparationDependencies(recorder),
+		Options{Provider: "future-agent", Profile: preparationTestProfile()},
+	)
+
+	_, err := preparer.Prepare(
+		context.Background(),
+		agent.ProjectPreparationRequest{ProjectID: "project-id"},
+		nil,
+	)
+	if err == nil || err.Error() != "push agent runtime assets to container: publish failed" {
+		t.Fatalf("Prepare error = %v", err)
+	}
+	wantCalls := []string{
+		"get", "start", "cli:future", "credentials", "instructions", "runtime-assets",
+	}
+	if !slices.Equal(recorder.calls, wantCalls) {
+		t.Fatalf("preparation calls\n got: %v\nwant: %v", recorder.calls, wantCalls)
+	}
+}
+
 type preparationRecorder struct {
-	calls          []string
-	skillLinkError error
+	calls                 []string
+	skillLinkError        error
+	runtimeAssetError     error
+	runtimeAssetContainer string
+	runtimeAssets         []provisioning.RuntimeAsset
 }
 
 type preparationProjects struct{ recorder *preparationRecorder }
@@ -134,6 +167,19 @@ func (p preparationWorkspace) EnsureSkillLinks(context.Context, string) error {
 	return p.recorder.skillLinkError
 }
 
+type preparationRuntimeAssets struct{ recorder *preparationRecorder }
+
+func (p preparationRuntimeAssets) Ensure(
+	_ context.Context,
+	containerName string,
+	assets []provisioning.RuntimeAsset,
+) error {
+	p.recorder.calls = append(p.recorder.calls, "runtime-assets")
+	p.recorder.runtimeAssetContainer = containerName
+	p.recorder.runtimeAssets = assets
+	return p.recorder.runtimeAssetError
+}
+
 type preparationBrowser struct{ recorder *preparationRecorder }
 
 func (p preparationBrowser) EnsureSkill(context.Context, string) error {
@@ -175,6 +221,7 @@ func preparationDependencies(recorder *preparationRecorder) provisioning.Contain
 		CLI:           preparationCLI{recorder},
 		Credentials:   preparationCredentials{recorder},
 		Workspace:     preparationWorkspace{recorder},
+		RuntimeAssets: preparationRuntimeAssets{recorder},
 		Browser:       preparationBrowser{recorder},
 		ScheduleTools: preparationSchedule{recorder},
 		Lifecycle:     preparationLifecycle{recorder},
@@ -188,5 +235,10 @@ func preparationTestProfile() provisioning.Profile {
 		Credentials: provisioning.CredentialSpec{Files: []provisioning.CredentialFile{{
 			HostPath: "/host/credentials", ContainerPath: "/root/.future/credentials",
 		}}},
+		RuntimeAssets: []provisioning.RuntimeAsset{{
+			Content:  []byte("runtime-template"),
+			Path:     "/root/.future/runtime.json",
+			HashPath: "/root/.future/.runtime.sha256",
+		}},
 	}
 }

@@ -4,7 +4,7 @@ import { JumpToLatestButton } from "remote.futrx-web";
 
 export const OverThread = () => (
   <div
-    className="relative w-full max-w-xl overflow-hidden rounded-lg border border-white/[0.06]"
+    className="relative w-full max-w-xl overflow-hidden rounded-lg border border-line"
     style={{ height: "11rem" }}
   >
     <div className="p-4 space-y-3 text-sm text-ink-300">

@@ -5,7 +5,10 @@ import {
 } from "../../ui/projects/ProjectContainersPage";
 import type { ProjectMeta } from "../../models/project";
 import { useProjectContainersController } from "../../state/hooks/projects/useProjectContainersController";
+import { useAuthContext } from "../../state/context/AuthContext";
 import { useProjectResources } from "../../state/hooks/projects/useProjectResources";
+import { useServerInfo } from "../../state/hooks/server/useServerInfo";
+import { useProjectUsage } from "../../state/hooks/usage/useProjectUsage";
 
 export function ProjectContainersContainer({
   projects,
@@ -23,6 +26,10 @@ export function ProjectContainersContainer({
   const controller = useProjectContainersController(projects, selectedProjectId);
   const { selectedProject, info, secrets, access } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
+  const serverInfo = useServerInfo(activeTab === "settings");
+  const usage = useProjectUsage(selectedProject?.id);
+  const { auth } = useAuthContext();
+  // Scoped to the Settings tab, where the envelope is shown and edited.
   const resources = useProjectResources(selectedProject, activeTab === "settings");
 
   const deleteSelectedProject = useCallback(async () => {
@@ -39,6 +46,12 @@ export function ProjectContainersContainer({
       secretsRecord={secrets.record}
       accessRecord={access.record}
       refreshing={controller.refreshing}
+      isAdmin={auth.isAdmin}
+      serverMemoryTotalBytes={serverInfo.info?.memory.totalBytes}
+      serverMemoryLoading={serverInfo.loading}
+      usageSummary={usage.summary}
+      usageLoading={usage.loading}
+      usageError={usage.error}
       resources={resources.data}
       resourcesLoading={resources.loading}
       resourcesSaving={resources.saving}

@@ -3,7 +3,7 @@ import type { ChatProvider } from "../../../models/chat";
 import type {
   ComposerModelOption,
   ComposerProviderOption,
-} from "../../../state/chat/agentCapabilityState";
+} from "../../../models/agentCapabilities";
 import {
   Bot,
   Check,
@@ -113,8 +113,8 @@ export function ComposerAgentPicker({
       <button
         type="button"
         onClick={() => open ? close() : openPicker()}
-        class={`flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-2 text-left transition disabled:cursor-not-allowed disabled:opacity-60
-                ${open ? "bg-accent-blue/[0.14] text-accent-blue" : "bg-white/[0.045] text-ink-100 hover:bg-white/[0.075]"}`}
+        class={`flex h-7 w-full min-w-0 items-center gap-1.5 rounded-control px-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50
+                ${open ? "bg-tint-active text-ink-50" : "text-ink-300 hover:bg-tint-strong hover:text-ink-100"}`}
         disabled={streaming || loading}
         title={triggerTitle}
         aria-haspopup="dialog"
@@ -123,15 +123,15 @@ export function ComposerAgentPicker({
         {loading ? (
           <Loader class="h-3.5 w-3.5 flex-none animate-spin text-ink-300" />
         ) : unavailableReason ? (
-          <Lock class="h-3.5 w-3.5 flex-none text-amber-300" />
+          <Lock class="h-3.5 w-3.5 flex-none text-accent-yellow" />
         ) : (
-          <Bot class="h-3.5 w-3.5 flex-none text-ink-400" />
+          <Bot class="h-3.5 w-3.5 flex-none opacity-60" />
         )}
         <span class="sr-only">Provider and model</span>
-        <span class="min-w-0 flex-1 truncate text-[11.5px] font-semibold">
+        <span class="min-w-0 flex-1 truncate text-[11.5px] font-medium">
           {loading ? "Loading models…" : `${providerLabel} · ${modelLabel}`}
         </span>
-        {!loading && <ChevronDown class="h-3 w-3 flex-none text-ink-400" />}
+        {!loading && <ChevronDown class="h-3 w-3 flex-none opacity-50" />}
       </button>
 
       {open && !loading && (
@@ -143,18 +143,18 @@ export function ComposerAgentPicker({
             onClick={close}
           />
           <div
-            class="theme-menu-surface fixed inset-x-3 bottom-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-hidden rounded-xl border border-white/10 bg-[#14161d] shadow-2xl
+            class="theme-menu-surface fixed inset-x-3 bottom-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-hidden rounded-panel border border-line bg-raised shadow-modal
                    md:absolute md:inset-x-auto md:bottom-full md:left-0 md:mb-2 md:w-[min(36rem,calc(100vw-1.5rem))] md:rounded-lg"
             role="dialog"
             aria-label="Choose provider and model"
           >
-            <div class="flex h-11 items-center justify-between border-b border-white/[0.08] px-3">
+            <div class="flex h-11 items-center justify-between border-b border-line px-3">
               <div class="flex min-w-0 items-center gap-2">
                 {mobileStep === "models" && (
                   <button
                     type="button"
                     onClick={() => setMobileStep("providers")}
-                    class="-ml-1 rounded p-1 text-ink-300 hover:bg-white/[0.07] hover:text-ink-100 md:hidden"
+                    class="-ml-1 rounded p-1 text-ink-300 hover:bg-tint-strong hover:text-ink-100 md:hidden"
                     aria-label="Back to providers"
                   >
                     <ChevronLeft class="h-4 w-4" />
@@ -170,7 +170,7 @@ export function ComposerAgentPicker({
               <button
                 type="button"
                 onClick={close}
-                class="rounded p-1 text-ink-400 hover:bg-white/[0.07] hover:text-ink-100 md:hidden"
+                class="rounded p-1 text-ink-400 hover:bg-tint-strong hover:text-ink-100 md:hidden"
                 aria-label="Close provider and model picker"
               >
                 <X class="h-4 w-4" />
@@ -207,7 +207,7 @@ export function ComposerAgentPicker({
                 onQueryChange={setQuery}
                 onChoose={chooseProvider}
               />
-              <div class="min-w-0 border-l border-white/[0.08]">
+              <div class="min-w-0 border-l border-line">
                 <ModelList
                   provider={provider}
                   model={model}
@@ -218,12 +218,12 @@ export function ComposerAgentPicker({
               </div>
             </div>
 
-            <div class="flex min-h-10 items-center justify-between gap-3 border-t border-white/[0.08] px-2 py-1">
+            <div class="flex min-h-10 items-center justify-between gap-3 border-t border-line px-2 py-1">
               <button
                 type="button"
                 onClick={() => void onRefresh()}
                 disabled={refreshing}
-                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-ink-300 transition hover:bg-white/[0.07] hover:text-ink-100 disabled:cursor-wait disabled:opacity-60"
+                class="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-medium text-ink-300 transition hover:bg-tint-strong hover:text-ink-100 disabled:cursor-wait disabled:opacity-60"
               >
                 {refreshing
                   ? <Loader class="h-3.5 w-3.5 animate-spin" />
@@ -231,7 +231,7 @@ export function ComposerAgentPicker({
                 <span>{refreshing ? "Refreshing models…" : "Refresh models"}</span>
               </button>
               {error && (
-                <p class="min-w-0 truncate pr-1 text-[11px] text-red-300" role="status" title={error}>
+                <p class="min-w-0 truncate pr-1 text-[11px] text-accent-red" role="status" title={error}>
                   {error}
                 </p>
               )}
@@ -270,8 +270,8 @@ function ProviderList({
   return (
     <div class="min-h-0">
       {options.length > PROVIDER_SEARCH_THRESHOLD && (
-        <div class="border-b border-white/[0.08] p-2">
-          <label class="flex h-8 items-center gap-2 rounded-md border border-white/10 bg-[#0b0d11] px-2">
+        <div class="border-b border-line p-2">
+          <label class="flex h-8 items-center gap-2 rounded-md border border-line bg-inset px-2">
             <Search class="h-3.5 w-3.5 flex-none text-ink-400" />
             <span class="sr-only">Search providers</span>
             <input
@@ -296,7 +296,7 @@ function ProviderList({
               type="button"
               onClick={() => onChoose(option.value)}
               class={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition
-                      ${viewed ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-100 hover:bg-white/[0.07]"}`}
+                      ${viewed ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-100 hover:bg-tint-strong"}`}
               role="option"
               aria-selected={viewed}
             >
@@ -307,17 +307,17 @@ function ProviderList({
         })}
 
         {unavailable.length > 0 && (
-          <div class={connected.length > 0 ? "mt-2 border-t border-white/[0.08] pt-2" : ""}>
+          <div class={connected.length > 0 ? "mt-2 border-t border-line pt-2" : ""}>
             <ProviderSectionLabel>Sign in to use</ProviderSectionLabel>
             {unavailable.map((option) => (
               <div
                 key={option.value}
-                class={`flex gap-2 rounded-md px-2.5 py-2 ${option.value === viewedProvider ? "bg-amber-300/[0.07]" : ""}`}
+                class={`flex gap-2 rounded-md px-2.5 py-2 ${option.value === viewedProvider ? "bg-accent-yellow/[0.08]" : ""}`}
                 role="option"
                 aria-disabled="true"
                 aria-selected={option.value === viewedProvider}
               >
-                <Lock class="mt-0.5 h-3.5 w-3.5 flex-none text-amber-300" />
+                <Lock class="mt-0.5 h-3.5 w-3.5 flex-none text-accent-yellow" />
                 <span class="min-w-0">
                   <span class="block text-[12.5px] font-semibold text-ink-200">{option.label}</span>
                   <span class="mt-0.5 block text-[10.5px] leading-4 text-ink-400">
@@ -365,7 +365,7 @@ function ModelList({
     return (
       <div class="flex min-h-44 items-center justify-center p-5 text-center">
         <div class="max-w-[18rem]">
-          <Lock class="mx-auto h-5 w-5 text-amber-300" />
+          <Lock class="mx-auto h-5 w-5 text-accent-yellow" />
           <div class="mt-2 text-[13px] font-semibold text-ink-100">Sign in to {viewedProvider.label}</div>
           <p class="mt-1 text-[11px] leading-4 text-ink-400">
             {viewedProvider.disabledReason || "Log in before selecting this provider."}
@@ -380,7 +380,7 @@ function ModelList({
 
   return (
     <div class="min-h-0">
-      <div class="hidden border-b border-white/[0.08] px-3 py-2 md:block">
+      <div class="hidden border-b border-line px-3 py-2 md:block">
         <div class="truncate text-[11px] font-semibold text-ink-200">{viewedProvider.label} models</div>
         <div class="mt-0.5 text-[10px] text-ink-500">Choose one to apply this provider</div>
       </div>
@@ -425,7 +425,7 @@ function ModelOption({
       type="button"
       onClick={() => onChoose(value)}
       class={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition
-              ${active ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-100 hover:bg-white/[0.07]"}`}
+              ${active ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-100 hover:bg-tint-strong"}`}
       role="option"
       aria-selected={active}
     >

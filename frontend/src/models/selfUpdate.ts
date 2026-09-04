@@ -17,6 +17,17 @@ export interface SelfUpdateRun {
   finishedAt?: number;
   exitCode?: number;
   log?: string;
+  logUpdatedAt?: number;
+  progress?: SelfUpdateProgress;
+}
+
+export interface SelfUpdateProgress {
+  phase: string;
+  message: string;
+  completed?: number;
+  total?: number;
+  currentItem?: string;
+  updatedAt: number;
 }
 
 export interface SelfUpdateStatus {

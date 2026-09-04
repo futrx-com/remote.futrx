@@ -26,6 +26,21 @@ func TestNormalizeProviderKeepsFutureSafeIdentifiers(t *testing.T) {
 	}
 }
 
+func TestNormalizeExecutionPoliciesPreservesKnownValuesAndDefaultsUnknownValues(t *testing.T) {
+	if got := NormalizeApprovalPolicy(" never "); got != "never" {
+		t.Fatalf("approval policy = %q, want never", got)
+	}
+	if got := NormalizeApprovalPolicy("unknown"); got != "on-request" {
+		t.Fatalf("approval policy fallback = %q, want on-request", got)
+	}
+	if got := NormalizeSandboxPolicy(" readOnly "); got != "readOnly" {
+		t.Fatalf("sandbox policy = %q, want readOnly", got)
+	}
+	if got := NormalizeSandboxPolicy("unknown"); got != "workspaceWrite" {
+		t.Fatalf("sandbox policy fallback = %q, want workspaceWrite", got)
+	}
+}
+
 func TestMetaJSONPreservesExplicitAutoSelections(t *testing.T) {
 	raw, err := json.Marshal(Meta{ID: "abcd"})
 	if err != nil {
