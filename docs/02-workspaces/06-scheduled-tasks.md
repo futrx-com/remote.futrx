@@ -16,7 +16,7 @@ The shape of this feature follows four rules:
 1. **The backend owns the timer.** Containers stop, get replaced, and cannot start themselves. A cron daemon inside the container would silently die, would race the chat's run lock, and would produce work invisible to the event log. Instead a single scheduler goroutine in the backend claims occurrences and injects prompts.
 2. **A fire is a first-class chat run.** The scheduler calls the same `prompt.Service.Start` entry point the chat WebSocket uses. Everything downstream — one-run-per-chat locking, container start, event persistence, broadcast — is inherited rather than reimplemented.
 3. **Agent power is a capability, not a credential.** Each agent turn that may touch schedules receives a random bearer token scoped to that owner + chat + project, with a 4-hour TTL, revoked when the turn ends. An unattended (scheduled) turn gets an even narrower scope that can *only* complete its own task.
-4. **The tooling is provider-neutral.** The agent-facing surface is a bash CLI plus two environment variables, so Claude, Codex, Kimi, and Antigravity all get the identical power with no per-provider MCP plumbing.
+4. **The tooling is provider-neutral.** The agent-facing surface is a bash CLI plus two environment variables, so Claude, Codex, MiniMax, Kimi, and Antigravity all get the identical power with no per-provider MCP plumbing.
 
 ## Component map
 
@@ -187,7 +187,12 @@ The scheduletools adapter ([`adapter.go`](../../backend/internal/integration/con
 - `/workspace/scripts/remote-schedule` — a curl+jq wrapper over the agent API (`create`, `list`, `pause`, `resume`, `run-now`, `delete`, `complete-current`).
 - `/workspace/.agents/skills/scheduled-tasks/SKILL.md` — the playbook: only schedule on explicit user request, write self-contained durable prompts (goal, per-fire actions, observable completion condition, safety constraints), prefer `--max-runs` for monitoring, prefer pause over delete, and never guess that a standing goal is complete.
 
-Both live under `/workspace`, so they survive container replacement. All four provider command builders (`claude`, `codex`, `kimi`, `antigravity`) ensure these assets and pass the runtime env, which is what makes the power provider-neutral.
+Both live under `/workspace`, so they survive container replacement. Shared
+project preparation ensures these assets for an enabled run, and the common
+container-command builder passes the runtime environment. A future module that
+declares scheduled-tool support must use that preparation contract and forward
+the runtime environment; the descriptor alone does not grant the CLI access to
+those tools.
 
 ## HTTP surface
 

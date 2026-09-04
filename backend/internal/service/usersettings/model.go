@@ -1,6 +1,11 @@
 package usersettings
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+)
 
 var (
 	ErrNotFound               = errors.New("user settings not found")
@@ -10,6 +15,8 @@ var (
 	ErrInvalidChatMode        = errors.New("invalid chat mode")
 	ErrInvalidReasoningEffort = errors.New("invalid reasoning effort")
 	ErrInvalidServiceTier     = errors.New("invalid service tier")
+	ErrInvalidApprovalPolicy  = errors.New("invalid approval policy")
+	ErrInvalidSandboxPolicy   = errors.New("invalid sandbox policy")
 )
 
 type Key string
@@ -25,33 +32,31 @@ const (
 )
 
 type Settings struct {
-	Appearance Appearance `json:"appearance"`
-	Chat       Chat       `json:"chat"`
-	UpdatedAt  int64      `json:"updatedAt,omitempty"`
+	Appearance  Appearance `json:"appearance"`
+	Chat        Chat       `json:"chat"`
+	ProjectChat Chat       `json:"projectChat"`
+	UpdatedAt   int64      `json:"updatedAt,omitempty"`
 }
 
 type Appearance struct {
 	Theme Theme `json:"theme"`
 }
 
-type ChatProvider string
+type ChatProvider = agent.ProviderID
 
 const (
-	ChatProviderClaude      ChatProvider = "claude"
-	ChatProviderCodex       ChatProvider = "codex"
-	ChatProviderKimi        ChatProvider = "kimi"
-	ChatProviderAntigravity ChatProvider = "antigravity"
+	ChatProviderClaude      = agent.ProviderClaude
+	ChatProviderCodex       = agent.ProviderCodex
+	ChatProviderMiniMax     = agent.ProviderMiniMax
+	ChatProviderKimi        = agent.ProviderKimi
+	ChatProviderAntigravity = agent.ProviderAntigravity
 )
 
 type ChatMode string
 
 const (
-	ChatModeChat     ChatMode = "chat"
-	ChatModePlan     ChatMode = "plan"
-	ChatModeCode     ChatMode = "code"
-	ChatModeReview   ChatMode = "review"
-	ChatModeDebug    ChatMode = "debug"
-	ChatModeFullAuto ChatMode = "full-auto"
+	ChatModeDefault ChatMode = "default"
+	ChatModePlan    ChatMode = "plan"
 )
 
 type ReasoningEffort string
@@ -69,6 +74,8 @@ const (
 )
 
 type ServiceTier string
+type ApprovalPolicy string
+type SandboxPolicy string
 
 const (
 	ServiceTierAuto     ServiceTier = ""
@@ -83,11 +90,14 @@ type Chat struct {
 	Mode            ChatMode        `json:"mode"`
 	ReasoningEffort ReasoningEffort `json:"reasoningEffort"`
 	ServiceTier     ServiceTier     `json:"serviceTier"`
+	ApprovalPolicy  ApprovalPolicy  `json:"approvalPolicy"`
+	SandboxPolicy   SandboxPolicy   `json:"sandboxPolicy"`
 }
 
 type UpdateInput struct {
-	Appearance *AppearanceUpdate `json:"appearance,omitempty"`
-	Chat       *ChatUpdate       `json:"chat,omitempty"`
+	Appearance  *AppearanceUpdate `json:"appearance,omitempty"`
+	Chat        *ChatUpdate       `json:"chat,omitempty"`
+	ProjectChat *ChatUpdate       `json:"projectChat,omitempty"`
 }
 
 type AppearanceUpdate struct {
@@ -100,18 +110,28 @@ type ChatUpdate struct {
 	Mode            *ChatMode        `json:"mode,omitempty"`
 	ReasoningEffort *ReasoningEffort `json:"reasoningEffort,omitempty"`
 	ServiceTier     *ServiceTier     `json:"serviceTier,omitempty"`
+	ApprovalPolicy  *ApprovalPolicy  `json:"approvalPolicy,omitempty"`
+	SandboxPolicy   *SandboxPolicy   `json:"sandboxPolicy,omitempty"`
 }
 
 func DefaultSettings() Settings {
+	chat := defaultChatSettings()
 	return Settings{
-		Appearance: Appearance{Theme: ThemeSystem},
-		Chat: Chat{
-			Provider:        ChatProviderCodex,
-			Model:           "",
-			Mode:            ChatModeCode,
-			ReasoningEffort: ReasoningEffortAuto,
-			ServiceTier:     ServiceTierAuto,
-		},
+		Appearance:  Appearance{Theme: ThemeSystem},
+		Chat:        chat,
+		ProjectChat: chat,
+	}
+}
+
+func defaultChatSettings() Chat {
+	return Chat{
+		Provider:        ChatProviderCodex,
+		Model:           "",
+		Mode:            ChatModeDefault,
+		ReasoningEffort: ReasoningEffortAuto,
+		ServiceTier:     ServiceTierAuto,
+		ApprovalPolicy:  ApprovalPolicy(configconstants.DefaultAgentApprovalPolicy),
+		SandboxPolicy:   SandboxPolicy(configconstants.DefaultAgentSandboxPolicy),
 	}
 }
 
@@ -125,17 +145,12 @@ func ValidTheme(theme Theme) bool {
 }
 
 func ValidChatProvider(provider ChatProvider) bool {
-	switch provider {
-	case ChatProviderClaude, ChatProviderCodex, ChatProviderKimi, ChatProviderAntigravity:
-		return true
-	default:
-		return false
-	}
+	return agent.ValidProviderID(provider)
 }
 
 func ValidChatMode(mode ChatMode) bool {
 	switch mode {
-	case ChatModeChat, ChatModePlan, ChatModeCode, ChatModeReview, ChatModeDebug, ChatModeFullAuto:
+	case ChatModeDefault, ChatModePlan:
 		return true
 	default:
 		return false
@@ -143,19 +158,17 @@ func ValidChatMode(mode ChatMode) bool {
 }
 
 func ValidReasoningEffort(effort ReasoningEffort) bool {
-	switch effort {
-	case ReasoningEffortAuto, ReasoningEffortNone, ReasoningEffortMinimal, ReasoningEffortLow, ReasoningEffortMedium, ReasoningEffortHigh, ReasoningEffortXHigh, ReasoningEffortMax, ReasoningEffortUltra:
-		return true
-	default:
-		return false
-	}
+	return agent.ValidPreferenceValue(string(effort))
 }
 
 func ValidServiceTier(tier ServiceTier) bool {
-	switch tier {
-	case ServiceTierAuto, ServiceTierDefault, ServiceTierPriority, ServiceTierFast:
-		return true
-	default:
-		return false
-	}
+	return agent.ValidPreferenceValue(string(tier))
+}
+
+func ValidApprovalPolicy(policy ApprovalPolicy) bool {
+	return agent.ValidApprovalPolicy(string(policy))
+}
+
+func ValidSandboxPolicy(policy SandboxPolicy) bool {
+	return agent.ValidSandboxPolicy(string(policy))
 }

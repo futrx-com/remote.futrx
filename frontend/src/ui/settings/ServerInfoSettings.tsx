@@ -30,7 +30,7 @@ export function ServerInfoSettings({
 }) {
   if (loading && info == null) {
     return (
-      <div class="rounded-lg border border-white/10 bg-[#101318] px-4 py-12 flex items-center justify-center gap-2 text-[13px] text-ink-300">
+      <div class="rounded-card border border-line bg-surface px-4 py-12 flex items-center justify-center gap-2 text-[13px] text-ink-300">
         <Loader class="w-4 h-4 animate-spin" /> Loading parent server resources…
       </div>
     );
@@ -46,7 +46,7 @@ export function ServerInfoSettings({
         <button
           type="button"
           onClick={() => void onRefresh()}
-          class="mt-3 h-9 px-3 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-[13px] text-ink-100"
+          class="mt-3 h-9 px-3 rounded-md bg-tint-strong hover:bg-tint-active text-[13px] text-ink-100"
         >
           Try again
         </button>
@@ -60,9 +60,9 @@ export function ServerInfoSettings({
 
   return (
     <div class="space-y-4">
-      <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
+      <section class="rounded-card border border-line bg-surface overflow-hidden">
         <header class="px-4 py-3 flex items-start gap-3">
-          <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+          <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
             <Server class="w-4 h-4 text-ink-200" />
           </div>
           <div class="flex-1 min-w-0">
@@ -71,7 +71,7 @@ export function ServerInfoSettings({
                 {info.host.hostname || "Parent server"}
               </div>
               {info.host.appVersion && (
-                <span class="text-[11px] font-mono text-ink-300 bg-white/[0.06] border border-white/10 rounded px-1.5 py-0.5">
+                <span class="text-[11px] font-mono text-ink-300 bg-tint border border-line rounded px-1.5 py-0.5">
                   {info.host.appVersion}
                 </span>
               )}
@@ -87,7 +87,7 @@ export function ServerInfoSettings({
             type="button"
             onClick={() => void onRefresh()}
             disabled={refreshing}
-            class="h-9 px-2.5 rounded-md inline-flex items-center gap-2 text-[12px] text-ink-200 hover:text-ink-50 hover:bg-white/[0.08] disabled:opacity-60"
+            class="h-9 px-2.5 rounded-md inline-flex items-center gap-2 text-[12px] text-ink-200 hover:text-ink-50 hover:bg-tint-strong disabled:opacity-60"
           >
             <RotateCcw class={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
             <span class="hidden sm:inline">Refresh</span>
@@ -181,7 +181,7 @@ export function ServerInfoSettings({
         {info.storage.mounts.length === 0 ? (
           <EmptyInfo>Filesystem metrics are unavailable on this host.</EmptyInfo>
         ) : (
-          <div class="divide-y divide-white/[0.06]">
+          <div class="divide-y divide-line">
             {info.storage.mounts.map((mount) => (
               <div key={`${mount.device}:${mount.mountPath}`} class="p-4">
                 <div class="flex items-start justify-between gap-4">
@@ -214,7 +214,7 @@ export function ServerInfoSettings({
         {info.network.interfaces.length === 0 ? (
           <EmptyInfo>Network interface metrics are unavailable on this host.</EmptyInfo>
         ) : (
-          <div class="divide-y divide-white/[0.06]">
+          <div class="divide-y divide-line">
             {info.network.interfaces.map((networkInterface) => (
               <div key={networkInterface.name} class="px-4 py-3 flex items-start gap-3">
                 <span
@@ -280,7 +280,7 @@ function ResourceCard({
   Icon: ComponentType<{ class?: string }>;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] p-4">
+    <section class="rounded-card border border-line bg-surface p-4">
       <div class="flex items-center gap-2 text-[12px] text-ink-300">
         <Icon class="w-4 h-4" /> {label}
       </div>
@@ -301,8 +301,8 @@ function InfoSection({
   children: ComponentChildren;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 border-b border-white/[0.06] flex items-center gap-2">
+    <section class="rounded-card border border-line bg-surface overflow-hidden">
+      <header class="px-4 py-3 border-b border-line flex items-center gap-2">
         <Icon class="w-4 h-4 text-ink-300" />
         <h2 class="text-[14px] font-semibold text-ink-50">{title}</h2>
       </header>
@@ -313,7 +313,7 @@ function InfoSection({
 
 function InfoField({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div class="min-w-0 px-4 py-3 border-b border-white/[0.06] sm:border-r">
+    <div class="min-w-0 px-4 py-3 border-b border-line sm:border-r">
       <dt class="text-[10.5px] uppercase tracking-wide text-ink-400">{label}</dt>
       <dd
         class={`mt-1 text-[12.5px] text-ink-100 break-words ${mono ? "font-mono" : ""}`}
@@ -329,7 +329,7 @@ function UsageBar({ percent }: { percent: number }) {
   const normalized = Math.max(0, Math.min(percent, 100));
   const color = normalized >= 90 ? "bg-accent-red" : normalized >= 75 ? "bg-accent-yellow" : "bg-accent-blue";
   return (
-    <div class="mt-3 h-1.5 rounded-full bg-white/[0.07] overflow-hidden">
+    <div class="mt-3 h-1.5 rounded-full bg-tint-strong overflow-hidden">
       <div class={`h-full rounded-full ${color}`} style={{ width: `${normalized}%` }} />
     </div>
   );

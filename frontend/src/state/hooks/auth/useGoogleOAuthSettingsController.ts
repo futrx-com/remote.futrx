@@ -4,7 +4,9 @@ import type { GoogleOAuthSettings } from "../../../models/auth";
 import { useAuthContext } from "../../context/AuthContext";
 
 export function useGoogleOAuthSettingsController() {
-  const { auth } = useAuthContext();
+  ////////////////////
+  // Local State
+  /////////////////////
   const [settings, setSettings] = useState<GoogleOAuthSettings | null>(null);
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -12,19 +14,15 @@ export function useGoogleOAuthSettingsController() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    googleOAuthApi.get()
-      .then((value) => {
-        if (cancelled) return;
-        setSettings(value);
-        setClientId(value.clientId);
-      })
-      .catch((cause) => !cancelled && setError((cause as Error).message))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
-  }, []);
+  ////////////////////
+  // Global State
+  /////////////////////
+  const { auth } = useAuthContext();
 
+
+  /////////////////////
+  // Handlers
+  ////////////////////
   async function save(event: Event) {
     event.preventDefault();
     if (!clientId.trim() || !clientSecret.trim()) {
@@ -45,6 +43,24 @@ export function useGoogleOAuthSettingsController() {
       setSaving(false);
     }
   }
+
+
+  ///////////////////
+  // Effects
+  //////////////////
+  useEffect(() => {
+    let cancelled = false;
+    googleOAuthApi.get()
+      .then((value) => {
+        if (cancelled) return;
+        setSettings(value);
+        setClientId(value.clientId);
+      })
+      .catch((cause) => !cancelled && setError((cause as Error).message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
 
   return {
     clientId,

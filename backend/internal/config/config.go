@@ -15,7 +15,49 @@ type Config struct {
 	DataDir    string
 	InstallDir string
 	BaseURL    string
+	Agent      AgentOptions
+	Auth       AuthOptions
 	Schedule   ScheduleLimits
+}
+
+// AgentOptions are application-wide policies for the agent subsystem.
+type AgentOptions struct {
+	// CapabilityTimeout bounds one provider's complete model/capability probe
+	// (AGENT_CAPABILITY_TIMEOUT, Go duration, default 30s, "0" disables).
+	CapabilityTimeout time.Duration
+	// HostCLIVersionTimeout bounds each host-side CLI version probe performed
+	// by the infrastructure convergence command.
+	HostCLIVersionTimeout time.Duration
+	// CapabilityCacheTTL retains a fully live, warning-free catalog.
+	CapabilityCacheTTL time.Duration
+	// DegradedCapabilityCacheTTL retries fallback or warning-bearing catalogs
+	// sooner than healthy catalogs.
+	DegradedCapabilityCacheTTL time.Duration
+	// CredentialSyncTimeout bounds the best-effort post-run copy of refreshed
+	// provider credentials from a project container back to the host.
+	CredentialSyncTimeout time.Duration
+	// BrowserIdleTTL controls how long an agent browser stack may remain idle
+	// before the project service stops it.
+	BrowserIdleTTL time.Duration
+}
+
+// AuthOptions are application-wide policies for optional account security
+// features. Protocol constants such as the TOTP period and code width remain
+// owned by the auth package.
+type AuthOptions struct {
+	// PendingLoginTTL is the lifetime of the token bridging a successful first
+	// factor and the second-factor challenge.
+	PendingLoginTTL time.Duration
+	// EnrollmentTTL is the lifetime of a pending TOTP enrollment token.
+	EnrollmentTTL time.Duration
+	// RecoveryCodeCount is the number of one-time recovery codes issued as a
+	// set during enrollment or regeneration.
+	RecoveryCodeCount int
+	// SessionHistoryLimit bounds the newest-first sign-in history per account.
+	SessionHistoryLimit int
+	// SetupTokenTTL bounds how long a printed first-boot setup token stays
+	// usable (SETUP_TOKEN_TTL, Go duration, default 30m).
+	SetupTokenTTL time.Duration
 }
 
 // ScheduleLimits are the scheduled-task guardrails. Zero disables a limit;
@@ -40,6 +82,21 @@ func Load() Config {
 		DataDir:    envDefault("DATA_DIR", "/opt/remote.futrx/data"),
 		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
 		BaseURL:    envDefault("BASE_URL", ""),
+		Agent: AgentOptions{
+			CapabilityTimeout:          envDuration("AGENT_CAPABILITY_TIMEOUT", 30*time.Second),
+			HostCLIVersionTimeout:      15 * time.Second,
+			CapabilityCacheTTL:         24 * time.Hour,
+			DegradedCapabilityCacheTTL: 2 * time.Hour,
+			CredentialSyncTimeout:      30 * time.Second,
+			BrowserIdleTTL:             20 * time.Minute,
+		},
+		Auth: AuthOptions{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
+			SetupTokenTTL:       envDuration("SETUP_TOKEN_TTL", 30*time.Minute),
+		},
 		Schedule: ScheduleLimits{
 			MinInterval:        envDuration("SCHEDULE_MIN_INTERVAL", 5*time.Minute),
 			MaxConcurrentRuns:  envInt("SCHEDULE_MAX_CONCURRENT", 2),

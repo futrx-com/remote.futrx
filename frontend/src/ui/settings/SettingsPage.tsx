@@ -1,20 +1,42 @@
 import type { AppearanceTheme } from "../../models/settings";
-import type { CodexDeviceLogin, KimiDeviceLogin } from "../../models/auth";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
+import type { SecuritySettingsController } from "../../state/hooks/auth/useSecuritySettings";
 import type { ComponentType } from "preact";
-import { Bot, ChevronLeft, Download, Info, Menu, Monitor, Users } from "../primitives/icons";
+import type { PushNotifications } from "../../state/hooks/push/usePushNotifications";
+import {
+  Activity,
+  Bell,
+  Bot,
+  ChevronLeft,
+  Download,
+  Info,
+  Menu,
+  Monitor,
+  ShieldCheck,
+  Users,
+} from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
-import { ClaudeAuthSettings } from "./ClaudeAuthSettings";
-import { CodexAuthSettings } from "./CodexAuthSettings";
-import { KimiAuthSettings } from "./KimiAuthSettings";
+import { NotificationSettings } from "./NotificationSettings";
+import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
+import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
+import { UsageSettings } from "./UsageSettings";
 import { UsersPanel } from "../account/UsersPanel";
+import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 
-export type SettingsTab = "appearance" | "agents" | "users" | "updates" | "info";
+export type SettingsTab =
+  | "appearance"
+  | "notifications"
+  | "agents"
+  | "users"
+  | "security"
+  | "updates"
+  | "info"
+  | "usage";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -29,16 +51,34 @@ const tabs: Array<{
     Icon: Monitor,
   },
   {
+    id: "notifications",
+    label: "Notifications",
+    description: "Get alerted when an agent needs you.",
+    Icon: Bell,
+  },
+  {
     id: "agents",
     label: "Agents",
-    description: "Manage host authentication for coding agents.",
+    description: "Configure coding-agent access and authentication.",
     Icon: Bot,
+  },
+  {
+    id: "usage",
+    label: "Usage",
+    description: "Track tokens and estimated cost per project, user, provider, and model.",
+    Icon: Activity,
   },
   {
     id: "users",
     label: "Users",
     description: "Control who can access this server.",
     Icon: Users,
+  },
+  {
+    id: "security",
+    label: "Security",
+    description: "Manage two-factor authentication, sessions, and sign-in history.",
+    Icon: ShieldCheck,
   },
   {
     id: "updates",
@@ -70,21 +110,16 @@ export function SettingsPage({
   selfUpdateRestarting,
   selfUpdateError,
   userDirectory,
+  usageDashboard,
+  usageRebuilding,
+  usageRebuildMessage,
+  onRebuildUsage,
   appearanceTheme,
   appearanceLoading,
   appearanceSaving,
   appearanceError,
-  codexAuthenticated,
-  codexUsesApiKey,
-  codexDeviceLogin,
-  codexLoading,
-  codexStarting,
-  codexError,
-  kimiAuthenticated,
-  kimiDeviceLogin,
-  kimiLoading,
-  kimiStarting,
-  kimiError,
+  push,
+  security,
   onBack,
   onHamburger,
   onTabChange,
@@ -92,8 +127,6 @@ export function SettingsPage({
   onCheckForUpdates,
   onApplyUpdate,
   onAppearanceThemeChange,
-  onStartCodexDeviceLogin,
-  onStartKimiDeviceLogin,
 }: {
   activeTab: SettingsTab;
   currentEmail: string;
@@ -110,21 +143,16 @@ export function SettingsPage({
   selfUpdateRestarting: boolean;
   selfUpdateError: string | null;
   userDirectory: UserDirectory;
+  usageDashboard: UsageDashboard;
+  usageRebuilding: boolean;
+  usageRebuildMessage: string | null;
+  onRebuildUsage: () => Promise<void>;
   appearanceTheme: AppearanceTheme;
   appearanceLoading: boolean;
   appearanceSaving: boolean;
   appearanceError: string | null;
-  codexAuthenticated: boolean;
-  codexUsesApiKey: boolean;
-  codexDeviceLogin?: CodexDeviceLogin;
-  codexLoading: boolean;
-  codexStarting: boolean;
-  codexError: string | null;
-  kimiAuthenticated: boolean;
-  kimiDeviceLogin?: KimiDeviceLogin;
-  kimiLoading: boolean;
-  kimiStarting: boolean;
-  kimiError: string | null;
+  push: PushNotifications;
+  security: SecuritySettingsController;
   onBack: () => void;
   onHamburger: () => void;
   onTabChange: (tab: SettingsTab) => void;
@@ -132,18 +160,16 @@ export function SettingsPage({
   onCheckForUpdates: () => Promise<void>;
   onApplyUpdate: (tag?: string) => Promise<void>;
   onAppearanceThemeChange: (theme: AppearanceTheme) => void;
-  onStartCodexDeviceLogin: () => Promise<void>;
-  onStartKimiDeviceLogin: () => Promise<void>;
 }) {
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <header class="codex-header top-chrome flex-none z-20 bg-[#101318] border-b border-white/10 px-3 pb-2 flex items-center gap-2 min-h-[52px]">
+      <header class="codex-header top-chrome z-20 flex-none border-b border-line px-3 pb-2 flex items-center gap-2 min-h-[52px]">
         <button
           type="button"
           onClick={onHamburger}
-          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-white/[0.08] grid place-items-center"
+          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-tint-strong grid place-items-center"
           aria-label="Toggle sidebar"
         >
           <Menu class="w-5 h-5" />
@@ -152,7 +178,7 @@ export function SettingsPage({
           type="button"
           onClick={onBack}
           class="hidden md:inline-flex items-center gap-1.5 h-10 px-2 text-ink-200 hover:text-ink-50
-                 hover:bg-white/[0.08] rounded-md text-sm"
+                 hover:bg-tint-strong rounded-md text-sm"
         >
           <ChevronLeft class="w-4 h-4" /> Chats
         </button>
@@ -166,13 +192,13 @@ export function SettingsPage({
         <SettingsNavigation
           activeTab={activeTab}
           onTabChange={onTabChange}
-          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-white/10 bg-[#0f1217] p-3"
+          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <SettingsNavigation
           activeTab={activeTab}
           onTabChange={onTabChange}
           mobile
-          className="theme-submenu-surface md:hidden flex-none border-b border-white/10 bg-[#0f1217] px-3 py-2 overflow-x-auto no-scrollbar"
+          className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
         />
 
         <main
@@ -198,34 +224,19 @@ export function SettingsPage({
               />
             )}
 
+            {activeTab === "notifications" && <NotificationSettings push={push} />}
+
             {activeTab === "agents" && (
               isAdmin ? (
-                <div class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-                  <div class="px-4 py-3 border-b border-white/[0.06]">
+                <div class="rounded-card border border-line bg-surface overflow-hidden">
+                  <div class="px-4 py-3 border-b border-line">
                     <div class="text-[14.5px] font-semibold text-ink-50">Agent authentication</div>
                     <div class="text-[12.5px] text-ink-300 mt-0.5 leading-snug">
-                      Sign in once on the parent host and share the credentials with project containers.
+                      Configure each agent using its declared host-managed, project-external, or no-auth flow.
                     </div>
                   </div>
                   <div class="p-3 space-y-3">
-                    <ClaudeAuthSettings />
-                    <CodexAuthSettings
-                      authenticated={codexAuthenticated}
-                      usesApiKey={codexUsesApiKey}
-                      deviceLogin={codexDeviceLogin}
-                      loading={codexLoading}
-                      starting={codexStarting}
-                      error={codexError}
-                      onStartDeviceLogin={onStartCodexDeviceLogin}
-                    />
-                    <KimiAuthSettings
-                      authenticated={kimiAuthenticated}
-                      deviceLogin={kimiDeviceLogin}
-                      loading={kimiLoading}
-                      starting={kimiStarting}
-                      error={kimiError}
-                      onStartDeviceLogin={onStartKimiDeviceLogin}
-                    />
+                    <AgentAuthSettingsList />
                   </div>
                 </div>
               ) : (
@@ -233,6 +244,16 @@ export function SettingsPage({
                   Agent authentication is managed by server administrators.
                 </SettingsNotice>
               )
+            )}
+
+            {activeTab === "usage" && (
+              <UsageSettings
+                dashboard={usageDashboard}
+                isAdmin={isAdmin}
+                onRebuild={onRebuildUsage}
+                rebuilding={usageRebuilding}
+                rebuildMessage={usageRebuildMessage}
+              />
             )}
 
             {activeTab === "users" && (
@@ -251,6 +272,8 @@ export function SettingsPage({
                 />
               </div>
             )}
+
+            {activeTab === "security" && <SecuritySettings controller={security} />}
 
             {activeTab === "updates" &&
               (isAdmin ? (
@@ -319,8 +342,8 @@ function SettingsNavigation({
               onClick={() => onTabChange(id)}
               class={`${mobile ? "h-9 px-3" : "w-full h-10 px-3"} rounded-md inline-flex items-center gap-2.5 border text-[13px] font-medium transition-colors ${
                 active
-                  ? "border-white/10 bg-white/[0.08] text-ink-50"
-                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-white/[0.05]"
+                  ? "border-line bg-tint-strong text-ink-50"
+                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-tint"
               }`}
             >
               <Icon class={`w-4 h-4 flex-none ${active ? "text-accent-blue" : "text-ink-400"}`} />
@@ -335,7 +358,7 @@ function SettingsNavigation({
 
 function SettingsNotice({ children }: { children: string }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] p-4 text-[13px] leading-relaxed text-ink-300">
+    <section class="rounded-card border border-line bg-surface p-4 text-[13px] leading-relaxed text-ink-300">
       {children}
     </section>
   );

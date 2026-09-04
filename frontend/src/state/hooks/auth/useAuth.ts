@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
 import { fetchAuthSession } from "../../../api/authApi";
+import { UNAUTHENTICATED_SESSION } from "../../../config/auth";
 import type { AuthSession } from "../../../models/auth";
 
 export interface AuthState extends AuthSession {
@@ -8,27 +9,28 @@ export interface AuthState extends AuthSession {
 }
 
 const initial: Omit<AuthState, "refresh"> = {
+  ...UNAUTHENTICATED_SESSION,
   loading: true,
-  authenticated: false,
-  claimed: false,
-  localAdminConfigured: false,
-  googleOAuthEnabled: false,
-  googleClientId: "",
-  adminEmail: "",
-  email: "",
-  isAdmin: false,
-  isRegistered: false,
 };
 
 export function useAuth(): AuthState {
+  ////////////////
+  // Local State
+  ////////////////
   const [state, setState] = useState<Omit<AuthState, "refresh">>(initial);
 
+  ////////////////
+  // Handlers
+  ////////////////
   const refresh = useCallback(async () => {
     const session = await fetchAuthSession();
     setState({ ...session, loading: false });
   }, []);
 
+  ////////////////
+  // Effects
+  ////////////////
   useEffect(() => { void refresh(); }, [refresh]);
 
-  return { ...state, refresh };
+  return useMemo(() => ({ ...state, refresh }), [state, refresh]);
 }

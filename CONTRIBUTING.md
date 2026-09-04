@@ -1,6 +1,6 @@
 # Contributing to remote.futrx
 
-Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, and Kimi Code.
+Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, MiniMax, Kimi Code, Antigravity, and future agent integrations.
 
 Before you start, please read this document. It covers how the repository is laid out, how to build and test each part, and what we expect from commits and pull requests.
 
@@ -20,10 +20,28 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 
 | Path | What it is |
 | --- | --- |
-| `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, agent providers (Claude, Codex, Kimi) |
+| `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, and compiled-in agent modules |
 | `frontend/` | Preact + Vite SPA. The production build is written to `backend/public/` and embedded into the Go binary via `go:embed` |
 | `infra/` | Installer, updater, systemd/Caddy templates, base-image tooling, and shell test suite |
 | `docs/` | Architecture and subsystem deep-dives — start with `docs/01-overview/01-system-overview.md` |
+
+## Adding an agent integration
+
+Agents are explicit compiled-in modules, not runtime plugins. Each provider
+owns one validated factory declaration that binds its static descriptor,
+provisioning profile, and project-preparation policy to fresh runtime and
+authentication components. The generic factory constructs shared project
+preparation and narrows application dependencies before invoking provider
+code. The configuration composition root owns only reviewed order and
+application-wide policy; the module catalog validates the complete set,
+selects defaults, projects host/project profiles, and builds one consistent
+runtime.
+
+Read the [agent integration developer guide](docs/dev/agents/README.md) for the
+complete registration, capability-discovery, authentication, execution,
+event-parsing, provisioning, frontend, testing, and release flow. Its
+[adding-an-agent checklist](docs/dev/agents/07-adding-an-agent.md) is the source
+of truth for new integrations.
 
 ## Development setup
 
@@ -68,9 +86,39 @@ Installer and deployment logic has its own shell tests:
 ```bash
 bash infra/tests/health-check-test.sh
 bash infra/tests/go-toolchain-test.sh
+bash infra/tests/host-agent-install-test.sh
 bash infra/tests/dns-resolve-test.sh
 bash infra/tests/container-forwarding-test.sh
+bash infra/tests/swap-provision-test.sh
+bash infra/tests/release-version-test.sh
+bash infra/tests/deploy-app-script-test.sh
+bash infra/tests/qa-scripts-test.sh
+bash .github/scripts/classify-release-test.sh
 ```
+
+The root package exposes every QA deployment path. Commands that take a ref
+require a clean checkout whose `HEAD` matches the pushed branch, tag, or commit:
+
+```bash
+npm run qa:install                         # public install on a fresh server
+npm run qa:install -- <ref>                # candidate install on a fresh server
+npm run qa:update -- <ref>                 # full infrastructure update
+npm run qa:deploy-app -- <ref>             # app-only deploy from a pushed ref
+npm run qa:deploy-local                    # app-only deploy of the working tree
+npm run qa:test                            # QA wrapper contract tests
+```
+
+The npm deployment aliases default to `./.qa.env` in the repo root, matching
+the `infra/qa/*.sh` scripts' own default of `.qa.env` in their worktree. Set
+`QA_ENV_FILE=/path/to/.qa.env` to point at a shared QA configuration
+elsewhere.
+
+These commands are driven from a Linux, macOS, or Windows workstation. They
+need `bash`, `git`, `ssh`, `scp`, `tar`, and `curl` on `PATH` — on Windows,
+run them from Git Bash, which ships all of them. Hostname resolution for the
+pre-flight check uses whichever of `getent`, `dscacheutil`, `dig`, `host`, or
+`nslookup` the platform provides, and falls back to DNS-over-HTTPS through
+`curl` when none is installed.
 
 There is no CI that exercises the installer against a server. `infra/` changes reach a box only when its operator runs `sudo bash infra/update.sh` over SSH or applies a release tag from the in-app updater (both re-detect the box's hostname from the installed unit). Treat changes to `infra/` with extra care since they modify hosts in place.
 
@@ -98,6 +146,25 @@ test(state): pin chat event projection behavior
 ```
 
 Keep commits small and focused — one logical change per commit.
+
+## Releases
+
+Release tags use exactly `MAJOR.MINOR.PATCH`, without a `v` prefix. The version
+determines what an installed server runs:
+
+- Bump `PATCH` for frontend/backend-only releases.
+- Bump `MINOR` or `MAJOR` when the release changes host dependencies, Caddy or
+  systemd configuration, provider toolchains, workspace provisioning, or the
+  reusable base image.
+
+The tag workflow rejects patch releases that changed protected
+infrastructure-managed paths since the previous release. This guard is a
+minimum safety net, not a substitute for judgment: changes outside those paths
+that require a newer host toolchain must also use a minor or major release.
+
+The first release containing a change to the update machinery itself must be a
+minor or major release so existing installations receive the new scripts via
+full infrastructure convergence.
 
 ## Pull requests
 

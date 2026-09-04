@@ -1,8 +1,10 @@
 import type {
   ChatMode,
+  ApprovalPolicy,
   ChatProvider,
   ReasoningEffort,
   ServiceTier,
+  SandboxPolicy,
 } from "../../../models/chat";
 
 export interface ComposerPreferences {
@@ -11,12 +13,15 @@ export interface ComposerPreferences {
   mode: ChatMode;
   reasoningEffort: ReasoningEffort;
   serviceTier: ServiceTier;
+  approvalPolicy: ApprovalPolicy;
+  sandboxPolicy: SandboxPolicy;
 }
 
 export interface ComposerPreferenceActions {
-  changeProvider: (provider: ChatProvider) => void;
-  changeModel: (model: string) => void;
-  changeMode: (mode: ChatMode) => void;
+  changeAgent: (provider: ChatProvider, model: string) => void;
+  changeMode: (mode: ChatMode, modelPreset?: string, reasoningPreset?: string) => void;
   changeReasoningEffort: (reasoningEffort: ReasoningEffort) => void;
   changeServiceTier: (serviceTier: ServiceTier) => void;
+  changeApprovalPolicy: (approvalPolicy: ApprovalPolicy) => void;
+  changeSandboxPolicy: (sandboxPolicy: SandboxPolicy) => void;
 }

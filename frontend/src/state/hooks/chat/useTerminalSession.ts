@@ -45,6 +45,11 @@ export function useTerminalSession({
     const fit = fitRef.current;
     const connection = connectionRef.current;
     if (!terminal || !fit) return;
+    // When the docked pane is collapsed its host measures 0×0. Fitting to that
+    // would resize the PTY to zero columns and mangle the shell's current line,
+    // so skip until the pane is visible again.
+    const host = hostRef.current;
+    if (host && (host.clientWidth === 0 || host.clientHeight === 0)) return;
     try {
       fit.fit();
       if (connection?.isOpen) {
@@ -114,10 +119,11 @@ export function useTerminalSession({
       if (connection.isOpen) fitAndResize();
     });
     resizeObserver.observe(hostRef.current);
-    window.setTimeout(fitAndResize, TERMINAL_INITIAL_FIT_DELAY_MS);
+    const initialFitTimer = window.setTimeout(fitAndResize, TERMINAL_INITIAL_FIT_DELAY_MS);
 
     return () => {
       disposed = true;
+      window.clearTimeout(initialFitTimer);
       resizeObserver.disconnect();
       inputSub.dispose();
       connection.close();

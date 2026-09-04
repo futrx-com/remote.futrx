@@ -2,7 +2,7 @@ import type { HttpMethod } from "../types/transport";
 import {
   DEFAULT_HTTP_CREDENTIALS,
   HTTP_JSON_CONTENT_TYPE,
-} from "../config/transport";
+} from "../config/transport.ts";
 
 export async function sendHttpRequest(
   method: HttpMethod,

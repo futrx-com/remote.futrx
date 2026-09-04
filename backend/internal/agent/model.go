@@ -14,6 +14,7 @@ type ProviderID string
 const (
 	ProviderClaude      ProviderID = "claude"
 	ProviderCodex       ProviderID = "codex"
+	ProviderMiniMax     ProviderID = "minimax"
 	ProviderKimi        ProviderID = "kimi"
 	ProviderAntigravity ProviderID = "antigravity"
 )
@@ -23,6 +24,7 @@ type EventType string
 const (
 	EventRunStarted         EventType = "run.started"
 	EventRunCompleted       EventType = "run.completed"
+	EventRunInterrupted     EventType = "run.interrupted"
 	EventRunFailed          EventType = "run.failed"
 	EventSessionUpdated     EventType = "session.updated"
 	EventSystem             EventType = "system"
@@ -32,6 +34,11 @@ const (
 	EventToolCompleted      EventType = "tool.completed"
 	EventUsageUpdated       EventType = "usage.updated"
 	EventError              EventType = "error"
+	EventProviderNative     EventType = "provider.native"
+	EventInteractionRequest EventType = "interaction.request"
+	EventInteractionDone    EventType = "interaction.resolved"
+	EventTurnStatus         EventType = "turn.status"
+	EventCollaboration      EventType = "collaboration"
 )
 
 type ItemKind string
@@ -45,12 +52,47 @@ const (
 
 type ReasoningEffort string
 type ServiceTier string
+type RunMode string
 
-// RunPreferences contains provider-neutral launch preferences. Provider
-// adapters remain responsible for accepting only the values their CLI supports.
+const (
+	RunModeDefault RunMode = "default"
+	RunModePlan    RunMode = "plan"
+)
+
+// RunPreferences contains provider-neutral launch preferences. Each provider
+// adapter decides which preferences to forward and how to translate them.
 type RunPreferences struct {
 	ReasoningEffort ReasoningEffort
 	ServiceTier     ServiceTier
+	ApprovalPolicy  string
+	SandboxPolicy   string
+}
+
+// InteractionResponse is an explicit client answer to a server-initiated
+// provider request. ID is a stable JSON representation of the upstream
+// JSON-RPC request ID, so string and numeric IDs remain distinct and the
+// provider can answer the exact pending request.
+type InteractionResponse struct {
+	ID     string          `json:"id"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  json.RawMessage `json:"error,omitempty"`
+}
+
+// NativeEnvelopeSchemaVersion identifies the provider-native correlation
+// contract persisted with normalized agent events.
+const NativeEnvelopeSchemaVersion = 1
+
+// NativeEnvelope retains provider-owned protocol data without forcing it
+// through the provider-neutral event vocabulary. Payload contains the native
+// notification params, not binary attachments or client response secrets.
+type NativeEnvelope struct {
+	SchemaVersion int             `json:"schemaVersion"`
+	Method        string          `json:"method"`
+	ThreadID      string          `json:"threadId,omitempty"`
+	TurnID        string          `json:"turnId,omitempty"`
+	ItemID        string          `json:"itemId,omitempty"`
+	RequestID     string          `json:"requestId,omitempty"`
+	Payload       json.RawMessage `json:"payload,omitempty"`
 }
 
 // RunRequest is provider-neutral. Provider adapters translate it into the
@@ -61,7 +103,7 @@ type RunRequest struct {
 	Prompt         string
 	Cwd            string
 	Model          string
-	Mode           string
+	Mode           RunMode
 	ResumeID       string
 	ProjectID      string
 	Fork           bool
@@ -75,6 +117,9 @@ type RunRequest struct {
 	// RuntimeEnv carries short-lived, backend-issued capabilities into a run.
 	// Provider adapters must not persist these values in project configuration.
 	RuntimeEnv map[string]string
+	// InteractionResponses carries UI answers back to server-initiated
+	// requests while the provider turn remains active.
+	InteractionResponses <-chan InteractionResponse
 }
 
 // Event is the normalized backend event shape emitted by headless agent
@@ -101,10 +146,17 @@ type Event struct {
 	Data           json.RawMessage `json:"data,omitempty"`
 	Usage          json.RawMessage `json:"usage,omitempty"`
 	Raw            json.RawMessage `json:"raw,omitempty"`
+	Native         *NativeEnvelope `json:"native,omitempty"`
+	InteractionID  string          `json:"interactionId,omitempty"`
+	Status         string          `json:"status,omitempty"`
+}
+
+type CapabilityProvider interface {
+	ID() ProviderID
+	Capabilities(ctx context.Context, req CapabilityRequest) (Capabilities, error)
 }
 
 type Provider interface {
-	ID() ProviderID
-	Parser(req RunRequest) LineParser
+	CapabilityProvider
 	Run(ctx context.Context, req RunRequest, emit func(Event)) error
 }

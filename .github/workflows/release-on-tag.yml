@@ -1,6 +1,7 @@
-# Creates a GitHub Release for every version tag (0.2.4, 0.2.4.1, ...) so
-# the Releases page tracks product releases. Notes come from the tag
-# commit's changelog-style body — our release commits are the changelog.
+# Creates a GitHub Release for every MAJOR.MINOR.PATCH tag. Major/minor bumps
+# are infrastructure releases; patch bumps are application releases. Notes
+# come from the tag commit's changelog-style body — our release commits are
+# the changelog.
 # Vendor asset releases (vendors-*) are separate pre-releases published by
 # vendor-playwright.yml and are not matched by the tag pattern below.
 name: Release on tag
@@ -17,18 +18,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify and validate release
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: .github/scripts/classify-release.sh "$TAG" >> "$GITHUB_OUTPUT"
       - name: Create GitHub Release from tag
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          RELEASE_LABEL: ${{ steps.release.outputs.label }}
         run: |
+          set -euo pipefail
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "release $TAG already exists"
             exit 0
           fi
           notes="$(git log -1 --format=%b HEAD)"
+          heading="**Release type:** ${RELEASE_LABEL}"
+          generate_args=()
           if [ -n "$notes" ]; then
-            gh release create "$TAG" --title "$TAG" --notes "$notes" --verify-tag
+            notes="${heading}
+
+          ${notes}"
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+            notes="$heading"
+            generate_args+=(--generate-notes)
           fi
+          gh release create "$TAG" \
+            --title "$TAG · $RELEASE_LABEL" \
+            --notes "$notes" \
+            "${generate_args[@]}" \
+            --verify-tag

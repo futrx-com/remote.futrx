@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -10,6 +11,7 @@ type fakeHost struct {
 	tags     []string
 	tagsErr  error
 	started  []string
+	kinds    []string
 	pid      int
 	alive    bool
 	startErr error
@@ -19,11 +21,12 @@ func (f *fakeHost) ListRemoteTags(context.Context, string) ([]string, error) {
 	return f.tags, f.tagsErr
 }
 
-func (f *fakeHost) StartUpdater(_ string, tag string, logPath, donePath string) (int, error) {
+func (f *fakeHost) StartUpdater(launch UpdaterLaunch) (int, error) {
 	if f.startErr != nil {
 		return 0, f.startErr
 	}
-	f.started = append(f.started, tag)
+	f.started = append(f.started, launch.Target)
+	f.kinds = append(f.kinds, string(launch.Kind))
 	return f.pid, nil
 }
 
@@ -81,6 +84,32 @@ func TestCompareVersions(t *testing.T) {
 	}
 }
 
+func TestClassifyUpdate(t *testing.T) {
+	cases := []struct {
+		name    string
+		current string
+		target  string
+		want    UpdateKind
+	}{
+		{"patch release", "0.3.1", "0.3.2", UpdateKindApplication},
+		{"commit after patch release", "0.3.1-12-gdb01776", "0.3.2", UpdateKindApplication},
+		{"legacy fourth segment", "0.3.1", "0.3.1.1", UpdateKindApplication},
+		{"minor release", "0.3.1", "0.4.0", UpdateKindInfrastructure},
+		{"skips minor baseline", "0.3.1", "0.4.2", UpdateKindInfrastructure},
+		{"already on minor baseline", "0.4.0", "0.4.2", UpdateKindApplication},
+		{"major release", "1.9.5", "2.0.0", UpdateKindInfrastructure},
+		{"legacy two-part version", "0.3", "0.3.1", UpdateKindInfrastructure},
+		{"unstamped build", "dev", "0.3.2", UpdateKindInfrastructure},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classifyUpdate(c.current, c.target); got != c.want {
+				t.Fatalf("classifyUpdate(%q, %q) = %q, want %q", c.current, c.target, got, c.want)
+			}
+		})
+	}
+}
+
 func TestLatestReleaseTag(t *testing.T) {
 	tag, _ := latestReleaseTag([]string{"0.1", "v0.10", "0.9", "nightly", "db01776"})
 	if tag != "v0.10" {
@@ -117,6 +146,17 @@ func TestCheckComparesAgainstDescribeOutput(t *testing.T) {
 		if status.LastCheck.LatestTag != "0.2" {
 			t.Errorf("current=%q: latestTag = %q, want 0.2", c.current, status.LastCheck.LatestTag)
 		}
+		if status.LastCheck.UpdateAvailable && status.LastCheck.UpdateKind != UpdateKindInfrastructure {
+			t.Errorf("current=%q: updateKind = %q, want infrastructure for legacy two-part tag", c.current, status.LastCheck.UpdateKind)
+		}
+	}
+}
+
+func TestCheckReportsApplicationUpdateWithinReleaseLine(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.3.1", "0.3.2"}}
+	status := New("0.3.1", "/opt/x", t.TempDir(), host).Check(context.Background())
+	if status.LastCheck == nil || status.LastCheck.UpdateKind != UpdateKindApplication {
+		t.Fatalf("last check = %+v, want application update", status.LastCheck)
 	}
 }
 
@@ -130,6 +170,9 @@ func TestApplyLifecycle(t *testing.T) {
 	}
 	if len(host.started) != 1 || host.started[0] != "0.2" {
 		t.Fatalf("started = %v, want [0.2]", host.started)
+	}
+	if len(host.kinds) != 1 || host.kinds[0] != string(UpdateKindInfrastructure) {
+		t.Fatalf("update kinds = %v, want [infrastructure]", host.kinds)
 	}
 	if status.Run == nil || status.Run.State != "running" || status.Run.Target != "0.2" {
 		t.Fatalf("run status = %+v, want running 0.2", status.Run)
@@ -147,11 +190,58 @@ func TestApplyLifecycle(t *testing.T) {
 	}
 
 	// A finished marker wins over liveness.
-	if err := writeJSONFile(svc.donePath(), doneRecord{ExitCode: 0, FinishedAt: 99}); err != nil {
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 0, FinishedAt: 99}); err != nil {
 		t.Fatal(err)
 	}
 	if run := svc.Status(context.Background()).Run; run == nil || run.State != "succeeded" {
 		t.Fatalf("run after done marker = %+v, want succeeded", run)
+	}
+}
+
+func TestRunStatusReportsCleanLogAndStructuredProgress(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.1", "0.2"}, pid: 4242, alive: true}
+	svc := New("0.1", "/opt/x", t.TempDir(), host)
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.runs.logPath(), []byte("\x1b[1;36m==> Installing healer\x1b[0m\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantProgress := Progress{
+		Phase: "workspace-migration", Message: "Recycling workspace 3 of 8",
+		Completed: 2, Total: 8, CurrentItem: "astrology", UpdatedAt: 123,
+	}
+	if err := writeJSONFile(svc.runs.progressPath(), wantProgress); err != nil {
+		t.Fatal(err)
+	}
+
+	run := svc.Status(context.Background()).Run
+	if run == nil {
+		t.Fatal("run status is nil")
+	}
+	if run.Log != "==> Installing healer\n" {
+		t.Fatalf("clean log = %q", run.Log)
+	}
+	if run.LogUpdatedAt == 0 {
+		t.Fatal("log update timestamp is missing")
+	}
+	if run.Progress == nil || *run.Progress != wantProgress {
+		t.Fatalf("progress = %+v, want %+v", run.Progress, wantProgress)
+	}
+}
+
+func TestApplyStartsApplicationDeploymentWithinReleaseLine(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.3.1", "0.3.2"}, pid: 4242, alive: true}
+	svc := New("0.3.1", "/opt/x", t.TempDir(), host)
+	status, err := svc.Apply(context.Background(), "admin@example.com", "0.3.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(host.kinds) != 1 || host.kinds[0] != string(UpdateKindApplication) {
+		t.Fatalf("update kinds = %v, want [application]", host.kinds)
+	}
+	if status.Run == nil || status.Run.UpdateKind != UpdateKindApplication {
+		t.Fatalf("run = %+v, want application update", status.Run)
 	}
 }
 

@@ -2,9 +2,10 @@ import type { RefObject } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import type { ChatStatus } from "../../../models/chat";
 import type { ChatMessageBlock } from "../../../models/chatMessage";
-import { Loader } from "../../primitives/icons";
 import { MessageBlock } from "./MessageBlock";
+import { MessageSkeleton } from "./MessageSkeleton";
 import { ThreadEmptyState } from "./ThreadEmptyState";
+import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 const INITIAL_VISIBLE_BLOCKS = 80;
 const LOAD_MORE_BLOCKS = 80;
@@ -22,6 +23,7 @@ export function MessageList({
   bottomRef,
   onScroll,
   onAnswerQuestion,
+  onRespondInteraction,
   onLoadOlder,
   onRewind,
 }: {
@@ -37,6 +39,7 @@ export function MessageList({
   bottomRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
   onAnswerQuestion: (text: string) => void;
+  onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
 }) {
@@ -73,14 +76,11 @@ export function MessageList({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      class="codex-message-scroll h-full overflow-y-auto touch-scroll scrollbar-thin px-3 sm:px-4 md:px-6 pt-3 md:pt-6 pb-5 md:pb-6"
+      class="codex-message-scroll h-full overflow-y-auto overflow-x-hidden touch-scroll scrollbar-thin px-3 pb-6 pt-4 sm:px-5 md:px-8 md:pt-7"
     >
-      <div ref={contentRef} class="w-full space-y-4 md:space-y-5">
-        {status === "loading" && (
-          <div class="flex items-center gap-2 text-ink-300 text-sm rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <Loader class="w-4 h-4 animate-spin" /> Loading conversation
-          </div>
-        )}
+      {/* A measured column: long assistant prose stays readable on wide panes. */}
+      <div ref={contentRef} class="mx-auto w-full min-w-0 max-w-[54rem] space-y-5 md:space-y-6">
+        {status === "loading" && <MessageSkeleton />}
 
         {status !== "loading" && blocks.length === 0 && <ThreadEmptyState cwd={cwd} />}
 
@@ -90,7 +90,7 @@ export function MessageList({
               type="button"
               onClick={showOlder}
               disabled={loadingOlder}
-              class="h-8 px-3 rounded-md text-[12px] text-ink-300 hover:text-ink-100 hover:bg-white/[0.07] border border-white/10"
+              class="h-8 rounded-control px-3 text-[12px] text-ink-400 transition-colors hover:bg-tint-strong hover:text-ink-100"
             >
               {hiddenCount > 0
                 ? `Show ${Math.min(hiddenCount, LOAD_MORE_BLOCKS)} older message${Math.min(hiddenCount, LOAD_MORE_BLOCKS) === 1 ? "" : "s"}`
@@ -111,13 +111,14 @@ export function MessageList({
               chatId={chatId}
               cwd={cwd}
               onAnswerQuestion={onAnswerQuestion}
+              onRespondInteraction={onRespondInteraction}
               onRewind={onRewind}
             />
           );
         })}
 
         {error && (
-          <div class="text-accent-red text-sm bg-accent-red/10 border border-accent-red/30 rounded-lg p-3">
+          <div class="rounded-card border border-accent-red/25 bg-accent-red/[0.08] p-3 text-[13px] text-accent-red [overflow-wrap:anywhere]">
             {error}
           </div>
         )}

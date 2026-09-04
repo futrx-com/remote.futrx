@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# remote.futrx — one-command update for an installed box.
+# remote.futrx — full infrastructure update for an installed box.
+#
+# Use this when a release crosses a MAJOR or MINOR boundary, or when an
+# operator intentionally needs to converge/repair host infrastructure. A
+# same-major/minor PATCH release should normally use Settings -> Updates or
+# infra/deploy-app.sh instead.
 #
 # The updater deliberately pulls and re-executes itself before doing any
 # convergence. That guarantees newly committed toolchain and agent CLI pins
@@ -11,18 +16,29 @@
 #   2. Converge host dependencies and all host agent CLIs.
 #   3. Build and restart the application.
 #   4. Rebuild the base image with the pinned agent CLIs.
-#   5. Recycle idle workspaces onto the new image (busy ones are skipped).
+#   5. Recycle eligible workspaces onto the new image.
+#
+# Workspace replacement is disruptive. The default upgrader intends to skip
+# containers with an active agent process, but busy-process detection is
+# best-effort; coordinate a maintenance window. Use --skip-workspaces when
+# project containers must remain untouched.
 #
 # Usage:
 #   sudo bash /opt/remote.futrx/infra/update.sh
-#   sudo bash /opt/remote.futrx/infra/update.sh <hostname>
-#   sudo bash /opt/remote.futrx/infra/update.sh --include-busy
+#   sudo bash /opt/remote.futrx/infra/update.sh --ref=<release-tag>
+#   sudo bash /opt/remote.futrx/infra/update.sh <hostname> [flags]
 #
 # Flags:
 #   --include-busy     also recycle workspaces with an active agent process
-#   --ref=<ref>        update to a release tag (or any ref) instead of origin/main
-#   --skip-workspaces  update the host/application without rebuilding the base
-#                      image or recycling workspace containers
+#   --ref=<ref>        select a release tag or Git ref resolvable after fetching
+#                      origin; the in-app updater supplies a release tag
+#   --skip-workspaces  do not force-rebuild an existing base image or recycle
+#                      project containers; host dependencies/configuration and
+#                      the application are still fully converged
+#
+# With no hostname, the script reads it from the installed systemd unit.
+# Test/QA overrides: FUTRX_INSTALL_DIR, FUTRX_LEGACY_INSTALL_DIR,
+# FUTRX_SERVICE_UNIT_PATH, and FUTRX_LEGACY_SERVICE_UNIT_PATH.
 set -euo pipefail
 
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
@@ -31,7 +47,7 @@ UNIT="${FUTRX_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.service}"
 LEGACY_UNIT="${FUTRX_LEGACY_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.dev.service}"
 
 usage() {
-    sed -n '2,25s/^# \{0,1\}//p' "$0"
+    sed -n '2,/^set -euo pipefail$/ { /^set -euo pipefail$/d; s/^# \{0,1\}//p; }' "$0"
 }
 
 HOSTNAME=""
@@ -63,6 +79,8 @@ fi
 SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=lib/install-migration.sh
 . "$SCRIPT_INFRA_DIR/lib/install-migration.sh"
+# shellcheck source=lib/update-progress.sh
+. "$SCRIPT_INFRA_DIR/lib/update-progress.sh"
 migrate_legacy_install_dir "$INSTALL_DIR" "$LEGACY_INSTALL_DIR"
 
 if [ ! -d "$INSTALL_DIR/.git" ]; then
@@ -96,24 +114,29 @@ if [ -z "$HOSTNAME" ]; then
     exit 1
 fi
 
-# Keep install.sh's checkout step (steps/02-app.sh) on the same ref this
+# Keep install.sh's checkout step (steps/00-checkout.sh) on the same ref this
 # updater just checked out, instead of resetting back to origin/main.
 export FUTRX_CHECKOUT_REF="${TARGET_REF:-origin/main}"
 
 if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
+    write_update_progress "host-convergence" "Converging the host and rebuilding the workspace image"
     # Rebuild once in install.sh, after the new backend has been built. The
     # workspace upgrader then only needs to recycle containers onto that image.
-    FORCE_REBUILD_BASE_IMAGE=1 \
+    FUTRX_INSTALL_CHECKOUT_SELECTED=1 FORCE_REBUILD_BASE_IMAGE=1 \
         bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
 
     WORKSPACE_ARGS=(--no-rebake)
     if [ "$INCLUDE_BUSY" -eq 1 ]; then
         WORKSPACE_ARGS+=(--include-busy)
     fi
+    write_update_progress "workspace-migration" "Preparing workspace migration"
     bash "$INFRA_DIR/upgrade-workspaces.sh" "${WORKSPACE_ARGS[@]}"
 else
-    bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
+    write_update_progress "host-convergence" "Converging the host and application"
+    FUTRX_INSTALL_CHECKOUT_SELECTED=1 \
+        bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
 fi
 
+write_update_progress "finishing" "Finishing the infrastructure update"
 echo
 echo "✓ update complete"

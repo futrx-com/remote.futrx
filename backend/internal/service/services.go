@@ -4,21 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
-	"github.com/futrx-com/remote.futrx.com/internal/integration/googleoauth"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
+	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
+	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspacehub"
@@ -32,8 +37,24 @@ type TmuxClient interface {
 	servicetmux.SessionClient
 }
 
+// ChatStore is the complete persistence capability required at composition;
+// individual services receive only the narrower contracts they consume.
+type ChatStore interface {
+	servicechat.Repository
+	servicechat.TranscriptEventSource
+}
+
+// PushStore persists Web Push registrations and the server's long-lived VAPID
+// key pair. VAPIDKeys mints the pair on first use and returns the stored one
+// thereafter; rotating it would invalidate every browser subscription.
+type PushStore interface {
+	servicepush.Repository
+	removedUserSubscriptions
+	VAPIDKeys(generate func() (private string, public string, err error)) (string, string, error)
+}
+
 type Dependencies struct {
-	Chats             servicechat.Repository
+	Chats             ChatStore
 	Projects          serviceproject.Repository
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
@@ -41,12 +62,21 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	TwoFactor         serviceauth.TwoFactorStore
+	SessionRegistry   serviceauth.SessionRegistryStore
+	Push              PushStore
+	Usage             serviceusage.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
+	AgentModules      *agentmodule.Catalog
+	AgentAPIKeys      agentauth.APIKeyStore
+	AgentOptions      AgentOptions
+	AuthOptions       AuthOptions
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
+	PromptStartGate   prompt.StartGate
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -58,27 +88,59 @@ type ScheduleLimits struct {
 	MaxTasksPerProject int
 }
 
+// AgentOptions mirrors application-wide agent policy without coupling the
+// service layer to the config package.
+type AgentOptions struct {
+	CapabilityTimeout          time.Duration
+	CapabilityCacheTTL         time.Duration
+	DegradedCapabilityCacheTTL time.Duration
+	CredentialSyncTimeout      time.Duration
+	BrowserIdleTTL             time.Duration
+}
+
+// AuthOptions mirrors application-wide account security policy without
+// coupling the service layer to the config package.
+type AuthOptions struct {
+	PendingLoginTTL     time.Duration
+	EnrollmentTTL       time.Duration
+	RecoveryCodeCount   int
+	SessionHistoryLimit int
+	SetupTokenTTL       time.Duration
+}
+
 type Services struct {
-	Chats        *servicechat.Service
-	ChatAccess   *servicechat.AccessService
-	Projects     *serviceproject.Service
-	Prompt       *prompt.Service
-	Schedules    *serviceschedule.Service
-	ScheduleCaps *schedulecapability.Registry
-	AgentAuth    *agentauth.Registry
-	Runs         *runhub.Hub
-	Workspace    *workspacehub.Hub
-	Auth         *serviceauth.Service
-	Users        *serviceuser.Service
-	UserSettings *serviceusersettings.Service
-	Skills       *serviceskills.Catalog
-	Tmux         *servicetmux.Service
-	Access       *serviceauth.AccessVerifier
+	Chats             *servicechat.Service
+	ChatAccess        *servicechat.AccessService
+	Projects          *serviceproject.Service
+	Prompt            *prompt.Service
+	Schedules         *serviceschedule.Service
+	ScheduleCaps      *schedulecapability.Registry
+	Agents            *agentmodule.Runtime
+	AgentCapabilities *agentcapability.Service
+	Runs              *runhub.Hub
+	Workspace         *workspacehub.Hub
+	Auth              *serviceauth.Service
+	Users             *serviceuser.Service
+	UserSettings      *serviceusersettings.Service
+	Skills            *serviceskills.Catalog
+	Tmux              *servicetmux.Service
+	Access            *serviceauth.AccessVerifier
+	Push              *servicepush.Service
+	Presence          *servicepresence.Service
+	Usage             *serviceusage.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if err := deps.AgentContainers.Validate(); err != nil {
 		return Services{}, fmt.Errorf("agent container dependencies: %w", err)
+	}
+	if deps.AgentModules == nil {
+		return Services{}, errors.New("agent module catalog is required")
+	}
+	if deps.Auth != nil {
+		if err := deps.AgentModules.ValidateAccessGate(); err != nil {
+			return Services{}, fmt.Errorf("agent module catalog: %w", err)
+		}
 	}
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
@@ -86,18 +148,31 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 
 	workspace := workspacehub.New()
 	var runs *runhub.Hub
+	// The notifier needs services that are built further down, so it is
+	// created empty here and populated once they exist — the same late
+	// binding the run hub uses above.
+	presenceService := servicepresence.New()
+	pushNotifier := &chatPushNotifier{chats: deps.Chats, presence: presenceService}
 	chats := notifyingChatRepository{
 		Repository: deps.Chats,
 		workspace:  workspace,
 		running: func(id servicechat.ID) bool {
 			return runs != nil && runs.IsRunning(id)
 		},
+		push: pushNotifier,
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
-	definitions := agentDefinitions()
-	profiles := profilesFromDefinitions(definitions)
 	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
-	projectService.StartAgentBrowserReaper(ctx, 20*time.Minute)
+	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
+		Projects:              agentProjectResolver{projects: projectService},
+		Containers:            deps.AgentContainers,
+		APIKeys:               deps.AgentAPIKeys,
+		CredentialSyncTimeout: deps.AgentOptions.CredentialSyncTimeout,
+	})
+	if err != nil {
+		return Services{}, fmt.Errorf("build agent modules: %w", err)
+	}
+	projectService.StartAgentBrowserReaper(ctx, deps.AgentOptions.BrowserIdleTTL)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
 		chats.publishChat(context.Background(), id)
@@ -113,45 +188,54 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		chatProjectResolver{projects: projectService},
 		tmuxResolver,
 		runs,
+		servicechat.WithTranscriptEventSource(deps.Chats),
+		servicechat.WithCopiedEventAppender(chats),
+		servicechat.WithSessionPolicy(agentRuntime),
+		servicechat.WithProviderPolicy(agentRuntime),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
-	agents := agent.NewRegistry()
-	agentAuth := agentauth.NewRegistry()
-	for index, definition := range definitions {
-		provider := definition.provider(projectService, deps.AgentContainers)
-		if string(provider.ID()) != profiles[index].ID {
-			return Services{}, fmt.Errorf(
-				"agent registration mismatch: provider %q has profile %q",
-				provider.ID(), profiles[index].ID,
-			)
-		}
-		if err := agents.Register(provider); err != nil {
-			return Services{}, err
-		}
-		authBinding := definition.authBinding()
-		if authBinding.ID() != provider.ID() {
-			return Services{}, fmt.Errorf(
-				"agent auth registration mismatch: binding %q has provider %q",
-				authBinding.ID(), provider.ID(),
-			)
-		}
-		if err := agentAuth.Register(authBinding); err != nil {
-			return Services{}, err
-		}
-	}
-	userService := serviceuser.New(deps.Users)
-	authService, err := newAuth(ctx, deps.Auth, userService, deps.AuthBaseURL)
+	pushService := newPush(deps.Push, deps.AuthBaseURL)
+	userService := serviceuser.New(
+		deps.Users,
+		serviceuser.WithRemovalCleanup(userRemovalCleanup{
+			projects:        projectService,
+			subscriptions:   deps.Push,
+			twoFactor:       deps.TwoFactor,
+			sessionRegistry: deps.SessionRegistry,
+		}),
+	)
+	authService, err := newAuth(
+		ctx,
+		deps.Auth,
+		userService,
+		deps.AuthBaseURL,
+		deps.TwoFactor,
+		deps.SessionRegistry,
+		deps.AuthOptions,
+	)
 	if err != nil {
 		return Services{}, err
 	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
+	var usageService *serviceusage.Service
+	promptOptions := []prompt.Option{
+		prompt.WithScheduleToolIssuer(scheduleCaps),
+		prompt.WithAgentPolicy(agentRuntime),
+	}
+	if deps.PromptStartGate != nil {
+		promptOptions = append(promptOptions, prompt.WithStartGate(deps.PromptStartGate))
+	}
+	if deps.Usage != nil {
+		usageService = serviceusage.New(deps.Usage, projectService, chats)
+		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
+	}
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
 		projectService,
 		runs,
-		agents,
-		prompt.WithScheduleToolIssuer(scheduleCaps),
+		agentRuntime,
+		promptOptions...,
 	)
 	scheduleService := serviceschedule.New(
 		deps.Schedules,
@@ -166,9 +250,23 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if err := scheduleService.Start(ctx); err != nil {
 		return Services{}, fmt.Errorf("start scheduled tasks: %w", err)
 	}
-	userSettingsService := serviceusersettings.New(deps.UserSettings)
-	skillService := serviceskills.New()
+	userSettingsService := serviceusersettings.New(
+		deps.UserSettings,
+		serviceusersettings.WithProviderCatalog(agentRuntime),
+	)
+	skillService := serviceskills.New(serviceskills.WithProviderCatalog(agentRuntime))
 	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
+	agentCapabilities := agentcapability.New(
+		agentRuntime,
+		projectService,
+		authService,
+		agentcapability.Settings{
+			CapabilityTimeout:          deps.AgentOptions.CapabilityTimeout,
+			CapabilityCacheTTL:         deps.AgentOptions.CapabilityCacheTTL,
+			DegradedCapabilityCacheTTL: deps.AgentOptions.DegradedCapabilityCacheTTL,
+		},
+		agentcapability.WithModulePolicy(agentRuntime),
+	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
 		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
@@ -178,23 +276,61 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxService = servicetmux.NewSessions(deps.TmuxClient)
 	}
 
+	pushNotifier.push = pushService
+	pushNotifier.audience.projects = projectService
+	pushNotifier.audience.users = userService
+
 	return Services{
-		Chats:        chatService,
-		ChatAccess:   chatAccessService,
-		Projects:     projectService,
-		Prompt:       promptService,
-		Schedules:    scheduleService,
-		ScheduleCaps: scheduleCaps,
-		AgentAuth:    agentAuth,
-		Runs:         runs,
-		Workspace:    workspace,
-		Auth:         authService,
-		Users:        userService,
-		UserSettings: userSettingsService,
-		Skills:       skillCatalog,
-		Tmux:         tmuxService,
-		Access:       accessVerifier,
+		Chats:             chatService,
+		ChatAccess:        chatAccessService,
+		Projects:          projectService,
+		Prompt:            promptService,
+		Schedules:         scheduleService,
+		ScheduleCaps:      scheduleCaps,
+		Agents:            agentRuntime,
+		AgentCapabilities: agentCapabilities,
+		Runs:              runs,
+		Workspace:         workspace,
+		Auth:              authService,
+		Users:             userService,
+		UserSettings:      userSettingsService,
+		Skills:            skillCatalog,
+		Tmux:              tmuxService,
+		Access:            accessVerifier,
+		Push:              pushService,
+		Presence:          presenceService,
+		Usage:             usageService,
 	}, nil
+}
+
+// newPush builds the Web Push service. A deployment without a usable VAPID key
+// simply has notifications switched off; it is not a reason to refuse to boot.
+func newPush(store PushStore, baseURL string) *servicepush.Service {
+	if store == nil {
+		return servicepush.New(nil, nil)
+	}
+	private, public, err := store.VAPIDKeys(func() (string, string, error) {
+		key, err := webpush.GenerateVAPIDKey()
+		if err != nil {
+			return "", "", err
+		}
+		return key.PrivateKeyBase64(), key.PublicKeyBase64(), nil
+	})
+	if err != nil {
+		log.Printf("push: notifications disabled: %v", err)
+		return servicepush.New(store, nil)
+	}
+	key, err := webpush.ParseVAPIDKey(private, public)
+	if err != nil {
+		log.Printf("push: notifications disabled: %v", err)
+		return servicepush.New(store, nil)
+	}
+	client, err := webpush.NewClient(key, baseURL)
+	if err != nil {
+		log.Printf("push: notifications disabled: %v", err)
+		return servicepush.New(store, nil)
+	}
+	return servicepush.New(store, webPushSender{client: client})
 }
 
 func (s Services) AuthEnabled() bool {
@@ -230,7 +366,7 @@ func (e scheduledPromptExecutor) StartScheduledPrompt(
 		ScheduledRunID:  task.ActiveRunID,
 		ParentContext:   ctx,
 	}, nil)
-	if errors.Is(err, prompt.ErrPromptAlreadyRunning) {
+	if errors.Is(err, prompt.ErrPromptAlreadyRunning) || errors.Is(err, prompt.ErrMaintenance) {
 		return nil, serviceschedule.ErrExecutorBusy
 	}
 	if err != nil {
@@ -261,82 +397,6 @@ type scheduledPromptHandle struct {
 
 func (h scheduledPromptHandle) Done() <-chan serviceschedule.RunResult {
 	return h.done
-}
-
-// userDirectoryAdapter wraps *serviceuser.Service to satisfy
-// serviceauth.UserDirectory. AddBootstrapAdmin is the one method the auth
-// service needs that the regular user.Service.Add doesn't quite cover (no
-// "addedBy" since it's the bootstrap path).
-type userDirectoryAdapter struct {
-	users *serviceuser.Service
-}
-
-func (a userDirectoryAdapter) IsAdmin(ctx context.Context, email string) (bool, error) {
-	return a.users.IsAdmin(ctx, email)
-}
-
-func (a userDirectoryAdapter) IsRegistered(ctx context.Context, email string) (bool, error) {
-	return a.users.IsRegistered(ctx, email)
-}
-
-func (a userDirectoryAdapter) AddBootstrapAdmin(ctx context.Context, email string) error {
-	_, err := a.users.Add(ctx, email, serviceuser.RoleAdmin, "")
-	return err
-}
-
-func (a userDirectoryAdapter) FirstAdmin(ctx context.Context) (*serviceauth.UserDirectoryEntry, error) {
-	list, err := a.users.List(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var oldest *serviceuser.User
-	for i := range list {
-		u := &list[i]
-		if u.Role != serviceuser.RoleAdmin {
-			continue
-		}
-		if oldest == nil || u.AddedAt < oldest.AddedAt {
-			oldest = u
-		}
-	}
-	if oldest == nil {
-		return nil, nil
-	}
-	return &serviceauth.UserDirectoryEntry{Email: oldest.Email}, nil
-}
-
-func newAuth(
-	ctx context.Context,
-	store AuthStore,
-	users *serviceuser.Service,
-	baseURL string,
-) (*serviceauth.Service, error) {
-	if store == nil {
-		return nil, errors.New("authentication store is required")
-	}
-	baseURL, err := serviceauth.NormalizeBaseURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	sessionKey, err := store.SessionKey(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var directory serviceauth.UserDirectory
-	if users != nil {
-		directory = userDirectoryAdapter{users: users}
-	}
-	return serviceauth.New(
-		ctx,
-		store,
-		directory,
-		func(clientID, clientSecret, redirectURL string) serviceauth.OAuthProvider {
-			return googleoauth.New(clientID, clientSecret, redirectURL)
-		},
-		baseURL,
-		sessionKey,
-	)
 }
 
 type chatProjectResolver struct {

@@ -28,11 +28,10 @@ The application does not use a database. Durable metadata is stored as JSON file
 │   └── ...                              user source and generated files
 └── agent-home/                         durable provider-owned state
     ├── codex/                           mounted at /root/.codex
+    ├── minimax/                         mounted at /root/.minimax
     ├── claude/                          mounted at /root/.claude
-    └── kimi/                            mounted at /root/.kimi-code
-
-# Antigravity is different:
-# /root/.gemini/antigravity-cli lives in the replaceable container root.
+    ├── kimi/                            mounted at /root/.kimi-code
+    └── antigravity/                     mounted at /root/.gemini/antigravity-cli
 ```
 
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
@@ -108,11 +107,18 @@ flowchart LR
     Append --> Seq["Assign next monotonic seq"]
     Seq --> Meta["Update lastMessageAt for visible events"]
     Meta --> Cache["Refresh in-memory metadata index"]
-    Append --> Replay["Replay pages or events after seq"]
+    Append --> Replay["Replay live events after seq"]
+    Append --> Transcript["Project complete, compacted turn pages"]
     Replay --> Client["Chat UI"]
+    Transcript --> Client
 ```
 
 Chat metadata includes title, provider, provider session IDs, working directory, project ID, read markers, model/mode controls, selected skills, and fork state. The `running` flag and cancellation handle are computed from the in-memory run hub and are not persisted. Provider child processes may survive a backend restart, so the restarted control plane cannot automatically rediscover or cancel them.
+
+The raw event log remains the source for live reconnects. History requests page
+a read-time transcript projection by `turnId` (or legacy `user` boundaries) and
+coalesce adjacent streaming text/reasoning deltas. The cursor is still a raw
+event sequence, so existing chat files require no migration.
 
 Scheduled-task definitions are separate from chat metadata. One versioned
 `scheduled-tasks/tasks.json` document holds every task plus persisted active
@@ -129,8 +135,11 @@ Project metadata and workspaces are separate:
 - `data/projects/<id>/meta.json` stores identity, slug, container name, status, order, resource overrides, and timestamps.
 - `/var/lib/remote/projects/<slug>/workspace` stores durable project content.
 - `/var/lib/remote/projects/<slug>/agent-home/*` stores durable provider configuration, authentication, and session state.
-- Antigravity's `/root/.gemini/antigravity-cli` is not in that host tree and
-  does not survive container replacement.
+- `/var/lib/remote/projects/<slug>/agent-home/minimax` stores the isolated
+  Codex-harness catalog and MiniMax sessions; the host injects the managed key
+  only when starting MiniMax.
+- `/var/lib/remote/projects/<slug>/agent-home/antigravity` stores durable
+  Antigravity state and is mounted at `/root/.gemini/antigravity-cli`.
 - Access and secrets use separate mode-`0600` files.
 - Metadata writes use a temporary file and rename where implemented.
 
@@ -140,6 +149,7 @@ Project metadata and workspaces are separate:
 | --- | --- |
 | `local-admin.json` | Local administrator email and password hash |
 | `oauth.json` | Google OAuth client ID and secret |
+| `agent-api-keys.json` | Host-managed provider API keys, including MiniMax's Token Plan subscription key; mode `0600` |
 | `session.key` | Random key used to sign platform sessions |
 | `users.json` | Registered emails, roles, inviter, and timestamps |
 | `user-settings/sha256-*.json` | Theme and default chat provider/model/mode/reasoning/tier |
@@ -167,12 +177,42 @@ flowchart TD
 | State | Lifetime |
 | --- | --- |
 | Authentication and user settings | Preact context; reloaded from HTTP after page reload |
-| Projects and chat summaries | Workspace WebSocket; server is authoritative |
+| Agent auth registry | Ordered `GET /api/agent-auth` snapshot in `AuthContext`, updated by one normalized WebSocket per managed provider |
+| Projects and chat summaries | Workspace WebSocket; server is authoritative. A chat created or forked from this client is seeded into the list on the create response so the new selection holds until its `chat.upsert` arrives |
 | Active view, selected chat, sidebar open state | In-memory reducer |
 | Chat events | Initial HTTP page plus reconnecting WebSocket updates |
 | Composer drafts and queued prompts | In-memory map mirrored to per-tab `sessionStorage`, keyed by chat ID |
+| Agent capability catalog | Last response in page memory, keyed by normalized user plus host/project scope; backend process memory owns TTL freshness |
+| Service-worker offline cache | Only the versioned, self-contained `/offline.html`; navigation and application data remain network-first |
 | Browser drawer width | Browser `localStorage` |
 | Answered interactive question state | Browser storage used by the question renderer |
+
+## Agent capability cache ownership
+
+Agent models and their dependent controls are runtime discovery data, not
+durable application records. The backend keeps one process-local entry for the
+host and one for each project ID plus current container name. Live,
+warning-free catalogs expire after 24 hours; a fallback or warning anywhere in
+the catalog reduces its TTL to 2 hours. Expiry is lazy, manual refresh replaces
+the entry, and a backend restart clears all entries. Overlapping requests for
+one scope share a single discovery operation.
+
+The frontend store holds the last response per normalized user and scope only
+in the current page. It leaves that response visible while requesting the
+backend and coalesces duplicate page-level requests, but it neither persists
+the catalog nor decides when backend data is fresh. A managed provider's
+authenticated flag changing, or a login reaching completed with a new start
+revision, requests refreshes for currently subscribed scopes; intermediate
+login-status changes do not. The sidebar's project **Start** action requests
+one for that project, while the Project workspaces lifecycle actions do not. A
+request already in flight remains coalesced. Terminal-driven changes such as
+Antigravity sign-in require the user to choose **Refresh models**.
+
+The capability payload also exposes immutable module metadata alongside live
+CLI discovery: execution scopes, authentication mode and instructions,
+resume/fork support, skill strategy, and browser/scheduled-tool feature flags.
+This metadata is decorated from the validated backend module catalog; it does
+not originate from provider CLI output.
 
 ## Workspace synchronization
 

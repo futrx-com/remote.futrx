@@ -1,6 +1,8 @@
 # Global settings, users, and providers
 
-Open **Settings** from the account footer or the collapsed sidebar gear. The page has four tabs: **Appearance**, **Agents**, **Users**, and **Info**.
+Open **Settings** from the account footer or the collapsed sidebar gear. The
+page has six tabs: **Appearance**, **Notifications**, **Agents**, **Users**,
+**Updates**, and **Info**.
 
 ## Appearance
 
@@ -14,10 +16,18 @@ The preference is saved to your Remote user settings. Wait for the **Saved** sta
 
 ## Agents
 
-Claude, Codex, and Kimi authentication is host-wide and
-administrator-managed. Sign in once on the parent host; Remote then seeds
-those provider credentials into project containers. Antigravity uses a
-different per-project flow described below.
+For an administrator, the **Agents** list is generated from the server's
+ordered agent module catalog.
+Each card uses the module label, authentication mode, current normalized
+status, and provider-owned instructions. Managed authorization-code and device
+flows expose the appropriate controls; external providers show their sign-in
+instructions without a host-login button; a no-auth module is reported ready
+without login controls.
+
+Claude, Codex, and Kimi authentication is host-wide and administrator-managed.
+Sign in once on the parent host; Remote then seeds those provider credentials
+into project containers. MiniMax uses a host-managed Token Plan subscription
+key. Antigravity uses a project-local sign-in flow; both are described below.
 
 ![Administrator view of Claude, Codex, and Kimi authentication](/assets/docs/screenshots/03-agent-authentication-01m05s.webp)
 
@@ -32,6 +42,10 @@ different per-project flow described below.
 7. Wait for **Subscription signed in**.
 
 Use **Refresh Claude login** to replace an expired or unwanted host credential.
+When Remote detects the completed login, it requests a refresh for model
+catalogs currently open in that browser. A project probe sees the credentials
+currently present inside its container, so if a later run propagates new host
+credentials, choose **Refresh models** again afterward.
 
 ### Connect Codex
 
@@ -43,6 +57,34 @@ Use **Refresh Claude login** to replace an expired or unwanted host credential.
 
 Remote may also detect a configured API key, but subscription/device authentication is the intended shared-host flow.
 
+### Use MiniMax
+
+MiniMax is project-only and runs `MiniMax-M3` through Remote's pinned Codex
+app-server harness. It deliberately uses an isolated `/root/.minimax` home, so
+its model catalog, sessions, and provider settings do not replace the normal
+Codex account or `/root/.codex` state. This is runtime separation, not a
+security boundary: container root can read every provider home mounted in that
+project.
+
+Configure MiniMax once for the Remote installation:
+
+1. Open **Settings → Agents** and choose **Sign in with MiniMax** (or
+   **Refresh MiniMax login** when replacing a key).
+2. Follow the **Get a MiniMax Token Plan subscription key** link to subscribe,
+   create, or retrieve the supported key from MiniMax. Remote does not link to
+   the pay-as-you-go key console because standard API keys are not supported.
+3. Paste the `sk-cp-…` key into the masked field and choose **Save API key**.
+   Remote checks that it is a Token Plan key and validates it with MiniMax's
+   subscription quota endpoint before storing it.
+4. Return to a project chat and select **MiniMax** and **MiniMax-M3**.
+
+Remote passes the key to the Codex process as an environment variable and
+configures Codex to read that variable. It does not embed the key in the
+generated model catalog or command-line configuration. The key is never
+returned to the browser after saving. MiniMax is not offered for loose chats.
+In project chats it stays visible as a locked **Sign in to use** provider, but
+its model list remains unavailable until a validated key exists.
+
 ### Connect Kimi
 
 1. Under **Kimi authentication**, start device login.
@@ -53,9 +95,10 @@ Remote may also detect a configured API key, but subscription/device authenticat
 
 ### Use Antigravity
 
-Antigravity appears in the chat provider picker but not in the global
-**Agents** cards. Its `agy` CLI does not expose a host-wide sign-in flow that
-Remote can complete and distribute.
+Antigravity appears in both the chat provider picker and the administrator's
+global **Agents** list. Its card is informational and marked provider-managed: the `agy` CLI does
+not expose a host-wide sign-in flow that Remote can complete and distribute,
+so Remote's supported sign-in workflow is project-local.
 
 Sign in separately in each project:
 
@@ -64,17 +107,25 @@ Sign in separately in each project:
 3. Run `agy`.
 4. Complete the URL-and-code flow displayed by Antigravity.
 5. Exit the interactive CLI.
-6. Return to the chat and select **Antigravity**.
+6. Return to the chat and choose **Refresh models** in the provider/model picker.
+7. Select **Antigravity** and a discovered model.
 
 That sign-in is shared with other users and agents inside the same project
-container. Its files live under `/root/.gemini`, not one of Remote's durable
-provider-home mounts. They survive ordinary stop/start but disappear when the
-container is replaced; sign in again after an upgrade or recovery that
-recreates the container.
+container. Its files under `/root/.gemini/antigravity-cli` are a durable
+provider-home mount. They survive ordinary stop/start and container
+replacement; unrelated files elsewhere under `/root/.gemini` do not.
 
-Antigravity does not satisfy Remote's initial “at least one provider connected”
-gate. A server administrator must still connect Claude, Codex, or Kimi during
-onboarding.
+Remote cannot observe this terminal-based login, so it cannot invalidate the
+model cache automatically. Use **Refresh models** after every Antigravity
+sign-in or account change.
+
+A loose chat can probe `agy` state that an operator configured directly on the
+host, but Remote has no UI for establishing that state and its project Terminal
+is unavailable to a loose chat. Use a project chat for normal Antigravity work.
+
+Antigravity does not satisfy Remote's initial provider gate because Remote
+cannot observe external auth authoritatively. A server administrator must still
+connect one of the current gate-eligible modules: Claude, Codex, or Kimi.
 
 ### Shared-provider implications
 
@@ -88,6 +139,9 @@ onboarding.
 - Antigravity is project-local rather than host-wide, but its credential state
   is still readable by container root and shared by everyone with authority in
   that project.
+- MiniMax runs only in projects, but its Token Plan subscription key is
+  installation-wide and administrator-managed. It is injected into MiniMax
+  runs and is subject to that MiniMax subscription's quota.
 
 Non-admins can use connected providers but cannot connect or refresh them.
 
@@ -164,6 +218,7 @@ Use the sign-out control in the account footer. This clears the platform session
 | Change own appearance | Yes | Yes |
 | View own account and server information | Yes | Yes |
 | Connect or refresh agent providers | Yes | No |
+| Add, replace, or remove the MiniMax Token Plan subscription key | Yes | No |
 | Sign in to Antigravity inside an assigned project | Yes | Yes |
 | Configure Google OAuth | Yes | No |
 | Add, remove, promote, or demote users | Yes | No |

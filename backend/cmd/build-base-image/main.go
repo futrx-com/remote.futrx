@@ -1,6 +1,6 @@
 // build-base-image rebuilds the futrx-remote-dev-base LXD image used by
-// every project container. Run it after bumping Node, Claude, or any apt
-// dependency in the install script.
+// every project container. Run it after changing Node, any configured agent
+// profile or CLI, or an apt dependency in the install script.
 //
 // Usage:
 //
@@ -15,13 +15,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
-	"github.com/futrx-com/remote.futrx.com/internal/service"
 	serviceimage "github.com/futrx-com/remote.futrx.com/internal/service/container/image"
 )
 
@@ -32,13 +33,25 @@ func main() {
 
 	log.SetFlags(log.Ltime)
 
+	if err := run(*alias, *overwrite); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run builds and publishes the base image under alias, optionally deleting
+// any existing image at that alias first.
+func run(alias string, overwrite bool) error {
 	lxcClient := lxc.New()
 	if !lxcClient.Available() {
-		log.Fatalf("lxc CLI not found on PATH - install LXD on the host first")
+		return errors.New("lxc CLI not found on PATH - install LXD on the host first")
+	}
+	agentModules, err := config.NewAgentModules()
+	if err != nil {
+		return fmt.Errorf("configure agent modules: %w", err)
 	}
 	containerStack := config.NewContainerStack(
 		lxcClient,
-		service.AgentProfiles(),
+		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			ImageBuildProgress: newLogBuildProgressReporter(log.Default()),
 		},
@@ -47,20 +60,21 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	if *overwrite {
-		log.Printf("removing existing image %q (if any)...", *alias)
+	if overwrite {
+		log.Printf("removing existing image %q (if any)...", alias)
 		// Best-effort: ignore the error so a missing alias is fine.
-		if out, err := lxcClient.Run(ctx, "image", "delete", *alias); err != nil {
+		if out, err := lxcClient.Run(ctx, "image", "delete", alias); err != nil {
 			log.Printf("note: image delete returned: %v; output: %s", err, out)
 		}
 	}
 
-	log.Printf("building %q from %q...", *alias, serviceimage.SourceImage)
+	log.Printf("building %q from %q...", alias, serviceimage.SourceImage)
 	log.Printf("(the first build can take up to 10 minutes; progress is reported every 30 seconds)")
 
-	if err := containerStack.Images.Build(ctx, *alias); err != nil {
-		log.Fatalf("build failed: %v", err)
+	if err := containerStack.Images.Build(ctx, alias); err != nil {
+		return fmt.Errorf("build failed: %w", err)
 	}
 
-	log.Printf("done. published %q. new project containers will launch from this image.", *alias)
+	log.Printf("done. published %q. new project containers will launch from this image.", alias)
+	return nil
 }

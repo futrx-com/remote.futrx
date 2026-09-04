@@ -2,30 +2,46 @@ package httphandlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 // AgentAuthHandler exposes the shared host-side auth flows registered by the
-// agent catalog. Provider packages configure those flows; HTTP owns only route,
-// access-control, and response policy.
+// agent module catalog. Provider packages configure those flows; HTTP owns only
+// route, access-control, and response policy.
 type AgentAuthHandler struct {
 	bindings []agentauth.Binding
+	modules  agentModuleDescriptors
 	auth     *serviceauth.Service
 }
 
-func NewAgentAuthHandler(bindings []agentauth.Binding, auth *serviceauth.Service) *AgentAuthHandler {
-	return &AgentAuthHandler{
+type agentModuleDescriptors interface {
+	Descriptors() []agentmodule.Descriptor
+}
+
+func NewAgentAuthHandler(
+	bindings []agentauth.Binding,
+	auth *serviceauth.Service,
+	modules ...agentModuleDescriptors,
+) *AgentAuthHandler {
+	handler := &AgentAuthHandler{
 		bindings: append([]agentauth.Binding(nil), bindings...),
 		auth:     auth,
 	}
+	if len(modules) > 0 {
+		handler.modules = modules[0]
+	}
+	return handler
 }
 
 func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/agent-auth", h.handleCatalog)
 	for _, binding := range h.bindings {
 		binding := binding
 		prefix := "/api/" + string(binding.ID())
@@ -48,8 +64,84 @@ func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 			mux.HandleFunc(prefix+"/login/device", func(w http.ResponseWriter, r *http.Request) {
 				h.handleDeviceStart(binding, w, r)
 			})
+		case agentauth.FlowAPIKey:
+			mux.HandleFunc(prefix+"/login/api-key", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAPIKey(binding, w, r)
+			})
 		}
 	}
+}
+
+type agentAuthCatalogResponse struct {
+	Providers []agentAuthProviderResponse `json:"providers"`
+}
+
+type agentAuthProviderResponse struct {
+	Provider        string                       `json:"provider"`
+	Label           string                       `json:"label"`
+	Default         bool                         `json:"default,omitempty"`
+	ExecutionScopes []agentmodule.ExecutionScope `json:"executionScopes"`
+	Authentication  agentAuthPolicyResponse      `json:"authentication"`
+	Status          agentauth.Snapshot           `json:"status"`
+}
+
+type agentAuthPolicyResponse struct {
+	Mode                agentmodule.AuthMode     `json:"mode"`
+	Instructions        string                   `json:"instructions,omitempty"`
+	SatisfiesAccessGate bool                     `json:"satisfiesAccessGate"`
+	APIKey              *agentAuthAPIKeyResponse `json:"apiKey,omitempty"`
+}
+
+type agentAuthAPIKeyResponse struct {
+	CreateURL       string `json:"createUrl"`
+	CreateLabel     string `json:"createLabel"`
+	CredentialLabel string `json:"credentialLabel"`
+}
+
+func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	bindings := make(map[string]agentauth.Binding, len(h.bindings))
+	for _, binding := range h.bindings {
+		bindings[string(binding.ID())] = binding
+	}
+	descriptors := []agentmodule.Descriptor(nil)
+	if h.modules != nil {
+		descriptors = h.modules.Descriptors()
+	}
+	providers := make([]agentAuthProviderResponse, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		status := agentauth.Snapshot{}
+		if descriptor.Auth == agentmodule.AuthNone {
+			status.Authenticated = true
+		} else if binding, ok := bindings[string(descriptor.ID)]; ok {
+			status = binding.Snapshot()
+		}
+		var apiKey *agentAuthAPIKeyResponse
+		if descriptor.APIKeyAuth != nil {
+			apiKey = &agentAuthAPIKeyResponse{
+				CreateURL:       descriptor.APIKeyAuth.CreateURL,
+				CreateLabel:     descriptor.APIKeyAuth.CreateLabel,
+				CredentialLabel: descriptor.APIKeyAuth.CredentialLabel,
+			}
+		}
+		providers = append(providers, agentAuthProviderResponse{
+			Provider:        string(descriptor.ID),
+			Label:           descriptor.Label,
+			Default:         descriptor.Default,
+			ExecutionScopes: append([]agentmodule.ExecutionScope(nil), descriptor.ExecutionScopes...),
+			Authentication: agentAuthPolicyResponse{
+				Mode:                descriptor.Auth,
+				Instructions:        descriptor.AuthInstructions,
+				SatisfiesAccessGate: descriptor.SatisfiesAccessGate,
+				APIKey:              apiKey,
+			},
+			Status: status,
+		})
+	}
+	httptransport.SendJSON(w, http.StatusOK, agentAuthCatalogResponse{Providers: providers})
 }
 
 // Status remains open to every registered user. The outer authentication
@@ -121,11 +213,48 @@ func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.R
 	httptransport.SendJSON(w, http.StatusOK, state)
 }
 
+func (h *AgentAuthHandler) handleAPIKey(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !h.requireAdminAccess(w, r) {
+		return
+	}
+
+	var err error
+	if r.Method == http.MethodDelete {
+		err = binding.DeleteAPIKey(r.Context())
+	} else {
+		var body struct {
+			APIKey string `json:"apiKey"`
+		}
+		if decodeErr := readJSONBody(r, &body); decodeErr != nil {
+			httptransport.SendErr(w, http.StatusBadRequest, decodeErr.Error())
+			return
+		}
+		err = binding.SetAPIKey(r.Context(), body.APIKey)
+	}
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, agentauth.ErrAPIKeyRequired) || errors.Is(err, agentauth.ErrAPIKeyRejected) {
+			status = http.StatusBadRequest
+		}
+		httptransport.SendErr(w, status, err.Error())
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
+}
+
 func (h *AgentAuthHandler) requireMutationAccess(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return false
 	}
+	return h.requireAdminAccess(w, r)
+}
+
+func (h *AgentAuthHandler) requireAdminAccess(w http.ResponseWriter, r *http.Request) bool {
 	if h.auth == nil {
 		return true
 	}

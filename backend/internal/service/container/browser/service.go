@@ -25,7 +25,7 @@ type Runtime interface {
 	Status(ctx context.Context, containerName string) (serviceproject.AgentBrowserInfo, error)
 }
 
-// Tooling publishes the browser assets consumed by agent providers and launch
+// Tooling publishes browser assets consumed by shared agent and launch
 // preparation.
 type Tooling interface {
 	EnsureSkill(ctx context.Context, containerName string) error
@@ -41,8 +41,8 @@ type Dependencies struct {
 	Tooling     Tooling
 }
 
-// Service owns the provision-before-start policy and exposes the browser
-// capabilities consumed by projects, launch preparation, and agent providers.
+// Service owns the provision-before-start policy and exposes browser
+// capabilities to projects plus launch and shared agent preparation.
 type Service struct {
 	provisioner StackProvisioner
 	runtime     Runtime

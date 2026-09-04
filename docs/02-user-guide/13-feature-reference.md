@@ -29,11 +29,14 @@ This is the compact inventory of current Remote behavior. “Page” means the l
 
 | Feature | How to use it | Important behavior |
 | --- | --- | --- |
-| Provider | Choose **Codex**, **Claude**, **Kimi**, or **Antigravity** | Cannot change while streaming |
-| Model | Open **Model** and select a provider model or Auto | Stored per chat |
-| Thinking | Select Auto, None/Minimal where supported, or Low through Ultra | Provider-dependent |
-| Speed | Select Codex Auto, Default, Priority, or Fast | Codex only; model/provider may gate it |
-| Mode | Choose Chat, Plan, Code, Review, Debug, or Full auto | Advisory prompt policy, not enforcement |
+| Provider | Choose **Codex**, **MiniMax**, **Claude**, **Kimi**, or **Antigravity** | MiniMax is project-only; cannot change while streaming |
+| Model | Open the provider/model picker and select a discovered model or Auto | Stored per chat; choices come from the current host/project CLI catalog |
+| Refresh models | Use the refresh action at the bottom of the provider/model picker | Force-probes the current scope; use after CLI, configuration, account, entitlement, or terminal-login changes |
+| Thinking | Select one of the efforts reported for the current provider/model | Hidden when no effort control is advertised; Kimi currently stores but does not forward the selection |
+| Speed | Select a service tier reported for the current provider/model | Codex tiers and eligible Claude Fast are supported; account/provider may gate them |
+| Mode | Choose Default or provider-native Plan | Hidden when Plan is unavailable |
+| Approvals | Choose when the agent must ask before an action | Available for Codex and MiniMax; disabled while a turn is streaming |
+| Sandbox | Choose Read only, Workspace write, or Full access | Available for Codex and MiniMax; controls filesystem/process isolation for the next turn |
 | Skill picker | Open **Skill set**, search, and select | Catalog depends on provider/project |
 | Skill chips | Review or remove selected skills | Cleared when provider changes |
 | Attach picker | Choose **+** and select one or more files | Project chats; resumable uploads |
@@ -53,7 +56,7 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | Feature | Visible behavior |
 | --- | --- |
 | Streaming text | Assistant output appears incrementally |
-| Reasoning | Provider reasoning/thinking parts are rendered when emitted |
+| Reasoning | Consecutive provider reasoning deltas are grouped into collapsed, live-updating blocks that can be expanded at any time |
 | Tool groups | Consecutive tools are grouped and expandable |
 | Specialized tools | Read, write, edit, search, shell, and questions have tailored cards |
 | Generic tools | Unknown tools use a generic renderer |
@@ -62,7 +65,7 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | AskUserQuestion | Agent questions become a paged single/multi-select form with **Other** |
 | Usage | Supported providers report accumulated token usage |
 | Working state | Header dot, provider label, sidebar spinner, and composer state update |
-| Load older | Older JSONL events page backward |
+| Load older | Complete older conversation turns page backward |
 | Jump to latest | Appears when reading above the newest output |
 | Reconnect/replay | Chat socket resumes from the last event sequence |
 | Automatic title | Remote can title a new chat from its early content; it is persisted, and the current UI has no manual rename control |
@@ -71,32 +74,41 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | Error block | Run and transport failures render in the thread |
 | Schedules drawer | Project-chat header lists, edits, arms, pauses, runs, and deletes scheduled tasks |
 
-There is no approval workflow in the current chat transport. Project agents run with provider approval/sandbox bypasses inside the project container.
+Codex and MiniMax use the shared app-server interaction transport for approval,
+permission, and user-input requests. The selected approval and sandbox policies
+are sent when the harness starts or resumes a thread and again for each turn.
 
 ## Providers and current differences
 
-| Capability | Claude | Codex | Kimi | Antigravity |
-| --- | ---: | ---: | ---: | ---: |
-| Sign-in | Host authorization URL and pasted code | Host device flow | Host device flow | Run `agy` in each project Terminal |
-| Model picker | Yes | Yes | Auto only | Auto only |
-| Thinking control | Yes | Yes | No current options | Auto, Low, Medium, High |
-| Speed/service tier | No | Yes | No | No |
-| Usage telemetry | Yes | Yes | No | No |
-| Provider session fork | Yes | Yes, rollout clone | No; starts fresh | No; starts fresh |
-| Selected skill trigger | Yes | Yes | Stored but not injected | Scheduled Tasks only |
-| Browser MCP | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
-| Structured tool stream | Yes | Yes | Yes | No; plain streamed text |
+| Capability | Claude | Codex | MiniMax | Kimi | Antigravity |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sign-in | Host authorization URL and pasted code | Host device flow | Host-managed write-only API-key form | Host device flow | Run `agy` in each project Terminal |
+| Model picker | Live `/model` list with attempted version resolution | Live paginated app-server list | Provider-owned `MiniMax-M3` catalog | Configured models from the provider catalog | Models/variants returned by signed-in `agy` |
+| Thinking control | Forwarded | Forwarded | Think-Off or Adaptive | Displayed/stored per model, not yet forwarded | Forwarded as Auto, Low, Medium, or High |
+| Speed/service tier | Fast for Auto and Opus | Yes | No | No | No |
+| Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
+| Approval and sandbox controls | No | Yes | Yes | No | No |
+| Usage telemetry | Yes | Yes | Yes | No | No |
+| Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | No; starts fresh | No; starts fresh |
+| Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |
+| Browser MCP | Yes | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
+| Structured tool stream | Yes | Yes | Yes | Yes | No; plain streamed text |
 
-Antigravity's project-local `/root/.gemini` state survives stop/start but not
-container replacement.
+Antigravity's project-local `/root/.gemini/antigravity-cli` state survives
+stop/start and container replacement. After signing in with `agy` in the
+project Terminal, choose **Refresh models** so the picker replaces any
+signed-out fallback.
+
+MiniMax's `/root/.minimax` model catalog and sessions also survive replacement,
+separately from `/root/.codex`. Its key remains in the project secret store.
 
 ## Workspace tools
 
 | Feature | How to use it | Limits or lifecycle |
 | --- | --- | --- |
 | Open in IDE | Choose **Open in IDE** in a project chat | code-server in `/workspace`; registered-user auth caveat |
-| Installable IDE launcher | Open `code.<host>` and use the browser's install action | PWA launcher with live project list; the main Remote app is not a PWA |
-| Open Terminal | Choose **Open Terminal** | New `bash -l` PTY; closing kills it; no reconnect |
+| Installable apps | Use the browser's install action on Remote or `code.<host>` | Main app is network-first with a cached offline status page; IDE launcher keeps a live project list |
+| Open Terminal | Choose **Open Terminal** | Resizable pane; hiding it in the same chat preserves the PTY; socket loss or page/chat change ends it |
 | Open History | Choose **History** | Git repositories only |
 | Open Files | Choose **Files** | Lazy workspace tree |
 | Open Browser | Choose **Open Browser** | Preview or Agent Browser |
@@ -154,7 +166,7 @@ coalesce into one follow-up under the default overlap policy.
 | Feature | How to use it | Boundary |
 | --- | --- | --- |
 | Start human browser view | Toggle the key control in Browser | Starts project Chromium/noVNC as needed |
-| Share login with agent | Sign in visually, then select `browser` skill | Claude/Codex share the same profile/window |
+| Share login with agent | Sign in visually, then select `browser` skill | Claude, Codex, and MiniMax share the same profile/window |
 | Human intervention | Type or click in the live pane | Same session as agent |
 | Reload view | Use reload while ready | Reloads noVNC iframe |
 | Close drawer | Close Browser | Stops only the human view |
@@ -193,8 +205,10 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Tab | Features |
 | --- | --- |
 | Appearance | System, Dark, Light |
-| Agents | Admin sign-in/status/refresh for host-wide Claude, Codex, Kimi |
+| Notifications | Per-device Web Push permission, subscription, status, and test notification |
+| Agents | Module-driven admin cards: managed sign-in/status/refresh, external instructions, or no-auth status |
 | Users | Google OAuth configuration; add/remove users; member/admin roles |
+| Updates | Current release, update checks, and administrator-triggered update flow |
 | Info | Host CPU, memory, disks, network, OS/runtime, process, paths, role |
 
 ## Persistence reference
@@ -208,14 +222,14 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Project secrets | Yes | Yes |
 | Agent Browser profile | Yes | Yes |
 | Scheduled-task definitions and run state | Yes | Yes |
-| Antigravity sign-in and conversation state | Yes, until container replacement | No |
+| Antigravity sign-in and conversation state | Yes | Yes |
 | Container root filesystem additions | Yes until replacement | No |
 | Active run control and event streaming | No; an `lxc exec` child can remain alive but orphaned after backend restart | No reattachment |
 | Active Terminal PTY | No | No |
 | Composer draft | Yes, in the same browser tab session | Not applicable |
 | Prompt queue | Yes, in the same browser tab session | Not applicable |
 | Active chat and open drawers | No | Not applicable |
-| Sidebar width/collapse and Browser drawer width | Yes, in the same browser | Yes, in the same browser |
+| Sidebar width/collapse, Browser drawer width, and Terminal pane width | Yes, in the same browser | Yes, in the same browser |
 | Project-group collapsed state | No | Recomputed from unread state rather than stored |
 
 ## Features Remote does not currently provide
@@ -231,7 +245,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 - project IDE membership enforcement;
 - built-in backup/restore, audit log, metrics endpoint, or high availability;
 - content search in Files;
-- a main-app PWA, push notification, or offline mode;
+- offline access to the live app shell, chats, project data, or agent controls;
 - current application voice dictation;
 - implemented `@`-mention or slash-command composer menus.
 - a direct “create schedule” form in the current UI; schedule creation starts

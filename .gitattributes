@@ -1,4 +1,10 @@
+# Git for Windows checks out CRLF by default. These files are executed by bash
+# and read by systemd, Caddy, and systemd-resolved on the Linux QA and
+# production servers, where a trailing CR is a syntax error rather than
+# whitespace - so every text file is pinned to LF, and the binaries below are
+# marked so the normalisation never touches them.
 * text=auto eol=lf
+
 *.webp binary
 *.png binary
 *.jpg binary

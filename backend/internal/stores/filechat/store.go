@@ -17,6 +17,7 @@ import (
 )
 
 var _ servicechat.Repository = (*Store)(nil)
+var _ servicechat.TranscriptEventSource = (*Store)(nil)
 
 // Store manages chat dirs on disk. Single writer per chat via a per-id mutex
 // map; concurrent access across different chats is fine.
@@ -85,11 +86,12 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 		meta.Title = "New chat"
 	}
 	meta.Provider = servicechat.NormalizeProvider(meta.Provider)
+	meta.NormalizeSessions()
 	meta.ReasoningEffort = servicechat.NormalizeReasoningEffort(meta.ReasoningEffort)
 	meta.ServiceTier = servicechat.NormalizeServiceTier(meta.ServiceTier)
 	meta.SelectedSkills = servicechat.NormalizeSelectedSkills(meta.SelectedSkills, meta.Provider)
 	if meta.Mode == "" {
-		meta.Mode = "code"
+		meta.Mode = "default"
 	}
 	dir := s.chatDir(meta.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -153,6 +155,7 @@ func (s *Store) Update(
 	}
 	fn(&meta)
 	meta.Provider = servicechat.NormalizeProvider(meta.Provider)
+	meta.NormalizeSessions()
 	meta.ReasoningEffort = servicechat.NormalizeReasoningEffort(meta.ReasoningEffort)
 	meta.ServiceTier = servicechat.NormalizeServiceTier(meta.ServiceTier)
 	meta.SelectedSkills = servicechat.NormalizeSelectedSkills(meta.SelectedSkills, meta.Provider)
@@ -192,6 +195,7 @@ func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicech
 	if ev.T == 0 {
 		ev.T = time.Now().UnixMilli()
 	}
+	ev.NormalizeSession()
 	lk := s.lock(id)
 	lk.Lock()
 	defer lk.Unlock()
@@ -237,6 +241,22 @@ func (s *Store) ReadEvents(ctx context.Context, id servicechat.ID) ([]servicecha
 		return nil, servicechat.ErrInvalidID
 	}
 	return s.readEventsFile(id)
+}
+
+// ScanEvents visits the raw append-only event stream in storage order. The
+// caller owns any projection policy applied while visiting.
+func (s *Store) ScanEvents(
+	ctx context.Context,
+	id servicechat.ID,
+	visit func(servicechat.Event),
+) error {
+	if !servicechat.ValidID(id) {
+		return servicechat.ErrInvalidID
+	}
+	return s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+		visit(event)
+		return true
+	})
 }
 
 func (s *Store) ReadEventsPage(
@@ -364,9 +384,7 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 		if lastT == 0 {
 			lastT = meta.CreatedAt
 		}
-		meta.ClaudeSessionID = ""
-		meta.CodexSessionID = ""
-		meta.KimiSessionID = ""
+		meta.ClearSessionIDs()
 		meta.LastMessageAt = lastT
 		if err := s.writeMeta(meta); err == nil {
 			s.setCachedMeta(meta)

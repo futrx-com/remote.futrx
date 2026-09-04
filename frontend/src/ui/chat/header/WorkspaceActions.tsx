@@ -2,17 +2,23 @@ import { useId, useState } from "preact/hooks";
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
 
-const actionClass = `workspace-action relative inline-flex h-9 w-9 flex-none items-center justify-center rounded-md
-                     border border-white/10 bg-white/5 text-ink-200 transition hover:bg-white/[0.09] hover:text-ink-100
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue/80`;
+// Two states only, and they never fight over the same property: Tailwind emits
+// utilities in file order, so an "expanded" colour appended after a base colour
+// would silently lose. Pick one complete class string instead.
+const actionBase =
+  "workspace-action relative inline-flex h-8 w-8 flex-none items-center justify-center " +
+  "rounded-control transition-colors";
+const actionIdle = `${actionBase} text-ink-400 hover:bg-tint-strong hover:text-ink-50`;
+const actionExpanded = `${actionBase} bg-accent-blue/[0.14] text-accent-blue hover:bg-accent-blue/20`;
 
 export function WorkspaceActions({
   cwd,
-  onOpenTerminal,
+  onToggleTerminal,
   onToggleBrowser,
   onToggleHistory,
   onToggleFiles,
   onToggleSchedules,
+  terminalOpen,
   browserOpen,
   historyOpen,
   filesOpen,
@@ -22,11 +28,12 @@ export function WorkspaceActions({
   orientation,
 }: {
   cwd: string;
-  onOpenTerminal: () => void;
+  onToggleTerminal: () => void;
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
   onToggleFiles: () => void;
   onToggleSchedules: () => void;
+  terminalOpen: boolean;
   browserOpen: boolean;
   historyOpen: boolean;
   filesOpen: boolean;
@@ -40,7 +47,7 @@ export function WorkspaceActions({
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
 
   return (
-    <div class={`flex items-center gap-2 ${orientation === "horizontal" ? "flex-row" : "flex-col"}`}>
+    <div class={`flex items-center gap-0.5 ${orientation === "horizontal" ? "flex-row" : "flex-col"}`}>
       <WorkspaceAction
         Icon={Code}
         href={ideUrl}
@@ -50,9 +57,12 @@ export function WorkspaceActions({
       />
       <WorkspaceAction
         Icon={Terminal}
-        onClick={onOpenTerminal}
-        label="Container terminal"
-        tooltip="Open container terminal"
+        onClick={onToggleTerminal}
+        label={terminalOpen ? "Close container terminal" : "Container terminal"}
+        tooltip={terminalOpen ? "Close container terminal" : "Open container terminal"}
+        expanded={terminalOpen}
+        controls="workspace-terminal-pane"
+        action="terminal"
         tooltipPlacement={tooltipPlacement}
       />
       {showHistory && (
@@ -121,7 +131,7 @@ function WorkspaceAction({
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
-  action?: "history" | "files" | "schedules" | "browser";
+  action?: "history" | "files" | "schedules" | "browser" | "terminal";
   tooltipPlacement: "below" | "left";
 }) {
   const tooltipId = useId();
@@ -157,7 +167,7 @@ function WorkspaceAction({
       <span
         id={tooltipId}
         role="tooltip"
-        class={`workspace-action-tooltip pointer-events-none absolute z-50 whitespace-nowrap rounded-md border border-white/10 bg-[#191a1f] px-2 py-1.5 text-[11px] font-medium text-ink-100 shadow-xl transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
+        class={`workspace-action-tooltip pointer-events-none absolute z-50 whitespace-nowrap rounded-control border border-line bg-raised px-2 py-1 text-[11px] font-medium text-ink-100 shadow-pop transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
           tooltipPlacement === "below"
             ? `right-0 top-full mt-2 ${isTooltipOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"}`
             : `right-full top-1/2 mr-2 -translate-y-1/2 ${isTooltipOpen ? "translate-x-0 opacity-100" : "translate-x-1 opacity-0"}`
@@ -175,7 +185,7 @@ function WorkspaceAction({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        class={actionClass}
+        class={actionIdle}
       >
         {content}
       </a>
@@ -190,7 +200,7 @@ function WorkspaceAction({
       aria-expanded={expanded}
       aria-controls={controls}
       data-workspace-action={action}
-      class={`${actionClass} ${expanded ? "border-accent-blue/40 bg-white/[0.09] text-accent-blue" : ""}`}
+      class={expanded ? actionExpanded : actionIdle}
     >
       {content}
     </button>

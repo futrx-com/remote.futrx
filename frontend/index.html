@@ -1,12 +1,59 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#08090b" />
     <title>remote.futrx</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon-192.png" type="image/png" />
+    <!-- iOS ignores the manifest icons; it installs from this one, and only
+         supports Web Push for apps added to the home screen. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- Not `black-translucent`: that draws the page from y=0 under the status
+         bar but still sizes the layout viewport to the screen *minus* the
+         status bar, so the last inset-height of the screen sits outside the
+         viewport entirely and shows through as a dead strip under the
+         composer. Nothing CSS can reach it -- `100dvh`, `100vh` and the
+         containing block all stop short. Letting iOS place the web view below
+         the status bar makes the viewport the whole usable area instead, and
+         reports a zero top inset, which correctly makes every `safe-top`
+         padding inert in standalone. Safari ignores this meta, so the browser
+         layout is unaffected. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="remote" />
+    <script>
+      // The appearance preference lives on the server, so restore the last
+      // known choice before first paint — otherwise every load flashes dark at
+      // light-theme users. The app overwrites this once settings arrive.
+      (function () {
+        try {
+          var choice = localStorage.getItem("remote.futrx.theme") || "system";
+          var resolved =
+            choice === "light" || choice === "dark"
+              ? choice
+              : matchMedia("(prefers-color-scheme: light)").matches
+                ? "light"
+                : "dark";
+          var root = document.documentElement;
+          root.dataset.theme = resolved;
+          root.dataset.themeChoice = choice;
+          root.classList.add(resolved);
+          root.style.colorScheme = resolved;
+          if (resolved === "light") {
+            document
+              .querySelector('meta[name="theme-color"]')
+              .setAttribute("content", "#dfe2e7");
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-ink-800 text-ink-100 antialiased">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

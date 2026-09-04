@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
@@ -22,7 +23,7 @@ type ProjectCatalog interface {
 }
 
 type Authorizer interface {
-	CurrentSession(cookieValue string) (*serviceauth.Session, error)
+	CurrentSession(ctx context.Context, cookieValue string) (*serviceauth.Session, error)
 	IsAdmin(ctx context.Context, email string) (bool, error)
 }
 
@@ -43,9 +44,13 @@ func NewCatalog(skills *Service, projects ProjectCatalog, auth Authorizer) *Cata
 }
 
 func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
+	scope := agentmodule.ScopeHost
+	if query.ProjectID != "" {
+		scope = agentmodule.ScopeProject
+	}
 	provider := query.Provider
 	if provider == "" {
-		provider = ProviderCodex
+		provider = c.skills.DefaultProvider(scope)
 	}
 
 	workspacePath := ""
@@ -60,7 +65,7 @@ func (c *Catalog) List(ctx context.Context, query ListQuery) ([]Skill, error) {
 			}
 			return nil, err
 		}
-		session, err := c.auth.CurrentSession(query.SessionCookie)
+		session, err := c.auth.CurrentSession(ctx, query.SessionCookie)
 		if err != nil || session == nil {
 			return nil, ErrAuthenticationRequired
 		}

@@ -1,10 +1,10 @@
-// remote.futrx: self-hosted Claude Code / Codex chat + terminal-PTY server.
+// remote.futrx is the self-hosted control plane for configured coding agents
+// and their isolated project workspaces.
 //
 // Backend serves:
 //   - Static SPA (Preact/Vite bundle) embedded via go:embed
-//   - HTTP API for chat metadata + per-chat upload
-//   - WS /ws for tmux PTY streaming (terminal SSH bridge, no UI surfaces it)
-//   - WS /ws/chat/{id} for agent streaming
+//   - HTTP APIs for users, agents, chats, projects, files, and operations
+//   - WebSockets for workspace state, agent runs, auth status, and terminals
 
 package main
 
@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
@@ -26,6 +27,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
@@ -37,25 +39,46 @@ import (
 )
 
 func main() {
+	// Prepare configuration
 	ctx := context.Background()
 	cfg := config.Load()
-
-	storeSet, err := stores.New(cfg.DataDir)
-	if err != nil {
-		log.Fatalf("init stores: %v", err)
+	if runCLICommand(ctx, cfg, os.Args) {
+		return
 	}
-	lxcClient := lxc.New()
 	publicHostname, err := config.PublicHostname(cfg.BaseURL)
 	if err != nil {
 		log.Fatalf("configure public hostname: %v", err)
 	}
+
+	// Register agent modules
+	agentModules, err := config.NewAgentModules()
+	if err != nil {
+		log.Fatalf("configure agent modules: %v", err)
+	}
+
+	// Prepare container stack
 	containerStack := config.NewContainerStack(
-		lxcClient,
-		service.AgentProfiles(),
+		lxc.New(),
+		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
 		},
 	)
+
+	// Prepare stores
+	storeSet, err := stores.New(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("init stores: %v", err)
+	}
+	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
+	selfUpdateService := serviceselfupdate.New(
+		version.Version,
+		cfg.InstallDir,
+		cfg.DataDir,
+		updatecli.New(),
+	)
+
+	// Register application services
 	tmuxClient := tmuxcli.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
@@ -66,16 +89,37 @@ func main() {
 		Auth:              storeSet.Auth,
 		Users:             storeSet.Users,
 		UserSettings:      storeSet.UserSettings,
+		TwoFactor:         storeSet.TwoFactor,
+		SessionRegistry:   storeSet.SessionRegistry,
+		Push:              storeSet.Push,
+		Usage:             storeSet.Usage,
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
-		TmuxClient:        tmuxClient,
-		ValidTmuxName:     tmuxcli.ValidName,
+		AgentModules:      agentModules,
+		AgentAPIKeys:      storeSet.AgentAPIKeys,
+		AgentOptions: service.AgentOptions{
+			CapabilityTimeout:          cfg.Agent.CapabilityTimeout,
+			CapabilityCacheTTL:         cfg.Agent.CapabilityCacheTTL,
+			DegradedCapabilityCacheTTL: cfg.Agent.DegradedCapabilityCacheTTL,
+			CredentialSyncTimeout:      cfg.Agent.CredentialSyncTimeout,
+			BrowserIdleTTL:             cfg.Agent.BrowserIdleTTL,
+		},
+		AuthOptions: service.AuthOptions{
+			PendingLoginTTL:     cfg.Auth.PendingLoginTTL,
+			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
+			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
+			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
+			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
+		},
+		TmuxClient:    tmuxClient,
+		ValidTmuxName: tmuxcli.ValidName,
 		ScheduleLimits: service.ScheduleLimits{
 			MinInterval:        cfg.Schedule.MinInterval,
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
+		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {
 		log.Fatalf("init services: %v", err)
@@ -85,43 +129,53 @@ func main() {
 		serviceSet.Auth.GoogleOAuthEnabled(),
 		cfg.BaseURL,
 	)
+	// On a first boot nobody exists to authorise the local-admin claim, so the
+	// setup token is minted and printed here and nowhere else: the operator's
+	// terminal is the one channel a passer-by loading the page cannot reach.
+	// Issuing on every gated start also rotates it, so a token that leaked
+	// before a restart is already dead.
+	announceSetupToken(ctx, serviceSet.Auth, cfg.BaseURL, log.Writer())
 	if err := serviceSet.Reconcile(ctx); err != nil {
 		log.Printf("services: reconcile warning: %v", err)
 	}
 
+	// Prepare HTTP dependencies
 	static, err := fs.Sub(remote.PublicFS, "public")
 	if err != nil {
 		log.Fatal(err)
 	}
-	serverInfoService := serviceserverinfo.New(hostinfo.New(), version.Version, cfg.DataDir, fileproject.WorkspaceRoot)
-	selfUpdateService := serviceselfupdate.New(version.Version, cfg.InstallDir, cfg.DataDir, updatecli.New())
-	workspaceFileService := serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore())
-	gitHistoryService := servicegithistory.New(gitcli.NewHistoryClient())
 	codeServerBaseURL, err := config.CodeServerBaseURL(cfg.BaseURL)
 	if err != nil {
 		log.Fatalf("configure IDE URL: %v", err)
 	}
-	workspaceIDEService := serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot)
 
+	// Register HTTP transport
 	handler, err := transport.NewHTTPHandler(transport.Dependencies{
 		Services:       serviceSet,
 		TmuxClient:     tmuxClient,
 		Static:         static,
 		DataDir:        cfg.DataDir,
 		PublicHostname: publicHostname,
-		ServerInfo:     serverInfoService,
-		SelfUpdate:     selfUpdateService,
-		Files:          workspaceFileService,
-		GitHistory:     gitHistoryService,
-		IDE:            workspaceIDEService,
+		ServerInfo: serviceserverinfo.New(
+			hostinfo.New(),
+			version.Version,
+			cfg.DataDir,
+			fileproject.WorkspaceRoot,
+		),
+		SelfUpdate: selfUpdateService,
+		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
+		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),
+		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot),
 	})
 	if err != nil {
 		log.Fatalf("init http handler: %v", err)
 	}
 
-	srv := transport.NewHTTPServer(cfg.Addr(), handler)
-	log.Printf("remote.futrx listening on %s", cfg.Addr())
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	// Start HTTP server
+	address := cfg.Addr()
+	server := transport.NewHTTPServer(address, handler)
+	log.Printf("remote.futrx listening on %s", address)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }

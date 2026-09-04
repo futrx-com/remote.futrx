@@ -24,10 +24,25 @@ func (s *AgentAuthSocket) RegisterRoutes(mux *http.ServeMux, upgrader websocket.
 	for _, binding := range s.bindings {
 		binding := binding
 		mux.HandleFunc("/ws/"+string(binding.ID())+"/auth-status", s.handle(binding, upgrader))
+		if binding.Available() {
+			mux.HandleFunc("/ws/agent-auth/"+string(binding.ID()), s.handleSnapshot(binding, upgrader))
+		}
 	}
 }
 
+func (s *AgentAuthSocket) handleSnapshot(binding agentauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
+	return s.handleSubscription(binding, upgrader, binding.SubscribeSnapshots)
+}
+
 func (s *AgentAuthSocket) handle(binding agentauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
+	return s.handleSubscription(binding, upgrader, binding.Subscribe)
+}
+
+func (s *AgentAuthSocket) handleSubscription(
+	binding agentauth.Binding,
+	upgrader websocket.Upgrader,
+	subscribe func() (agentauth.Subscription, error),
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !binding.Available() {
 			http.Error(w, fmt.Sprintf("%s auth stream unavailable", binding.ID()), http.StatusServiceUnavailable)
@@ -41,7 +56,7 @@ func (s *AgentAuthSocket) handle(binding agentauth.Binding, upgrader websocket.U
 		defer conn.Close()
 		conn.SetReadLimit(1024)
 
-		subscription, err := binding.Subscribe()
+		subscription, err := subscribe()
 		if err != nil {
 			return
 		}

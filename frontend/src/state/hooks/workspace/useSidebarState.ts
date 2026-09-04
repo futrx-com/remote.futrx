@@ -1,7 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import type { ChatMeta } from "../../../models/chat";
 import type { ProjectMeta } from "../../../models/project";
-import { workspaceSidebarState } from "../../workspace/workspaceSidebarState";
+import { sidebarPreferenceService } from "../../../services/workspace/sidebarPreferenceService.ts";
 
 export function useSidebarState(
   open: boolean,
@@ -10,9 +10,11 @@ export function useSidebarState(
   chats: ChatMeta[]
 ) {
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
+    sidebarPreferenceService.readCollapsedProjects()
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
-    workspaceSidebarState.readCollapsed()
+    sidebarPreferenceService.readCollapsed()
   );
 
   useEffect(() => {
@@ -25,14 +27,21 @@ export function useSidebarState(
   }, [open, onClose]);
 
   useEffect(() => {
+    // Nothing to seed before projects load, and pruning against an empty list
+    // would drop what the last session remembered.
+    if (projects.length === 0) return;
     setCollapsed((current) => {
-      const next = workspaceSidebarState.collapsedProjects(projects, chats);
-      return workspaceSidebarState.hasSameCollapsedProjects(current, next) ? current : next;
+      const next = sidebarPreferenceService.seedCollapsedProjects(projects, chats, current);
+      return sidebarPreferenceService.hasSameCollapsedProjects(current, next) ? current : next;
     });
   }, [projects, chats]);
 
   useEffect(() => {
-    workspaceSidebarState.writeCollapsed(sidebarCollapsed);
+    sidebarPreferenceService.writeCollapsedProjects(collapsed);
+  }, [collapsed]);
+
+  useEffect(() => {
+    sidebarPreferenceService.writeCollapsed(sidebarCollapsed);
   }, [sidebarCollapsed]);
 
   function toggleCollapsed(id: string) {
