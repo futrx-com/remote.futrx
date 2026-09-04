@@ -61,6 +61,30 @@ A service image using every relevant field:
 }
 ```
 
+A backend image, which needs almost nothing beyond its `plugin/` directory:
+
+```json
+{
+  "id": "backend-playground",
+  "name": "Backend Playground",
+  "description": "Developer fixture: a Go plugin that exercises every part of the backend API.",
+  "category": "development",
+  "version": "1",
+  "icon": "ui/assets/logo.svg",
+  "type": "backend",
+  "scopes": ["global", "project"],
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 10000
+  },
+  "ui": {
+    "entry": "scripts/main.js",
+    "styles": ["style/playground.css"],
+    "views": { "panel": "views/panel.html", "console": "views/console.html" }
+  }
+}
+```
+
 A UI image, which needs far less:
 
 ```json
@@ -91,16 +115,17 @@ A UI image, which needs far less:
 | `category` | string | no | Free text, e.g. `database`, `cache`, `development`. |
 | `version` | string | no | Shown next to the name. A string, not a number — `"8.0"`, `"16"`. |
 | `icon` | string | no | Built-in key or a path into this image's `ui/`. See [09 — Styling and icons](09-styling-and-icons.md). |
-| `type` | string | no | `service` (default) or `ui`. See [03 — Image types](03-image-types.md). |
+| `type` | string | no | `service` (default), `ui`, or `backend`. See [03 — Image types](03-image-types.md). |
 | `scopes` | string[] | yes | Any of `global`, `project`. At least one. |
 | `base` | string | no | LXD image for a dedicated global container. Default `ubuntu:24.04`. `service` only. |
-| `port` | object | for `service` | See below. Forbidden on `ui`. |
+| `port` | object | for `service` | See below. Forbidden on `ui` and `backend`. |
 | `env` | object[] | no | Install-time inputs. See below. |
-| `service` | string | no | systemd unit name inside the container. Forbidden on `ui`. |
+| `service` | string | no | systemd unit name inside the container. Forbidden on `ui` and `backend`. |
 | `connection` | object | no | Maps env vars to user/password/database. See below. |
 | `install` | string | no | Install-script filename. Default `install.sh`. Ignored for `ui`. |
-| `healthcheck` | object | no | `{ "command": "…" }` run inside the container. Forbidden on `ui`. |
+| `healthcheck` | object | no | `{ "command": "…" }` run inside the container. Forbidden on `ui` and `backend`. |
 | `ui` | object | no | Overrides what is loaded from `ui/`. See below. |
+| `backend` | object | no | Overrides the defaults for the Go plugin in `plugin/`. See below. |
 
 ### `port`
 
@@ -167,6 +192,25 @@ what the entry module then does.
 Every declared path must exist and must stay inside `ui/`. A typo fails
 `NewRegistry()` at startup, not in someone's browser.
 
+### `backend`
+
+Optional, and only meaningful when the image ships a `plugin/` directory —
+which, exactly like `ui/`, is what opts the image in. There is nothing to name
+here because the layout is fixed: the plugin is `plugin/`, and it is
+`package main`.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `access` | string | `registered` | `registered` — any signed-in user may call the plugin; `admin` — administrators only. |
+| `timeoutMs` | int | `15000` | Bounds one call. A plugin that has not answered by then fails that call and keeps running. |
+
+`access` is the only capability control the platform enforces on a plugin's
+behalf. Anything finer is the plugin's own job, using `Request.Caller` — see
+[15 — Backend plugins](15-backend-plugins.md).
+
+Declaring `backend` without a `plugin/` directory fails `NewRegistry()`, as
+does an unknown `access` value or a negative `timeoutMs`.
+
 ## Validation rules
 
 Enforced in `registry.go:validate` and `registry.go:loadImage`:
@@ -179,8 +223,13 @@ Enforced in `registry.go:validate` and `registry.go:loadImage`:
   `install` must exist.
 - For `ui`: `port`, `service`, and `healthcheck` must all be absent, and a
   `ui/` directory must exist.
+- For `backend`: `port`, `service`, and `healthcheck` must all be absent, and a
+  `plugin/` directory must exist.
 - Every path in the `ui` block must exist inside `ui/`.
 - A `ui/` directory that exists must contain at least one file.
+- A `plugin/` directory that exists must contain at least one `package main`
+  Go file, and must not contain its own `go.mod` or `go.sum` — the server
+  generates those.
 
 ## Reserved directory names
 

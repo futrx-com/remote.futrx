@@ -12,10 +12,12 @@ images/
     image.json       metadata
     install.sh       provisioner, run inside a container
     ui/              browser extension (optional)
+    plugin/          Go backend, compiled and run on the host (optional)
   postgresql/
   redis/
-  ui-playground/     fixture: extension only, no container
-  ui-sandbox/        fixture: extension only, no container
+  ui-playground/       fixture: extension only, no container
+  ui-sandbox/          fixture: extension only, no container
+  backend-playground/  fixture: Go plugin plus the UI that calls it
 ```
 
 The whole tree is compiled into the server binary with `//go:embed images` in
@@ -28,27 +30,30 @@ Adding an image requires **no code changes**. `NewRegistry()` walks the
 directory at startup, validates every entry, and the new app appears in the
 Applications tab.
 
-## The two halves of an image
+## The three halves of an image
 
 ```
-                    image.json
-                   /          \
-        install.sh              ui/
-             |                    |
-   runs in a container      runs in the browser
-   (a service on a port)    (buttons, panels, popups)
+                         image.json
+                    /         |         \
+          install.sh        plugin/        ui/
+               |               |             |
+     runs in a container   runs on the   runs in the browser
+     (a service on a port)  host as a    (buttons, panels, popups)
+                            process
 ```
 
-An image may have either half or both:
+An image may have any of them, or all three:
 
-| Image | `install.sh` | `ui/` | What it is |
-|---|---|---|---|
-| `postgresql` | yes | no | a database |
-| `mysql` | yes | yes | a database that also adds a "Connect" action |
-| `ui-playground` | no | yes | a pure UI plugin |
+| Image | `install.sh` | `plugin/` | `ui/` | What it is |
+|---|---|---|---|---|
+| `postgresql` | yes | no | no | a database |
+| `mysql` | yes | no | yes | a database that also adds a "Connect" action |
+| `ui-playground` | no | no | yes | a pure UI plugin |
+| `backend-playground` | no | yes | yes | a Go backend and the UI that calls it |
 
 The `type` field in `image.json` says which shape it is — see
-[03 — Image types](03-image-types.md).
+[03 — Image types](03-image-types.md). `plugin/` is covered in full by
+[15 — Backend plugins](15-backend-plugins.md).
 
 ## The moving parts
 
@@ -56,13 +61,19 @@ The `type` field in `image.json` says which shape it is — see
 
 | Layer | File | Responsibility |
 |---|---|---|
-| integration | `containers/applications/registry.go` | loads and validates the embedded catalog; serves `ui/` asset bytes |
+| integration | `containers/applications/registry.go` | loads and validates the embedded catalog; serves `ui/` asset bytes and `plugin/` source |
 | integration | `containers/applications/installer.go` | everything `lxc`-facing: containers, install scripts, proxy devices |
+| integration | `pluginhost/` | everything toolchain- and process-facing: compiling `plugin/`, running it, forwarding calls |
+| contract | `pkg/appplugin` | the types and interface a plugin is written against |
 | service | `service/applications/service.go` | policy: install, lifecycle, which extensions a caller may load |
+| service | `service/applications/backend.go` | policy: who may call a plugin, and when |
 | transport | `transport/http/handlers/applications_handler.go` | routes, authorization, JSON |
+| transport | `transport/http/handlers/applications_backend_handler.go` | forwarding a request to a plugin and its answer back |
 
 The layering is strict: transport → service → integration. A handler never
-runs `lxc`; the registry never decides who may see what.
+runs `lxc` and never launches a process; the registry never decides who may see
+what. `pkg/appplugin` sits outside the layering on purpose: it is the public
+contract, so it depends on nothing but the standard library.
 
 ### Frontend
 
@@ -72,6 +83,7 @@ runs `lxc`; the registry never decides who may see what.
 | `app/extensions/extensionApi.ts` | builds the `remote` object handed to each extension |
 | `state/stores/extensions/extensionStore.ts` | owns registered contributions and install visibility |
 | `state/hooks/extensions/extensionContributionState.ts` | decides which contributions apply to a surface |
+| `app/extensions/extensionBackend.ts` | resolves which running plugin a call reaches, and calls it |
 | `config/extensions.ts` | the closed set of slot names and their icon sizing |
 | `app/extensions/extensionPopup.ts` | the modal an extension can open |
 | `ui/primitives/ExtensionSlot.tsx` | renders a slot's contributions into plain DOM nodes |
@@ -96,6 +108,10 @@ runs `lxc`; the registry never decides who may see what.
 6. A slot renders it             <ExtensionSlot name="chat.header.actions" />
                                  → contributions filtered by scope + `when`
                                  → each draws into its own <div>
+                                          |
+7. It calls its own backend      remote.backend.call("health")
+                                 → /api/applications/<instance>/backend/health
+                                 → the image's compiled Go plugin
 ```
 
 Steps 2–6 repeat whenever the installed set changes — install, uninstall,

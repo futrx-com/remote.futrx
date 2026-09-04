@@ -237,3 +237,7 @@ change here. See [13 — Security model](13-security-model.md).
 - Add an install script so the plugin also provisions something —
   [04 — Install scripts](04-install-scripts.md), and switch `type` to
   `service`.
+- Add a `plugin/` directory so it can do work on the *server* and not only in
+  the browser — [15 — Backend plugins](15-backend-plugins.md). That is the step
+  from "a button that calls an existing endpoint" to "a button that calls an
+  endpoint this image brought with it".

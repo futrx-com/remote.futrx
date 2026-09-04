@@ -111,19 +111,34 @@ func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Everything else operates on a specific global instance: admin only.
-	if !h.requireAdmin(w, r) {
-		return
-	}
-	parts := strings.SplitN(rest, "/", 2)
-	id := strings.TrimSpace(parts[0])
+	id, action := parseApplicationResource(rest)
 	if id == "" {
 		httptransport.SendErr(w, http.StatusBadRequest, "missing application id")
 		return
 	}
-	action := ""
-	if len(parts) == 2 {
-		action = parts[1]
+
+	// Calling a global instance's plugin is the one thing on a global app that
+	// is not administration: the plugin is the server-side half of an
+	// extension that renders for every signed-in user, so it is gated by the
+	// image's own access level instead. Managing the app stays admin-only.
+	if path, ok := isBackendPath(action); ok {
+		if !h.requireRegistered(w, r) {
+			return
+		}
+		if h.apps == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "applications unavailable")
+			return
+		}
+		if !h.ensureGlobal(w, r, id) {
+			return
+		}
+		h.serveBackend(w, r, id, path)
+		return
+	}
+
+	// Everything else operates on a specific global instance: admin only.
+	if !h.requireAdmin(w, r) {
+		return
 	}
 	// Global instances only: reject ids that belong to a project.
 	if !h.ensureGlobal(w, r, id) {
@@ -163,12 +178,7 @@ func (h *ApplicationsHandler) HandleProject(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	segs := strings.SplitN(sub, "/", 2)
-	id := strings.TrimSpace(segs[0])
-	action := ""
-	if len(segs) == 2 {
-		action = segs[1]
-	}
+	id, action := parseApplicationResource(sub)
 	if id == "" {
 		httptransport.SendErr(w, http.StatusBadRequest, "missing application id")
 		return
@@ -176,6 +186,10 @@ func (h *ApplicationsHandler) HandleProject(w http.ResponseWriter, r *http.Reque
 	// Ownership guard: the instance must belong to this project so a member of
 	// one project cannot control another project's app by guessing its id.
 	if !h.ensureProject(w, r, id, projectID) {
+		return
+	}
+	if path, ok := isBackendPath(action); ok {
+		h.serveBackend(w, r, id, path)
 		return
 	}
 	h.instanceAction(w, r, id, action)
@@ -354,11 +368,24 @@ func orEmpty(views []serviceapplications.View) []serviceapplications.View {
 	return views
 }
 
+// parseApplicationResource splits the instance id from its optional action.
+// Global and project routes deliberately share this parser so nested backend
+// paths and id trimming cannot drift between the two URL shapes.
+func parseApplicationResource(resource string) (id, action string) {
+	id, action, _ = strings.Cut(resource, "/")
+	return strings.TrimSpace(id), action
+}
+
 func sendAppError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, serviceapplications.ErrNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, serviceapplications.ErrAlreadyInstalled):
+	case errors.Is(err, serviceapplications.ErrNoBackend):
+		httptransport.SendErr(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, serviceapplications.ErrBackendAccess):
+		httptransport.SendErr(w, http.StatusForbidden, err.Error())
+	case errors.Is(err, serviceapplications.ErrAlreadyInstalled),
+		errors.Is(err, serviceapplications.ErrNotRunning):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnknownImage),
 		errors.Is(err, serviceapplications.ErrScope),

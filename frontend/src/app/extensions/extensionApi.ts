@@ -4,7 +4,7 @@ import {
   SLOT_ICON_APPEARANCE,
 } from "../../config/extensions";
 import { API_ROUTES } from "../../config/routes";
-import type { AppImage } from "../../models/application";
+import type { AppBackendInstance, AppImage } from "../../models/application";
 import type {
   ExtensionApi,
   ExtensionButton,
@@ -13,6 +13,7 @@ import type {
   ExtensionSlotContext,
   ExtensionVisibility,
 } from "../../models/extension";
+import { createBackendApi } from "./extensionBackend";
 import { openExtensionPopup } from "./extensionPopup";
 
 const BUTTON_BASE =
@@ -30,6 +31,7 @@ const ICON_BUTTON_BASE =
 export function createExtensionApi(
   image: AppImage,
   visibility: ExtensionVisibility,
+  backends: AppBackendInstance[],
   registry: ExtensionRegistry,
 ): ExtensionApi {
   const views = image.ui?.views ?? {};
@@ -89,6 +91,7 @@ export function createExtensionApi(
       },
     },
     assets: { url: assetUrl },
+    backend: createBackendApi(image, backends),
     log: (...args) => console.info(`[extension:${image.id}]`, ...args),
   };
 }

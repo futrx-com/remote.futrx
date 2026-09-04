@@ -6,28 +6,8 @@ import (
 	"testing"
 )
 
-// fakeStore serves instances from memory; only the list methods are exercised.
-type fakeStore struct {
-	global    []Instance
-	byProject map[string][]Instance
-}
-
-func (f *fakeStore) ListGlobal(context.Context) ([]Instance, error) { return f.global, nil }
-
-func (f *fakeStore) ListProject(_ context.Context, projectID string) ([]Instance, error) {
-	return f.byProject[projectID], nil
-}
-
-func (f *fakeStore) ListAll(context.Context) ([]Instance, error) { return f.global, nil }
-
-func (f *fakeStore) Get(context.Context, string) (Instance, bool, error) {
-	return Instance{}, false, nil
-}
-func (f *fakeStore) Put(context.Context, Instance) error  { return nil }
-func (f *fakeStore) Delete(context.Context, string) error { return nil }
-
 // fakeRegistry answers with UI-bearing images for the ids it was given.
-type fakeRegistry struct{ withUI, withoutUI []string }
+type fakeRegistry struct{ withUI, withBackend, withoutUI []string }
 
 func (f *fakeRegistry) List() []Image { return nil }
 
@@ -35,6 +15,15 @@ func (f *fakeRegistry) Get(id string) (Image, bool) {
 	for _, candidate := range f.withUI {
 		if candidate == id {
 			return Image{ID: id, Name: id, Type: KindUI, UI: &ImageUI{Entry: "scripts/main.js"}}, true
+		}
+	}
+	for _, candidate := range f.withBackend {
+		if candidate == id {
+			return Image{
+				ID: id, Name: id, Type: KindBackend,
+				UI:      &ImageUI{Entry: "scripts/main.js"},
+				Backend: &ImageBackend{},
+			}, true
 		}
 	}
 	for _, candidate := range f.withoutUI {

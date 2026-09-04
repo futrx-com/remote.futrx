@@ -1,0 +1,17 @@
+<div class="bp-console">
+  <section data-section="console">
+    <p class="bp-target" data-field="target"></p>
+    <div class="bp-actions bp-actions-wrap" data-field="actions"></div>
+    <p class="bp-target">Results append newest-first, labelled with the call they came from — several can be in flight at once.</p>
+    <div class="bp-log" data-field="log"></div>
+    <div class="bp-actions">
+      <button type="button" class="bp-call" data-action="selftest">Run backend self-test</button>
+      <button type="button" class="bp-call" data-action="clear">Clear</button>
+    </div>
+  </section>
+
+  <section data-section="selftest" hidden>
+    <p class="bp-target" data-field="summary"></p>
+    <ul class="bp-results" data-field="results"></ul>
+  </section>
+</div>

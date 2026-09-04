@@ -85,6 +85,10 @@ type Dependencies struct {
 	AppRegistry  serviceapplications.Registry
 	AppInstaller serviceapplications.Installer
 	AppPorts     serviceapplications.PortAllocator
+	// AppBackends runs the Go plugins images ship in their plugin/ directory.
+	// Leaving it nil keeps every other application capability working and
+	// reports backend calls as unavailable.
+	AppBackends serviceapplications.BackendHost
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -293,6 +297,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			deps.AppInstaller,
 			projectContainersAdapter{projects: projectService},
 			deps.AppPorts,
+			serviceapplications.WithBackendHost(deps.AppBackends),
 		)
 	}
 	pushNotifier.push = pushService

@@ -7,11 +7,18 @@ particular whether it touches a container at all.
 |---|---|---|
 | `service` (default) | Runs software on a port under systemd | `port.internal`, an install script |
 | `ui` | Nothing in any container — turns on the image's browser extension | a `ui/` directory |
+| `backend` | Nothing in any container — compiles and runs the image's Go plugin on the host | a `plugin/` directory |
 
 The Go type is `Kind` in
 [`service/applications/model.go`](../../../../../service/applications/model.go).
 Omitting `type` means `service`, so every image written before this field
 existed keeps working unchanged.
+
+`type` says what the image's *payload* is, not what it may carry. A `ui/`
+directory works on any type, and so does `plugin/` — a `service` image can
+provision MySQL, add a "Connect" button, and run a Go plugin that answers the
+button's queries. `type` only decides whether installing it has to reach a
+container.
 
 ## `service`
 
@@ -121,13 +128,58 @@ them would be showing zeros. It says instead:
 and the uninstall confirmation says nothing about host ports, because none is
 released.
 
+## `backend`
+
+A backend image installs nothing in a container either. Its payload is the Go
+source under `plugin/`, which the server compiles and runs as a child process,
+one per installed instance.
+
+Installing one:
+
+- creates **no container**, at either scope;
+- allocates **no host port** and creates **no proxy device**;
+- runs **no install script**;
+- compiles the image's `plugin/` (cached by fingerprint) and starts it;
+- works on a host with no container runtime, but needs a **Go toolchain**.
+
+The instance is stored with `internalPort: 0`, `externalPort: 0`, and an empty
+`containerName`, exactly as a `ui` image is.
+
+### What start / stop / uninstall mean
+
+Unlike a UI image, there is a real process here, so these move it:
+
+| Action | Effect |
+|---|---|
+| Stop | The process is killed. Its `DataDir` is kept, and calls report the app is not running. |
+| Start | The process is started again, with the same `DataDir`. |
+| Uninstall | The process is killed and its `DataDir` is deleted. |
+| Set port | Rejected with `ErrNotSupported` — there is no port. |
+
+A server restart needs no sweep: the next call to a plugin starts it.
+
+### What the Applications tab shows
+
+Like a UI image, a backend image's installed row has no port row and no
+credentials panel. It says instead:
+
+> Backend extension — a Go plugin runs on the server, not in a container.
+
+See [15 — Backend plugins](15-backend-plugins.md) for the contract, the build,
+and the failure modes.
+
 ## Choosing a type
 
 ```
 Does installing it need to run software in a container?
 ├── yes → "service"        (declare port.internal and an install script)
-└── no  → "ui"             (ship a ui/ directory; declare no port)
+└── no
+    ├── does it need server-side code?  → "backend"   (ship a plugin/ directory)
+    └── is it only browser code?        → "ui"        (ship a ui/ directory)
 ```
+
+Then add `ui/` or `plugin/` to it as needed — neither is restricted to the type
+named after it.
 
 ## The gap: install script, no service
 
@@ -135,7 +187,7 @@ There is currently no type for "run an install script in the project's
 container, but expose no port and no systemd unit" — installing a CLI tool into
 a workspace, say. Modelling that as `service` forces a port you do not want.
 
-If you need it, the shape would be a third kind (`tool`: install script,
+If you need it, the shape would be a fourth kind (`tool`: install script,
 project scope only, no port or unit) and it is a small addition to
 `Kind`, `validate`, and `Service.Install`. It has not been added because
 nothing in the catalog needs it yet.

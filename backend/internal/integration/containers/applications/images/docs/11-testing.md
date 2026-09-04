@@ -11,9 +11,19 @@ cd backend && go test ./internal/integration/containers/applications/
 ```
 
 This catches: a mismatched `id`, a missing `name`, an invalid `type` or
-`scopes`, a `service` image with no port or no install script, a `ui` image
-declaring a port, a `ui` block naming a file that does not exist, and an empty
-`ui/` directory.
+`scopes`, a `service` image with no port or no install script, a `ui` or
+`backend` image declaring a port, a `ui` block naming a file that does not
+exist, an empty `ui/` directory, and a `plugin/` that is not a `package main`
+program or that carries its own `go.mod`.
+
+Plugin source is also compiled by the repository's own build, because a
+`plugin/` directory is an ordinary package inside this module:
+
+```bash
+cd backend && go build ./... && go vet ./...
+```
+
+A plugin that does not compile fails there, not on someone's server.
 
 A malformed image fails the build — it never reaches a browser as a 404.
 
@@ -23,14 +33,32 @@ A malformed image fails the build — it never reaches a browser as a 404.
 cd backend
 go test ./internal/integration/containers/applications/   # catalog + installer
 go test ./internal/service/applications/                  # scoping + policy
+go test ./internal/integration/pluginhost/                # compiling and running plugins
+go test ./pkg/appplugin/...                               # the plugin SDK
 go build ./... && go vet ./...
 ```
 
 | File | Covers |
 |---|---|
 | `registry_test.go` | catalog loading, image kinds, `ui/` discovery, the declared `ui` manifest, asset path traversal, reserved directories |
+| `registry_plugin_test.go` | `plugin/` discovery and every layout the registry refuses |
 | `installer_test.go` | which `lxc` commands each scope issues — and, crucially, which it must **not** |
 | `service/applications/ui_extensions_test.go` | which extensions a caller may load, and their install scope |
+| `service/applications/backend_test.go` | who may call a plugin, when, and what lifecycle does to its process |
+| `pluginhost/host_test.go` | compiling, launching, one process per instance, restart, timeout, panic isolation, data retention |
+| `pluginhost/builder_test.go` | fingerprinting and the generated module files |
+| `pluginhost/catalog_test.go` | the shipped `backend-playground`, compiled and called end to end |
+| `pkg/appplugin/mux_test.go` | route matching, method fallbacks, request helpers |
+| `handlers/applications_backend_handler_test.go` | which headers cross the boundary in each direction |
+
+`pluginhost` tests compile real plugins with the Go toolchain, so they take
+tens of seconds on a cold cache. `-short` skips exactly those:
+
+```bash
+go test -short ./internal/integration/pluginhost/
+```
+
+They also skip themselves on a host with no Go toolchain rather than failing.
 
 `installer_test.go` runs against a fake `command.Runner` that records every
 invocation, so it asserts on absence as well as presence: a project-scope
@@ -50,6 +78,7 @@ npm run build     # tsc -b + vite; type errors fail here
 |---|---|
 | `state/stores/extensions/extensionStore.test.ts` | ordering, unknown slots, `when` predicates, disposal, `removeImage`, and all the scoping rules |
 | `config/extensions.test.ts` | slot names are unique, and every slot declares an icon appearance |
+| `app/extensions/extensionBackend.test.ts` | which running plugin a call resolves to, and the URL it builds |
 
 Run one file directly while iterating:
 
@@ -74,6 +103,10 @@ checks, pass/fail each. This is the cheapest regression check after changing
 `extensionApi.ts`, because it exercises the *served* assets and the *real* API
 object rather than a test double.
 
+`backend-playground` ships the same thing for the other half: fourteen checks
+against a real plugin process, over the real route. Run it after changing
+`pkg/appplugin`, `pluginhost`, or the backend handler.
+
 See [10 — Fixtures](10-fixtures.md).
 
 ## Manual verification
@@ -88,8 +121,10 @@ cd frontend && npm run dev
 
 Then work through the fixture matrix in [10 — Fixtures](10-fixtures.md).
 
-Remember: **editing anything under `ui/` requires a backend rebuild**, because
-the assets are embedded in the binary. `npm run dev` will not pick them up.
+Remember: **editing anything under `ui/` or `plugin/` requires a backend
+rebuild**, because both are embedded in the binary. `npm run dev` will not pick
+them up. A `plugin/` edit is then recompiled by the server on the next install
+or start, because the build fingerprint changed.
 
 ### What is worth checking by hand
 
@@ -102,6 +137,8 @@ the assets are embedded in the binary. `npm run dev` will not pick them up.
 | Lifecycle | Stop / start / uninstall, without reloading |
 | Failure isolation | Make an extension throw; confirm the surface still renders |
 | Theming | Toggle light/dark; confirm your CSS follows |
+| A plugin is a process | Watch `backend-playground`'s pid across stop and start |
+| A plugin survives a panic | Click **panic (survivable)**, then check the pid |
 
 ## Testing an install script
 
@@ -118,6 +155,9 @@ therefore also proves idempotency. See
 Be aware of the gaps rather than assuming coverage:
 
 - **Install scripts are never executed** by any test.
+- **A plugin's own behaviour is only as tested as the plugin.** The platform
+  tests the contract and the host; what an image's `plugin/` actually does is
+  covered by whatever tests that image ships.
 - **The HTTP handlers have no request-level tests** for the applications
   routes; only `uiAssetContentType` is unit-tested. The endpoints are exercised
   by hand.
@@ -134,4 +174,5 @@ cd frontend && npm run build && npm test
 ```
 
 Then, if you touched the extension surface, install `ui-playground` and run its
-self-test.
+self-test; if you touched the plugin contract, install `backend-playground` and
+run its backend self-test.

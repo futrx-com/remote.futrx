@@ -93,6 +93,7 @@ class ExtensionHost {
         createExtensionApi(
           image,
           this.visibilityOf(extension),
+          extension.backends ?? [],
           this.registry,
         ),
       );

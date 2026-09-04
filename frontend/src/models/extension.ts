@@ -1,4 +1,10 @@
-import type { AppImage, AppInstance, AppScope } from "./application";
+import type {
+  AppBackendDescriptor,
+  AppBackendInstance,
+  AppImage,
+  AppInstance,
+  AppScope,
+} from "./application";
 
 export interface ExtensionSlotCatalog {
   sidebarHeaderActions: "sidebar.header.actions";
@@ -103,6 +109,58 @@ export interface ExtensionPopupHandle {
   close: () => void;
 }
 
+/**
+ * Which running plugin a call should reach. An image installed in more than
+ * one place runs a process per install, so a call that does not say resolves
+ * to the global one.
+ */
+export interface ExtensionBackendTarget {
+  /** Address one instance explicitly, by the id from `remote.backend.instances`. */
+  instanceId?: string;
+  /**
+   * Prefer the instance installed in this project, falling back to the global
+   * one. Pass `context.projectId` from a slot and a call follows the surface
+   * the user is on.
+   */
+  projectId?: string;
+}
+
+export interface ExtensionBackendCallOptions extends ExtensionBackendTarget {
+  /** Defaults to GET, or POST when a body is given. */
+  method?: string;
+  /** Sent as JSON unless it is already a string. */
+  body?: unknown;
+  query?: Record<string, string | number | boolean | undefined>;
+  headers?: Record<string, string>;
+  signal?: AbortSignal;
+}
+
+/**
+ * The image's own Go plugin. Present on every extension; `available` is false
+ * when the image ships no `plugin/` directory or none of its installs are
+ * running, which is the case an extension should degrade around rather than
+ * throw on.
+ */
+export interface ExtensionBackendApi {
+  available: boolean;
+  /** Running plugins this extension may call, in install order. */
+  instances: AppBackendInstance[];
+  /** The URL a call would use, for `fetch`, an `<iframe>`, or a download link. */
+  url: (path: string, target?: ExtensionBackendTarget) => string;
+  /** What the plugin says about itself, including the routes it serves. */
+  describe: (target?: ExtensionBackendTarget) => Promise<AppBackendDescriptor>;
+  /** Calls a plugin route and resolves its parsed JSON body. */
+  call: <T = unknown>(
+    path: string,
+    options?: ExtensionBackendCallOptions,
+  ) => Promise<T>;
+  /** Calls a plugin route and resolves the raw `Response`. */
+  fetch: (
+    path: string,
+    options?: ExtensionBackendCallOptions,
+  ) => Promise<Response>;
+}
+
 export interface ExtensionApi {
   apiVersion: number;
   image: Pick<AppImage, "id" | "name" | "version" | "icon">;
@@ -125,6 +183,7 @@ export interface ExtensionApi {
   assets: {
     url: (assetPath: string) => string;
   };
+  backend: ExtensionBackendApi;
   log: (...args: unknown[]) => void;
 }
 

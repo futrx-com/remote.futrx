@@ -1,16 +1,17 @@
 # 10 — Fixtures
 
-Two images exist purely to exercise the extension surface. Both are
-`type: "ui"`, so they install instantly, need no LXD, and create no containers
-— you can run the whole extension system on a laptop.
+Three images exist purely to exercise the extension surface. None of them
+needs LXD or creates a container, so you can run the whole extension system on
+a laptop.
 
-| Fixture | Icon | Purpose |
-|---|---|---|
-| [`ui-playground`](../ui-playground/) | flask | The full surface: every slot, every mechanism, plus an API self-test |
-| [`ui-sandbox`](../ui-sandbox/) | cube | A second extension sharing the same slots, explaining *why* it is visible where it is |
+| Fixture | Icon | Type | Purpose |
+|---|---|---|---|
+| [`ui-playground`](../ui-playground/) | flask | `ui` | The full browser surface: every slot, every mechanism, plus an API self-test |
+| [`ui-sandbox`](../ui-sandbox/) | cube | `ui` | A second extension sharing the same slots, explaining *why* it is visible where it is |
+| [`backend-playground`](../backend-playground/) | server | `backend` | The full server surface: a Go plugin exercising every part of the backend contract, and the UI that calls it |
 
-They order themselves `-100` and `-99`, so the pair always renders
-flask-then-cube in every slot regardless of which loaded first.
+They order themselves `-100`, `-99`, and `-98`, so the set always renders
+flask-then-cube-then-server in every shared slot regardless of load order.
 
 ## UI Playground
 
@@ -65,6 +66,85 @@ warning. That is the assertion working, not a bug.
 Settings → Applications, click the button: ten checks, and you know whether you
 broke the contract.
 
+## Backend Playground
+
+The counterpart to UI Playground on the other side of the wire. It ships a Go
+plugin in [`plugin/main.go`](../backend-playground/plugin/main.go) and a `ui/`
+that calls it, and every route exists to demonstrate one property of the
+contract:
+
+| Route | Demonstrates |
+|---|---|
+| `health` | the plugin is a live process — pid, uptime, and a request counter that climbs |
+| `echo` | what crosses the boundary, and what does not: no cookies, and a caller the browser cannot forge |
+| `instance` | the install the host handed over, redacted by caller — the pattern for anything sensitive |
+| `kv` | state in the process, written by one request and read by the next |
+| `notes` | state on disk, in the `DataDir` that survives stop and start |
+| `compute` | real Go work on the server, which is the reason to have a backend at all |
+| `slow` | the image's `timeoutMs`, from the caller's side |
+| `boom` | a panic: one failed call, and the same pid afterwards |
+| `admin` | a plugin authorizing its own callers, beyond the image's `access` level |
+
+### Where it appears
+
+- A **server icon** in the chat header and the composer, opening the console.
+- A **Console** button on its own application card.
+- A **panel** under the applications list showing live plugin health and the
+  route table the plugin itself advertises.
+
+### The plugin console
+
+The popup runs any of the routes above and appends the raw answer to a log,
+newest first, each entry labelled with the call it came from. That labelling
+matters: several calls can be in flight at once, they land in completion order
+rather than click order, and a shared unlabelled pane would show whichever
+finished last and name none of them.
+
+Its buttons are in two groups, because three of them are *supposed* to fail and
+a red result from an unmarked button reads as a broken plugin:
+
+| Button | Expected |
+|---|---|
+| `panic` | fails with the panic message; `health` afterwards shows the same pid |
+| `timeout (11s)` | fails after the image's 10s `timeoutMs`; the next call still works |
+| `unknown route` | `404` from the plugin's mux |
+
+They are dashed, grouped under "Meant to fail", and their results are logged in
+amber and tagged `expected` rather than in red. Watching the pid stay the same
+across all three is the whole failure-isolation claim in one screen.
+
+(`admin only` sits with the ordinary routes: it answers JSON for an
+administrator and `403` for everyone else, so whether it "fails" depends on who
+is asking — which is the point of it.)
+
+### The backend self-test
+
+The panel and the console both have **Run backend self-test**: fourteen checks
+asserting the contract from inside a real extension, against a real plugin
+process, over the real route.
+
+| Check | What it proves |
+|---|---|
+| a running backend is available | install gating reaches `remote.backend` |
+| describe reports version and routes | the discovery half of the contract |
+| health answers from a live process | the plugin started and connected |
+| the same process serves consecutive calls | one process per instance, and it is long-lived |
+| method, query, and body arrive | the request is forwarded faithfully |
+| the caller is stamped by the server | authorization has something to trust |
+| the session cookie is withheld | a plugin cannot act as its caller |
+| in-memory state survives between calls | the process is not per-request |
+| the data directory is writable | `DataDir` works and is the plugin's own |
+| real Go work runs on the server | `fib(30)` and a prime sieve, computed host-side |
+| the instance is this image | `Init` handed over the right install |
+| an unknown route is refused | the mux, and `404` rather than a hang |
+| a wrong method is refused | `405` rather than a silent `GET` |
+| a panic costs one request, not the process | the pid is unchanged afterwards |
+
+**Run it after changing anything in `pkg/appplugin`, `internal/integration/pluginhost`,
+or the backend routes.** It is the browser-side counterpart to
+`TestBackendPlaygroundRunsFromTheEmbeddedCatalog`, which asserts the same
+things without a browser.
+
 ## UI Sandbox
 
 Deliberately smaller. It contributes a cube icon to the same five chrome slots,
@@ -87,6 +167,9 @@ Install them at **different scopes**:
 1. Settings → Applications → install **UI Playground** (global).
 2. Create two projects, *alpha* and *beta*, with a chat in each.
 3. Alpha's settings → Applications → install **UI Sandbox** (project scope).
+4. Settings → Applications → install **Backend Playground** (global). The
+   first install compiles it, so it takes a few seconds; every later start is
+   instant.
 
 Then:
 
@@ -99,9 +182,27 @@ Then:
 | Alpha's Applications page | Both panels |
 | Stop UI Playground | Every flask disappears, immediately, without a reload |
 | Start it again | They come back |
+| Backend Playground's panel | Live pid and uptime, climbing |
+| Stop Backend Playground | Its icons disappear; a console call would report the app is not running |
+| Start it again | A **new** pid, and uptime back at zero — the process really was killed |
+| Install it in alpha as well | Two entries in `remote.backend.instances`, and alpha's console targets alpha's process |
 
 That table is the whole feature in one pass: install gating, scope gating,
 coexistence, ordering, and lifecycle.
+
+### Testing backend plugins without a browser
+
+`backend-playground` is also exercised headlessly, which is what makes it a
+regression test rather than only a demo:
+
+```bash
+cd backend
+go test ./internal/integration/pluginhost/ -run TestBackendPlayground -v
+```
+
+That compiles the shipped image from the embedded catalog, runs it, and asserts
+the same properties the in-app self-test does. Add `-short` to skip every test
+in the package that needs the Go toolchain.
 
 ## Should fixtures ship in production?
 
@@ -114,16 +215,19 @@ id except their own tests:
 
 - `registry_test.go:TestRegistryLoadsDeclaredImageUI` uses `ui-playground` to
   cover the explicit `ui` manifest path.
-- `registry_test.go:TestRegistryImageKinds` asserts its `type`.
+- `registry_test.go:TestRegistryImageKinds` asserts both playgrounds' `type`.
+- `registry_plugin_test.go:TestRegistryPluginSource` and
+  `pluginhost/catalog_test.go` use `backend-playground`.
 
 Update those if you remove it.
 
 ## Writing your own fixture
 
-If you are adding a slot or an API method, extend `ui-playground` rather than
-making a third fixture — the point of it is to be the one place that exercises
-everything. Add:
+If you are adding a slot or an extension API method, extend `ui-playground`
+rather than making a fourth fixture; if you are adding to the plugin contract,
+extend `backend-playground`. The point of both is to be the one place that
+exercises everything. Add:
 
-- a contribution to the new slot, so it is visibly covered;
-- a self-test check for the new method, so a regression is caught by clicking
-  one button.
+- a contribution to the new slot, or a route for the new capability, so it is
+  visibly covered;
+- a self-test check for it, so a regression is caught by clicking one button.

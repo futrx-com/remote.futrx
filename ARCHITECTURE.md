@@ -312,19 +312,57 @@ extension code stays framework-free, and a throwing entry module, predicate, or
 handler is caught per contribution.
 
 An image also declares a `type`: a `service` image runs software on a port and
-gets a container (a dedicated LXD one at global scope), while a `ui` image
-installs nothing anywhere — its whole payload is the extension, so installing it
-allocates no container, port, or proxy device. That keeps "add a button to the
-UI" from provisioning a Linux container to do it.
+gets a container (a dedicated LXD one at global scope), while `ui` and
+`backend` images install nothing in any container — their whole payload is the
+extension or the plugin, so installing one allocates no container, port, or
+proxy device. That keeps "add a button to the UI" from provisioning a Linux
+container to do it, and both install on a host with no container runtime at
+all.
 
-The trust boundary here is **the build, not the request**: these assets are
-embedded by `//go:embed` next to the SPA and served from
+**Catalog backend plugins.** The other half of "everything is a plugin": an
+image may also ship a `plugin/` directory of Go source
+([`installable-images/docs/15-backend-plugins.md`](installable-images/docs/15-backend-plugins.md)).
+The server compiles it and runs it as a child process over
+**hashicorp/go-plugin**, one process per installed instance, and forwards HTTP
+calls to it at `/api/applications/<instance>/backend/<path>` — which the
+image's own `ui/` reaches through `remote.backend.call(...)`. So an image can
+add a *server-side* feature rather than only a button that calls an endpoint
+someone else had to write. The contract a plugin implements is
+[`pkg/appplugin`](backend/pkg/appplugin/), a dependency-free package of wire
+types; the transport that carries it is `pkg/appplugin/pluginrpc`, deliberately
+go-plugin's net/rpc mode rather than gRPC, since plugins are Go programs
+compiled from a catalog embedded in this same binary and a language-neutral
+protocol would buy nothing but protobuf codegen.
+
+The catalog ships **source, not binaries**, because it is embedded in a server
+that runs on whatever architecture it runs on, and because source is reviewable
+as a diff. [`internal/integration/pluginhost`](backend/internal/integration/pluginhost/)
+materializes an image's `plugin/` beside a copy of the SDK into a generated
+module whose dependency versions are read from the running binary's own build
+info — so `go build` resolves entirely from the module cache the server's build
+already populated, and the normal path needs no network. Binaries are cached by
+a fingerprint of source, SDK, module files, and Go version, so a cold build
+happens once per edit and every later start is a stat and a handshake. Plugins
+restart lazily: a crash, a stop, or a server restart is repaired by the next
+call, which is why the per-instance `DataDir` the host assigns is the only
+storage that survives.
+
+The trust boundary here is **the build, not the request** — for both halves,
+and it has to carry more weight for the plugin one. `ui/` assets are embedded
+by `//go:embed` next to the SPA and served from
 `/api/applications/catalog/<image>/ui/<path>` to signed-in users only, so
 extension code carries exactly the privileges of first-party frontend code and
-is reviewed as such. There is no sandbox and none is implied; the server-side
-guarantee is narrower — the registry resolves asset paths inside one image's
-`ui/` directory and nowhere else, and responses are typed from the file
-extension with `nosniff`.
+is reviewed as such. `plugin/` source is embedded the same way and then *runs
+as a child of the server process*, with the server's privileges and the
+install's secrets, so it is reviewed as backend code. There is no sandbox for
+either and none is implied; the server-side guarantees are narrower and
+specific — the registry resolves asset paths inside one image's `ui/` and
+nowhere else, responses are typed from the file extension with `nosniff`, and
+on the plugin path the caller identity is stamped from the session while the
+caller's own `Cookie` and `Authorization` headers are withheld, so a plugin can
+authorize a user without being able to act as them. Process isolation buys
+robustness rather than containment: a panicking or hanging plugin costs one
+call, not the server.
 
 **Agent authentication UI.** The frontend loads ordered module metadata and a
 normalized auth snapshot from `GET /api/agent-auth`, then subscribes to

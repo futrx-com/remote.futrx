@@ -57,7 +57,15 @@ GET /api/applications/catalog/mysql/ui/scripts/main.js
 |---|---|
 | `Content-Type` | derived from the file extension (see below) |
 | `X-Content-Type-Options` | `nosniff` |
-| `Cache-Control` | `private, max-age=300` |
+| `Cache-Control` | `private, no-cache` |
+| `ETag` | strong validator over the asset's bytes |
+
+`no-cache` means "cache it, but revalidate", not "do not cache". A conditional
+request answers `304` from memory. The assets are compiled into the binary, so
+their URLs never change when their content does — a timed cache would serve a
+stale extension for its whole lifetime after a rebuild, and for an ES module
+the SPA imports, an author editing `ui/` would see their old code with nothing
+to tell them why. Revalidating makes a rebuild visible on the next reload.
 
 Types are pinned from the extension, never sniffed: `.js`/`.mjs` →
 `text/javascript`, `.css` → `text/css`, `.html` → `text/html`, `.json` →
@@ -88,9 +96,24 @@ registered user.
     "image": { "id": "ui-sandbox", "name": "UI Sandbox", "type": "ui", … },
     "global": false,
     "projectIds": ["20336ed6ab63"]
+  },
+  {
+    "image": { "id": "backend-playground", "type": "backend",
+               "backend": { "access": "registered", "timeoutMs": 10000 }, … },
+    "global": true,
+    "projectIds": ["20336ed6ab63"],
+    "backends": [
+      { "instanceId": "9f1c2ab40e77", "scope": "global" },
+      { "instanceId": "3d5e81c6aa02", "scope": "project", "projectId": "20336ed6ab63" }
+    ]
   }
 ]
 ```
+
+`backends` lists the running plugin processes the extension may call. An image
+installed in several places runs one process per install, so this is what lets
+`remote.backend` address the right one; it is absent for images that ship no
+`plugin/`.
 
 Included only when the image has a `ui/` **and** has a **running** instance
 that is either global or in a project the caller can see. Visible projects come
@@ -139,6 +162,72 @@ Identical set, under a project, available to any **member** of that project:
 Membership is checked by `project_handler.go` before delegating. The handler
 then verifies the instance actually belongs to *this* project, so a member of
 one project cannot control another's app by guessing its id.
+
+## Backend plugin routes
+
+An instance whose image ships a `plugin/` directory is reachable at a `backend`
+sub-path. The bare prefix describes the plugin; anything deeper is forwarded to
+it verbatim.
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/applications/{id}/backend` | Describe the plugin |
+| *any* | `/api/applications/{id}/backend/{path…}` | Call the plugin |
+| `GET` | `/api/projects/{projectID}/applications/{id}/backend` | Describe |
+| *any* | `/api/projects/{projectID}/applications/{id}/backend/{path…}` | Call |
+
+Calling a plugin on a **global** instance is the one action there that is not
+admin-only. The plugin is the server side of an extension that renders for
+every signed-in user, so managing the app stays admin-only while calling it
+requires only a session — narrowed to administrators when the image declares
+`"backend": { "access": "admin" }`. Project routes require membership, checked
+before delegation as everywhere else.
+
+### `GET …/backend`
+
+```json
+{
+  "instanceId": "9f1c2ab40e77",
+  "imageId": "backend-playground",
+  "descriptor": {
+    "name": "Backend Playground",
+    "version": "1",
+    "apiVersion": 1,
+    "routes": [
+      { "method": "GET", "path": "health", "description": "Process identity and uptime" }
+    ]
+  },
+  "access": "registered",
+  "timeoutMs": 10000
+}
+```
+
+### `… /backend/{path…}`
+
+The request is forwarded with its method, path, query, body, and headers. Two
+things are **not** forwarded: `Cookie` and `Authorization`. The caller is
+supplied separately, resolved from the session, so a plugin can authorize a
+caller without being able to act as them.
+
+Request bodies are capped at 1 MiB.
+
+The plugin's answer becomes the HTTP response as-is, minus `Set-Cookie` and
+hop-by-hop headers, and always with `X-Content-Type-Options: nosniff`. A plugin
+that sets no status answers `200`; one that sets no content type answers
+`application/octet-stream`.
+
+```
+POST /api/applications/9f1c2ab40e77/backend/kv/greeting
+Content-Type: application/json
+
+{"value":"hello"}
+```
+
+```json
+{ "key": "greeting", "value": "hello" }
+```
+
+The full contract is [15 — Backend plugins](15-backend-plugins.md).
 
 ## Payloads
 
@@ -213,11 +302,12 @@ has authorized:
 | `400` | unknown image, unsupported scope, missing project id, missing required env, port out of range |
 | `401` | no valid session |
 | `403` | admin-only route, non-admin caller |
-| `404` | unknown instance, wrong scope for the route, asset not found or out of bounds |
+| `403` | an `access: admin` plugin and a non-admin caller |
+| `404` | unknown instance, wrong scope for the route, asset not found or out of bounds, the image ships no plugin |
 | `405` | wrong method |
-| `409` | this image is already installed in this scope |
-| `500` | anything else, including install-script failure |
-| `503` | applications unavailable (no container runtime configured) |
+| `409` | this image is already installed in this scope; a plugin call while the app is stopped |
+| `500` | anything else, including install-script failure, a plugin that failed to compile, and a call that timed out |
+| `503` | applications unavailable (no container runtime configured), or no plugin host |
 
 Bodies are `{"error": "…"}`. An install-script failure includes the tail of the
 script's output, which is what the UI shows on the instance row.

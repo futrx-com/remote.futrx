@@ -81,11 +81,25 @@ func loadImage(id string) (svc.Image, []byte, error) {
 	}
 	img.UI = ui
 
-	// A UI image installs nothing in a container, so it has no install script
-	// to read — its ui/ directory is the entire payload.
+	backend, err := loadImagePlugin(catalogFS, path.Join("images", id, pluginDir), img.Backend)
+	if err != nil {
+		return svc.Image{}, nil, fmt.Errorf("backend: %w", err)
+	}
+	img.Backend = backend
+
+	// A UI or backend image installs nothing in a container, so it has no
+	// install script to read: its ui/ or plugin/ directory is the whole
+	// payload. Each kind must actually carry the half it is named for.
 	if !img.Type.NeedsContainer() {
-		if img.UI == nil {
-			return svc.Image{}, nil, fmt.Errorf("type %q requires a ui/ directory", img.Type)
+		switch img.Type {
+		case svc.KindUI:
+			if img.UI == nil {
+				return svc.Image{}, nil, fmt.Errorf("type %q requires a ui/ directory", img.Type)
+			}
+		case svc.KindBackend:
+			if img.Backend == nil {
+				return svc.Image{}, nil, fmt.Errorf("type %q requires a %s/ directory", img.Type, pluginDir)
+			}
 		}
 		return img, nil, nil
 	}

@@ -1,6 +1,10 @@
 package applications
 
-import "context"
+import (
+	"context"
+
+	"github.com/futrx-com/remote.futrx.com/pkg/appplugin"
+)
 
 // Registry provides the installable catalog loaded from embedded image
 // definitions.
@@ -38,6 +42,39 @@ type Installer interface {
 	// Expose (re)creates only the host proxy device for an instance, without
 	// re-running the install script. Used for cheap external-port changes.
 	Expose(ctx context.Context, spec InstallSpec) error
+}
+
+// BackendSpec is everything BackendHost needs to run one instance's plugin.
+// It deliberately excludes catalog presentation and persistence-only fields;
+// the host receives only the source identity and the plugin's initialization
+// contract.
+type BackendSpec struct {
+	ImageID  string
+	Instance appplugin.Instance
+}
+
+// BackendHost compiles an image's plugin/ source and runs it as a child
+// process, one per instance, forwarding calls to it. It owns everything
+// go-plugin-facing, so the service layer never launches a process itself.
+//
+// Every method is safe on an instance whose image ships no plugin: the service
+// checks that before calling, but a host that is asked anyway must not create
+// one.
+type BackendHost interface {
+	// Ensure builds the plugin if no current binary is cached, starts a
+	// process for the instance, and returns what the plugin says about
+	// itself. It is idempotent: a call against an already-running instance
+	// returns the descriptor it reported at connect time.
+	Ensure(ctx context.Context, spec BackendSpec) (appplugin.Descriptor, error)
+	// Call forwards one request, starting the plugin first if it is not
+	// running — which is what makes installed backends survive a server
+	// restart without a start sweep.
+	Call(ctx context.Context, spec BackendSpec, request appplugin.Request) (appplugin.Response, error)
+	// Stop terminates the instance's plugin process, keeping its data
+	// directory so a later start resumes with it.
+	Stop(ctx context.Context, instanceID string) error
+	// Remove stops the plugin and deletes the instance's data directory.
+	Remove(ctx context.Context, instanceID string) error
 }
 
 // Store persists installed instances. Global instances are keyed only by ID;

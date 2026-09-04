@@ -30,7 +30,8 @@ func TestRegistryLoadsCatalog(t *testing.T) {
 			t.Errorf("image %s has invalid type %q", img.ID, img.Type)
 		}
 		// Ports and install scripts belong to images that run something; a UI
-		// image is its ui/ directory and nothing else.
+		// image is its ui/ directory and a backend image its plugin/, and
+		// nothing else.
 		if img.Type.NeedsContainer() {
 			if img.Port.Internal <= 0 {
 				t.Errorf("image %s has invalid internal port %d", img.ID, img.Port.Internal)
@@ -41,10 +42,20 @@ func TestRegistryLoadsCatalog(t *testing.T) {
 			continue
 		}
 		if img.Port.Internal != 0 {
-			t.Errorf("ui image %s declares port %d", img.ID, img.Port.Internal)
+			t.Errorf("%s image %s declares port %d", img.Type, img.ID, img.Port.Internal)
 		}
-		if img.UI == nil {
-			t.Errorf("ui image %s ships no ui/ directory", img.ID)
+		switch img.Type {
+		case svc.KindUI:
+			if img.UI == nil {
+				t.Errorf("ui image %s ships no ui/ directory", img.ID)
+			}
+		case svc.KindBackend:
+			if img.Backend == nil {
+				t.Errorf("backend image %s ships no plugin/ directory", img.ID)
+			}
+			if _, ok := r.PluginSource(img.ID); !ok {
+				t.Errorf("backend image %s exposes no plugin source", img.ID)
+			}
 		}
 	}
 }
@@ -78,10 +89,11 @@ func TestRegistryImageKinds(t *testing.T) {
 		t.Fatalf("load registry: %v", err)
 	}
 	for id, want := range map[string]svc.Kind{
-		"mysql":         svc.KindService,
-		"postgresql":    svc.KindService,
-		"redis":         svc.KindService,
-		"ui-playground": svc.KindUI,
+		"mysql":              svc.KindService,
+		"postgresql":         svc.KindService,
+		"redis":              svc.KindService,
+		"ui-playground":      svc.KindUI,
+		"backend-playground": svc.KindBackend,
 	} {
 		img, ok := r.Get(id)
 		if !ok {
@@ -119,6 +131,12 @@ func TestValidateRejectsBadImages(t *testing.T) {
 			i.Type = svc.KindUI
 			i.Port.Internal = 0
 			i.Healthcheck.Command = "true"
+		}},
+		{"backend image declaring a port", func(i *svc.Image) { i.Type = svc.KindBackend }},
+		{"backend image declaring a service", func(i *svc.Image) {
+			i.Type = svc.KindBackend
+			i.Port.Internal = 0
+			i.Service = "unit"
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

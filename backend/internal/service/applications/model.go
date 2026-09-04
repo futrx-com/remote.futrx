@@ -38,13 +38,21 @@ const (
 	// extension and its whole payload is its ui/ directory. No container, no
 	// port, no proxy device, no install script.
 	KindUI Kind = "ui"
+	// KindBackend installs nothing in any container either: the image's
+	// payload is the Go source under its plugin/ directory, which the server
+	// compiles and runs as a child process. It is what lets an image add a
+	// server-side feature — an endpoint its ui/ calls — instead of only
+	// drawing buttons or provisioning software.
+	KindBackend Kind = "backend"
 )
 
 // Valid reports whether k is a known kind.
-func (k Kind) Valid() bool { return k == KindService || k == KindUI }
+func (k Kind) Valid() bool {
+	return k == KindService || k == KindUI || k == KindBackend
+}
 
 // NeedsContainer reports whether installing this kind has to reach a container.
-func (k Kind) NeedsContainer() bool { return k != KindUI }
+func (k Kind) NeedsContainer() bool { return k == KindService }
 
 // Protocol is the transport a proxy device forwards.
 type Protocol string
@@ -148,6 +156,9 @@ type Image struct {
 	// UI is set when the image ships a ui/ directory. Nil means the image has
 	// no browser-side extension and the SPA loads nothing for it.
 	UI *ImageUI `json:"ui,omitempty"`
+	// Backend is set when the image ships a plugin/ directory. Nil means the
+	// image has no Go plugin and nothing is compiled or run for it.
+	Backend *ImageBackend `json:"backend,omitempty"`
 }
 
 // SupportsScope reports whether the image may be installed at the given scope.

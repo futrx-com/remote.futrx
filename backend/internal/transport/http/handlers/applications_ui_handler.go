@@ -2,6 +2,8 @@ package httphandlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"path"
 	"strings"
@@ -87,13 +89,52 @@ func (h *ApplicationsHandler) serveUIAsset(w http.ResponseWriter, r *http.Reques
 		httptransport.SendErr(w, http.StatusNotFound, "asset not found")
 		return
 	}
-	w.Header().Set("Content-Type", uiAssetContentType(assetPath))
+	// Extension assets are compiled into the binary, so their content changes
+	// only when the server does — but nothing about a URL says so. A timed
+	// cache would therefore serve a stale extension for its whole lifetime
+	// after a rebuild, which for an ES module the SPA imports means an author
+	// editing ui/ sees their old code and no way to tell. Revalidating against
+	// a content ETag keeps the cache and makes a rebuild visible on reload;
+	// the cost is a conditional request that answers 304 from memory.
+	etag := uiAssetETag(data)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "private, no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "private, max-age=300")
+	if etagMatches(r.Header.Get("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", uiAssetContentType(assetPath))
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(data)
 	}
+}
+
+// uiAssetETag is a strong validator over the asset's bytes.
+func uiAssetETag(data []byte) string {
+	sum := sha256.Sum256(data)
+	return `"` + hex.EncodeToString(sum[:16]) + `"`
+}
+
+// etagMatches implements If-None-Match for a single strong validator: a
+// comma-separated candidate list, "*", and weak-prefixed tags all count.
+func etagMatches(header, etag string) bool {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return false
+	}
+	if header == "*" {
+		return true
+	}
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		candidate = strings.TrimPrefix(candidate, "W/")
+		if candidate == etag {
+			return true
+		}
+	}
+	return false
 }
 
 // Unknown extensions remain non-executable instead of relying on sniffing.
