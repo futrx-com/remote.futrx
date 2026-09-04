@@ -66,6 +66,7 @@ type Dependencies struct {
 	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
 	Usage             serviceusage.Repository
+	GlobalSkills      serviceskills.GlobalRepository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -128,6 +129,7 @@ type Services struct {
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
+	GlobalSkills      *serviceskills.GlobalService
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -183,15 +185,25 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxResolver = chatTmuxResolver{client: deps.TmuxClient, validName: deps.ValidTmuxName}
 	}
 
+	globalSkillService := serviceskills.NewGlobalService(deps.GlobalSkills, projectService)
+	chatOptions := []servicechat.Option(nil)
+	if globalSkillService != nil {
+		chatOptions = append(
+			chatOptions,
+			servicechat.WithDefaultSkills(globalSkillDefaults{global: globalSkillService}),
+		)
+	}
 	chatService := servicechat.New(
 		chats,
 		chatProjectResolver{projects: projectService},
 		tmuxResolver,
 		runs,
-		servicechat.WithTranscriptEventSource(deps.Chats),
-		servicechat.WithCopiedEventAppender(chats),
-		servicechat.WithSessionPolicy(agentRuntime),
-		servicechat.WithProviderPolicy(agentRuntime),
+		append([]servicechat.Option{
+			servicechat.WithTranscriptEventSource(deps.Chats),
+			servicechat.WithCopiedEventAppender(chats),
+			servicechat.WithSessionPolicy(agentRuntime),
+			servicechat.WithProviderPolicy(agentRuntime),
+		}, chatOptions...)...,
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
@@ -255,7 +267,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		serviceusersettings.WithProviderCatalog(agentRuntime),
 	)
 	skillService := serviceskills.New(serviceskills.WithProviderCatalog(agentRuntime))
-	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
+	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService).
+		WithGlobalLibrary(globalSkillService)
 	agentCapabilities := agentcapability.New(
 		agentRuntime,
 		projectService,
@@ -300,6 +313,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
+		GlobalSkills:      globalSkillService,
 	}, nil
 }
 
@@ -342,6 +356,34 @@ func (s Services) Reconcile(ctx context.Context) error {
 		return nil
 	}
 	return s.Projects.Reconcile(ctx)
+}
+
+// globalSkillDefaults adapts the global skills library to the chat service's
+// default-skill port so an "always on" skill is preselected in every new
+// project chat.
+type globalSkillDefaults struct {
+	global *serviceskills.GlobalService
+}
+
+func (d globalSkillDefaults) DefaultSkills(
+	ctx context.Context,
+	_ servicechat.ProjectID,
+	provider servicechat.Provider,
+) ([]servicechat.SkillRef, error) {
+	defaults, err := d.global.DefaultSkills(ctx, serviceskills.Provider(provider))
+	if err != nil {
+		return nil, err
+	}
+	refs := make([]servicechat.SkillRef, 0, len(defaults))
+	for _, skill := range defaults {
+		refs = append(refs, servicechat.SkillRef{
+			Name:     skill.Name,
+			Command:  skill.Command,
+			Provider: servicechat.Provider(skill.Provider),
+			Source:   skill.Source,
+		})
+	}
+	return refs, nil
 }
 
 type scheduledPromptExecutor struct {

@@ -120,6 +120,12 @@ export const API_ROUTES = {
   skills: (query: string) => `/api/skills?${query}`,
   agentCapabilities: (query: string) =>
     `/api/agent-capabilities${query ? `?${query}` : ""}`,
+  globalSkills: {
+    collection: "/api/admin/skills-global",
+    item: (name: string) =>
+      `/api/admin/skills-global/${encodeURIComponent(name)}`,
+    import: "/api/admin/skills-global/import",
+  },
   uploads: "/api/uploads",
   users: {
     collection: "/api/admin/users",

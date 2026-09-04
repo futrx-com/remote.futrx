@@ -54,6 +54,9 @@ type ContainerStack struct {
 type ContainerStackOptions struct {
 	AgentInstructions  []byte
 	ImageBuildProgress serviceimage.ProgressReporter
+	// GlobalSkillsDir is the host directory holding the platform-wide skills
+	// library. Empty disables the per-container global skill sync.
+	GlobalSkillsDir string
 }
 
 // ProjectDependencies exposes only the capabilities consumed by project
@@ -111,6 +114,7 @@ func NewContainerStack(
 		profiles,
 		publisher,
 		options.AgentInstructions,
+		containerworkspace.WithGlobalSkillLibrary(options.GlobalSkillsDir),
 	)
 	runtimeAssets := containerruntimeassets.NewAdapter(runner, publisher)
 	images := serviceimage.NewBuilder(

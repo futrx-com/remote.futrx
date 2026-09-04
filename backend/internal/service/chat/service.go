@@ -19,6 +19,9 @@ type Service struct {
 	runs             RunController
 	sessions         SessionPolicy
 	providers        ProviderPolicy
+	// defaultSkills is consulted when a project chat is created, so an admin
+	// can pin a global skill into every new chat.
+	defaultSkills DefaultSkillResolver
 }
 
 // SessionPolicy supplies provider-native behavior from the agent module
@@ -44,6 +47,21 @@ type Option func(*Service)
 func WithCopiedEventAppender(appender CopiedEventAppender) Option {
 	return func(service *Service) {
 		service.copiedEvents = appender
+	}
+}
+
+// DefaultSkillResolver supplies the skills a new project chat starts with.
+// The global skills library implements it so an admin can pin a skill into
+// every new chat without the chat service knowing what a global skill is.
+type DefaultSkillResolver interface {
+	DefaultSkills(ctx context.Context, projectID ProjectID, provider Provider) ([]SkillRef, error)
+}
+
+// WithDefaultSkills registers the resolver consulted when a project chat is
+// created. A nil resolver leaves chats with only the caller's selection.
+func WithDefaultSkills(resolver DefaultSkillResolver) Option {
+	return func(s *Service) {
+		s.defaultSkills = resolver
 	}
 }
 
@@ -145,12 +163,26 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 		ApprovalPolicy:  NormalizeApprovalPolicy(in.ApprovalPolicy),
 		SandboxPolicy:   NormalizeSandboxPolicy(in.SandboxPolicy),
 		ProjectID:       in.ProjectID,
-		SelectedSkills:  NormalizeSelectedSkills(in.SelectedSkills, provider),
+		SelectedSkills:  NormalizeSelectedSkills(s.withDefaultSkills(ctx, in, provider), provider),
 	})
 	if err != nil {
 		return Meta{}, err
 	}
 	return s.withRunning(meta), nil
+}
+
+// withDefaultSkills appends the always-on skills of a project to the caller's
+// selection. Normalization downstream drops anything the caller already
+// picked, so an explicit selection is never duplicated.
+func (s *Service) withDefaultSkills(ctx context.Context, in CreateInput, provider Provider) []SkillRef {
+	if s.defaultSkills == nil || in.ProjectID == "" {
+		return in.SelectedSkills
+	}
+	defaults, err := s.defaultSkills.DefaultSkills(ctx, in.ProjectID, provider)
+	if err != nil || len(defaults) == 0 {
+		return in.SelectedSkills
+	}
+	return append(append([]SkillRef(nil), in.SelectedSkills...), defaults...)
 }
 
 // Fork creates an independent copy of a chat from its latest state: same
