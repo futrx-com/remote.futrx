@@ -80,6 +80,9 @@ func main() {
 
 	// Register application services
 	tmuxClient := tmuxcli.New()
+	// One host collector serves both the server-info page and the resource
+	// policy, so displayed capacity and enforced capacity never disagree.
+	hostCollector := hostinfo.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
 		Projects:          storeSet.Projects,
@@ -93,6 +96,9 @@ func main() {
 		SessionRegistry:   storeSet.SessionRegistry,
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
+		ResourceSettings:  storeSet.Resources,
+		ResourceFleet:     containerStack.Resources,
+		HostCollector:     hostCollector,
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),

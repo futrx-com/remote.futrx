@@ -41,6 +41,7 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | GET, POST | `/api/admin/users` | List or add registered users; admin only |
 | DELETE | `/api/admin/users/{email}` | Remove a user; admin only |
 | PUT | `/api/admin/users/{email}/role` | Promote or demote a user; admin only |
+| GET, PUT | `/api/admin/resources` | Read or change the fleet resource policy; admin only |
 | GET, PATCH | `/api/me/settings` | Read or update current user's appearance and chat defaults |
 | GET | `/api/server/info` | Host, CPU, memory, storage, network, and process snapshot |
 
@@ -120,11 +121,12 @@ whole-catalog timeout.
 | GET, POST | `/api/projects` | List visible projects or create a project |
 | POST | `/api/projects/reorder` | Update project ordering |
 | GET, PATCH, DELETE | `/api/projects/{id}` | Read, rename, or admin-delete a project |
-| POST | `/api/projects/{id}/start` | Start or relaunch a project |
+| POST | `/api/projects/{id}/start` | Start or relaunch a project; `?force=1` skips the aggregate resource guard (admin only) |
 | POST | `/api/projects/{id}/stop` | Stop a project |
 | POST | `/api/projects/{id}/restart` | Force restart or relaunch a project |
 | GET | `/api/projects/{id}/container` | Detailed container inspection |
-| PUT | `/api/projects/{id}/limits` | Set CPU, memory, and disk overrides; admin only |
+| GET | `/api/projects/{id}/resources` | Effective envelope, project overrides, fleet policy, and live usage |
+| PUT | `/api/projects/{id}/resources` | Set or clear CPU, memory, and disk overrides; admin only |
 | POST | `/api/projects/{id}/repair-network` | Reconfigure container networking and reinspect |
 | GET | `/api/projects/{id}/apps` | List externally reachable container listeners |
 | GET | `/api/projects/{id}/agent-browser` | Get Agent Browser core/view status and record activity |
@@ -137,7 +139,7 @@ whole-catalog timeout.
 | DELETE | `/api/projects/{id}/access/{email}` | Remove a member |
 | GET | `/internal/tls-ask?domain=...` | Caddy allow-check for on-demand project certificates |
 
-Every `{id}` project route first requires admin status or project membership. Resource-limit changes and project deletion add an admin-only check.
+Every `{id}` project route first requires admin status or project membership. Resource changes, forced starts, and project deletion add an admin-only check. A start refused by the aggregate resource guard answers `409`; an override above the fleet ceiling answers `400`. See [Resource limits](../02-workspaces/11-resource-limits.md).
 
 ## Chat routes
 

@@ -16,6 +16,8 @@ type Service struct {
 	containerInspector ContainerInspector
 	containerNetwork   ContainerNetwork
 	containerListeners ContainerListeners
+	containerPolicy    ContainerPolicy
+	containerAdmission ContainerAdmission
 
 	// access owns per-project membership and email normalization.
 	access *accessList
@@ -50,6 +52,8 @@ func New(
 		access:             newAccessList(access),
 		secrets:            newSecretStore(secrets, containers.Environment),
 		browsers:           newAgentBrowsers(containers.Browser, repo),
+		containerPolicy:    containers.Policy,
+		containerAdmission: containers.Admission,
 	}
 }
 
@@ -149,7 +153,10 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 	s.access.seed(ctx, m.ID, callerEmail)
 
 	if s.containerLifecycle != nil {
-		if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
+		if err := s.authorizeStart(ctx, m, false); err != nil {
+			return s.repo.SetStatus(ctx, m.ID, StatusError, err.Error())
+		}
+		if err := s.containerLifecycle.Ensure(ctx, s.withEffectiveLimits(ctx, m)); err != nil {
 			log.Printf("projects: ensure %s failed: %v", m.ContainerName, err)
 			return s.repo.SetStatus(ctx, m.ID, StatusError, err.Error())
 		}
@@ -176,58 +183,9 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 
 var resourceSizePattern = regexp.MustCompile(`^[1-9][0-9]*(MiB|GiB|TiB)$`)
 
-// SetContainerLimits validates and persists project-level LXD overrides. The
-// running or stopped container is updated immediately; a missing container
-// retains the desired values in metadata for its next launch.
-func (s *Service) SetContainerLimits(ctx context.Context, id ID, limits ContainerLimits) (ContainerInspect, error) {
-	if !ValidID(id) {
-		return ContainerInspect{}, ErrInvalidID
-	}
-	normalized, err := normalizeContainerLimits(limits)
-	if err != nil {
-		return ContainerInspect{}, err
-	}
-	meta, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return ContainerInspect{}, err
-	}
-
-	if s.containerLifecycle != nil && meta.ContainerName != "" {
-		state, stateErr := s.containerLifecycle.State(ctx, meta.ContainerName)
-		if stateErr != nil {
-			return ContainerInspect{}, stateErr
-		}
-		if state != ContainerStateMissing {
-			if err := s.containerLifecycle.SetResourceLimits(ctx, meta.ContainerName, normalized); err != nil {
-				return ContainerInspect{}, err
-			}
-		}
-	}
-
-	meta, err = s.repo.Update(ctx, id, func(project *Meta) {
-		if limitsEmpty(normalized) {
-			project.ResourceLimits = nil
-			return
-		}
-		copy := normalized
-		project.ResourceLimits = &copy
-	})
-	if err != nil {
-		return ContainerInspect{}, err
-	}
-	if s.containerInspector == nil || meta.ContainerName == "" {
-		return ContainerInspect{Name: meta.ContainerName, LimitOverrides: meta.ResourceLimits}, nil
-	}
-	info, err := s.containerInspector.Inspect(ctx, meta.ContainerName)
-	if err != nil {
-		// The mutation and persistence already succeeded. Keep the response
-		// successful even when the follow-up best-effort snapshot is unavailable.
-		return ContainerInspect{Name: meta.ContainerName, LimitOverrides: meta.ResourceLimits}, nil
-	}
-	info.LimitOverrides = meta.ResourceLimits
-	return info, nil
-}
-
+// normalizeContainerLimits trims and range-checks one per-project override.
+// Grammar only: the fleet ceiling and host-capacity checks live in the
+// resource policy, which this layer consults through ContainerPolicy.
 func normalizeContainerLimits(limits ContainerLimits) (ContainerLimits, error) {
 	limits.CPU = strings.TrimSpace(limits.CPU)
 	limits.Memory = strings.TrimSpace(limits.Memory)
@@ -305,18 +263,24 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 }
 
 func (s *Service) Start(ctx context.Context, id ID) (Meta, error) {
+	return s.StartWithOptions(ctx, id, StartOptions{})
+}
+
+// StartWithOptions converges one project to RUNNING. Force skips the
+// aggregate admission guard; only an admin may set it.
+func (s *Service) StartWithOptions(ctx context.Context, id ID, options StartOptions) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
-	return s.startLocked(ctx, id)
+	return s.startLocked(ctx, id, options)
 }
 
 // startLocked converges one project to RUNNING while the caller owns its
 // run-state lock. Restart uses this directly for a missing instance to avoid
 // recursively acquiring the same non-reentrant mutex.
-func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
+func (s *Service) startLocked(ctx context.Context, id ID, options StartOptions) (Meta, error) {
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Meta{}, err
@@ -326,7 +290,14 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 		if err != nil {
 			return s.setStartError(ctx, id, err)
 		}
-		if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
+		// A container that is already running commits its memory whether or
+		// not this call succeeds; only a real start needs admission.
+		if state != ContainerStateRunning {
+			if err := s.authorizeStart(ctx, m, options.Force); err != nil {
+				return Meta{}, err
+			}
+		}
+		if err := s.containerLifecycle.Ensure(ctx, s.withEffectiveLimits(ctx, m)); err != nil {
 			return s.setStartError(ctx, id, err)
 		}
 		if state == ContainerStateMissing {
@@ -372,7 +343,7 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 				return s.setStartError(ctx, id, err)
 			}
 		}
-		if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
+		if err := s.containerLifecycle.Ensure(ctx, s.withEffectiveLimits(ctx, m)); err != nil {
 			return s.setStartError(ctx, id, err)
 		}
 		s.browsers.stopBeforeUpgrade(ctx, id, m.ContainerName)
@@ -380,7 +351,7 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 			return s.setStartError(ctx, id, err)
 		}
 	}
-	if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
+	if err := s.containerLifecycle.Ensure(ctx, s.withEffectiveLimits(ctx, m)); err != nil {
 		return s.setStartError(ctx, id, err)
 	}
 	if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
@@ -440,7 +411,7 @@ func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
 			return s.repo.SetStatus(ctx, id, StatusError, err.Error())
 		}
 		if state == ContainerStateMissing {
-			return s.startLocked(ctx, id)
+			return s.startLocked(ctx, id, StartOptions{})
 		}
 		if err := s.containerLifecycle.Restart(ctx, m.ContainerName); err != nil {
 			return s.repo.SetStatus(ctx, id, StatusError, err.Error())
@@ -608,9 +579,10 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			} else {
 				converged++
 			}
-			if m.ResourceLimits != nil {
-				if err := s.containerLifecycle.SetResourceLimits(ctx, m.ContainerName, *m.ResourceLimits); err != nil {
-					log.Printf("projects: reconcile resource overrides %s/%s: %v", m.ID, m.ContainerName, err)
+			effective := s.effectiveLimits(ctx, m.ResourceLimits)
+			if !limitsEmpty(effective) {
+				if err := s.containerLifecycle.SetResourceLimits(ctx, m.ContainerName, effective); err != nil {
+					log.Printf("projects: reconcile resource limits %s/%s: %v", m.ID, m.ContainerName, err)
 				}
 			}
 		}

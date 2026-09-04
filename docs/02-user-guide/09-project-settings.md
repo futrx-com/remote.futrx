@@ -44,23 +44,26 @@ The **Settings** tab combines resource limits with project lifecycle controls.
 Only an administrator can save project-specific limits.
 
 1. Open **Settings**.
-2. Enter any overrides you need:
+2. Read the **Resources** panel: the effective CPU, memory, and disk quota,
+   whether each came from a project override or the fleet default, and usage
+   bars showing what the container consumes against those limits.
+3. Enter any overrides you need:
    - **CPU cores**;
    - **Memory**;
    - **Disk quota**.
-3. Leave a field blank to inherit the fleet default.
-4. Review the effective values and host-memory context.
+4. Leave a field blank to inherit the fleet default. Each field shows the fleet
+   maximum you cannot exceed.
 5. Choose **Save limits**.
 
-**Reset to defaults** removes the project overrides. Changes apply live. Lowering memory can terminate container processes. A root-disk quota cannot be smaller than data already stored.
+**Reset to defaults** removes the project overrides. CPU and memory apply live, and lowering memory can terminate container processes. A disk-quota change on a running container is recorded and takes effect on the next restart, which the panel says explicitly. A root-disk quota cannot be smaller than data already stored.
 
-The default resource envelope is 6 CPUs, 4 GiB of memory, and 2,000 processes. The optional disk limit covers the container root disk, not the durable workspace or provider-home bind mounts.
+The fleet default envelope is set by an administrator in **Settings → Resources** and derived from this host's capacity on first run. The disk quota covers the container root disk only, not the durable workspace or provider-home bind mounts, and needs a storage pool that can enforce quotas — the panel says so when yours cannot. See [Resource limits](../02-workspaces/11-resource-limits.md).
 
 ### Start, stop, and force-restart
 
 | Control | When to use it | What happens |
 | --- | --- | --- |
-| **Start project** | The project is stopped, missing, or in error | Remote converges mounts and limits, starts or recreates the container, and runs launch provisioning |
+| **Start project** | The project is stopped, missing, or in error | Remote converges mounts and limits, starts or recreates the container, and runs launch provisioning. A start is refused when running containers would commit more memory than the host has; an administrator then sees **Start anyway (oversubscribe the host)** |
 | **Stop project** | You want to release active compute | The container stops; durable workspace and provider homes remain |
 | **Force restart** | A process is wedged or the project hit its limits | The host kills project processes and boots the container again |
 

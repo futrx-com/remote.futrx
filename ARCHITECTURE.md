@@ -232,6 +232,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
 | Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
 | Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
+| Fleet resource policy | `DATA_DIR/resources.json` | JSON | container defaults, host reserve, per-project ceiling, running-container cap |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
@@ -253,6 +254,7 @@ Containers are **cattle**; durable state lives on the host and is bind-mounted i
   unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
   races.
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) targets **4 GiB memory, 6 CPUs, 2000 processes** and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. Default/profile resource convergence is best-effort because errors from the default `resources.Ensure` path are discarded; explicit per-project overrides fail launch when they cannot be applied. There is **no default disk quota.**
+- **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) carries the fleet resource envelope and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. The envelope itself is **operator policy at runtime** ([`service/resources`](backend/internal/service/resources/), persisted to `DATA_DIR/resources.json`, derived from host capacity on first run) rather than a compiled constant, and an aggregate guard refuses a start that would commit more memory than the host has outside its reserve. Profile convergence on the launch path stays best-effort because errors from `resources.Ensure` are discarded; explicit per-project overrides fail launch when they cannot be applied. The **root-disk quota** needs a btrfs/zfs/lvm/ceph pool; on a `dir` pool it is reported unsupported and skipped. See [Resource limits](docs/02-workspaces/11-resource-limits.md).
 - **Networking:** containers share LXD's default bridge; Caddy reaches them by `<slug>.lxd:<port>` DNS. The bridge has no inter-container ACLs by default.
 - **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, provider runtime assets, and skill links.
 

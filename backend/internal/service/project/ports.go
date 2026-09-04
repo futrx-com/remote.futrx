@@ -36,6 +36,27 @@ type ContainerLifecycle interface {
 	SetResourceLimits(ctx context.Context, containerName string, limits ContainerLimits) error
 }
 
+// ContainerPolicy supplies the fleet-wide resource policy that per-project
+// operations are measured against: the defaults a project inherits, the
+// ceiling an override may not pass, live host capacity, and whether the
+// storage pool can enforce a disk quota at all.
+type ContainerPolicy interface {
+	Policy(ctx context.Context) ContainerPolicySnapshot
+	// Validate rejects an override above the operator ceiling or above what
+	// the host can physically back.
+	Validate(ctx context.Context, limits ContainerLimits) error
+}
+
+// ContainerAdmission is the aggregate guard consulted before a container is
+// launched or started. It exists so a host reboot that autostarts every
+// workspace cannot commit more memory than the host has.
+type ContainerAdmission interface {
+	// AuthorizeStart reports whether one more running container fits.
+	// memoryLimit is the candidate's effective ceiling; an empty value means
+	// "the fleet default". force is the admin escape hatch.
+	AuthorizeStart(ctx context.Context, containerName, memoryLimit string, force bool) error
+}
+
 // ContainerEnvironment applies project secrets to future container sessions.
 type ContainerEnvironment interface {
 	ApplyDiff(ctx context.Context, containerName string, set map[string]string, unset []string) error
@@ -75,4 +96,6 @@ type ContainerDependencies struct {
 	Network     ContainerNetwork
 	Listeners   ContainerListeners
 	Browser     ContainerBrowser
+	Policy      ContainerPolicy
+	Admission   ContainerAdmission
 }
