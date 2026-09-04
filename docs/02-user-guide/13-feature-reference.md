@@ -35,6 +35,8 @@ This is the compact inventory of current Remote behavior. “Page” means the l
 | Thinking | Select one of the efforts reported for the current provider/model | Hidden when no effort control is advertised; Kimi currently stores but does not forward the selection |
 | Speed | Select a service tier reported for the current provider/model | Codex tiers and eligible Claude Fast are supported; account/provider may gate them |
 | Mode | Choose Default or provider-native Plan | Hidden when Plan is unavailable |
+| Approvals | Choose when the agent must ask before an action | Available for Codex and MiniMax; disabled while a turn is streaming |
+| Sandbox | Choose Read only, Workspace write, or Full access | Available for Codex and MiniMax; controls filesystem/process isolation for the next turn |
 | Skill picker | Open **Skill set**, search, and select | Catalog depends on provider/project |
 | Skill chips | Review or remove selected skills | Cleared when provider changes |
 | Attach picker | Choose **+** and select one or more files | Project chats; resumable uploads |
@@ -72,7 +74,9 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | Error block | Run and transport failures render in the thread |
 | Schedules drawer | Project-chat header lists, edits, arms, pauses, runs, and deletes scheduled tasks |
 
-There is no approval workflow in the current chat transport. Project agents run with provider approval/sandbox bypasses inside the project container.
+Codex and MiniMax use the shared app-server interaction transport for approval,
+permission, and user-input requests. The selected approval and sandbox policies
+are sent when the harness starts or resumes a thread and again for each turn.
 
 ## Providers and current differences
 
@@ -83,6 +87,7 @@ There is no approval workflow in the current chat transport. Project agents run 
 | Thinking control | Forwarded | Forwarded | Think-Off or Adaptive | Displayed/stored per model, not yet forwarded | Forwarded as Auto, Low, Medium, or High |
 | Speed/service tier | Fast for Auto and Opus | Yes | No | No | No |
 | Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
+| Approval and sandbox controls | No | Yes | Yes | No | No |
 | Usage telemetry | Yes | Yes | Yes | No | No |
 | Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | No; starts fresh | No; starts fresh |
 | Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |

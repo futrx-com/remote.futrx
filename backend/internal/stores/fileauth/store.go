@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
@@ -20,6 +21,15 @@ const agentAPIKeysFile = "agent-api-keys.json"
 type Store struct {
 	dataDir string
 	mu      sync.Mutex
+}
+
+// setupTokenRecord is the file-owned representation of auth's setup-token
+// state. JSON field names are persistence details and do not leak into the
+// service model.
+type setupTokenRecord struct {
+	Hash      string    `json:"hash"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Used      bool      `json:"used"`
 }
 
 func New(dataDir string) *Store {
@@ -221,6 +231,58 @@ func (s *Store) DeleteLocalAdmin(ctx context.Context, expected serviceauth.Local
 		return fmt.Errorf("delete local-admin.json: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) SetupToken(ctx context.Context) (*serviceauth.SetupTokenRecord, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := os.ReadFile(filepath.Join(s.dataDir, "setup-token.json"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read setup-token.json: %w", err)
+	}
+	var record setupTokenRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, fmt.Errorf("parse setup-token.json: %w", err)
+	}
+	if record.Hash == "" {
+		return nil, errors.New("setup-token.json is incomplete")
+	}
+	return &serviceauth.SetupTokenRecord{
+		Hash:      record.Hash,
+		ExpiresAt: record.ExpiresAt,
+		Used:      record.Used,
+	}, nil
+}
+
+// SaveSetupToken overwrites any existing record, which is what makes a
+// restart or a CLI reissue rotate the token rather than accumulate several
+// live ones.
+func (s *Store) SaveSetupToken(ctx context.Context, record serviceauth.SetupTokenRecord) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if record.Hash == "" {
+		return errors.New("setup token record is incomplete")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeJSONLocked("setup-token.json", setupTokenRecord{
+		Hash:      record.Hash,
+		ExpiresAt: record.ExpiresAt,
+		Used:      record.Used,
+	})
 }
 
 func (s *Store) SessionKey(ctx context.Context) ([]byte, error) {

@@ -37,6 +37,7 @@ type agentBrowserActivityRecorder interface {
 
 var ErrPromptAlreadyRunning = errors.New("a previous prompt is still running")
 var ErrUnsupportedAgentScope = errors.New("agent does not support this chat execution scope")
+var ErrMaintenance = errors.New("an infrastructure update is recycling workspaces; prompts will be available when it finishes")
 
 type Actor struct {
 	Email   string
@@ -96,6 +97,19 @@ type QuotaRecorder interface {
 
 type Option func(*Service)
 
+// StartGate blocks new agent runs while an external host job owns the
+// workspace lifecycle. Existing runs remain untouched and are skipped by the
+// workspace upgrader.
+type StartGate interface {
+	Blocked() bool
+}
+
+func WithStartGate(gate StartGate) Option {
+	return func(service *Service) {
+		service.startGate = gate
+	}
+}
+
 func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
 	return func(service *Service) {
 		service.scheduleTools = issuer
@@ -140,6 +154,7 @@ type Service struct {
 	scheduleTools ScheduleToolIssuer
 	usage         UsageRecorder
 	quota         QuotaRecorder
+	startGate     StartGate
 	interactions  interactionResponseRouter
 }
 
@@ -177,6 +192,12 @@ func (rnr *Service) StartPrompt(id servicechat.ID, prompt string, emitTransient 
 func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunHandle, error) {
 	if emitTransient == nil {
 		emitTransient = func(ChatEvent) {}
+	}
+	if rnr.startGate != nil && rnr.startGate.Blocked() {
+		emitTransient(ChatEvent{
+			T: time.Now().UnixMilli(), Type: "error", Message: ErrMaintenance.Error(),
+		})
+		return RunHandle{}, ErrMaintenance
 	}
 	parentCtx := input.ParentContext
 	if parentCtx == nil {

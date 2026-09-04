@@ -501,6 +501,26 @@ html[data-theme="light"] {
 }
 
 /* ---------------------------------------------------------------------------
+   Mobile sidebar drawer
+
+   The drawer is fixed to the viewport, so the app frame's inset padding cannot
+   move it the way it moves the desktop window cards. It takes the top inset as
+   its own offset and gives that height back, otherwise the panel's own edge --
+   border, shadow and all -- sits behind the status bar even though `safe-top`
+   holds its contents clear of the clock.
+--------------------------------------------------------------------------- */
+@media (max-width: 767px) {
+  .codex-sidebar.mobile-sheet {
+    top: env(safe-area-inset-top, 0px);
+    padding-top: 0;
+    height: calc(var(--app-height, 100vh) - env(safe-area-inset-top, 0px));
+    height: calc(var(--app-height, 100dvh) - env(safe-area-inset-top, 0px));
+    max-height: calc(var(--app-height, 100vh) - env(safe-area-inset-top, 0px));
+    max-height: calc(var(--app-height, 100dvh) - env(safe-area-inset-top, 0px));
+  }
+}
+
+/* ---------------------------------------------------------------------------
    Mobile composer
 
    Colour and the card's stacked layout are shared with desktop; phones only

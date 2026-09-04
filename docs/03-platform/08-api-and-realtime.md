@@ -94,7 +94,7 @@ provider includes its `source` (`live` or `fallback`), optional warning and
 structured unavailability reason, models, per-model reasoning efforts and
 service tiers, modes, model/control defaults, the module default flag,
 execution scopes, authentication metadata, and
-declared session/skill/browser/scheduling features.
+declared session/skill/browser/scheduling/execution-policy features.
 Omitting `projectId` selects the host/loose-chat scope. Supplying it requires
 admin status or project membership and selects that project's current
 container. Only the literal `refresh=1` forces discovery; other values use the

@@ -49,6 +49,7 @@ export interface AgentProviderCapabilities {
     skills: "none" | "slash-command" | "dollar-mention" | "instructions";
     browserTools: boolean;
     scheduledTools: boolean;
+    executionPolicies: boolean;
   };
   version?: string;
   source: "live" | "fallback";
@@ -127,6 +128,7 @@ export interface ComposerCapabilityState {
   reasoningEffortOptions: AgentCapabilityOption[];
   serviceTierOptions: AgentCapabilityOption[];
   modeOptions: AgentCapabilityOption[];
+  supportsExecutionPolicies: boolean;
 }
 
 export interface CapabilityPreferenceSelection {

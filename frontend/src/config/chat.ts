@@ -1,7 +1,7 @@
 import type { ApprovalPolicy, SandboxPolicy } from "../models/chat";
 import { PROVIDER_DISPLAY_LABELS } from "./agents.ts";
 
-export const CODEX_APPROVAL_POLICY_OPTIONS: readonly {
+export const APPROVAL_POLICY_OPTIONS: readonly {
   value: ApprovalPolicy;
   label: string;
 }[] = [
@@ -10,7 +10,7 @@ export const CODEX_APPROVAL_POLICY_OPTIONS: readonly {
   { value: "never", label: "Never ask" },
 ];
 
-export const CODEX_SANDBOX_POLICY_OPTIONS: readonly {
+export const SANDBOX_POLICY_OPTIONS: readonly {
   value: SandboxPolicy;
   label: string;
 }[] = [

@@ -9,6 +9,13 @@ const catalog: AgentCapabilitiesCatalog = {
     label: "Codex",
     source: "live",
     defaultMode: "default",
+    features: {
+      sessions: { resume: true, fork: true },
+      skills: "dollar-mention",
+      browserTools: true,
+      scheduledTools: true,
+      executionPolicies: true,
+    },
     modes: [{ value: "default", label: "Default" }, { value: "plan", label: "Plan" }],
     models: [
       {
@@ -32,6 +39,7 @@ test("resolves thinking and speed from the selected model", () => {
   assert.deepEqual(state.reasoningEffortOptions.map((option) => option.value), ["", "low"]);
   assert.deepEqual(state.serviceTierOptions.map((option) => option.value), ["", "priority"]);
   assert.deepEqual(state.modeOptions.map((option) => option.value), ["default", "plan"]);
+  assert.equal(state.supportsExecutionPolicies, true);
 });
 
 test("falls back to the auto model for an unknown saved model", () => {
@@ -109,6 +117,13 @@ test("keeps a managed API-key provider locked until its credential exists", () =
             credentialLabel: "MiniMax Token Plan subscription key",
           },
         },
+        features: {
+          sessions: { resume: true, fork: true },
+          skills: "dollar-mention",
+          browserTools: true,
+          scheduledTools: true,
+          executionPolicies: true,
+        },
         models: [{
           id: "MiniMax-M3",
           label: "MiniMax M3",
@@ -135,6 +150,24 @@ test("keeps a managed API-key provider locked until its credential exists", () =
     "Sign in to MiniMax in Settings → Agents, then refresh models.",
   );
   assert.equal(state.providerCapabilities?.provider, "minimax");
+  assert.equal(state.supportsExecutionPolicies, true);
+});
+
+test("hides execution policies when the selected provider does not advertise them", () => {
+  const withoutExecutionPolicies: AgentCapabilitiesCatalog = {
+    providers: [{
+      ...catalog.providers[0],
+      provider: "claude",
+      label: "Claude",
+      features: {
+        ...catalog.providers[0].features!,
+        executionPolicies: false,
+      },
+    }],
+  };
+
+  const state = agentCapabilityState.resolve(withoutExecutionPolicies, "claude", "", false);
+  assert.equal(state.supportsExecutionPolicies, false);
 });
 
 test("corrects selections unsupported by a live catalog", () => {

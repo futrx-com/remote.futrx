@@ -29,7 +29,8 @@ func TestFactoryDeclaresProjectCodexHarnessFeatures(t *testing.T) {
 	}
 	if !descriptor.Features.Sessions.Resume || !descriptor.Features.Sessions.Fork ||
 		descriptor.Features.Skills != agentmodule.SkillsDollarMention ||
-		!descriptor.Features.BrowserTools || !descriptor.Features.ScheduledTools {
+		!descriptor.Features.BrowserTools || !descriptor.Features.ScheduledTools ||
+		!descriptor.Features.ExecutionPolicies {
 		t.Fatalf("features = %#v", descriptor.Features)
 	}
 

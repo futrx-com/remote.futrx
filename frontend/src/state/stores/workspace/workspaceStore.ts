@@ -38,6 +38,11 @@ export function createWorkspaceStore(subscribe: SubscribeToWorkspace) {
         });
       }
 
+      function upsertChat(chat: ChatMeta): void {
+        const { chats, projects, loaded } = get().snapshot;
+        commit(workspaceDataProjector.upsertChat(chats, chat), projects, loaded);
+      }
+
       function apply(message: WorkspaceMessage): void {
         const { chats, projects, loaded } = get().snapshot;
         switch (message.type) {
@@ -49,7 +54,7 @@ export function createWorkspaceStore(subscribe: SubscribeToWorkspace) {
             );
             break;
           case "chat.upsert":
-            commit(workspaceDataProjector.upsertChat(chats, message.chat), projects, loaded);
+            upsertChat(message.chat);
             break;
           case "chat.delete":
             commit(workspaceDataProjector.removeChat(chats, message.id), projects, loaded);
@@ -65,6 +70,14 @@ export function createWorkspaceStore(subscribe: SubscribeToWorkspace) {
 
       return {
         snapshot: EMPTY_WORKSPACE_SNAPSHOT,
+        // A chat created or forked from this client exists on the server before
+        // its `chat.upsert` reaches us. Seeding it closes that window: without
+        // it the freshly selected chat reads as missing from the list and the
+        // handover effect bounces the selection back to the chat the user came
+        // from. It takes the same door the server's own upsert takes, so the
+        // list has one projection path and an early arrival is
+        // indistinguishable from the message it beat.
+        seedChat: upsertChat,
         /** Opens the feed, or closes it and clears what it delivered. Repeating a
          *  state is a no-op, so callers may drive this from an effect. */
         setConnected: (connected) => {

@@ -19,6 +19,8 @@ while IFS= read -r line; do
       printf '%s\n' '{"id":1,"result":{}}'
       ;;
     *'"id":2'*)
+      case "$line" in *'"approvalPolicy":"never"'*) ;; *) printf '%s\n' '{"id":2,"error":{"code":-1,"message":"missing approval policy on thread"}}'; exit 0 ;; esac
+      case "$line" in *'"sandbox":"read-only"'*) ;; *) printf '%s\n' '{"id":2,"error":{"code":-1,"message":"missing sandbox policy on thread"}}'; exit 0 ;; esac
       printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-new"},"model":"gpt-test"}}'
       ;;
     *'"id":3'*)
@@ -26,6 +28,8 @@ while IFS= read -r line; do
         *'"mode":"plan"'*) ;;
         *) printf '%s\n' '{"id":3,"error":{"code":-1,"message":"missing native plan mode"}}'; exit 0 ;;
       esac
+      case "$line" in *'"approvalPolicy":"never"'*) ;; *) printf '%s\n' '{"id":3,"error":{"code":-1,"message":"missing approval policy on turn"}}'; exit 0 ;; esac
+      case "$line" in *'"sandboxPolicy":{"type":"readOnly"}'*) ;; *) printf '%s\n' '{"id":3,"error":{"code":-1,"message":"missing sandbox policy on turn"}}'; exit 0 ;; esac
       printf '%s\n' '{"id":3,"result":{"turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
       printf '%s\n' '{"method":"item/plan/delta","params":{"threadId":"thread-new","turnId":"turn-1","itemId":"plan-1","delta":"Native plan"}}'
       printf '%s\n' '{"method":"thread/tokenUsage/updated","params":{"tokenUsage":{"last":{"inputTokens":10,"cachedInputTokens":3,"cacheWriteInputTokens":0,"outputTokens":4,"reasoningOutputTokens":2}}}}'
@@ -39,7 +43,16 @@ done`
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderMiniMax, ConversationID: "chat-1", Mode: agent.RunModePlan, Prompt: "plan it"},
+		agent.RunRequest{
+			Provider:       agent.ProviderMiniMax,
+			ConversationID: "chat-1",
+			Mode:           agent.RunModePlan,
+			Prompt:         "plan it",
+			Preferences: agent.RunPreferences{
+				ApprovalPolicy: "never",
+				SandboxPolicy:  "readOnly",
+			},
+		},
 		"MiniMax",
 		func(event agent.Event) { events = append(events, event) },
 	)

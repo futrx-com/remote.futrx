@@ -50,6 +50,21 @@ func TestLoadUsesAuthPolicyDefaults(t *testing.T) {
 	if options.SessionHistoryLimit != 20 {
 		t.Fatalf("session history limit = %d, want 20", options.SessionHistoryLimit)
 	}
+	if options.SetupTokenTTL != 30*time.Minute {
+		t.Fatalf("setup token TTL = %s, want 30m", options.SetupTokenTTL)
+	}
+}
+
+func TestLoadUsesSetupTokenTTLEnv(t *testing.T) {
+	t.Setenv("SETUP_TOKEN_TTL", "45m")
+	if got := Load().Auth.SetupTokenTTL; got != 45*time.Minute {
+		t.Fatalf("setup token TTL = %s, want 45m", got)
+	}
+
+	t.Setenv("SETUP_TOKEN_TTL", "invalid")
+	if got := Load().Auth.SetupTokenTTL; got != 30*time.Minute {
+		t.Fatalf("invalid setup token TTL fallback = %s, want 30m", got)
+	}
 }
 
 func TestCodeServerBaseURLUsesInstalledDomain(t *testing.T) {

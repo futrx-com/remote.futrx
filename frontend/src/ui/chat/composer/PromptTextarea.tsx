@@ -9,6 +9,7 @@ export function PromptTextarea({
   onTextChange,
   onPaste,
   onSend,
+  onKeyDown,
 }: {
   textareaRef: RefObject<HTMLTextAreaElement>;
   text: string;
@@ -18,13 +19,18 @@ export function PromptTextarea({
   onTextChange: (text: string) => void;
   onPaste: (event: ClipboardEvent) => void;
   onSend: () => void;
+  // Return true to signal the key was handled (e.g. by the slash palette) so
+  // the default composer handling below is skipped.
+  onKeyDown?: (event: KeyboardEvent) => boolean;
 }) {
   return (
     <textarea
       ref={textareaRef}
+      dir="auto"
       value={text}
       onInput={(event) => onTextChange((event.currentTarget as HTMLTextAreaElement).value)}
       onKeyDown={(event) => {
+        if (onKeyDown?.(event)) return;
         if (
           event.key === "Enter" &&
           (event.ctrlKey || event.metaKey) &&

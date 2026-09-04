@@ -28,7 +28,7 @@ export function UserInputInteractionForm({
     <div class="space-y-4">
       {typeof input.autoResolutionMs === "number" && (
         <p class="text-[10px] text-ink-400">
-          Codex may auto-resolve this request after {Math.ceil(input.autoResolutionMs / 1000)} seconds.
+          The agent may auto-resolve this request after {Math.ceil(input.autoResolutionMs / 1000)} seconds.
         </p>
       )}
       {questions.map((question, index) => {
@@ -38,7 +38,7 @@ export function UserInputInteractionForm({
           <fieldset key={id} class="space-y-2" disabled={disabled}>
             <legend class="text-[13px] font-medium leading-snug text-ink-100">
               {question.header && <span class="mr-2 font-mono text-[10px] text-ink-400">{question.header}</span>}
-              {question.question || "Codex is requesting input"}
+              {question.question || "The agent is requesting input"}
             </legend>
             {options.length > 0 && (
               <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">

@@ -24,7 +24,7 @@ export function ApprovalInteractionForm({
           <DecisionButton disabled={disabled} onClick={() => onSubmit({ kind: "cancel_approval" })}>Cancel request</DecisionButton>
         )}
       </div>
-      <p class="text-[10px] text-ink-400">“Allow for session” applies to matching requests in this Codex session.</p>
+      <p class="text-[10px] text-ink-400">“Allow for session” applies to matching requests in this agent session.</p>
     </div>
   );
 }

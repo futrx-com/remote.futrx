@@ -1,5 +1,7 @@
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
-import { AlertCircle, Download, Loader, RotateCcw } from "../primitives/icons";
+import { Download, Loader, RotateCcw } from "../primitives/icons";
+import { UpdateRunCard } from "./updates/UpdateRunCard";
+import { formatUpdateTime } from "./updates/updateTime";
 
 export function UpdatesSettings({
   status,
@@ -53,7 +55,7 @@ export function UpdatesSettings({
                   {lastCheck.updateAvailable && latestTag !== ""
                     ? `release ${latestTag} is available`
                     : "up to date with the newest release"}
-                  {` · checked ${formatTime(lastCheck.checkedAt)}`}
+                  {` · checked ${formatUpdateTime(lastCheck.checkedAt)}`}
                 </>
               )}
             </div>
@@ -118,67 +120,7 @@ export function UpdatesSettings({
         </section>
       )}
 
-      {run && (
-        <section class="rounded-card border border-line bg-surface overflow-hidden">
-          <header class="px-4 py-3 border-b border-line">
-            {run.state === "running" && (
-              <div class="flex items-center gap-2 text-[13.5px] font-semibold text-ink-50">
-                <Loader class="w-4 h-4 animate-spin text-accent-blue" />
-                {run.updateKind === "application"
-                  ? `Deploying application release ${run.target}…`
-                  : `Updating infrastructure to ${run.target}…`}
-              </div>
-            )}
-            {run.state === "succeeded" && (
-              <div class="text-[13.5px] font-semibold text-accent-green">
-                {run.updateKind === "application" ? "Deployed" : "Updated to"} {run.target}
-              </div>
-            )}
-            {run.state === "failed" && (
-              <div class="flex items-center gap-2 text-[13.5px] font-semibold text-accent-red">
-                <AlertCircle class="w-4 h-4 flex-none" />
-                {run.updateKind === "application" ? "Deployment of" : "Update to"} {run.target} failed
-                {typeof run.exitCode === "number" ? ` (exit ${run.exitCode})` : ""}
-              </div>
-            )}
-            <div class="text-[12px] text-ink-300 mt-0.5">
-              Started {formatTime(run.startedAt)}
-              {run.startedBy ? ` by ${run.startedBy}` : ""}
-              {run.finishedAt ? ` · finished ${formatTime(run.finishedAt)}` : ""}
-            </div>
-            {run.state === "running" && restarting && (
-              <div class="mt-2 text-[12px] text-accent-yellow">
-                {run.updateKind === "application"
-                  ? "The application is restarting — reconnecting…"
-                  : "The server is restarting as part of the update — reconnecting… This can take a few minutes while containers are recycled."}
-              </div>
-            )}
-            {run.state === "succeeded" && (
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                class="btn btn-primary btn-sm mt-2.5 font-medium"
-              >
-                Reload to use the new version
-              </button>
-            )}
-          </header>
-          {run.log && (
-            <pre class="m-0 px-4 py-3 text-[11px] leading-snug font-mono text-ink-200 bg-inset max-h-72 overflow-auto whitespace-pre-wrap">
-              {run.log}
-            </pre>
-          )}
-        </section>
-      )}
+      {run && <UpdateRunCard run={run} restarting={restarting} />}
     </div>
   );
-}
-
-function formatTime(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

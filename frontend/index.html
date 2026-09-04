@@ -12,7 +12,17 @@
          supports Web Push for apps added to the home screen. -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Not `black-translucent`: that draws the page from y=0 under the status
+         bar but still sizes the layout viewport to the screen *minus* the
+         status bar, so the last inset-height of the screen sits outside the
+         viewport entirely and shows through as a dead strip under the
+         composer. Nothing CSS can reach it -- `100dvh`, `100vh` and the
+         containing block all stop short. Letting iOS place the web view below
+         the status bar makes the viewport the whole usable area instead, and
+         reports a zero top inset, which correctly makes every `safe-top`
+         padding inert in standalone. Safari ignores this meta, so the browser
+         layout is unaffected. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="remote" />
     <script>
       // The appearance preference lives on the server, so restore the last

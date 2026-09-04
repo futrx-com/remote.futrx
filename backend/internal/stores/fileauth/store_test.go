@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
@@ -75,6 +77,54 @@ func TestOAuthSecretIsPrivate(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("oauth.json mode = %o, want 600", got)
+	}
+}
+
+// The setup token is a bearer credential for the very first claim, so its
+// record must be no more readable than the credential it protects.
+func TestSetupTokenRecordIsPrivateAndRotates(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	ctx := context.Background()
+
+	if record, err := store.SetupToken(ctx); err != nil || record != nil {
+		t.Fatalf("SetupToken before any issue = %#v, %v; want nil, nil", record, err)
+	}
+
+	first := serviceauth.SetupTokenRecord{
+		Hash: "hash-one", ExpiresAt: time.Now().Add(time.Hour),
+	}
+	if err := store.SaveSetupToken(ctx, first); err != nil {
+		t.Fatalf("SaveSetupToken: %v", err)
+	}
+	info, err := os.Stat(filepath.Join(dir, "setup-token.json"))
+	if err != nil {
+		t.Fatalf("stat setup-token.json: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("setup-token.json mode = %o, want 600", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "setup-token.json"))
+	if err != nil {
+		t.Fatalf("read setup-token.json: %v", err)
+	}
+	for _, field := range []string{`"hash"`, `"expiresAt"`, `"used"`} {
+		if !strings.Contains(string(raw), field) {
+			t.Fatalf("setup-token.json = %s; missing field %s", raw, field)
+		}
+	}
+
+	// Saving again replaces rather than appends: a reissue must invalidate
+	// whatever was printed before, never leave two live tokens.
+	second := serviceauth.SetupTokenRecord{
+		Hash: "hash-two", ExpiresAt: time.Now().Add(time.Hour),
+	}
+	if err := store.SaveSetupToken(ctx, second); err != nil {
+		t.Fatalf("SaveSetupToken rotate: %v", err)
+	}
+	persisted, err := store.SetupToken(ctx)
+	if err != nil || persisted == nil || persisted.Hash != "hash-two" {
+		t.Fatalf("rotated record = %#v, %v; want hash-two", persisted, err)
 	}
 }
 

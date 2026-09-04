@@ -15,7 +15,20 @@ import { PromptTextarea } from "./PromptTextarea";
 import { QueuedPromptList } from "./QueuedPromptList";
 import { SelectedSkillChips } from "./SelectedSkillChips";
 import { SendControls } from "./SendControls";
+import { SlashCommandMenu } from "./SlashCommandMenu";
 import type { ComposerPreferenceActions, ComposerPreferences } from "./preferences";
+
+interface SlashCommandMenuControl {
+  open: boolean;
+  loading: boolean;
+  error: string;
+  query: string;
+  items: RegisteredSkill[];
+  highlight: number;
+  onHighlight: (index: number) => void;
+  onChoose: (skill: RegisteredSkill) => void;
+  onKeyDown: (event: KeyboardEvent) => boolean;
+}
 
 export interface ChatComposerProps {
   projectId?: string;
@@ -40,6 +53,7 @@ export interface ChatComposerProps {
   onRemoveAttachment: (id: string) => void;
   onSelectSkill: (skill: RegisteredSkill) => void;
   onRemoveSelectedSkill: (skill: SelectedSkill) => void;
+  slashCommandMenu: SlashCommandMenuControl;
 }
 
 export function ChatComposer({
@@ -65,6 +79,7 @@ export function ChatComposer({
   onRemoveAttachment,
   onSelectSkill,
   onRemoveSelectedSkill,
+  slashCommandMenu,
 }: ChatComposerProps) {
   const capabilityState = useComposerAgentCapabilities({
     projectId,
@@ -81,6 +96,7 @@ export function ChatComposer({
     reasoningEffortOptions,
     serviceTierOptions,
     modeOptions,
+    supportsExecutionPolicies,
     loading: modelsLoading,
     refreshing,
     error: capabilityError,
@@ -109,7 +125,7 @@ export function ChatComposer({
       ? "Using fallback capabilities; refresh to retry live discovery"
       : "");
   const hasExecutionControls =
-    preferences.provider === "codex"
+    supportsExecutionPolicies
     || reasoningEffortOptions.length > 0
     || serviceTierOptions.length > 0
     || modeOptions.length > 1;
@@ -136,8 +152,19 @@ export function ChatComposer({
             event.preventDefault();
             onSend();
           }}
-          class="codex-composer-form composer-form flex flex-col px-2.5 pt-2"
+          class="codex-composer-form composer-form relative flex flex-col px-2.5 pt-2"
         >
+          {slashCommandMenu.open && (
+            <SlashCommandMenu
+              items={slashCommandMenu.items}
+              highlight={slashCommandMenu.highlight}
+              loading={slashCommandMenu.loading}
+              error={slashCommandMenu.error}
+              query={slashCommandMenu.query}
+              onChoose={slashCommandMenu.onChoose}
+              onHighlight={slashCommandMenu.onHighlight}
+            />
+          )}
           <PromptTextarea
             textareaRef={textareaRef}
             text={text}
@@ -147,6 +174,7 @@ export function ChatComposer({
             onTextChange={onTextChange}
             onPaste={onPaste}
             onSend={onSend}
+            onKeyDown={slashCommandMenu.onKeyDown}
           />
 
           <div class="codex-composer-control-deck flex min-w-0 items-center gap-1.5 pt-1.5">
@@ -186,6 +214,7 @@ export function ChatComposer({
                     reasoningEffortOptions={reasoningEffortOptions}
                     serviceTierOptions={serviceTierOptions}
                     modeOptions={modeOptions}
+                    supportsExecutionPolicies={supportsExecutionPolicies}
                   />
                 </>
               )}
@@ -257,6 +286,7 @@ export function ChatComposer({
                   reasoningEffortOptions={reasoningEffortOptions}
                   serviceTierOptions={serviceTierOptions}
                   modeOptions={modeOptions}
+                  supportsExecutionPolicies={supportsExecutionPolicies}
                 />
               </>
             )}

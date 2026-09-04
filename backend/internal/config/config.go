@@ -55,6 +55,9 @@ type AuthOptions struct {
 	RecoveryCodeCount int
 	// SessionHistoryLimit bounds the newest-first sign-in history per account.
 	SessionHistoryLimit int
+	// SetupTokenTTL bounds how long a printed first-boot setup token stays
+	// usable (SETUP_TOKEN_TTL, Go duration, default 30m).
+	SetupTokenTTL time.Duration
 }
 
 // ScheduleLimits are the scheduled-task guardrails. Zero disables a limit;
@@ -92,6 +95,7 @@ func Load() Config {
 			EnrollmentTTL:       10 * time.Minute,
 			RecoveryCodeCount:   10,
 			SessionHistoryLimit: 20,
+			SetupTokenTTL:       envDuration("SETUP_TOKEN_TTL", 30*time.Minute),
 		},
 		Schedule: ScheduleLimits{
 			MinInterval:        envDuration("SCHEDULE_MIN_INTERVAL", 5*time.Minute),

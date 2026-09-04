@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { Markdown } from "../markdown/Markdown";
+import { getTextAlignClass, getTextDirection } from "../markdown/bidi";
 
 interface Props {
   text: string;
@@ -51,18 +52,25 @@ export function StreamingText({ text, streaming, chatId, cwd }: Props) {
 
   // Subtle blinking caret while we're still revealing characters.
   const showCaret = streaming && displayed.length < text.length;
+  const dir = getTextDirection(displayed);
+  const align = getTextAlignClass(displayed);
 
   return (
     <div class="relative">
       {streaming ? (
-        <div class="whitespace-pre-wrap [overflow-wrap:anywhere]">{displayed}</div>
+        <div
+          dir={dir}
+          class={`whitespace-pre-wrap [overflow-wrap:anywhere] ${align}`}
+          style={{ unicodeBidi: "plaintext" }}
+        >
+          {displayed}
+        </div>
       ) : (
         <Markdown chatId={chatId} cwd={cwd}>{displayed}</Markdown>
       )}
       {showCaret && (
         <span
-          class="inline-block w-1.5 h-4 -mb-0.5 ml-0.5 align-middle bg-accent-blue/80
-                 animate-pulse-fast rounded-sm"
+          class="inline-block w-1.5 h-4 -mb-0.5 mx-0.5 align-middle bg-accent-blue/80 animate-pulse-fast rounded-sm"
           aria-hidden="true"
         />
       )}

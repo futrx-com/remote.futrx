@@ -235,9 +235,10 @@ func (c *Service) decorate(capabilities *agent.Capabilities) {
 			Resume: descriptor.Features.Sessions.Resume,
 			Fork:   descriptor.Features.Sessions.Fork,
 		},
-		Skills:         string(descriptor.Features.Skills),
-		BrowserTools:   descriptor.Features.BrowserTools,
-		ScheduledTools: descriptor.Features.ScheduledTools,
+		Skills:            string(descriptor.Features.Skills),
+		BrowserTools:      descriptor.Features.BrowserTools,
+		ScheduledTools:    descriptor.Features.ScheduledTools,
+		ExecutionPolicies: descriptor.Features.ExecutionPolicies,
 	}
 }
 

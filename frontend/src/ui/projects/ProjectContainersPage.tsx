@@ -1,4 +1,5 @@
 import type { ComponentChildren, ComponentType } from "preact";
+import { useCallback, useState } from "preact/hooks";
 import type {
   AccessRecord,
   ProjectContainerRecord,
@@ -10,7 +11,10 @@ import {
   ContainerStateBadge,
   ProjectInfoSection,
 } from "./project-containers/ProjectInfoSection";
-import { ProjectSecretsSection } from "./project-containers/ProjectSecretsSection";
+import {
+  ProjectSecretsSection,
+  type SecretDraft,
+} from "./project-containers/ProjectSecretsSection";
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
 import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
@@ -18,6 +22,7 @@ import { formatRelativeTime as fmtRelative } from "./project-containers/projectC
 import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
 import type { UsageSummary } from "../../models/usage";
 import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Settings, Users } from "../primitives/icons";
+import { useConfirm } from "../../state/context/ConfirmContext";
 
 export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
 
@@ -108,7 +113,35 @@ export function ProjectContainersPage({
   onRestartProject: () => Promise<void>;
   onDeleteProject: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
+  // Draft state for the "Add new secret" form — owned here so it survives tab
+  // switches. SecretEditor is a conditionally-rendered subtree that would
+  // otherwise be unmounted (and lose its local state) on every navigation.
+  const [secretDraft, setSecretDraft] = useState<SecretDraft>({ key: "", value: "" });
+
+  const hasDraft = secretDraft.key.trim() !== "" || secretDraft.value !== "";
+
+  // Guard tab navigation: if there is a non-empty draft and the user is leaving
+  // the Secrets tab, ask for confirmation before silently discarding it.
+  const handleTabChange = useCallback(
+    async (next: ProjectSettingsTab) => {
+      if (next === activeTab) return;
+      if (activeTab === "secrets" && hasDraft) {
+        const ok = await confirm({
+          title: "Discard unsaved secret?",
+          message: `You have an unsaved draft for "${secretDraft.key || "(no key)"}". Switching tabs will keep the draft — it will be here when you return.`,
+          confirmLabel: "Switch anyway",
+          cancelLabel: "Stay on Secrets",
+          tone: "neutral",
+        });
+        if (!ok) return;
+      }
+      onTabChange(next);
+    },
+    [activeTab, hasDraft, secretDraft.key, confirm, onTabChange]
+  );
 
   return (
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -151,12 +184,12 @@ export function ProjectContainersPage({
       <div class="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         <ProjectSettingsNavigation
           activeTab={activeTab}
-          onTabChange={onTabChange}
+          onTabChange={handleTabChange}
           className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <ProjectSettingsNavigation
           activeTab={activeTab}
-          onTabChange={onTabChange}
+          onTabChange={handleTabChange}
           mobile
           className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
         />
@@ -231,6 +264,10 @@ export function ProjectContainersPage({
                   >
                     <ProjectSecretsSection
                       record={secretsRecord}
+                      draft={secretDraft}
+                      onDraftChange={(patch) =>
+                        setSecretDraft((prev) => ({ ...prev, ...patch }))
+                      }
                       onSave={onSaveSecret}
                       onDelete={onDeleteSecret}
                     />
@@ -266,7 +303,7 @@ function ProjectSettingsNavigation({
   className,
 }: {
   activeTab: ProjectSettingsTab;
-  onTabChange: (tab: ProjectSettingsTab) => void;
+  onTabChange: (tab: ProjectSettingsTab) => void | Promise<void>;
   mobile?: boolean;
   className: string;
 }) {

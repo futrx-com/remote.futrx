@@ -32,7 +32,7 @@ export function InteractionCard({
     <section class="my-2 overflow-hidden rounded-lg border border-accent-blue/35 bg-accent-blue/[0.05]">
       <header class="flex items-center justify-between gap-3 border-b border-accent-blue/20 bg-accent-blue/[0.08] px-3 py-2">
         <div class="min-w-0">
-          <div class="text-[11px] font-semibold text-accent-blue">Codex needs your decision</div>
+          <div class="text-[11px] font-semibold text-accent-blue">Agent needs your decision</div>
           <div class="truncate font-mono text-[10px] text-ink-400">{part.method}</div>
         </div>
         <span class="rounded-full border border-line px-2 py-0.5 text-[10px] text-ink-300">

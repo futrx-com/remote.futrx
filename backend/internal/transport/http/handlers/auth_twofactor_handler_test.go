@@ -34,7 +34,7 @@ func (twoFactorTestOAuth) ExchangeUser(context.Context, string) (serviceauth.Use
 	return serviceauth.User{}, nil
 }
 
-func newTwoFactorTestMux(t *testing.T) *http.ServeMux {
+func newTwoFactorTestMux(t *testing.T) (*http.ServeMux, *serviceauth.Service) {
 	t.Helper()
 	twoFactorStore, err := filetwofactor.New(t.TempDir())
 	if err != nil {
@@ -58,6 +58,7 @@ func newTwoFactorTestMux(t *testing.T) *http.ServeMux {
 			EnrollmentTTL:       10 * time.Minute,
 			RecoveryCodeCount:   10,
 			SessionHistoryLimit: 20,
+			SetupTokenTTL:       30 * time.Minute,
 		},
 	)
 	if err != nil {
@@ -67,7 +68,17 @@ func newTwoFactorTestMux(t *testing.T) *http.ServeMux {
 	mux := http.NewServeMux()
 	NewAuthHandler(auth, nil).RegisterRoutes(mux)
 	NewSecurityHandler(auth).RegisterRoutes(mux)
-	return mux
+	return mux, auth
+}
+
+// setupTokenFor issues the setup token a fresh test mux's claim is gated on.
+func setupTokenFor(t *testing.T, auth *serviceauth.Service) string {
+	t.Helper()
+	token, err := auth.EnsureSetupToken(context.Background())
+	if err != nil {
+		t.Fatalf("EnsureSetupToken: %v", err)
+	}
+	return token
 }
 
 // cookieJar is a minimal helper that remembers Set-Cookie headers across
@@ -121,12 +132,13 @@ func decodeJSON[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 }
 
 func TestTwoFactorEnrollLoginAlertDisableRoundTrip(t *testing.T) {
-	jar := newCookieJar(newTwoFactorTestMux(t))
+	mux, auth := newTwoFactorTestMux(t)
+	jar := newCookieJar(mux)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
 
 	claimRec := jar.do(t, http.MethodPost, "/auth/local/claim", map[string]string{
-		"email": email, "password": password,
+		"email": email, "password": password, "setupToken": setupTokenFor(t, auth),
 	})
 	if claimRec.Code != http.StatusCreated {
 		t.Fatalf("claim status = %d, body = %s", claimRec.Code, claimRec.Body.String())
@@ -236,11 +248,12 @@ func TestTwoFactorEnrollLoginAlertDisableRoundTrip(t *testing.T) {
 }
 
 func TestSingleSessionPreferenceSupersedesWithoutTwoFactor(t *testing.T) {
-	jar := newCookieJar(newTwoFactorTestMux(t))
+	mux, auth := newTwoFactorTestMux(t)
+	jar := newCookieJar(mux)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
 
-	if rec := jar.do(t, http.MethodPost, "/auth/local/claim", map[string]string{"email": email, "password": password}); rec.Code != http.StatusCreated {
+	if rec := jar.do(t, http.MethodPost, "/auth/local/claim", map[string]string{"email": email, "password": password, "setupToken": setupTokenFor(t, auth)}); rec.Code != http.StatusCreated {
 		t.Fatalf("claim status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if rec := jar.do(t, http.MethodPost, "/api/me/security/preferences", map[string]bool{"singleSessionEnabled": true}); rec.Code != http.StatusOK {

@@ -147,8 +147,16 @@ Replace `remote.example.com` with the hostname you set up above. The installer d
 
 ### 3. Create your first project
 
-1. Visit `https://remote.example.com`.
-2. Create the administrator account.
+1. When Remote starts for the first time, it prints a one-time setup link to
+   the server's log. To see it, connect to the server and run:
+   `journalctl -u remote --since "-10 min" | grep -A2 "first-time setup"`.
+   The link looks like `https://remote.example.com/?token=...` and works for
+   30 minutes. If it has expired or you lost it, run `remote setup-token` on
+   the server to print a fresh one.
+2. Open that link in your browser and create your administrator account —
+   this is the login you'll use to manage the server. Only someone who can
+   read that link on the server (not just visit the page) can do this, so a
+   stranger who finds the URL cannot claim the server before you do.
 3. Open **Settings → Agents** and connect Codex, Claude Code, or Kimi.
 4. Select **New project**.
 5. To use MiniMax, open **Settings → Agents**, choose the MiniMax sign-in action, and save a Token Plan subscription key. Pay-as-you-go MiniMax API keys are not supported.

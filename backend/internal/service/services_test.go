@@ -98,6 +98,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 			EnrollmentTTL:       10 * time.Minute,
 			RecoveryCodeCount:   10,
 			SessionHistoryLimit: 20,
+			SetupTokenTTL:       30 * time.Minute,
 		},
 	)
 	if err != nil {
@@ -105,6 +106,9 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 	}
 	if auth.GoogleOAuthEnabled() {
 		t.Fatal("Google OAuth unexpectedly enabled")
+	}
+	if got := auth.SetupTokenTTL(); got != 30*time.Minute {
+		t.Fatalf("setup token TTL = %s, want 30m", got)
 	}
 }
 

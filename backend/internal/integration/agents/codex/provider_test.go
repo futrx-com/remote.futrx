@@ -39,6 +39,16 @@ func newTestProvider(
 	return runtime.Lookup(agent.ProviderCodex).(*Provider)
 }
 
+func TestFactoryDeclaresCodexHarnessExecutionPolicies(t *testing.T) {
+	factory, err := NewFactory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !factory.Descriptor().Features.ExecutionPolicies {
+		t.Fatal("Codex must expose the approval and sandbox policies supported by its harness")
+	}
+}
+
 func TestArgsUseCodexAppServer(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
 	args := provider.args(agent.RunRequest{Model: "gpt-5.5 [fast]"})

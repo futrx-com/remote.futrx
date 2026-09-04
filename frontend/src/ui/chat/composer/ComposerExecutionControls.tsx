@@ -1,6 +1,6 @@
 import {
-  CODEX_APPROVAL_POLICY_OPTIONS,
-  CODEX_SANDBOX_POLICY_OPTIONS,
+  APPROVAL_POLICY_OPTIONS,
+  SANDBOX_POLICY_OPTIONS,
 } from "../../../config/chat";
 import { Activity, Cpu, Lock, MessageSquare, ShieldCheck } from "../../primitives/icons";
 import type { AgentCapabilityOption } from "../../../models/agentCapabilities";
@@ -14,6 +14,7 @@ export function ComposerExecutionControls({
   reasoningEffortOptions,
   serviceTierOptions,
   modeOptions,
+  supportsExecutionPolicies,
 }: {
   preferences: ComposerPreferences;
   preferenceActions: ComposerPreferenceActions;
@@ -21,6 +22,7 @@ export function ComposerExecutionControls({
   reasoningEffortOptions: readonly { value: string; label: string }[];
   serviceTierOptions: readonly { value: string; label: string }[];
   modeOptions: readonly AgentCapabilityOption[];
+  supportsExecutionPolicies: boolean;
 }) {
   return (
     <div class="codex-composer-execution-controls flex min-w-0 flex-wrap items-center gap-1">
@@ -59,22 +61,22 @@ export function ComposerExecutionControls({
         />
       )}
 
-      {preferences.provider === "codex" && (
+      {supportsExecutionPolicies && (
         <ComposerOptionDropdown
           label="Approvals"
           value={preferences.approvalPolicy}
-          options={CODEX_APPROVAL_POLICY_OPTIONS}
+          options={APPROVAL_POLICY_OPTIONS}
           disabled={streaming}
           Icon={ShieldCheck}
           onChange={preferenceActions.changeApprovalPolicy}
         />
       )}
 
-      {preferences.provider === "codex" && (
+      {supportsExecutionPolicies && (
         <ComposerOptionDropdown
           label="Sandbox"
           value={preferences.sandboxPolicy}
-          options={CODEX_SANDBOX_POLICY_OPTIONS}
+          options={SANDBOX_POLICY_OPTIONS}
           disabled={streaming}
           Icon={Lock}
           onChange={preferenceActions.changeSandboxPolicy}

@@ -89,6 +89,9 @@ class WorkspaceDataProjector {
     return true;
   }
 
+  // A skill-only upsert carries no other field change, so leaving skills out
+  // of this comparison made the projector keep the stale chat and drop the
+  // update: removing a chip left it on screen until the chat was reopened.
   private sameSelectedSkills(
     left: SelectedSkill[] | undefined,
     right: SelectedSkill[] | undefined
@@ -98,20 +101,25 @@ class WorkspaceDataProjector {
     const rightSkills = right ?? [];
     if (leftSkills.length !== rightSkills.length) return false;
 
-    const key = (skill: SelectedSkill): string => {
-      const provider = (skill.provider ?? "").trim().toLowerCase();
-      const command = (skill.command ?? skill.name).trim().toLowerCase();
-      const source = command === "scheduled-tasks"
-        ? "remote"
-        : (skill.source ?? "").trim().toLowerCase();
-      const name = skill.name.trim();
-      return `${provider}:${source}:${command}:${name}`;
-    };
-
     for (let index = 0; index < leftSkills.length; index++) {
-      if (key(leftSkills[index]) !== key(rightSkills[index])) return false;
+      if (
+        this.selectedSkillComparisonKey(leftSkills[index]) !==
+        this.selectedSkillComparisonKey(rightSkills[index])
+      ) {
+        return false;
+      }
     }
     return true;
+  }
+
+  private selectedSkillComparisonKey(skill: SelectedSkill): string {
+    const provider = (skill.provider ?? "").trim().toLowerCase();
+    const command = (skill.command ?? skill.name).trim().toLowerCase();
+    const source = command === "scheduled-tasks"
+      ? "remote"
+      : (skill.source ?? "").trim().toLowerCase();
+    const name = skill.name.trim();
+    return `${provider}:${source}:${command}:${name}`;
   }
 
   private sameStringRecord(

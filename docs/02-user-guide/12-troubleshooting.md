@@ -6,7 +6,7 @@ Start with the symptom below. Use **Refresh** after a recovery action so that th
 
 ### The server asks me to create an admin
 
-No local administrator has claimed the installation yet. Create the first account with the intended owner email and a password of at least 12 characters. The claim endpoint is public only while the server is unclaimed.
+No local administrator has claimed the installation yet. Open the setup link printed to the server terminal at startup - the form only accepts the one-time token it carries - then create the first account with the intended owner email and a password of at least 12 characters. If the link expired or was lost, run `remote setup-token` on the host to print a new one; issuing a new token invalidates the previous one.
 
 ### A member sees “waiting for administrator”
 

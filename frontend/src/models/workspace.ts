@@ -22,6 +22,9 @@ export interface WorkspaceStoreState {
 
 export interface WorkspaceStoreActions {
   setConnected: (connected: boolean) => void;
+  /** Applies a chat this client just created, ahead of the server's own
+   *  `chat.upsert` for it. */
+  seedChat: (chat: ChatMeta) => void;
 }
 
 export type WorkspaceView = "chat" | "settings" | "project-containers";

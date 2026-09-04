@@ -56,10 +56,11 @@ type SessionSupport struct {
 // Features describes optional behavior the platform may expose for an agent.
 // The provider still owns the concrete CLI flags and protocol translation.
 type Features struct {
-	Sessions       SessionSupport
-	Skills         SkillStrategy
-	BrowserTools   bool
-	ScheduledTools bool
+	Sessions          SessionSupport
+	Skills            SkillStrategy
+	BrowserTools      bool
+	ScheduledTools    bool
+	ExecutionPolicies bool
 }
 
 type APIKeyAuth struct {

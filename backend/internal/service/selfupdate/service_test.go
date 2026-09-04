@@ -3,6 +3,7 @@ package selfupdate
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -20,12 +21,12 @@ func (f *fakeHost) ListRemoteTags(context.Context, string) ([]string, error) {
 	return f.tags, f.tagsErr
 }
 
-func (f *fakeHost) StartUpdater(_ string, tag, kind, logPath, donePath string) (int, error) {
+func (f *fakeHost) StartUpdater(launch UpdaterLaunch) (int, error) {
 	if f.startErr != nil {
 		return 0, f.startErr
 	}
-	f.started = append(f.started, tag)
-	f.kinds = append(f.kinds, kind)
+	f.started = append(f.started, launch.Target)
+	f.kinds = append(f.kinds, string(launch.Kind))
 	return f.pid, nil
 }
 
@@ -189,11 +190,43 @@ func TestApplyLifecycle(t *testing.T) {
 	}
 
 	// A finished marker wins over liveness.
-	if err := writeJSONFile(svc.donePath(), doneRecord{ExitCode: 0, FinishedAt: 99}); err != nil {
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 0, FinishedAt: 99}); err != nil {
 		t.Fatal(err)
 	}
 	if run := svc.Status(context.Background()).Run; run == nil || run.State != "succeeded" {
 		t.Fatalf("run after done marker = %+v, want succeeded", run)
+	}
+}
+
+func TestRunStatusReportsCleanLogAndStructuredProgress(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.1", "0.2"}, pid: 4242, alive: true}
+	svc := New("0.1", "/opt/x", t.TempDir(), host)
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(svc.runs.logPath(), []byte("\x1b[1;36m==> Installing healer\x1b[0m\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wantProgress := Progress{
+		Phase: "workspace-migration", Message: "Recycling workspace 3 of 8",
+		Completed: 2, Total: 8, CurrentItem: "astrology", UpdatedAt: 123,
+	}
+	if err := writeJSONFile(svc.runs.progressPath(), wantProgress); err != nil {
+		t.Fatal(err)
+	}
+
+	run := svc.Status(context.Background()).Run
+	if run == nil {
+		t.Fatal("run status is nil")
+	}
+	if run.Log != "==> Installing healer\n" {
+		t.Fatalf("clean log = %q", run.Log)
+	}
+	if run.LogUpdatedAt == 0 {
+		t.Fatal("log update timestamp is missing")
+	}
+	if run.Progress == nil || *run.Progress != wantProgress {
+		t.Fatalf("progress = %+v, want %+v", run.Progress, wantProgress)
 	}
 }
 
