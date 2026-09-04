@@ -1,4 +1,5 @@
 import type { ApprovalPolicy, SandboxPolicy } from "../models/chat";
+import { PROVIDER_DISPLAY_LABELS } from "./agents.ts";
 
 export const APPROVAL_POLICY_OPTIONS: readonly {
   value: ApprovalPolicy;
@@ -24,14 +25,7 @@ export function modelShortLabel(model?: string): string {
 
 export function providerDisplayLabel(provider?: string): string {
   if (!provider) return "Codex";
-  const knownLabels: Record<string, string> = {
-    antigravity: "Antigravity",
-    claude: "Claude",
-    codex: "Codex",
-    kimi: "Kimi",
-    minimax: "MiniMax",
-  };
-  return knownLabels[provider] ?? provider
+  return PROVIDER_DISPLAY_LABELS[provider] ?? provider
     .split("-")
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))

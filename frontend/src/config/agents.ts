@@ -11,3 +11,12 @@ export const EMPTY_AGENT_CAPABILITY_CATALOG_SNAPSHOT: AgentCapabilityCatalogSnap
   refreshing: false,
   error: "",
 };
+
+/** Canonical product names shared by agent-facing surfaces. */
+export const PROVIDER_DISPLAY_LABELS: Readonly<Record<string, string>> = {
+  antigravity: "Antigravity",
+  claude: "Claude",
+  codex: "Codex",
+  kimi: "Kimi",
+  minimax: "MiniMax",
+};

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -13,6 +14,7 @@ import (
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileagentquota"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
@@ -60,6 +62,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	AgentQuota      agentquota.Repository
 }
 
 func New(dataDir string) (Stores, error) {
@@ -113,6 +116,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init usage store: %w", err)
 	}
 
+	agentQuota, err := fileagentquota.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init agent quota store: %w", err)
+	}
+
 	push, err := filepush.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init push subscriptions store: %w", err)
@@ -133,5 +141,6 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		AgentQuota:      agentQuota,
 	}, nil
 }
