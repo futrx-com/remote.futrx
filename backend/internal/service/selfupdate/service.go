@@ -94,14 +94,24 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if run := s.runs.status(s.host.ProcessAlive); run != nil && run.State == "running" {
+	// Capture the previous run BEFORE reset so we can reuse its classification
+	// on retry; reset clears run.json as part of the fresh-slate contract.
+	prevRun := s.runs.status(s.host.ProcessAlive)
+	if prevRun != nil && prevRun.State == "running" {
 		return s.statusLocked(), ErrUpdateInProgress
 	}
-	// A fresh run replaces the previous run's records.
 	if err := s.runs.reset(); err != nil {
 		return s.statusLocked(), err
 	}
+	// A failed infrastructure update may have already replaced the binary,
+	// so classifyUpdate against currentVersion would collapse to an
+	// application-only deploy and skip the host convergence that actually
+	// failed. Fall back to the previous failed run's kind when retrying
+	// toward the same target.
 	kind := classifyUpdate(s.currentVersion, tag)
+	if prevRun != nil && prevRun.State == "failed" && prevRun.Target == tag && prevRun.UpdateKind != "" {
+		kind = prevRun.UpdateKind
+	}
 	message := "Preparing the infrastructure update"
 	if kind == UpdateKindApplication {
 		message = "Preparing the application update"
@@ -113,7 +123,12 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	}
 	pid, err := s.host.StartUpdater(s.runs.launch(s.installDir, tag, kind))
 	if err != nil {
+		// The new run never started; clear the half-written record so
+		// Status() does not report a stale run with the next attempt's
+		// target and an empty log. Kind preservation for the next call
+		// is best-effort: only the in-memory prevRun survives reset().
 		s.runs.removeProgress()
+		s.runs.removeRecord()
 		return s.statusLocked(), fmt.Errorf("start updater: %w", err)
 	}
 	record := runRecord{
