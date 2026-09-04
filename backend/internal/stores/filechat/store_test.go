@@ -2,6 +2,7 @@ package filechat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,6 +131,65 @@ func TestStoreReadsEventPages(t *testing.T) {
 	}
 	if len(after) != 2 || after[0].Seq != 4 || after[1].Seq != 5 {
 		t.Fatalf("after = %#v", after)
+	}
+}
+
+func TestStoreScansRawEventsInStorageOrder(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []servicechat.Event{
+		{T: 1, Type: "user", TurnID: "turn-1", Text: "question"},
+		{T: 2, Type: "assistant_text", TurnID: "turn-1", MessageID: "message-1", Text: "answer"},
+	} {
+		if _, err := store.AppendEvent(context.Background(), "abcd", event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var events []servicechat.Event
+	if err := store.ScanEvents(context.Background(), "abcd", func(event servicechat.Event) {
+		events = append(events, event)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0].Seq != 1 || events[1].Seq != 2 ||
+		events[0].TurnID != "turn-1" || events[1].TurnID != "turn-1" ||
+		events[1].MessageID != "message-1" {
+		t.Fatalf("scanned events = %#v", events)
+	}
+}
+
+func TestStoreScanEventsHonorsCancellation(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.AppendEvent(context.Background(), "abcd", servicechat.Event{
+		T: 1, Type: "user", Text: "hello",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	visited := false
+	err = store.ScanEvents(ctx, "abcd", func(servicechat.Event) {
+		visited = true
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ScanEvents error = %v, want context.Canceled", err)
+	}
+	if visited {
+		t.Fatal("ScanEvents visited an event after cancellation")
 	}
 }
 

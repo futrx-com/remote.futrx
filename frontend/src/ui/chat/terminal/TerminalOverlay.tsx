@@ -120,7 +120,7 @@ export function TerminalOverlay({
     <aside
       ref={asideRef}
       id="workspace-terminal-pane"
-      class={`workspace-pane workspace-terminal-pane relative z-20 h-full flex-none overflow-hidden bg-[#101318] border-l border-white/10
+      class={`workspace-pane workspace-terminal-pane relative z-20 h-full flex-none overflow-hidden bg-surface border-l border-line
               ${resizing ? "transition-none" : "transition-[width,opacity] duration-200 ease-out"}
               ${open ? "opacity-100 shadow-2xl" : "opacity-0 border-l-0 shadow-none pointer-events-none"}`}
       style={`--workspace-terminal-width: ${terminalWidth}px; --workspace-terminal-max-width: max(${minTerminalWidth}px, calc(100% - ${minChatWidth}px));`}
@@ -131,8 +131,8 @@ export function TerminalOverlay({
       <div
         class={`h-full min-h-0 w-full flex flex-col transition-transform duration-200 ease-out ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <header class="workspace-pane-header codex-header flex-none bg-[#191a1f] border-b border-white/10 px-3 md:px-4 pb-2.5 flex items-center gap-2">
-          <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+        <header class="workspace-pane-header codex-header flex-none bg-surface border-b border-line px-3 md:px-4 pb-2.5 flex items-center gap-2">
+          <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
             <TerminalIcon class="w-4 h-4 text-accent-blue" />
           </div>
           <div class="min-w-0 flex-1">
@@ -147,7 +147,7 @@ export function TerminalOverlay({
           <button
             type="button"
             onClick={onClose}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
             title="Close terminal"
             aria-label="Close terminal"
             data-workspace-pane-close
@@ -165,7 +165,7 @@ export function TerminalOverlay({
         <div class="flex-1 min-h-0 p-2 md:p-3">
           <div
             ref={terminal.hostRef}
-            class="h-full w-full overflow-hidden rounded-md border border-white/10 bg-[#0f1014] p-2"
+            class="h-full w-full overflow-hidden rounded-md border border-line bg-inset p-2"
           />
         </div>
       </div>

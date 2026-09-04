@@ -13,11 +13,11 @@ export function NoChatSelected({
 }) {
   return (
     <div class="flex-1 flex flex-col min-h-0">
-      <header class="codex-header top-chrome flex-none z-20 bg-[#101318] border-b border-white/10 px-3 pb-2 flex items-center gap-2 min-h-[52px]">
+      <header class="codex-header top-chrome z-20 flex min-h-[46px] flex-none items-center gap-2 border-b border-line px-2.5 pb-2">
         <button
           type="button"
           onClick={onHamburger}
-          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-white/[0.08] grid place-items-center"
+          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-tint-strong grid place-items-center"
           aria-label="Toggle sidebar"
         >
           <Menu class="w-5 h-5" />
@@ -26,7 +26,7 @@ export function NoChatSelected({
       </header>
       <div class="flex-1 grid place-items-center text-center p-5">
         <div class="space-y-5 max-w-sm">
-          <div class="mx-auto w-16 h-16 rounded-lg bg-white/[0.06] border border-white/10 grid place-items-center">
+          <div class="mx-auto w-16 h-16 rounded-lg bg-tint border border-line grid place-items-center">
             {hasProjects ? (
               <MessageSquare class="w-8 h-8 opacity-70" />
             ) : (
@@ -47,8 +47,7 @@ export function NoChatSelected({
             <button
               type="button"
               onClick={onNewProject}
-              class="inline-flex items-center gap-2 bg-accent-blue hover:bg-accent-blue/90 active:scale-[0.99]
-                     text-white text-sm font-medium px-4 h-11 rounded-md transition"
+              class="btn btn-primary btn-lg"
             >
               <Folder class="w-4 h-4" /> New project
             </button>
@@ -56,8 +55,7 @@ export function NoChatSelected({
               <button
                 type="button"
                 onClick={onNewChat}
-                class="inline-flex items-center gap-2 bg-white/[0.08] hover:bg-white/[0.12]
-                       text-ink-100 text-sm font-medium px-4 h-11 rounded-md transition"
+                class="btn btn-secondary btn-lg"
               >
                 <Plus class="w-4 h-4" /> Loose chat
               </button>

@@ -1,7 +1,7 @@
 # User guide
 
 This guide explains how to use every user-facing part of Remote: onboarding,
-projects, chats, four agent providers, scheduled tasks, workspace tools,
+projects, chats, five agent providers, scheduled tasks, workspace tools,
 previews, the shared Agent Browser, Git recovery, secrets, sharing, users, and
 server information.
 
@@ -30,6 +30,7 @@ If this is your first session:
 | --- | --- |
 | Claim a new server or sign in | [First run and sign-in](01-first-run-and-sign-in.md) |
 | Connect Claude, Codex, or Kimi | [Global settings, users, and providers](10-global-settings-users-providers.md) |
+| Configure MiniMax for one project | [Global settings, users, and providers](10-global-settings-users-providers.md#use-minimax) |
 | Sign in to Antigravity for one project | [Global settings, users, and providers](10-global-settings-users-providers.md#use-antigravity) |
 | Create, search, reorder, start, or stop projects | [Projects and sidebar](02-projects-and-sidebar.md) |
 | Pick a provider, model, thinking level, speed, mode, or skill | [Chat and agent controls](03-chat-and-agent-controls.md) |
@@ -91,7 +92,7 @@ flowchart LR
 The durable center is the project, not one chat or one container generation.
 
 - `/workspace` survives normal stop, restart, and container replacement.
-- Claude, Codex, Kimi, and Antigravity provider homes are separate durable
+- Claude, Codex, MiniMax, Kimi, and Antigravity provider homes are separate durable
   mounts. Antigravity persists only `/root/.gemini/antigravity-cli`, not the
   entire `.gemini` tree.
 - The Agent Browser profile lives in the workspace, so site sessions can survive container replacement.

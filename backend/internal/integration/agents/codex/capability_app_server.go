@@ -99,6 +99,12 @@ func readAppServerCapabilities(
 			}
 			initialized = true
 			if err := writeRPC(map[string]any{
+				"method": "initialized",
+				"params": map[string]any{},
+			}); err != nil {
+				return modelListResponse{}, collaborationModeListResponse{}, err
+			}
+			if err := writeRPC(map[string]any{
 				"method": "model/list",
 				"id":     modelRequestID,
 				"params": map[string]any{"includeHidden": false, "limit": 100},

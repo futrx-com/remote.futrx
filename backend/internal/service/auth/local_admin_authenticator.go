@@ -14,8 +14,9 @@ var localAdminEmailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 // LocalAdminAuthenticator owns the local credential and its claim/login
 // invariants. Service delegates to it to preserve the public facade.
 type LocalAdminAuthenticator struct {
-	store LocalAdminStore
-	users UserDirectory
+	store       LocalAdminStore
+	users       UserDirectory
+	setupTokens *setupTokenGuard
 
 	mu         sync.RWMutex
 	credential *LocalAdminCredential
@@ -26,9 +27,12 @@ type LocalAdminAuthenticator struct {
 func newLocalAdminAuthenticator(
 	store LocalAdminStore,
 	users UserDirectory,
+	setupTokens *setupTokenGuard,
 	credential *LocalAdminCredential,
 ) *LocalAdminAuthenticator {
-	return &LocalAdminAuthenticator{store: store, users: users, credential: credential}
+	return &LocalAdminAuthenticator{
+		store: store, users: users, setupTokens: setupTokens, credential: credential,
+	}
 }
 
 func (a *LocalAdminAuthenticator) setDummyHash(hash string) {
@@ -37,13 +41,8 @@ func (a *LocalAdminAuthenticator) setDummyHash(hash string) {
 	a.mu.Unlock()
 }
 
-func (a *LocalAdminAuthenticator) claim(
-	ctx context.Context,
-	email,
-	password,
-	authorizedEmail string,
-) (User, error) {
-	email = normalizeEmail(email)
+func (a *LocalAdminAuthenticator) claim(ctx context.Context, req ClaimRequest) (User, error) {
+	email := normalizeEmail(req.Email)
 	if !localAdminEmailPattern.MatchString(email) {
 		return User{}, errors.New("valid admin email is required")
 	}
@@ -60,10 +59,21 @@ func (a *LocalAdminAuthenticator) claim(
 	if a.users == nil {
 		return User{}, errors.New("users directory is not configured")
 	}
-	if first, err := a.users.FirstAdmin(ctx); err != nil {
+	first, err := a.users.FirstAdmin(ctx)
+	if err != nil {
 		return User{}, err
-	} else if first != nil {
-		authorizedEmail = normalizeEmail(authorizedEmail)
+	}
+	// Two different things can authorise a claim. Once an administrator
+	// exists, they vouch for it. On a genuinely first boot nobody can, and
+	// the token printed to the server terminal is the only thing standing
+	// between whoever loads the page first and ownership of the server.
+	tokenGated := first == nil
+	if tokenGated {
+		if err := a.setupTokens.verify(ctx, req.SetupToken); err != nil {
+			return User{}, err
+		}
+	} else {
+		authorizedEmail := normalizeEmail(req.AuthorizedEmail)
 		isAdmin, authErr := a.users.IsAdmin(ctx, authorizedEmail)
 		if authErr != nil {
 			return User{}, authErr
@@ -72,7 +82,7 @@ func (a *LocalAdminAuthenticator) claim(
 			return User{}, ErrAdminClaimUnauthorized
 		}
 	}
-	passwordHash, err := HashPassword(password)
+	passwordHash, err := HashPassword(req.Password)
 	if err != nil {
 		return User{}, err
 	}
@@ -92,6 +102,14 @@ func (a *LocalAdminAuthenticator) claim(
 		}
 	}
 	a.setCredential(&credential)
+	if tokenGated {
+		// Only now is the claim irreversible, so only now may the token be
+		// spent: every path above this line is one the operator can retry.
+		// Failing to mark it used is deliberately not fatal - the credential
+		// is already written, and the already-claimed check at the top of
+		// this method rejects every later attempt regardless.
+		_ = a.setupTokens.consume(ctx)
+	}
 	return localAdminUser(email), nil
 }
 

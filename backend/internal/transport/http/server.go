@@ -27,6 +27,7 @@ type Handlers struct {
 	AgentAuth         RouteRegistrar
 	AgentCapabilities RouteRegistrar
 	UserSettings      RouteRegistrar
+	Security          RouteRegistrar
 	Notifications     RouteRegistrar
 	Push              RouteRegistrar
 	ServerInfo        RouteRegistrar
@@ -43,6 +44,7 @@ type Handlers struct {
 	Auth              RouteRegistrar
 	Middleware        Middleware
 	Static            http.Handler
+	Usage             RouteRegistrar
 }
 
 func NewHandler(handlers Handlers) http.Handler {
@@ -61,6 +63,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.AgentAuth)
 	register(handlers.AgentCapabilities)
 	register(handlers.UserSettings)
+	register(handlers.Security)
 	register(handlers.Notifications)
 	register(handlers.Push)
 	register(handlers.ServerInfo)
@@ -68,6 +71,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Skills)
 	register(handlers.BrowserInspector)
 	register(handlers.Schedules)
+	register(handlers.Usage)
 	register(handlers.Uploads)
 
 	upgrader := NewUpgrader()

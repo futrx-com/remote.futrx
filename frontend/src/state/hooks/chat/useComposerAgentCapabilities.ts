@@ -1,17 +1,17 @@
-import { useEffect } from "preact/hooks";
+import { useEffect, useMemo } from "preact/hooks";
 import type {
   ChatMode,
   ChatProvider,
   ReasoningEffort,
   ServiceTier,
 } from "../../../models/chat";
-import { agentCapabilityState } from "../../chat/agentCapabilityState";
-import { unavailableManagedAgents } from "../../auth/agentAuthRegistryState";
+import { agentCapabilityState } from "./agentCapabilityState";
+import { agentAuthRegistryService } from "../../../services/auth/agentAuthRegistryService.ts";
 import { useAuthContext } from "../../context/AuthContext";
 import { useAgentCapabilities } from "./useAgentCapabilities";
 
 interface CapabilityPreferenceActions {
-  changeMode: (mode: ChatMode) => void;
+  changeMode: (mode: ChatMode, modelPreset?: string, reasoningPreset?: string) => void;
   changeReasoningEffort: (reasoningEffort: ReasoningEffort) => void;
   changeServiceTier: (serviceTier: ServiceTier) => void;
 }
@@ -35,19 +35,31 @@ export function useComposerAgentCapabilities({
 }) {
   const { agentAuth, providerAuthChecked } = useAuthContext();
   const capabilities = useAgentCapabilities(projectId);
-  const unavailableProviders: Partial<Record<ChatProvider, string>> =
-    unavailableManagedAgents(agentAuth.providers, providerAuthChecked);
-  for (const item of capabilities.catalog?.providers ?? []) {
-    if (item.unavailableReason) {
-      unavailableProviders[item.provider] = item.unavailableReason;
+
+  const unavailableProviders = useMemo(() => {
+    const unavailable: Partial<Record<ChatProvider, string>> =
+      agentAuthRegistryService.unavailableReasons(agentAuth.providers, providerAuthChecked);
+    for (const item of capabilities.catalog?.providers ?? []) {
+      if (item.unavailableReason) {
+        unavailable[item.provider] = item.unavailableReason;
+      }
     }
-  }
-  const state = agentCapabilityState.resolve(
-    capabilities.catalog,
-    provider,
-    model,
-    capabilities.loading,
-    unavailableProviders,
+    return unavailable;
+  }, [agentAuth.providers, providerAuthChecked, capabilities.catalog]);
+
+  // resolve() builds fresh arrays every call, so computing it inline gave the
+  // correction effect below new modeOptions/reasoningEffortOptions identities
+  // on every render — and that effect writes to the server. Memoize on the
+  // inputs so the effect runs when the capabilities actually change.
+  const state = useMemo(
+    () => agentCapabilityState.resolve(
+      capabilities.catalog,
+      provider,
+      model,
+      capabilities.loading,
+      unavailableProviders,
+    ),
+    [capabilities.catalog, provider, model, capabilities.loading, unavailableProviders],
   );
 
   useEffect(() => {

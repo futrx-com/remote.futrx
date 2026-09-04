@@ -11,11 +11,15 @@ import (
 // Parser converts @moonshot-ai/kimi-code `kimi -p --output-format stream-json`
 // JSONL into normalized agent events. Unlike Claude/Codex, kimi-code emits
 // OpenAI-chat-shaped lines: {"role":"assistant",...}, {"role":"tool",...}, and
-// a trailing {"role":"meta","type":"session.resume_hint",...}. There is no
-// usage/token line and no thinking line; the meta line marks completion.
+// a trailing {"role":"meta","type":"session.resume_hint",...}. As of
+// kimi-code v0.19.2 there is no usage/token line and no thinking line; the
+// meta line marks completion. Token counts are therefore unknown for kimi
+// runs — the parser still forwards a `usage` object opportunistically if a
+// future CLI version starts emitting one on any line.
 type Parser struct {
 	req          agent.RunRequest
 	sawSessionID string
+	sawUsage     agent.Usage
 }
 
 func NewParser(req agent.RunRequest) *Parser {
@@ -32,6 +36,8 @@ type wireMsg struct {
 	ToolCalls  []wireToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID string          `json:"tool_call_id,omitempty"`
 	SessionID  string          `json:"session_id,omitempty"`
+	Model      string          `json:"model,omitempty"`
+	Usage      json.RawMessage `json:"usage,omitempty"`
 }
 
 type wireToolCall struct {
@@ -53,6 +59,13 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	now := time.Now().UnixMilli()
 	events := make([]agent.Event, 0, 2)
 
+	if usage, ok := agent.ParseUsage(raw.Usage); ok {
+		p.sawUsage = usage
+	}
+	if raw.Model != "" {
+		p.sawUsage.Model = raw.Model
+	}
+
 	switch raw.Role {
 	case "meta":
 		// Final line: {"role":"meta","type":"session.resume_hint","session_id":...}.
@@ -63,9 +76,13 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 					ev.SessionID = raw.SessionID
 				}))
 			}
-			// kimi-code emits no usage / turn-completed line; the resume hint is
-			// the de-facto end of the run.
-			events = append(events, p.event(now, agent.EventRunCompleted, rawLine, nil))
+			// kimi-code emits no turn-completed line; the resume hint is the
+			// de-facto end of the run. Usage is normally absent, so the event
+			// carries the model alone and cost stays unknown downstream.
+			usage := p.runUsage()
+			events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
+				ev.Usage = usage.Raw()
+			}))
 		}
 
 	case "assistant":
@@ -101,6 +118,17 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	}
 
 	return events, nil
+}
+
+// runUsage returns whatever the stream disclosed about this turn, falling
+// back to the requested model so a kimi run is still attributable even when
+// no token counts exist.
+func (p *Parser) runUsage() agent.Usage {
+	usage := p.sawUsage
+	if usage.Model == "" {
+		usage.Model = p.req.Model
+	}
+	return usage
 }
 
 func (p *Parser) event(now int64, type_ agent.EventType, raw json.RawMessage, fn func(*agent.Event)) agent.Event {

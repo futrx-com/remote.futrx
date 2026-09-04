@@ -1,26 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
-import type { ChatStream } from "../../../types/chatApi";
+import { CHAT_TRANSCRIPT_TURN_PAGE_LIMIT } from "../../../config/api.ts";
+import type {
+  ChatInteractionResponder,
+  ChatStream,
+} from "../../../types/chatApi";
 import type {
   ChatEvent,
   ChatEventPage,
   ChatMeta,
+  ChatRenderState,
   ChatStatus,
   PromptOutcome,
 } from "../../../models/chat";
-import {
-  chatEventStateProjector,
-  type ChatRenderState,
-} from "../../chat/chatEventStateProjector";
+import { chatEventStateProjector } from "./chatEventStateProjector";
 import type { ChatMessageBlock } from "../../../models/chatMessage";
-import type { ChatUsageTotals } from "../../../models/chatUsage";
-
-const CHAT_EVENT_PAGE_LIMIT = 240;
 
 interface UseChatResult {
   meta: ChatMeta | null;
   blocks: ChatMessageBlock[];
-  usageTotals: ChatUsageTotals;
   eventCount: number;
   hasOlder: boolean;
   loadingOlder: boolean;
@@ -30,15 +28,16 @@ interface UseChatResult {
   sendPrompt: (text: string, clientId?: string) => boolean;
   promptOutcome: PromptOutcome | null;
   cancel: () => void;
+  respondInteraction: ChatInteractionResponder;
   rewind: (beforeT: number) => Promise<ChatEventPage>;
   loadOlder: () => Promise<void>;
   refreshMeta: () => Promise<void>;
 }
 
 /**
- * useChat — load chat metadata, then open a streaming WS. The server replays
- * history over the socket before live events, which avoids gaps between an
- * HTTP history fetch and the WS subscription.
+ * useChat — load chat metadata and a bounded transcript page, then open a
+ * streaming WS after the latest applied sequence so history and live events
+ * meet without a gap.
  */
 export function useChat(chatId: string): UseChatResult {
   const [meta, setMeta] = useState<ChatMeta | null>(null);
@@ -58,15 +57,21 @@ export function useChat(chatId: string): UseChatResult {
   const pendingFrameRef = useRef<number | null>(null);
   const lastSeqRef = useRef(0);
 
-  function clearPendingEvents() {
+  // The batcher reaches state only through refs and setState updaters, so these
+  // three close over nothing that can go stale and take no dependencies. They
+  // are wrapped because callers already capture them: rewind's useCallback
+  // below pins whichever clearPendingEvents existed when it was created, and
+  // chatId never changes for a given instance (ChatContainer is keyed on it and
+  // remounts), so that capture lasts the whole session.
+  const clearPendingEvents = useCallback(() => {
     if (pendingFrameRef.current !== null) {
       cancelAnimationFrame(pendingFrameRef.current);
       pendingFrameRef.current = null;
     }
     pendingEventsRef.current = [];
-  }
+  }, []);
 
-  function flushPendingEvents() {
+  const flushPendingEvents = useCallback(() => {
     pendingFrameRef.current = null;
     const events = pendingEventsRef.current;
     if (events.length === 0) return;
@@ -77,14 +82,14 @@ export function useChat(chatId: string): UseChatResult {
     );
     setRenderState((current) => chatEventStateProjector.append(current, events));
     setStatus((current) => chatEventStateProjector.statusAfter(events[events.length - 1], current));
-  }
+  }, []);
 
-  function enqueueEvent(event: ChatEvent) {
+  const enqueueEvent = useCallback((event: ChatEvent) => {
     pendingEventsRef.current.push(event);
     if (pendingFrameRef.current === null) {
       pendingFrameRef.current = requestAnimationFrame(flushPendingEvents);
     }
-  }
+  }, [flushPendingEvents]);
 
   // Load metadata when chat id changes.
   useEffect(() => {
@@ -104,7 +109,9 @@ export function useChat(chatId: string): UseChatResult {
       try {
         const [m, page] = await Promise.all([
           chatApi.fetch(chatId),
-          chatApi.fetchEvents(chatId, { limit: CHAT_EVENT_PAGE_LIMIT }),
+          chatApi.fetchTranscript(chatId, {
+            limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
+          }),
         ]);
         if (cancelled) return;
         lastSeqRef.current = Math.max(
@@ -200,6 +207,12 @@ export function useChat(chatId: string): UseChatResult {
     if (stream?.isOpen) stream.cancel();
   }, []);
 
+  const respondInteraction = useCallback<ChatInteractionResponder>((interactionId, method, intent) => {
+    const stream = streamRef.current;
+    if (!wsReady || !synced || !stream?.isOpen || status !== "streaming") return false;
+    return stream.respondInteraction(interactionId, method, intent);
+  }, [status, wsReady, synced]);
+
   const rewind = useCallback(async (beforeT: number) => {
     const res = await chatApi.rewind(chatId, beforeT);
     clearPendingEvents();
@@ -216,8 +229,8 @@ export function useChat(chatId: string): UseChatResult {
     if (loadingOlder || !renderState.hasOlder || !renderState.nextBefore) return;
     setLoadingOlder(true);
     try {
-      const page = await chatApi.fetchEvents(chatId, {
-        limit: CHAT_EVENT_PAGE_LIMIT,
+      const page = await chatApi.fetchTranscript(chatId, {
+        limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
         before: renderState.nextBefore,
       });
       setRenderState((current) => chatEventStateProjector.prepend(current, page));
@@ -237,7 +250,6 @@ export function useChat(chatId: string): UseChatResult {
   return {
     meta,
     blocks: renderState.blocks,
-    usageTotals: renderState.usageTotals,
     eventCount: renderState.eventCount,
     hasOlder: renderState.hasOlder,
     loadingOlder,
@@ -247,6 +259,7 @@ export function useChat(chatId: string): UseChatResult {
     sendPrompt,
     promptOutcome,
     cancel,
+    respondInteraction,
     rewind,
     loadOlder,
     refreshMeta,

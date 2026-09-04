@@ -36,7 +36,7 @@ type ProjectCatalog interface {
 }
 
 type Authorizer interface {
-	CurrentSession(cookieValue string) (*serviceauth.Session, error)
+	CurrentSession(ctx context.Context, cookieValue string) (*serviceauth.Session, error)
 	IsAdmin(ctx context.Context, email string) (bool, error)
 }
 
@@ -216,19 +216,29 @@ func (c *Service) decorate(capabilities *agent.Capabilities) {
 	for index, scope := range descriptor.ExecutionScopes {
 		capabilities.ExecutionScopes[index] = string(scope)
 	}
+	var apiKey *agent.CapabilityAPIKeyAuthentication
+	if descriptor.APIKeyAuth != nil {
+		apiKey = &agent.CapabilityAPIKeyAuthentication{
+			CreateURL:       descriptor.APIKeyAuth.CreateURL,
+			CreateLabel:     descriptor.APIKeyAuth.CreateLabel,
+			CredentialLabel: descriptor.APIKeyAuth.CredentialLabel,
+		}
+	}
 	capabilities.Authentication = agent.CapabilityAuthentication{
 		Mode:                string(descriptor.Auth),
 		Instructions:        descriptor.AuthInstructions,
 		SatisfiesAccessGate: descriptor.SatisfiesAccessGate,
+		APIKey:              apiKey,
 	}
 	capabilities.Features = agent.CapabilityFeatures{
 		Sessions: agent.CapabilitySessionSupport{
 			Resume: descriptor.Features.Sessions.Resume,
 			Fork:   descriptor.Features.Sessions.Fork,
 		},
-		Skills:         string(descriptor.Features.Skills),
-		BrowserTools:   descriptor.Features.BrowserTools,
-		ScheduledTools: descriptor.Features.ScheduledTools,
+		Skills:            string(descriptor.Features.Skills),
+		BrowserTools:      descriptor.Features.BrowserTools,
+		ScheduledTools:    descriptor.Features.ScheduledTools,
+		ExecutionPolicies: descriptor.Features.ExecutionPolicies,
 	}
 }
 
@@ -250,7 +260,7 @@ func (c *Service) authorize(ctx context.Context, projectID serviceproject.ID, co
 	if c.auth == nil {
 		return nil
 	}
-	session, err := c.auth.CurrentSession(cookie)
+	session, err := c.auth.CurrentSession(ctx, cookie)
 	if err != nil || session == nil {
 		return ErrAuthenticationRequired
 	}

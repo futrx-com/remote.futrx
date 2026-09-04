@@ -165,3 +165,43 @@ export interface AgentBrowserInfo {
   uptimeSec?: number;
   lastActivity?: number;
 }
+
+/** What one agent-browser status report means for the drawer. */
+export interface AgentBrowserView {
+  status: AgentBrowserStatus;
+  guiUrl: string;
+  error: string | null;
+  keepPolling: boolean;
+}
+
+export interface CreateProjectValidation {
+  ok: boolean;
+  slug: string;
+  // Error text when ok is false; informational "Saved as <slug>" when the
+  // slug differs from what was typed.
+  message: string;
+}
+
+/** Lets an in-flight project load see that its caller has moved on. */
+export interface ProjectDataLoadSignal {
+  cancelled: boolean;
+}
+
+export interface ProjectContainerRecord {
+  loading: boolean;
+  data?: ProjectContainerInfo;
+  error?: string;
+  refreshedAt?: number;
+}
+
+export interface SecretsRecord {
+  loading: boolean;
+  data?: ProjectSecret[];
+  error?: string;
+}
+
+export interface AccessRecord {
+  loading: boolean;
+  data?: string[];
+  error?: string;
+}

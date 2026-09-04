@@ -1,9 +1,9 @@
 import { useEffect } from "preact/hooks";
 
 import { pushSubscriptionApi } from "../../../api/pushSubscriptionApi";
-import type { WorkspaceView } from "../../workspace/workspaceUiState";
-import { pushNotificationState } from "../../push/pushNotificationState";
-import { pushPresenceState } from "../../push/pushPresenceState";
+import type { WorkspaceView } from "../../../models/workspace";
+import { pushNotificationStore } from "../../stores/push/pushNotificationStore";
+import { pushPresenceStore } from "../../stores/push/pushPresenceStore";
 
 interface WorkspacePushLifecycleOptions {
   activeChatId: string | null;
@@ -21,7 +21,7 @@ export function useWorkspacePushLifecycle({
   // installed one, and route notification taps into chat selection.
   useEffect(() => {
     void pushSubscriptionApi.reconcileCurrentAccount();
-    pushNotificationState.connect((chatId) => {
+    pushNotificationStore.getState().connect((chatId) => {
       if (chatId) openChat(chatId);
     });
   }, [openChat]);
@@ -31,7 +31,7 @@ export function useWorkspacePushLifecycle({
   // covers the user's other devices, which the worker cannot see.
   useEffect(() => {
     const onScreen = view === "chat" ? activeChatId : null;
-    pushNotificationState.setVisibleChat(onScreen);
-    pushPresenceState.setWatchedChat(onScreen);
+    pushNotificationStore.getState().setVisibleChat(onScreen);
+    pushPresenceStore.getState().setWatchedChat(onScreen);
   }, [activeChatId, view]);
 }

@@ -21,6 +21,7 @@ export const Archive = (p: P) => (<svg {...base} {...p}><rect x="2" y="4" width=
 export const FileText = (p: P) => (<svg {...base} {...p}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>);
 export const ChevronsUpDown = (p: P) => (<svg {...base} {...p}><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>);
 export const ChevronsDownUp = (p: P) => (<svg {...base} {...p}><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>);
+export const Boxes = (p: P) => (<svg {...base} {...p}><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5M12 12v10"/></svg>);
 export const Terminal = (p: P) => (<svg {...base} {...p}><path d="m4 17 6-6-6-6M12 19h8"/></svg>);
 export const MessageSquare = (p: P) => (<svg {...base} {...p}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>);
 export const GitFork = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"/><path d="M12 12v3"/></svg>);
@@ -63,6 +64,7 @@ export const Cpu = (p: P) => (<svg {...base} {...p}><rect x="6" y="6" width="12"
 export const MemoryStick = (p: P) => (<svg {...base} {...p}><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h2v4H6zM11 10h2v4h-2zM16 10h2v4h-2zM6 18v2M10 18v2M14 18v2M18 18v2"/></svg>);
 export const HardDrive = (p: P) => (<svg {...base} {...p}><path d="M22 12H2l3-7h14l3 7Z"/><rect x="2" y="12" width="20" height="7" rx="1"/><path d="M6 15.5h.01M10 15.5h.01"/></svg>);
 export const Network = (p: P) => (<svg {...base} {...p}><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>);
+export const ShieldCheck = (p: P) => (<svg {...base} {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>);
 export const Bell = (p: P) => (<svg {...base} {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>);
 export const BellOff = (p: P) => (<svg {...base} {...p}><path d="M8.7 3A6 6 0 0 1 18 8c0 2.4.4 4.2.9 5.5M6 8a6 6 0 0 1 .3-1.8M3 17h15M13.73 21a2 2 0 0 1-3.46 0"/><path d="m1 1 22 22"/></svg>);
 export const Smartphone = (p: P) => (<svg {...base} {...p}><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>);

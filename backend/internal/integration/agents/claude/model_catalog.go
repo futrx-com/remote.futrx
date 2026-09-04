@@ -171,8 +171,12 @@ func currentModelLabel(result string) string {
 			continue
 		}
 		label := strings.TrimSpace(strings.TrimPrefix(line, "Current model:"))
+		// Newer Claude Code versions wrap model labels in Markdown inline-code
+		// backticks. Strip them on both sides of the default marker so either
+		// `Opus 5 (default)` or `Opus 5` (default) stays presentation-neutral.
+		label = strings.Trim(label, "`")
 		label = strings.TrimSuffix(label, " (default)")
-		return strings.TrimSpace(label)
+		return strings.Trim(strings.TrimSpace(label), "`")
 	}
 	return ""
 }

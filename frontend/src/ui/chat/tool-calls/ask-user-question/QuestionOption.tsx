@@ -20,7 +20,7 @@ export function QuestionOption({
       class={`text-left rounded-md border px-3 py-2.5 min-h-12 transition-colors
               ${active
                 ? "border-accent-blue bg-accent-blue/15"
-                : "border-white/10 bg-white/[0.04] hover:bg-white/[0.07]"}`}
+                : "border-line bg-tint hover:bg-tint-strong"}`}
     >
       <div class="flex items-start gap-2">
         <div class={`flex-none mt-0.5 w-4 h-4 ${multi ? "rounded-sm" : "rounded-full"}

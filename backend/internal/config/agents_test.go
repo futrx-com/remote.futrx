@@ -26,6 +26,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	want := []agent.ProviderID{
 		agent.ProviderClaude,
 		agent.ProviderCodex,
+		agent.ProviderMiniMax,
 		agent.ProviderKimi,
 		agent.ProviderAntigravity,
 	}
@@ -43,6 +44,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	}
 	if !catalog.SupportsNativeFork(string(agent.ProviderClaude)) ||
 		!catalog.SupportsNativeFork(string(agent.ProviderCodex)) ||
+		!catalog.SupportsNativeFork(string(agent.ProviderMiniMax)) ||
 		catalog.SupportsNativeFork(string(agent.ProviderKimi)) ||
 		catalog.SupportsNativeFork(string(agent.ProviderAntigravity)) {
 		t.Fatal("catalog native-fork policies do not match provider behavior")
@@ -79,6 +81,9 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	}
 	if got := runtime.WorkspaceSkillHome("codex"); got != "/workspace/.codex" {
 		t.Fatalf("Codex workspace skill home = %q", got)
+	}
+	if got := runtime.WorkspaceSkillHome("minimax"); got != "/workspace/.minimax" {
+		t.Fatalf("MiniMax workspace skill home = %q", got)
 	}
 	if runtime.AnyAuthenticated() != runtime.AccessReady() {
 		t.Fatal("built-in access gate drifted from managed auth readiness")

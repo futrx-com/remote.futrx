@@ -13,6 +13,7 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
+	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 )
 
 type ChatEvent = servicechat.Event
@@ -36,6 +37,7 @@ type agentBrowserActivityRecorder interface {
 
 var ErrPromptAlreadyRunning = errors.New("a previous prompt is still running")
 var ErrUnsupportedAgentScope = errors.New("agent does not support this chat execution scope")
+var ErrMaintenance = errors.New("an infrastructure update is recycling workspaces; prompts will be available when it finishes")
 
 type Actor struct {
 	Email   string
@@ -79,6 +81,13 @@ type ScheduleToolIssuer interface {
 	IssueScheduleTool(context.Context, ScheduleToolRequest) (ScheduleToolAccess, error)
 }
 
+// UsageRecorder receives one entry per completed agent run. It is the only
+// thing the prompt service knows about token accounting; pricing, storage and
+// aggregation all live in the usage service.
+type UsageRecorder interface {
+	RecordRun(ctx context.Context, event serviceusage.RunEvent)
+}
+
 // RunOutcome describes a settled agent run. Observers use it for out-of-band
 // reporting such as outbound notifications; it never affects the run itself.
 type RunOutcome struct {
@@ -105,9 +114,28 @@ type RunObserver interface {
 
 type Option func(*Service)
 
+// StartGate blocks new agent runs while an external host job owns the
+// workspace lifecycle. Existing runs remain untouched and are skipped by the
+// workspace upgrader.
+type StartGate interface {
+	Blocked() bool
+}
+
+func WithStartGate(gate StartGate) Option {
+	return func(service *Service) {
+		service.startGate = gate
+	}
+}
+
 func WithScheduleToolIssuer(issuer ScheduleToolIssuer) Option {
 	return func(service *Service) {
 		service.scheduleTools = issuer
+	}
+}
+
+func WithUsageRecorder(recorder UsageRecorder) Option {
+	return func(service *Service) {
+		service.usage = recorder
 	}
 }
 
@@ -141,6 +169,9 @@ type Service struct {
 	agents        AgentRegistry
 	agentPolicy   AgentPolicy
 	scheduleTools ScheduleToolIssuer
+	usage         UsageRecorder
+	startGate     StartGate
+	interactions  interactionResponseRouter
 	observer      RunObserver
 }
 
@@ -156,11 +187,12 @@ func New(
 		hub = runhub.New(store)
 	}
 	service := &Service{
-		store:    store,
-		tmux:     tmux,
-		projects: projects,
-		hub:      hub,
-		agents:   agents,
+		store:        store,
+		tmux:         tmux,
+		projects:     projects,
+		hub:          hub,
+		agents:       agents,
+		interactions: newInteractionResponseRouter(),
 	}
 	for _, option := range options {
 		if option != nil {
@@ -178,6 +210,12 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	if emitTransient == nil {
 		emitTransient = func(ChatEvent) {}
 	}
+	if rnr.startGate != nil && rnr.startGate.Blocked() {
+		emitTransient(ChatEvent{
+			T: time.Now().UnixMilli(), Type: "error", Message: ErrMaintenance.Error(),
+		})
+		return RunHandle{}, ErrMaintenance
+	}
 	parentCtx := input.ParentContext
 	if parentCtx == nil {
 		parentCtx = context.Background()
@@ -192,15 +230,20 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 		})
 		return RunHandle{}, ErrPromptAlreadyRunning
 	}
+	responses := rnr.interactions.open(input.ChatID, runID)
 
 	done := make(chan RunResult, 1)
+	ledgerRunID := newLedgerRunID()
 	go func() {
 		defer close(done)
 		defer rnr.hub.FinishRun(input.ChatID, runID)
+		defer rnr.interactions.remove(input.ChatID, runID)
 		var output strings.Builder
 		err := rnr.runPromptAs(
 			ctx,
 			input,
+			ledgerRunID,
+			responses,
 			func(ev ChatEvent) {
 				// Stamp the originating task so a scheduled run's events stay
 				// distinguishable from an interactive turn's downstream.
@@ -242,6 +285,10 @@ func (rnr *Service) CancelPrompt(id servicechat.ID) bool {
 	return rnr.hub.CancelRun(id)
 }
 
+func (rnr *Service) RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error {
+	return rnr.interactions.respond(id, response)
+}
+
 func (rnr *Service) runPrompt(
 	ctx context.Context,
 	id servicechat.ID,
@@ -249,15 +296,25 @@ func (rnr *Service) runPrompt(
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
 ) error {
-	return rnr.runPromptAs(ctx, StartInput{ChatID: id, Prompt: prompt}, emit, emitTransient)
+	return rnr.runPromptAs(
+		ctx,
+		StartInput{ChatID: id, Prompt: prompt},
+		newLedgerRunID(),
+		nil,
+		emit,
+		emitTransient,
+	)
 }
 
 func (rnr *Service) runPromptAs(
 	ctx context.Context,
 	input StartInput,
+	ledgerRunID string,
+	interactionResponses <-chan agent.InteractionResponse,
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
 ) error {
+	emit = withTurnID(ledgerRunID, emit)
 	id := input.ChatID
 	prompt := input.Prompt
 	meta, err := rnr.store.Get(ctx, id)
@@ -273,9 +330,14 @@ func (rnr *Service) runPromptAs(
 		})
 	}
 
-	// Resolve a fresh cwd: live tmux pane_current_path if linked, else stored.
+	// Project metadata stores the host-side bind-mount source, but provider
+	// processes run inside the project container where that workspace is always
+	// mounted at /workspace. Never pass the host path into an in-container CLI:
+	// Codex-harness tools and MCP servers use this request cwd when they spawn.
 	cwd := meta.Cwd
-	if meta.TmuxSession != "" {
+	if meta.ProjectID != "" {
+		cwd = agent.ProjectWorkspacePath
+	} else if meta.TmuxSession != "" {
 		if c, err := rnr.tmux.Cwd(meta.TmuxSession); err == nil && c != "" {
 			cwd = c
 		}
@@ -384,6 +446,16 @@ func (rnr *Service) runPromptAs(
 		}
 	}
 
+	ledger := ledgerRun{
+		runID:     ledgerRunID,
+		chatID:    id,
+		projectID: string(meta.ProjectID),
+		userEmail: input.Actor.Email,
+		provider:  providerID,
+		model:     meta.Model,
+		scheduled: input.ScheduledTaskID != "",
+	}
+
 	run := func(runPrompt, runResumeID string) error {
 		return provider.Run(ctx, agent.RunRequest{
 			Provider:       providerID,
@@ -398,12 +470,18 @@ func (rnr *Service) runPromptAs(
 			Preferences: agent.RunPreferences{
 				ReasoningEffort: agent.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     agent.ServiceTier(meta.ServiceTier),
+				ApprovalPolicy:  servicechat.NormalizeApprovalPolicy(meta.ApprovalPolicy),
+				SandboxPolicy:   servicechat.NormalizeSandboxPolicy(meta.SandboxPolicy),
 			},
-			EnableBrowser:       enableBrowser,
-			EnableScheduleTools: enableScheduleTools,
-			RuntimeEnv:          runtimeEnv,
+			EnableBrowser:        enableBrowser,
+			EnableScheduleTools:  enableScheduleTools,
+			RuntimeEnv:           runtimeEnv,
+			InteractionResponses: interactionResponses,
 		}, func(ev agent.Event) {
+			// qa added the provider argument; the ledger hook is this
+			// branch's and sits after the emit as before.
 			rnr.emitAgentEvent(ctx, id, providerID, ev, emit)
+			rnr.recordRunUsage(ctx, ledger, ev)
 		})
 	}
 
@@ -430,6 +508,13 @@ func (rnr *Service) runPromptAs(
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: string(providerID) + " exit: " + err.Error()})
 	}
 	return err
+}
+
+func withTurnID(turnID string, emit func(ChatEvent)) func(ChatEvent) {
+	return func(event ChatEvent) {
+		event.TurnID = turnID
+		emit(event)
+	}
 }
 
 func clearSessionIDForProvider(meta *ChatMeta, provider agent.ProviderID) {

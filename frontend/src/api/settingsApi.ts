@@ -22,10 +22,10 @@ export const settingsApi = {
 
 function normalizeUserSettings(settings: UserSettings): UserSettings {
   const theme = settings?.appearance?.theme;
-  const provider = settings?.chat?.provider;
-  const mode = settings?.chat?.mode;
-  const reasoningEffort = settings?.chat?.reasoningEffort;
-  const serviceTier = settings?.chat?.serviceTier;
+  const chat = normalizeChatSettings(settings?.chat, DEFAULT_USER_SETTINGS.chat);
+  // Older servers and stored settings only expose `chat`. Treat it as the
+  // project preference too until the user chooses a project-specific agent.
+  const projectChat = normalizeChatSettings(settings?.projectChat, chat);
   return {
     ...DEFAULT_USER_SETTINGS,
     ...settings,
@@ -36,25 +36,30 @@ function normalizeUserSettings(settings: UserSettings): UserSettings {
         ? theme
         : DEFAULT_USER_SETTINGS.appearance.theme,
     },
-    chat: {
-      ...DEFAULT_USER_SETTINGS.chat,
-      ...settings?.chat,
-      provider: typeof provider === "string" && provider.length > 0
-        ? provider
-        : DEFAULT_USER_SETTINGS.chat.provider,
-      model:
-        typeof settings?.chat?.model === "string"
-          ? settings.chat.model
-          : DEFAULT_USER_SETTINGS.chat.model,
-      mode: typeof mode === "string" && mode.length > 0
-        ? mode
-        : DEFAULT_USER_SETTINGS.chat.mode,
-      reasoningEffort: typeof reasoningEffort === "string"
-        ? reasoningEffort
-        : DEFAULT_USER_SETTINGS.chat.reasoningEffort,
-      serviceTier: typeof serviceTier === "string"
-        ? serviceTier
-        : DEFAULT_USER_SETTINGS.chat.serviceTier,
-    },
+    chat,
+    projectChat,
+  };
+}
+
+function normalizeChatSettings(
+  settings: UserSettings["chat"] | undefined,
+  defaults: UserSettings["chat"]
+): UserSettings["chat"] {
+  const provider = settings?.provider;
+  const mode = settings?.mode;
+  const reasoningEffort = settings?.reasoningEffort;
+  const serviceTier = settings?.serviceTier;
+  return {
+    ...defaults,
+    ...settings,
+    provider: typeof provider === "string" && provider.length > 0
+      ? provider
+      : defaults.provider,
+    model: typeof settings?.model === "string" ? settings.model : defaults.model,
+    mode: typeof mode === "string" && mode.length > 0 ? mode : defaults.mode,
+    reasoningEffort: typeof reasoningEffort === "string"
+      ? reasoningEffort
+      : defaults.reasoningEffort,
+    serviceTier: typeof serviceTier === "string" ? serviceTier : defaults.serviceTier,
   };
 }

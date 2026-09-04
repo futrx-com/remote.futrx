@@ -6,7 +6,7 @@ Start with the symptom below. Use **Refresh** after a recovery action so that th
 
 ### The server asks me to create an admin
 
-No local administrator has claimed the installation yet. Create the first account with the intended owner email and a password of at least 12 characters. The claim endpoint is public only while the server is unclaimed.
+No local administrator has claimed the installation yet. Open the setup link printed to the server terminal at startup - the form only accepts the one-time token it carries - then create the first account with the intended owner email and a password of at least 12 characters. If the link expired or was lost, run `remote setup-token` on the host to print a new one; issuing a new token invalidates the previous one.
 
 ### A member sees “waiting for administrator”
 
@@ -127,12 +127,22 @@ Provider switches, rewinds, missing sessions, and some forks can start a fresh p
 
 Runs execute under the current backend process and cannot be reattached after it restarts. Review the durable files and chat events, then start a new prompt. Verify partial changes before continuing.
 
-### Kimi behaves differently from Claude or Codex
+### Kimi behaves differently from Claude, Codex, or MiniMax
 
 Kimi currently has no usage telemetry, its fork starts fresh, and it does not
 receive the equivalent Browser MCP plumbing. Selected skills are injected as
 instructions to read their canonical `SKILL.md` paths rather than as native
 provider triggers.
+
+### MiniMax says its Token Plan subscription key is not configured
+
+MiniMax is available only in project chats and requires a Token Plan
+subscription. Open **Settings → Agents**, choose the MiniMax sign-in action,
+follow the Token Plan link if needed, and save the `sk-cp-…` subscription key.
+Standard pay-as-you-go API keys are rejected. The locked MiniMax row then moves
+from **Sign in to use** to **Connected**, and its model list becomes available.
+If MiniMax rejects the subscription key, the form remains open and the existing
+supported key, if any, remains active.
 
 ### Antigravity says it is not signed in
 
@@ -143,7 +153,7 @@ flow, exit the CLI, and choose **Refresh models** in the chat picker before
 retrying the prompt. Its `/root/.gemini/antigravity-cli` state is durable
 across container replacement.
 
-Antigravity also differs from Claude and Codex: it streams plain text rather
+Antigravity also differs from Claude, Codex, and MiniMax: it streams plain text rather
 than structured tool/usage events, the Browser skill is not wired, and a fork
 starts fresh. Selected skills are injected as canonical `SKILL.md` instruction
 paths, and Scheduled Tasks also receives its scoped capability.

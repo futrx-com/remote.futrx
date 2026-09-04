@@ -1,7 +1,12 @@
 # Sanity check the GUI toolchain and select the browser pinned by versions.env.
 which Xvfb x11vnc websockify openbox xdotool setsid
+# Playwright's per-arch Chromium layout: the binary lives under
+# chrome-linux64/ on x86_64 hosts and chrome-linux/ on aarch64. Probe both so
+# aarch64 installs (which succeed via Playwright's arm64 build) are found
+# instead of reported as "not installed".
 CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; do
+for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
+                   /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
     [ -x "$browser_bin" ] || continue
     if "$browser_bin" --version 2>/dev/null | grep -Fq "$PW_CFT_VERSION"; then
         CHROME="$browser_bin"

@@ -64,6 +64,19 @@ export const agentAuthApi = {
     };
   },
 
+  saveAPIKey: (provider: string, apiKey: string) =>
+    requestJson<AgentAuthSnapshot>(
+      "POST",
+      API_ROUTES.agentAuth.apiKey(provider),
+      { apiKey },
+    ),
+
+  deleteAPIKey: (provider: string) =>
+    requestJson<AgentAuthSnapshot>(
+      "DELETE",
+      API_ROUTES.agentAuth.apiKey(provider),
+    ),
+
   subscribe: (
     provider: string,
     onStatus: (status: AgentAuthSnapshot) => void,

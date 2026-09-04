@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -22,10 +23,11 @@ const defaultInstallTimeout = 10 * time.Minute
 // Runtime is the host command surface needed by Installer. Keeping command
 // execution behind this port makes convergence deterministic in tests.
 type Runtime interface {
-	CommandExists(binary string) bool
+	CommandExists(executablePath string) bool
+	ExecutablePath(binary string) string
 	Version(context.Context, string, ...string) (string, error)
-	InstallNPM(context.Context, string) (string, error)
-	InstallScript(context.Context, string) (string, error)
+	InstallNPM(context.Context, string, string) (string, error)
+	InstallScript(context.Context, string, string) (string, error)
 }
 
 // Result describes one converged CLI without exposing provider-specific
@@ -42,22 +44,32 @@ type Result struct {
 type Installer struct {
 	runtime        Runtime
 	versionTimeout time.Duration
+	managedPrefix  string
 }
 
 // New creates the host CLI convergence workflow with the application-wide
-// deadline used for each version probe.
-func New(runtime Runtime, versionTimeout time.Duration) *Installer {
-	return &Installer{runtime: runtime, versionTimeout: versionTimeout}
+// deadline used for each version probe and the application-owned prefix where
+// every host CLI must be installed. Keeping all installer modes behind one
+// prefix makes installation, verification, and runtime PATH resolution agree.
+func New(runtime Runtime, versionTimeout time.Duration, managedPrefix string) *Installer {
+	return &Installer{
+		runtime:        runtime,
+		versionTimeout: versionTimeout,
+		managedPrefix:  filepath.Clean(managedPrefix),
+	}
 }
 
 // EnsureAll converges every host profile in catalog order. Installations run
-// sequentially because npm's global prefix is shared process-wide.
+// sequentially because every installer mode shares one managed prefix.
 func (i *Installer) EnsureAll(ctx context.Context, profiles []provisioning.Profile) ([]Result, error) {
 	if i == nil || i.runtime == nil {
 		return nil, errors.New("host agent CLI runtime is unavailable")
 	}
 	if i.versionTimeout <= 0 {
 		return nil, errors.New("host agent CLI version timeout must be positive")
+	}
+	if !filepath.IsAbs(i.managedPrefix) || i.managedPrefix == string(filepath.Separator) {
+		return nil, errors.New("host agent CLI managed prefix must be an absolute path below root")
 	}
 	results := make([]Result, 0, len(profiles))
 	for _, profile := range profiles {
@@ -72,15 +84,22 @@ func (i *Installer) EnsureAll(ctx context.Context, profiles []provisioning.Profi
 
 func (i *Installer) ensure(ctx context.Context, profile provisioning.Profile) (Result, error) {
 	spec := profile.CLI
+	if spec.Binary == "" || filepath.Base(spec.Binary) != spec.Binary || spec.Binary == "." || spec.Binary == ".." {
+		return Result{}, errors.New("host agent CLI binary must be a plain file name")
+	}
+	managedExecutable := filepath.Join(i.managedPrefix, "bin", spec.Binary)
 	result := Result{
 		Provider:       profile.ID,
 		Name:           spec.Name,
 		Version:        spec.Version,
 		VersionChecked: spec.CheckVersion,
 	}
-	ready, detected := i.ready(ctx, spec)
+	ready, detected := i.ready(ctx, spec, managedExecutable)
 	result.DetectedVersion = detected
 	if ready {
+		if err := i.requireManagedResolution(spec.Binary, managedExecutable); err != nil {
+			return Result{}, err
+		}
 		return result, nil
 	}
 
@@ -97,12 +116,12 @@ func (i *Installer) ensure(ctx context.Context, profile provisioning.Profile) (R
 		if strings.TrimSpace(spec.PackageName) == "" {
 			return Result{}, errors.New("npm install policy has no package")
 		}
-		installOutput, err = i.runtime.InstallNPM(installCtx, spec.NPMPackage())
+		installOutput, err = i.runtime.InstallNPM(installCtx, i.managedPrefix, spec.NPMPackage())
 	case provisioning.InstallWithScript:
 		if strings.TrimSpace(spec.InstallScript) == "" {
 			return Result{}, errors.New("script install policy has no script")
 		}
-		installOutput, err = i.runtime.InstallScript(installCtx, spec.InstallScript)
+		installOutput, err = i.runtime.InstallScript(installCtx, spec.InstallScript, managedExecutable)
 	default:
 		return Result{}, fmt.Errorf("unsupported install mode %q", spec.InstallMode)
 	}
@@ -114,29 +133,49 @@ func (i *Installer) ensure(ctx context.Context, profile provisioning.Profile) (R
 	// Installation and verification have independent budgets. A successful
 	// install that used most of its deadline still receives a complete bounded
 	// version probe instead of inheriting an almost-expired install context.
-	ready, result.DetectedVersion = i.ready(ctx, spec)
+	ready, result.DetectedVersion = i.ready(ctx, spec, managedExecutable)
 	if spec.VerifyAfterInstall && !ready {
 		return Result{}, fmt.Errorf(
-			"install %s completed but the required binary/version is unavailable (detected %q, want %q)",
+			"install %s completed but the managed executable %q has the wrong or unavailable version (detected %q, want %q)",
 			installLabel(spec),
+			managedExecutable,
 			result.DetectedVersion,
 			spec.Version,
 		)
 	}
+	if err := i.requireManagedResolution(spec.Binary, managedExecutable); err != nil {
+		return Result{}, err
+	}
 	return result, nil
 }
 
-func (i *Installer) ready(ctx context.Context, spec provisioning.CLISpec) (bool, string) {
+func (i *Installer) ready(ctx context.Context, spec provisioning.CLISpec, managedExecutable string) (bool, string) {
 	if !spec.CheckVersion {
-		return i.runtime.CommandExists(spec.Binary), ""
+		return i.runtime.CommandExists(managedExecutable), ""
 	}
 	versionCtx, cancel := context.WithTimeout(ctx, i.versionTimeout)
 	defer cancel()
-	versionOutput, err := i.runtime.Version(versionCtx, spec.Binary, spec.VersionArgs...)
+	versionOutput, err := i.runtime.Version(versionCtx, managedExecutable, spec.VersionArgs...)
 	if err != nil {
 		return false, ""
 	}
 	return matchSemanticVersion(versionOutput, spec.Version)
+}
+
+func (i *Installer) requireManagedResolution(binary, managedExecutable string) error {
+	resolvedExecutable := i.runtime.ExecutablePath(binary)
+	if filepath.Clean(resolvedExecutable) == filepath.Clean(managedExecutable) {
+		return nil
+	}
+	if resolvedExecutable == "" {
+		resolvedExecutable = "not found"
+	}
+	return fmt.Errorf(
+		"managed executable %q is installed but PATH resolves %q to %q",
+		managedExecutable,
+		binary,
+		resolvedExecutable,
+	)
 }
 
 func installContext(parent context.Context, timeoutDuration time.Duration) (context.Context, context.CancelFunc) {

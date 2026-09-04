@@ -28,7 +28,7 @@ type ContainerCommandSpec struct {
 func BuildContainerCommand(ctx context.Context, spec ContainerCommandSpec) *exec.Cmd {
 	workingDirectory := spec.WorkingDirectory
 	if workingDirectory == "" {
-		workingDirectory = "/workspace"
+		workingDirectory = agent.ProjectWorkspacePath
 	}
 	args := []string{"exec", "--cwd", workingDirectory}
 	for _, entry := range spec.PrefixEnvironment {

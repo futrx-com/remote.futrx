@@ -20,7 +20,7 @@ export function OtherAnswerOption({
       class={`text-left rounded-md border px-3 py-2.5 min-h-12 transition-colors
               ${active
                 ? "border-accent-blue bg-accent-blue/15"
-                : "border-white/10 border-dashed bg-white/[0.03] hover:bg-white/[0.07]"} sm:col-span-2`}
+                : "border-line border-dashed bg-tint hover:bg-tint-strong"} sm:col-span-2`}
     >
       <div class="flex items-start gap-2">
         <div class={`flex-none mt-0.5 w-4 h-4 ${multi ? "rounded-sm" : "rounded-full"}
@@ -40,7 +40,7 @@ export function OtherAnswerOption({
               onInput={(event) => onChange((event.currentTarget as HTMLTextAreaElement).value)}
               onClick={(event) => event.stopPropagation()}
               placeholder="Your custom answer"
-              class="mt-2 w-full resize-none bg-[#0b0d11] border border-white/10 rounded-md
+              class="mt-2 w-full resize-none bg-inset border border-line rounded-md
                      text-ink-100 text-[13px] px-2 py-1 focus:outline-none focus:border-accent-blue"
             />
           )}

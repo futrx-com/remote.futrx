@@ -4,6 +4,8 @@ import type { ChatEvent } from "../../models/chat";
 import type { ChatStream, ChatStreamCallbacks } from "../../types/chatApi";
 import { WEB_SOCKET_ROUTES } from "../../config/routes";
 import { CHAT_STREAM_MESSAGE_TYPES } from "../../config/api";
+import type { ChatInteractionIntent } from "../../models/chatInteraction";
+import { chatInteractionService } from "../../services/chat/chatInteractionService.ts";
 
 export function openChatStream(
   chatId: string,
@@ -45,6 +47,19 @@ class ReconnectingChatStream implements ChatStream {
 
   cancel(): boolean {
     return this.#connection.send({ type: CHAT_STREAM_MESSAGE_TYPES.cancel });
+  }
+
+  respondInteraction(
+    interactionId: string,
+    method: string,
+    intent: ChatInteractionIntent
+  ): boolean {
+    const response = chatInteractionService.encodeResponse(method, intent);
+    return this.#connection.send({
+      type: CHAT_STREAM_MESSAGE_TYPES.interactionResponse,
+      interactionId,
+      ...response,
+    });
   }
 
   close(): void {

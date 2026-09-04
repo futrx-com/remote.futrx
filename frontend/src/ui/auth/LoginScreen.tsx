@@ -1,8 +1,7 @@
 import { useLocalAuthController } from "../../state/hooks/auth/useLocalAuthController";
-import type { LoginMode } from "../../state/hooks/auth/useLocalAuthController";
+import type { LoginMode } from "../../models/auth";
 import { Key, Loader, MessageSquare } from "../primitives/icons";
-
-export type { LoginMode } from "../../state/hooks/auth/useLocalAuthController";
+import { TwoFactorChallengeStep } from "./TwoFactorChallengeStep";
 
 export function LoginScreen({
   mode,
@@ -29,15 +28,25 @@ export function LoginScreen({
     setEmail,
     setPassword,
     setup,
+    setupToken,
     submit,
     submitting,
+    challenge,
   } = useLocalAuthController({ mode, adminEmail, onSuccess });
-  const title = mode === "claim"
+  // A first-boot claim is authorised solely by the token printed to the
+  // server terminal. Without one there is nothing to submit, so offer the
+  // instructions rather than a form that can only be rejected.
+  const awaitingSetupToken = mode === "claim" && !setupToken;
+  const title = awaitingSetupToken
+    ? "Finish setup from the server terminal"
+    : mode === "claim"
     ? "Create your admin account"
     : mode === "legacy-setup"
       ? "Secure your admin account"
       : "Sign in";
-  const description = mode === "claim"
+  const description = awaitingSetupToken
+    ? "No one has set up this server yet. Find the person who installed it and ask them to look at the server\u2019s terminal window for a one-time setup link \u2014 if they don\u2019t see one, they can type \u0060remote setup-token\u0060 there to get a new one."
+    : mode === "claim"
     ? "This email and password will be the private administrator login for this server."
     : mode === "legacy-setup"
       ? "Create a local password so Google is no longer required for administrator access."
@@ -45,8 +54,23 @@ export function LoginScreen({
         ? "The existing administrator must sign in with Google once, then create a local password."
         : "Administrators use their local password. Invited users sign in with Google.";
 
+  if (challenge.pending) {
+    return (
+      <div class="app-shell overflow-y-auto grid place-items-center bg-[#090b0f] text-ink-100 p-5">
+        <TwoFactorChallengeStep
+          code={challenge.code}
+          error={challenge.error}
+          submitting={challenge.submitting}
+          onCodeChange={challenge.setCode}
+          onSubmit={challenge.submit}
+          onCancel={challenge.cancel}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div class="app-shell overflow-y-auto grid place-items-center bg-[#090b0f] text-ink-100 p-5">
+    <div class="app-shell overflow-y-auto grid place-items-center bg-app text-ink-100 p-5">
       <div class="w-full max-w-sm space-y-5 py-6">
         <div class="flex flex-col items-center gap-3 text-center">
           <div class="w-14 h-14 rounded-lg bg-accent-blue/[0.14] border border-accent-blue/25 grid place-items-center">
@@ -58,7 +82,7 @@ export function LoginScreen({
           </div>
         </div>
 
-        {(setup || localAdminConfigured) && (
+        {!awaitingSetupToken && (setup || localAdminConfigured) && (
           <form onSubmit={submit} class="space-y-3">
             <label class="block space-y-1.5">
               <span class="text-xs text-ink-300">Admin email</span>
@@ -68,7 +92,7 @@ export function LoginScreen({
                 readOnly={mode === "legacy-setup"}
                 onInput={(event) => setEmail((event.currentTarget as HTMLInputElement).value)}
                 autocomplete="username"
-                class="w-full h-11 rounded-md bg-[#101318] border border-white/10 px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue read-only:opacity-70"
+                class="w-full h-11 rounded-md bg-surface border border-line px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue read-only:opacity-70"
               />
             </label>
             <label class="block space-y-1.5">
@@ -79,7 +103,7 @@ export function LoginScreen({
                 onInput={(event) => setPassword((event.currentTarget as HTMLInputElement).value)}
                 autocomplete={setup ? "new-password" : "current-password"}
                 minlength={setup ? 12 : undefined}
-                class="w-full h-11 rounded-md bg-[#101318] border border-white/10 px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
+                class="w-full h-11 rounded-md bg-surface border border-line px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
               />
             </label>
             {setup && (
@@ -91,14 +115,14 @@ export function LoginScreen({
                   onInput={(event) => setConfirmation((event.currentTarget as HTMLInputElement).value)}
                   autocomplete="new-password"
                   minlength={12}
-                  class="w-full h-11 rounded-md bg-[#101318] border border-white/10 px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
+                  class="w-full h-11 rounded-md bg-surface border border-line px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
                 />
               </label>
             )}
             <button
               type="submit"
               disabled={submitting}
-              class="w-full h-11 rounded-md bg-accent-blue hover:bg-accent-blue/85 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              class="btn btn-primary btn-lg btn-block disabled:opacity-50 inline-flex items-center justify-center gap-2"
             >
               {submitting && <Loader class="w-4 h-4 animate-spin" />}
               {setup ? "Create admin account" : "Sign in as administrator"}
@@ -110,7 +134,7 @@ export function LoginScreen({
           <>
             {localAdminConfigured && (
               <div class="flex items-center gap-3 text-[11px] text-ink-400">
-                <span class="h-px flex-1 bg-white/10" /> invited users <span class="h-px flex-1 bg-white/10" />
+                <span class="h-px flex-1 bg-tint-strong" /> invited users <span class="h-px flex-1 bg-tint-strong" />
               </div>
             )}
             <a

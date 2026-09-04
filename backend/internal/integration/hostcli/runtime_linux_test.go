@@ -41,13 +41,13 @@ func TestRuntimeCancellationTerminatesCompleteProcessGroup(t *testing.T) {
 		{
 			name: "npm install",
 			run: func(ctx context.Context, runtime *Runtime, _ string) (string, error) {
-				return runtime.InstallNPM(ctx, "fixture-package@1.0.0")
+				return runtime.InstallNPM(ctx, "/managed/host-clis", "fixture-package@1.0.0")
 			},
 		},
 		{
 			name: "script install",
 			run: func(ctx context.Context, runtime *Runtime, _ string) (string, error) {
-				return runtime.InstallScript(ctx, processTreeFixture)
+				return runtime.InstallScript(ctx, processTreeFixture, "/managed/host-clis/bin/fixture-command")
 			},
 		},
 	}
@@ -96,6 +96,46 @@ func TestRuntimeCancellationTerminatesCompleteProcessGroup(t *testing.T) {
 			}
 			waitForProcessExit(t, childPID)
 		})
+	}
+}
+
+func TestRuntimeInstallersReceiveCanonicalManagedLocation(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	npmFixture := filepath.Join(temporaryDirectory, "npm")
+	if err := os.WriteFile(npmFixture, []byte("#!/bin/bash\nprintf '%s\\n' \"$@\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", temporaryDirectory+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	runtime := New()
+	npmOutput, err := runtime.InstallNPM(context.Background(), "/managed/host-clis", "fixture-package@1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantNPMOutput := strings.Join([]string{
+		"install",
+		"-g",
+		"--prefix",
+		"/managed/host-clis",
+		"fixture-package@1.0.0",
+		"--silent",
+		"",
+	}, "\n")
+	if npmOutput != wantNPMOutput {
+		t.Fatalf("npm output = %q, want %q", npmOutput, wantNPMOutput)
+	}
+
+	managedExecutable := "/managed/host-clis/bin/fixture-command"
+	scriptOutput, err := runtime.InstallScript(
+		context.Background(),
+		`printf '%s\n' "$FUTRX_HOST_CLI_INSTALL_PATH"`,
+		managedExecutable,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(scriptOutput) != managedExecutable {
+		t.Fatalf("script install path = %q, want %q", scriptOutput, managedExecutable)
 	}
 }
 

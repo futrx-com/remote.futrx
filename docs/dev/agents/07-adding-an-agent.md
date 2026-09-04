@@ -13,7 +13,7 @@ Before writing code, answer these questions:
 | --- | --- |
 | Execution scope | `host` enables loose chats; `project` enables project chats and requires a profile |
 | Runtime | Local CLI providers need command execution and usually a profile; a host-only remote API may omit the profile |
-| Authentication | Reuse `managed-code`, `managed-device`, `external`, or `none`; a new flow requires a deliberate shared-contract and UI change |
+| Authentication | Reuse `managed-code`, `managed-device`, `managed-api-key`, `external`, or `none`; a new flow requires a deliberate shared-contract and UI change |
 | Access gate | Only observable managed or no-auth modules can satisfy onboarding |
 | Sessions | Declare resume only when the adapter can reliably resume; fork also requires resume |
 | Skills | Choose `none`, `slash-command`, `dollar-mention`, or `instructions` to match what the runtime actually accepts |
@@ -93,7 +93,8 @@ CLI also needs one so the updater can converge the host binary. Declare:
 - positive install and concurrent-install wait timeouts plus verification policy;
 - project image label when project scope is enabled;
 - credentials to synchronize, durable state mounts, shared instructions,
-  workspace skill links, and Browser MCP templates as needed.
+  non-secret runtime assets, workspace skill links, and Browser MCP
+  templates as needed.
 
 Add the version to
 [`provisioning/versions.env`](../../../backend/internal/agent/provisioning/versions.env)
@@ -117,10 +118,10 @@ option values; provider packages must not import `internal/config`.
 Keep provider-specific policy in the provider package:
 
 - binary, package, version arguments, install mechanism, install/wait limits,
-  credentials, mounts, instructions, and Browser templates belong in
+  credentials, mounts, instructions, runtime assets, and Browser templates belong in
   `Profile()`;
-- login timing belongs in the provider's auth configuration because upstream
-  code/device protocols differ;
+- login timing and API-key creation URLs belong in the provider's auth
+  configuration because upstream protocols differ;
 - CLI arguments, probe commands, parser limits, fallbacks, and protocol
   backstops stay beside the adapter that understands them.
 
@@ -236,6 +237,7 @@ Add only the factory constructor to the ordered builder list in
 builders := []module.FactoryBuilder{
     claude.NewFactory,
     codex.NewFactory,
+    minimax.NewFactory,
     kimi.NewFactory,
     antigravity.NewFactory,
     acme.NewFactory,

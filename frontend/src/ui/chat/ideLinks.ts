@@ -1,4 +1,4 @@
-import { viewableMediaKind } from "./files/fileMeta.ts";
+import { fileService } from "../../services/files/fileService.ts";
 
 export const defaultWorkspacePath = "/opt/remote.futrx";
 
@@ -161,7 +161,7 @@ export interface IdeLinkContext {
 }
 
 function isBrowserMediaPath(path: string): boolean {
-  return viewableMediaKind(path) !== null;
+  return fileService.viewableMediaKind(path) !== null;
 }
 
 function workspaceRootFromCwd(cwd?: string): string {
