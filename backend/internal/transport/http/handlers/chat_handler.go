@@ -11,6 +11,7 @@ import (
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/flow"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
@@ -25,6 +26,7 @@ type ChatHandler struct {
 	history   *servicegithistory.Service
 	ide       *serviceworkspaceide.Service
 	schedules *ScheduleHandler
+	flow      *flowlang.Service
 }
 
 func NewChatHandler(
@@ -47,6 +49,11 @@ func NewChatHandler(
 
 func (h *ChatHandler) WithSchedules(schedules *ScheduleHandler) *ChatHandler {
 	h.schedules = schedules
+	return h
+}
+
+func (h *ChatHandler) WithFlow(flow *flowlang.Service) *ChatHandler {
+	h.flow = flow
 	return h
 }
 
@@ -112,6 +119,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 		switch parts[1] {
 		case "events":
 			h.handleEvents(w, r, id)
+		case "flow":
+			h.handleFlow(w, r, id)
 		case "transcript":
 			h.handleTranscript(w, r, id)
 		case "rewind":
@@ -381,3 +390,21 @@ func sendChatError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 	}
 }
+
+func (h *ChatHandler) handleFlow(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.flow == nil {
+		httptransport.SendErr(w, http.StatusNotFound, "flow service not available")
+		return
+	}
+	state, err := h.flow.GetMapState(r.Context(), string(id))
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, state)
+}
+

@@ -14,6 +14,7 @@ import (
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/flow"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -128,6 +129,7 @@ type Services struct {
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
+	Flow              *flowlang.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -280,6 +282,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	pushNotifier.audience.projects = projectService
 	pushNotifier.audience.users = userService
 
+	flowService := flowlang.NewService(deps.Chats)
+
 	return Services{
 		Chats:             chatService,
 		ChatAccess:        chatAccessService,
@@ -300,6 +304,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
+		Flow:              flowService,
 	}, nil
 }
 

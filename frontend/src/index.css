@@ -686,3 +686,12 @@ html[data-theme="light"] {
     animation: none;
   }
 }
+
+/* Flow Map Grid Pattern */
+.bg-grid-pattern {
+  background-size: 24px 24px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+

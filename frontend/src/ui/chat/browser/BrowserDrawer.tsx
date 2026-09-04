@@ -4,6 +4,8 @@ import type { BrowserElementCapture } from "../../../models/browser";
 import type { ContainerApp } from "../../../models/project";
 import { projectPreviewUrlService } from "../../../services/projects/projectPreviewUrlService.ts";
 import { useAgentBrowserSession } from "../../../state/hooks/chat/useAgentBrowserSession";
+import { useFlowMapStore } from "../../../state/hooks/chat/useFlowMapStore";
+import { FlowMapCanvas } from "../flow/FlowMapCanvas";
 import { BrowserDrawerHeader } from "./BrowserDrawerHeader";
 import { BrowserFrame } from "./BrowserFrame";
 import { BrowserGuiView } from "./BrowserGuiView";
@@ -28,6 +30,7 @@ function readBrowserWidth(): number {
 
 export function BrowserDrawer({
   open,
+  chatId,
   projectId,
   projectName,
   projectSlug,
@@ -40,6 +43,7 @@ export function BrowserDrawer({
   onClose,
 }: {
   open: boolean;
+  chatId?: string;
   projectId: string;
   projectName: string;
   projectSlug: string;
@@ -57,9 +61,13 @@ export function BrowserDrawer({
   const [inspectMode, setInspectMode] = useState(false);
   const [useInspectorFrame, setUseInspectorFrame] = useState(false);
   const [guiMode, setGuiMode] = useState(false);
+  const [flowMapMode, setFlowMapMode] = useState(false);
   const asideRef = useRef<HTMLElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const guiIframeRef = useRef<HTMLIFrameElement>(null);
+
+  const { flowState, selectedNodeId, setSelectedNodeId, selectedNode, loading: flowLoading } =
+    useFlowMapStore(chatId || null);
 
   const gui = useAgentBrowserSession({ projectId, enabled: open && guiMode });
 
@@ -238,15 +246,24 @@ export function BrowserDrawer({
           canLoad={canLoad}
           inspectMode={inspectMode}
           guiMode={guiMode}
+          flowMapMode={flowMapMode}
           guiStatus={gui.status}
           onSelectPort={onSelectPort}
           onToggleInspectMode={toggleInspectMode}
           onToggleGuiMode={toggleGuiMode}
+          onToggleFlowMap={() => setFlowMapMode((v) => !v)}
           onStopGui={gui.stop}
           onRefresh={handleRefresh}
           onClose={onClose}
         />
-        {guiMode ? (
+        {flowMapMode ? (
+          <FlowMapCanvas
+            flowState={flowState}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={setSelectedNodeId}
+            loading={flowLoading}
+          />
+        ) : guiMode ? (
           <BrowserGuiView
             status={gui.status}
             url={gui.guiUrl}
@@ -255,6 +272,7 @@ export function BrowserDrawer({
             projectName={projectName}
             resizing={resizing}
             iframeRef={guiIframeRef}
+            activeNode={selectedNode}
           />
         ) : (
           <BrowserFrame

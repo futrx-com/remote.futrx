@@ -92,7 +92,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Files,
 		deps.GitHistory,
 		deps.IDE,
-	).WithSchedules(scheduleHandler)
+	).WithSchedules(scheduleHandler).WithFlow(deps.Services.Flow)
 
 	return httptransport.NewHandler(httptransport.Handlers{
 		Sessions: httphandlers.NewTmuxHandler(deps.Services.Tmux),

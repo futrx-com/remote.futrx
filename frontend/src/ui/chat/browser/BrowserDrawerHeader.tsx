@@ -24,6 +24,8 @@ export function BrowserDrawerHeader({
   onSelectPort,
   onToggleInspectMode,
   onToggleGuiMode,
+  onToggleFlowMap,
+  flowMapMode,
   onStopGui,
   onRefresh,
   onClose,
@@ -36,10 +38,12 @@ export function BrowserDrawerHeader({
   canLoad: boolean;
   inspectMode: boolean;
   guiMode: boolean;
+  flowMapMode?: boolean;
   guiStatus: AgentBrowserStatus;
   onSelectPort: (port: number | null) => void;
   onToggleInspectMode: () => void;
   onToggleGuiMode: () => void;
+  onToggleFlowMap?: () => void;
   onStopGui: () => void;
   onRefresh: () => void;
   onClose: () => void;
@@ -52,7 +56,7 @@ export function BrowserDrawerHeader({
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 min-w-0">
           <h2 class="truncate text-[15px] md:text-base font-semibold text-ink-50">
-            {guiMode ? "Agent browser" : "Browser"}
+            {flowMapMode ? "Computer Use Map" : guiMode ? "Agent browser" : "Browser"}
           </h2>
           <span
             class={`h-2 w-2 rounded-full flex-none ${
@@ -92,6 +96,21 @@ export function BrowserDrawerHeader({
       </div>
 
       <div class="order-4 flex w-full items-center justify-end gap-2 pt-0.5 md:contents">
+        {onToggleFlowMap && (
+          <button
+            type="button"
+            onClick={onToggleFlowMap}
+            class={`h-9 px-2.5 flex-none rounded-md border flex items-center gap-1.5 text-xs font-medium
+                    ${flowMapMode
+                      ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-400 font-semibold shadow-[0_0_10px_rgba(6,182,212,0.3)]"
+                      : "bg-tint hover:bg-tint-strong border-line text-ink-200"}`}
+            title="Computer Use Map (FlowLang) — View interactive visual execution graph"
+            aria-label="Toggle computer use map"
+          >
+            <span>🗺️ Map</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onToggleGuiMode}
