@@ -19,6 +19,7 @@ var (
 	ErrUpdateInProgress = errors.New("an update is already running")
 	ErrNoReleaseTag     = errors.New("no release tags found on origin")
 	ErrUnknownTag       = errors.New("tag does not exist on origin")
+	ErrNoFailedUpdate   = errors.New("there is no failed update to retry")
 )
 
 type Service struct {
@@ -97,11 +98,57 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	if run := s.runs.status(s.host.ProcessAlive); run != nil && run.State == "running" {
 		return s.statusLocked(), ErrUpdateInProgress
 	}
+	return s.startLocked(startedBy, tag, classifyUpdate(s.currentVersion, tag))
+}
+
+// Retry repeats the most recent failed run with the same target and update
+// kind. Preserving the kind matters when the application was upgraded before
+// a later infrastructure step failed: reclassifying against the now-current
+// version could incorrectly turn the retry into an application-only deploy.
+func (s *Service) Retry(ctx context.Context, startedBy string) (Status, error) {
+	s.mu.Lock()
+	previous := s.runs.status(s.host.ProcessAlive)
+	if previous == nil || previous.State != "failed" {
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, ErrNoFailedUpdate
+	}
+	s.mu.Unlock()
+
+	tags, err := s.host.ListRemoteTags(ctx, s.installDir)
+	if err != nil {
+		return s.Status(ctx), fmt.Errorf("list origin tags: %w", err)
+	}
+	if !containsTag(tags, previous.Target) {
+		return s.Status(ctx), fmt.Errorf("%w: %s", ErrUnknownTag, previous.Target)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run := s.runs.status(s.host.ProcessAlive)
+	if run != nil && run.State == "running" {
+		return s.statusLocked(), ErrUpdateInProgress
+	}
+	if run == nil || run.State != "failed" || run.Target != previous.Target || run.UpdateKind != previous.UpdateKind {
+		return s.statusLocked(), ErrNoFailedUpdate
+	}
+	kind := run.UpdateKind
+	if kind == "" {
+		// Older run records predate update-kind persistence. Infrastructure is
+		// the conservative retry path when the original choice is unavailable.
+		kind = UpdateKindInfrastructure
+	}
+	if kind != UpdateKindApplication && kind != UpdateKindInfrastructure {
+		return s.statusLocked(), ErrNoFailedUpdate
+	}
+	return s.startLocked(startedBy, run.Target, kind)
+}
+
+func (s *Service) startLocked(startedBy, tag string, kind UpdateKind) (Status, error) {
 	// A fresh run replaces the previous run's records.
 	if err := s.runs.reset(); err != nil {
 		return s.statusLocked(), err
 	}
-	kind := classifyUpdate(s.currentVersion, tag)
 	message := "Preparing the infrastructure update"
 	if kind == UpdateKindApplication {
 		message = "Preparing the application update"

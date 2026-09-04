@@ -107,6 +107,7 @@ export function SettingsPage({
   selfUpdateLoading,
   selfUpdateChecking,
   selfUpdateApplying,
+  selfUpdateRetrying,
   selfUpdateRestarting,
   selfUpdateError,
   userDirectory,
@@ -126,6 +127,7 @@ export function SettingsPage({
   onRefreshServerInfo,
   onCheckForUpdates,
   onApplyUpdate,
+  onRetryUpdate,
   onAppearanceThemeChange,
 }: {
   activeTab: SettingsTab;
@@ -140,6 +142,7 @@ export function SettingsPage({
   selfUpdateLoading: boolean;
   selfUpdateChecking: boolean;
   selfUpdateApplying: boolean;
+  selfUpdateRetrying: boolean;
   selfUpdateRestarting: boolean;
   selfUpdateError: string | null;
   userDirectory: UserDirectory;
@@ -159,6 +162,7 @@ export function SettingsPage({
   onRefreshServerInfo: () => Promise<void>;
   onCheckForUpdates: () => Promise<void>;
   onApplyUpdate: (tag?: string) => Promise<void>;
+  onRetryUpdate: () => Promise<void>;
   onAppearanceThemeChange: (theme: AppearanceTheme) => void;
 }) {
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
@@ -282,10 +286,12 @@ export function SettingsPage({
                   loading={selfUpdateLoading}
                   checking={selfUpdateChecking}
                   applying={selfUpdateApplying}
+                  retrying={selfUpdateRetrying}
                   restarting={selfUpdateRestarting}
                   error={selfUpdateError}
                   onCheck={onCheckForUpdates}
                   onApply={onApplyUpdate}
+                  onRetry={onRetryUpdate}
                 />
               ) : (
                 <SettingsNotice>

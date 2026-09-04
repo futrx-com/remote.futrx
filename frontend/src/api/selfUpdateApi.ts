@@ -11,4 +11,5 @@ export const selfUpdateApi = {
       API_ROUTES.selfUpdate.apply,
       tag ? { tag } : {}
     ),
+  retry: () => requestJson<SelfUpdateStatus>("POST", API_ROUTES.selfUpdate.retry),
 };

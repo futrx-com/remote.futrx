@@ -14,6 +14,7 @@ type fakeHost struct {
 	kinds    []string
 	pid      int
 	alive    bool
+	alivePID int
 	startErr error
 }
 
@@ -30,7 +31,12 @@ func (f *fakeHost) StartUpdater(launch UpdaterLaunch) (int, error) {
 	return f.pid, nil
 }
 
-func (f *fakeHost) ProcessAlive(int) bool { return f.alive }
+func (f *fakeHost) ProcessAlive(pid int) bool {
+	if f.alivePID != 0 {
+		return pid == f.alivePID
+	}
+	return f.alive
+}
 
 func TestParseReleaseTag(t *testing.T) {
 	cases := []struct {
@@ -254,5 +260,69 @@ func TestApplyValidatesTag(t *testing.T) {
 	host.tags = []string{"nightly"}
 	if _, err := svc.Apply(context.Background(), "a@b.c", ""); !errors.Is(err, ErrNoReleaseTag) {
 		t.Fatalf("Apply(no releases) err = %v, want ErrNoReleaseTag", err)
+	}
+}
+
+func TestRetryPreservesFailedInfrastructureUpdateKind(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.12.0"}, pid: 4242}
+	svc := New("0.11.0", "/opt/x", t.TempDir(), host)
+	if _, err := svc.Apply(context.Background(), "first@example.com", "0.12.0"); err != nil {
+		t.Fatal(err)
+	}
+	host.alive = false
+
+	// The application may already report the target version after the updater
+	// restarted it, even though a later base-image step failed.
+	svc.currentVersion = "0.12.0"
+	host.pid = 5252
+	host.alivePID = 5252
+	status, err := svc.Retry(context.Background(), "retry@example.com")
+	if err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	if len(host.started) != 2 || host.started[1] != "0.12.0" {
+		t.Fatalf("started = %v, want second launch for 0.12.0", host.started)
+	}
+	if len(host.kinds) != 2 || host.kinds[1] != string(UpdateKindInfrastructure) {
+		t.Fatalf("update kinds = %v, want retry to preserve infrastructure", host.kinds)
+	}
+	if status.Run == nil || status.Run.State != "running" || status.Run.StartedBy != "retry@example.com" {
+		t.Fatalf("run = %+v, want retried running status", status.Run)
+	}
+}
+
+func TestRetryRequiresFailedRun(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.12.0"}, pid: 4242, alive: true}
+	svc := New("0.11.0", "/opt/x", t.TempDir(), host)
+	if _, err := svc.Retry(context.Background(), "admin@example.com"); !errors.Is(err, ErrNoFailedUpdate) {
+		t.Fatalf("Retry(no run) err = %v, want ErrNoFailedUpdate", err)
+	}
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.12.0"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Retry(context.Background(), "admin@example.com"); !errors.Is(err, ErrNoFailedUpdate) {
+		t.Fatalf("Retry(running run) err = %v, want ErrNoFailedUpdate", err)
+	}
+}
+
+func TestRetryUsesConservativeKindForLegacyFailedRun(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.12.0"}, pid: 5252, alivePID: 5252}
+	svc := New("0.12.0", "/opt/x", t.TempDir(), host)
+	if err := svc.runs.reset(); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.runs.writeRecord(runRecord{Target: "0.12.0", PID: 4242}); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := svc.Retry(context.Background(), "admin@example.com")
+	if err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	if len(host.kinds) != 1 || host.kinds[0] != string(UpdateKindInfrastructure) {
+		t.Fatalf("update kinds = %v, want conservative infrastructure retry", host.kinds)
+	}
+	if status.Run == nil || status.Run.UpdateKind != UpdateKindInfrastructure {
+		t.Fatalf("run = %+v, want infrastructure retry", status.Run)
 	}
 }

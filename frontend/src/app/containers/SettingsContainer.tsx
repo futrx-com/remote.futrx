@@ -64,6 +64,7 @@ export function SettingsContainer({
       selfUpdateLoading={selfUpdate.loading}
       selfUpdateChecking={selfUpdate.checking}
       selfUpdateApplying={selfUpdate.applying}
+      selfUpdateRetrying={selfUpdate.retrying}
       selfUpdateRestarting={selfUpdate.restarting}
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
@@ -82,6 +83,7 @@ export function SettingsContainer({
       onRefreshServerInfo={serverInfo.refresh}
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
+      onRetryUpdate={selfUpdate.retry}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
     />

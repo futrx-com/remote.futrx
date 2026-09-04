@@ -1,13 +1,19 @@
 import type { SelfUpdateProgress, SelfUpdateRun } from "../../../models/selfUpdate";
-import { AlertCircle, Loader } from "../../primitives/icons";
+import { AlertCircle, Loader, RotateCcw } from "../../primitives/icons";
 import { formatUpdateRelativeTime, formatUpdateTime } from "./updateTime";
 
 export function UpdateRunCard({
   run,
   restarting,
+  retrying,
+  retryDisabled,
+  onRetry,
 }: {
   run: SelfUpdateRun;
   restarting: boolean;
+  retrying: boolean;
+  retryDisabled: boolean;
+  onRetry: () => Promise<void>;
 }) {
   return (
     <section class="rounded-card border border-line bg-surface overflow-hidden">
@@ -54,6 +60,17 @@ export function UpdateRunCard({
             class="btn btn-primary btn-sm mt-2.5 font-medium"
           >
             Reload to use the new version
+          </button>
+        )}
+        {run.state === "failed" && (
+          <button
+            type="button"
+            onClick={() => void onRetry()}
+            disabled={retryDisabled}
+            class="btn btn-primary btn-sm mt-2.5 inline-flex items-center gap-1.5 font-medium disabled:opacity-50"
+          >
+            <RotateCcw class={`w-3.5 h-3.5 ${retrying ? "animate-spin" : ""}`} />
+            {retrying ? "Retrying update…" : "Retry update"}
           </button>
         )}
       </header>

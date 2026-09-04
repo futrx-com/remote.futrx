@@ -8,6 +8,7 @@ export function useSelfUpdate(enabled: boolean) {
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestInFlight = useRef(false);
@@ -42,6 +43,21 @@ export function useSelfUpdate(enabled: boolean) {
     } finally {
       requestInFlight.current = false;
       setApplying(false);
+    }
+  }, []);
+
+  const retry = useCallback(async () => {
+    if (requestInFlight.current) return;
+    requestInFlight.current = true;
+    setRetrying(true);
+    try {
+      setStatus(await selfUpdateApi.retry());
+      setError(null);
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      requestInFlight.current = false;
+      setRetrying(false);
     }
   }, []);
 
@@ -89,5 +105,5 @@ export function useSelfUpdate(enabled: boolean) {
     return () => window.clearInterval(interval);
   }, [enabled, running]);
 
-  return { status, loading, checking, applying, restarting, error, check, apply };
+  return { status, loading, checking, applying, retrying, restarting, error, check, apply, retry };
 }

@@ -116,6 +116,7 @@ export const API_ROUTES = {
     status: "/api/admin/update/status",
     check: "/api/admin/update/check",
     apply: "/api/admin/update/apply",
+    retry: "/api/admin/update/retry",
   },
   skills: (query: string) => `/api/skills?${query}`,
   agentCapabilities: (query: string) =>

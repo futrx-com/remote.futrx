@@ -10,8 +10,8 @@ import (
 )
 
 // SelfUpdateHandler exposes the admin-only release update flow: read the
-// current status, check origin for newer release tags, and start the safe
-// application or infrastructure path toward one.
+// current status, check origin for newer release tags, start the safe
+// application or infrastructure path toward one, and retry failed runs.
 type SelfUpdateHandler struct {
 	updates *serviceselfupdate.Service
 	auth    *serviceauth.Service
@@ -25,6 +25,7 @@ func (h *SelfUpdateHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/update/status", h.handleStatus)
 	mux.HandleFunc("/api/admin/update/check", h.handleCheck)
 	mux.HandleFunc("/api/admin/update/apply", h.handleApply)
+	mux.HandleFunc("/api/admin/update/retry", h.handleRetry)
 }
 
 func (h *SelfUpdateHandler) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -85,8 +86,26 @@ func (h *SelfUpdateHandler) handleApply(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	status, err := h.updates.Apply(r.Context(), email, body.Tag)
+	h.sendApplyResult(w, status, err)
+}
+
+func (h *SelfUpdateHandler) handleRetry(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	email, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	status, err := h.updates.Retry(r.Context(), email)
+	h.sendApplyResult(w, status, err)
+}
+
+func (h *SelfUpdateHandler) sendApplyResult(w http.ResponseWriter, status serviceselfupdate.Status, err error) {
 	switch {
-	case errors.Is(err, serviceselfupdate.ErrUpdateInProgress):
+	case errors.Is(err, serviceselfupdate.ErrUpdateInProgress),
+		errors.Is(err, serviceselfupdate.ErrNoFailedUpdate):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, serviceselfupdate.ErrNoReleaseTag),
 		errors.Is(err, serviceselfupdate.ErrUnknownTag):

@@ -8,19 +8,23 @@ export function UpdatesSettings({
   loading,
   checking,
   applying,
+  retrying,
   restarting,
   error,
   onCheck,
   onApply,
+  onRetry,
 }: {
   status: SelfUpdateStatus | null;
   loading: boolean;
   checking: boolean;
   applying: boolean;
+  retrying: boolean;
   restarting: boolean;
   error: string | null;
   onCheck: () => Promise<void>;
   onApply: (tag?: string) => Promise<void>;
+  onRetry: () => Promise<void>;
 }) {
   if (loading && status == null) {
     return (
@@ -37,6 +41,7 @@ export function UpdatesSettings({
   const updateAvailable = !runActive && lastCheck?.updateAvailable === true && latestTag !== "";
   const updateKind = lastCheck?.updateKind ?? "infrastructure";
   const infrastructureUpdate = updateKind === "infrastructure";
+  const startingUpdate = applying || retrying;
 
   return (
     <div class="space-y-4">
@@ -106,7 +111,7 @@ export function UpdatesSettings({
           <button
             type="button"
             onClick={() => void onApply(latestTag)}
-            disabled={applying}
+            disabled={startingUpdate}
             class="btn btn-primary mt-3 disabled:opacity-50"
           >
             {applying
@@ -120,7 +125,15 @@ export function UpdatesSettings({
         </section>
       )}
 
-      {run && <UpdateRunCard run={run} restarting={restarting} />}
+      {run && (
+        <UpdateRunCard
+          run={run}
+          restarting={restarting}
+          retrying={retrying}
+          retryDisabled={startingUpdate}
+          onRetry={onRetry}
+        />
+      )}
     </div>
   );
 }
