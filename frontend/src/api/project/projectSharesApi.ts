@@ -1,5 +1,5 @@
 import { requestJson } from "../apiRequest";
-import type { ProjectShare } from "../../models/project";
+import type { CreatedProjectShare, ProjectShare } from "../../models/project";
 import { API_ROUTES } from "../../config/routes";
 
 export const projectSharesApi = {
@@ -9,7 +9,7 @@ export const projectSharesApi = {
   createShare: (
     id: string,
     body: { port: number; ttlHours: number; label?: string },
-  ) => requestJson<ProjectShare>("POST", API_ROUTES.projects.shares(id), body),
+  ) => requestJson<CreatedProjectShare>("POST", API_ROUTES.projects.shares(id), body),
 
   revokeShare: (id: string, shareId: string) =>
     requestJson<{ ok: boolean }>(

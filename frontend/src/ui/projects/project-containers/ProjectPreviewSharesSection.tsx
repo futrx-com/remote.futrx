@@ -1,6 +1,9 @@
 import { useMemo, useState } from "preact/hooks";
-import type { ProjectShare } from "../../../models/project";
-import type { SharesRecord } from "../../../state/projects/projectContainerRecords";
+import type {
+  CreatedProjectShare,
+  ProjectShare,
+  SharesRecord,
+} from "../../../models/project";
 import {
   DEFAULT_SHARE_TTL_HOURS,
   SHARE_TTL_OPTIONS,
@@ -17,12 +20,12 @@ export function ProjectPreviewSharesSection({
   onRevoke,
 }: {
   record: SharesRecord;
-  onCreate: (port: number, ttlHours: number, label?: string) => Promise<ProjectShare>;
+  onCreate: (port: number, ttlHours: number, label?: string) => Promise<CreatedProjectShare>;
   onRevoke: (shareId: string) => Promise<void>;
 }) {
   // Held in the section, not the row, so switching ports does not lose the
   // link the operator has not copied yet.
-  const [issued, setIssued] = useState<ProjectShare | null>(null);
+  const [issued, setIssued] = useState<CreatedProjectShare | null>(null);
   const shares = record.data ?? [];
   const rows = useMemo(
     () => shareablePortRows(record.apps ?? [], shares),
@@ -87,7 +90,7 @@ function IssuedLink({
   share,
   onDismiss,
 }: {
-  share: ProjectShare;
+  share: CreatedProjectShare;
   onDismiss: () => void;
 }) {
   const [copied, setCopied] = useState(false);

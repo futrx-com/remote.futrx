@@ -143,10 +143,7 @@ export interface ProjectSecret {
   updatedAt: number;
 }
 
-/**
- * A public preview link. `url` is present only on the create response — the
- * backend shows the token exactly once and stores only its digest.
- */
+/** Metadata for a public preview link returned by list operations. */
 export interface ProjectShare {
   id: string;
   port: number;
@@ -154,7 +151,14 @@ export interface ProjectShare {
   createdBy?: string;
   createdAt: number;
   expiresAt: number;
-  url?: string;
+}
+
+/**
+ * A newly-created public preview link. The URL carries the plaintext token and
+ * is returned exactly once, while metadata-only list responses never include it.
+ */
+export interface CreatedProjectShare extends ProjectShare {
+  url: string;
 }
 
 export interface ContainerApp {
@@ -211,6 +215,14 @@ export interface ProjectContainerRecord {
 export interface SecretsRecord {
   loading: boolean;
   data?: ProjectSecret[];
+  error?: string;
+}
+
+export interface SharesRecord {
+  loading: boolean;
+  data?: ProjectShare[];
+  /** Listening ports discovered in the container, used to offer share targets. */
+  apps?: ContainerApp[];
   error?: string;
 }
 

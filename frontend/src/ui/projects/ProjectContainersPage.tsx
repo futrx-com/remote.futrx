@@ -1,11 +1,5 @@
 import type { ComponentChildren, ComponentType } from "preact";
 import { useCallback, useState } from "preact/hooks";
-import type {
-  AccessRecord,
-  ProjectContainerRecord,
-  SecretsRecord,
-  SharesRecord,
-} from "../../state/projects/projectContainerRecords";
 import { describeShareCount, liveShares } from "../../state/projects/projectShareState";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
@@ -23,10 +17,14 @@ import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimit
 import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
 import type {
+  AccessRecord,
   ContainerLimits,
+  CreatedProjectShare,
   ProjectContainerInfo,
+  ProjectContainerRecord,
   ProjectMeta,
-  ProjectShare,
+  SecretsRecord,
+  SharesRecord,
 } from "../../models/project";
 import type { UsageSummary } from "../../models/usage";
 import {
@@ -129,7 +127,7 @@ export function ProjectContainersPage({
   onDeleteSecret: (key: string) => Promise<void>;
   onAddMember: (email: string) => Promise<void>;
   onRemoveMember: (email: string) => Promise<void>;
-  onCreateShare: (port: number, ttlHours: number, label?: string) => Promise<ProjectShare>;
+  onCreateShare: (port: number, ttlHours: number, label?: string) => Promise<CreatedProjectShare>;
   onRevokeShare: (shareId: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
   onSetResourceLimits: (limits: ContainerLimits) => Promise<void>;
