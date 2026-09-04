@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
@@ -95,6 +98,16 @@ func (globalSkillAuthStore) SaveOAuthConfig(context.Context, serviceauth.OAuthCo
 	return nil
 }
 
+// The setup-token half of auth.Store. This stub never gates a claim, so the
+// record is always absent and saving it is a no-op.
+func (globalSkillAuthStore) SetupToken(context.Context) (*serviceauth.SetupTokenRecord, error) {
+	return nil, nil
+}
+
+func (globalSkillAuthStore) SaveSetupToken(context.Context, serviceauth.SetupTokenRecord) error {
+	return nil
+}
+
 func (globalSkillAuthStore) LocalAdmin(context.Context) (*serviceauth.LocalAdminCredential, error) {
 	return nil, nil
 }
@@ -139,6 +152,9 @@ func newGlobalSkillTestAuth(t *testing.T, admins map[string]bool) *serviceauth.S
 		func(string, string, string) serviceauth.OAuthProvider { return nil },
 		"https://remote.example.test",
 		bytes.Repeat([]byte{7}, 32),
+		twoFactorStoreForTest(t),
+		sessionRegistryStoreForTest(t),
+		testAuthOptions(),
 	)
 	if err != nil {
 		t.Fatalf("build auth service: %v", err)
@@ -174,7 +190,7 @@ func globalSkillRequest(
 	if email != "" {
 		request.AddCookie(&http.Cookie{
 			Name:  serviceauth.SessionCookieName,
-			Value: auth.SignSession(serviceauth.User{Email: email, Sub: "test"}),
+			Value: issueTestSession(t, auth, serviceauth.User{Email: email, Sub: "test"}),
 		})
 	}
 	return request
@@ -362,4 +378,50 @@ func TestGlobalSkillHandlerRejectsNestedPaths(t *testing.T) {
 func jsonString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
+}
+
+// twoFactorStoreForTest and sessionRegistryStoreForTest give the auth service
+// the two collaborators it now requires. Neither is exercised by these tests.
+func twoFactorStoreForTest(t *testing.T) serviceauth.TwoFactorStore {
+	t.Helper()
+	store, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("two-factor store: %v", err)
+	}
+	return store
+}
+
+func sessionRegistryStoreForTest(t *testing.T) serviceauth.SessionRegistryStore {
+	t.Helper()
+	store, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("session registry store: %v", err)
+	}
+	return store
+}
+
+// testAuthOptions are the auth service's tunings, spelled out because New
+// rejects a zero TTL or count and a test only needs them to be valid.
+func testAuthOptions() serviceauth.Options {
+	return serviceauth.Options{
+		PendingLoginTTL:     5 * time.Minute,
+		EnrollmentTTL:       10 * time.Minute,
+		RecoveryCodeCount:   10,
+		SessionHistoryLimit: 20,
+		SetupTokenTTL:       30 * time.Minute,
+	}
+}
+
+// issueTestSession mints a real session cookie. SignSession is gone: issuing a
+// session now consults the user's security preferences and can register the
+// device, so it needs a context and a sign-in method rather than just a key.
+func issueTestSession(t *testing.T, service *serviceauth.Service, user serviceauth.User) string {
+	t.Helper()
+	value, err := service.IssueSession(
+		context.Background(), user, serviceauth.SignInMethodPassword, "", "",
+	)
+	if err != nil {
+		t.Fatalf("issue session: %v", err)
+	}
+	return value
 }

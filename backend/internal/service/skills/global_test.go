@@ -95,7 +95,7 @@ type stubAuthorizer struct {
 	admin bool
 }
 
-func (s stubAuthorizer) CurrentSession(string) (*serviceauth.Session, error) {
+func (s stubAuthorizer) CurrentSession(context.Context, string) (*serviceauth.Session, error) {
 	return &serviceauth.Session{Email: s.email}, nil
 }
 

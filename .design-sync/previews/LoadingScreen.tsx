@@ -11,13 +11,13 @@ const frame = (height: number) =>
   }) as React.CSSProperties;
 
 export const Default = () => (
-  <div className="relative w-full max-w-xl overflow-hidden rounded-lg border border-white/[0.08]" style={frame(280)}>
+  <div className="relative w-full max-w-xl overflow-hidden rounded-lg border border-line" style={frame(280)}>
     <LoadingScreen />
   </div>
 );
 
 export const ShortViewport = () => (
-  <div className="relative w-full max-w-md overflow-hidden rounded-lg border border-white/[0.08]" style={frame(160)}>
+  <div className="relative w-full max-w-md overflow-hidden rounded-lg border border-line" style={frame(160)}>
     <LoadingScreen />
   </div>
 );

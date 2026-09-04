@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Attachment } from "../../../models/upload";
 import { startChatUpload } from "../../../api/uploadApi";
 import type { UploadHandle } from "../../../types/uploadApi";
-import { randomId } from "../../../shared/ids";
-import { chatAttachmentState } from "../../chat/chatAttachmentState";
+import { idService } from "../../../services/platform/idService.ts";
+import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
 
 export function useAttachmentUpload(
   chatId: string,
@@ -16,16 +16,27 @@ export function useAttachmentUpload(
   // Outstanding tus handles, keyed by attachment id. Lets us abort on remove.
   const handlesRef = useRef<Map<string, UploadHandle>>(new Map());
 
+  // Reaches state only through handlesRef and a setAttachments updater, so it
+  // closes over nothing that can go stale — which is what makes [] honest here,
+  // and what made the previous capture harmless rather than a bug.
+  const clearAttachments = useCallback(() => {
+    for (const handle of handlesRef.current.values()) void handle.abort();
+    handlesRef.current.clear();
+    setAttachments((prev) => {
+      prev.forEach((attachment) => chatAttachmentService.revokeObjectUrl(attachment));
+      return [];
+    });
+  }, []);
+
   useEffect(() => {
     clearAttachments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, clearAttachments]);
 
   useEffect(
     () => () => {
       clearAttachments();
     },
-    []
+    [clearAttachments]
   );
 
   useEffect(() => {
@@ -42,8 +53,8 @@ export function useAttachmentUpload(
       // the tus resume fingerprint), while keeping the original name as the
       // friendly label shown in the composer chip.
       const items = files.map((file) => {
-        const id = randomId();
-        const uploadName = chatAttachmentState.uniqueUploadName(file.name, id);
+        const id = idService.random();
+        const uploadName = chatAttachmentService.uniqueUploadName(file.name, id);
         const uploadFile =
           uploadName === file.name
             ? file
@@ -89,7 +100,7 @@ export function useAttachmentUpload(
                     ? {
                         ...a,
                         progress: 1,
-                        serverPath: chatAttachmentState.absoluteUploadPath(
+                        serverPath: chatAttachmentService.absoluteUploadPath(
                           attachmentBasePathRef.current,
                           uploadFile.name
                         ),
@@ -121,7 +132,7 @@ export function useAttachmentUpload(
     [chatId]
   );
 
-  function removeAttachment(id: string) {
+  const removeAttachment = useCallback((id: string) => {
     const handle = handlesRef.current.get(id);
     if (handle) {
       void handle.abort();
@@ -129,19 +140,10 @@ export function useAttachmentUpload(
     }
     setAttachments((prev) => {
       const target = prev.find((attachment) => attachment.id === id);
-      if (target) chatAttachmentState.revoke(target);
+      if (target) chatAttachmentService.revokeObjectUrl(target);
       return prev.filter((attachment) => attachment.id !== id);
     });
-  }
-
-  function clearAttachments() {
-    for (const handle of handlesRef.current.values()) void handle.abort();
-    handlesRef.current.clear();
-    setAttachments((prev) => {
-      prev.forEach((attachment) => chatAttachmentState.revoke(attachment));
-      return [];
-    });
-  }
+  }, []);
 
   return {
     attachments,

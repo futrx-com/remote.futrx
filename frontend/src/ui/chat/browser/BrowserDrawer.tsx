@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { PUBLIC_HOSTNAME } from "../../../config/runtime";
 import type { BrowserElementCapture } from "../../../models/browser";
 import type { ContainerApp } from "../../../models/project";
-import { buildProjectPreviewUrl } from "../../../shared/projectPreviewUrls";
+import { projectPreviewUrlService } from "../../../services/projects/projectPreviewUrlService.ts";
 import { useAgentBrowserSession } from "../../../state/hooks/chat/useAgentBrowserSession";
 import { BrowserDrawerHeader } from "./BrowserDrawerHeader";
 import { BrowserFrame } from "./BrowserFrame";
@@ -64,7 +64,7 @@ export function BrowserDrawer({
   const gui = useAgentBrowserSession({ projectId, enabled: open && guiMode });
 
   const url = useMemo(
-    () => buildProjectPreviewUrl(projectSlug, selectedPort, PUBLIC_HOSTNAME),
+    () => projectPreviewUrlService.build(projectSlug, selectedPort, PUBLIC_HOSTNAME),
     [projectSlug, selectedPort],
   );
   const inspectorUrl = useMemo(() => buildInspectorUrl(url), [url]);
@@ -217,7 +217,7 @@ export function BrowserDrawer({
     <aside
       ref={asideRef}
       id="workspace-browser-pane"
-      class={`workspace-pane workspace-browser-pane relative z-20 h-full flex-none overflow-hidden bg-[#101318] border-l border-white/10
+      class={`workspace-pane workspace-browser-pane relative z-20 h-full flex-none overflow-hidden bg-surface border-l border-line
               ${resizing ? "transition-none" : "transition-[width,opacity] duration-200 ease-out"}
               ${open ? "opacity-100 shadow-2xl" : "opacity-0 border-l-0 shadow-none pointer-events-none"}`}
       style={`--workspace-browser-width: ${browserWidth}px; --workspace-browser-max-width: max(${minBrowserWidth}px, calc(100% - ${minChatWidth}px));`}

@@ -31,10 +31,16 @@ type CredentialSynchronizer interface {
 	CredentialCollector
 }
 
-// WorkspaceProvisioner publishes shared agent assets and workspace links.
+// WorkspaceProvisioner publishes shared agent instructions and workspace links.
 type WorkspaceProvisioner interface {
 	EnsureAgentInstructions(context.Context, string) error
 	EnsureSkillLinks(context.Context, string) error
+}
+
+// RuntimeAssetProvisioner publishes the selected provider's non-secret runtime
+// assets inside a project container.
+type RuntimeAssetProvisioner interface {
+	Ensure(context.Context, string, []RuntimeAsset) error
 }
 
 // BrowserProvisioner publishes browser tooling and starts its shared core.
@@ -63,6 +69,7 @@ type ContainerDependencies struct {
 	CLI           CLIProvisioner
 	Credentials   CredentialSynchronizer
 	Workspace     WorkspaceProvisioner
+	RuntimeAssets RuntimeAssetProvisioner
 	Browser       BrowserProvisioner
 	ScheduleTools ScheduleToolsProvisioner
 	Lifecycle     ContainerLifecycle
@@ -73,6 +80,7 @@ func (d ContainerDependencies) IsZero() bool {
 	return d.CLI == nil &&
 		d.Credentials == nil &&
 		d.Workspace == nil &&
+		d.RuntimeAssets == nil &&
 		d.Browser == nil &&
 		d.ScheduleTools == nil &&
 		d.Lifecycle == nil
@@ -86,7 +94,7 @@ func (d ContainerDependencies) Validate() error {
 		return nil
 	}
 
-	missing := make([]string, 0, 6)
+	missing := make([]string, 0, 7)
 	if d.CLI == nil {
 		missing = append(missing, "CLI")
 	}
@@ -95,6 +103,9 @@ func (d ContainerDependencies) Validate() error {
 	}
 	if d.Workspace == nil {
 		missing = append(missing, "workspace")
+	}
+	if d.RuntimeAssets == nil {
+		missing = append(missing, "runtime assets")
 	}
 	if d.Browser == nil {
 		missing = append(missing, "browser")

@@ -2,16 +2,16 @@ import { Folder, Plus, Search } from "../primitives/icons";
 
 export function SidebarEmptyState({ onNewProject }: { onNewProject: () => void }) {
   return (
-    <div class="mx-2 rounded-lg border border-dashed border-white/[0.12] bg-white/[0.03] text-center text-ink-300 text-sm py-8 px-4">
-      <Folder class="w-8 h-8 mx-auto mb-3 opacity-50" />
-      <div class="text-ink-100 font-medium">No projects yet</div>
-      <div class="text-[12px] mt-1.5 leading-relaxed">
+    <div class="mx-1 rounded-card border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-300">
+      <Folder class="mx-auto mb-3 h-7 w-7 text-ink-400" />
+      <div class="text-[13px] font-medium text-ink-100">No projects yet</div>
+      <div class="mt-1.5 text-[12px] leading-relaxed text-ink-400">
         Each project gets its own sandboxed container. Agent CLIs run inside.
       </div>
       <button
         type="button"
         onClick={onNewProject}
-        class="mt-4 inline-flex items-center gap-1.5 h-9 px-3 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-ink-100 text-sm"
+        class="mt-4 inline-flex h-8 items-center gap-1.5 rounded-control bg-tint-strong px-3 text-[13px] font-medium text-ink-100 transition-colors hover:bg-tint-active"
       >
         <Plus class="w-4 h-4" /> New project
       </button>
@@ -21,8 +21,8 @@ export function SidebarEmptyState({ onNewProject }: { onNewProject: () => void }
 
 export function SidebarNoMatches() {
   return (
-    <div class="mx-2 rounded-lg border border-dashed border-white/[0.12] bg-white/[0.03] text-center text-ink-300 text-sm py-6 px-4">
-      <Search class="w-6 h-6 mx-auto mb-2 opacity-50" />
+    <div class="mx-1 rounded-card border border-dashed border-line-strong px-4 py-6 text-center text-[13px] text-ink-400">
+      <Search class="mx-auto mb-2 h-5 w-5" />
       No matches
     </div>
   );

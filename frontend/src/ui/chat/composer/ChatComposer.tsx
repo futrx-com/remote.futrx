@@ -15,7 +15,20 @@ import { PromptTextarea } from "./PromptTextarea";
 import { QueuedPromptList } from "./QueuedPromptList";
 import { SelectedSkillChips } from "./SelectedSkillChips";
 import { SendControls } from "./SendControls";
+import { SlashCommandMenu } from "./SlashCommandMenu";
 import type { ComposerPreferenceActions, ComposerPreferences } from "./preferences";
+
+interface SlashCommandMenuControl {
+  open: boolean;
+  loading: boolean;
+  error: string;
+  query: string;
+  items: RegisteredSkill[];
+  highlight: number;
+  onHighlight: (index: number) => void;
+  onChoose: (skill: RegisteredSkill) => void;
+  onKeyDown: (event: KeyboardEvent) => boolean;
+}
 
 export interface ChatComposerProps {
   projectId?: string;
@@ -40,6 +53,7 @@ export interface ChatComposerProps {
   onRemoveAttachment: (id: string) => void;
   onSelectSkill: (skill: RegisteredSkill) => void;
   onRemoveSelectedSkill: (skill: SelectedSkill) => void;
+  slashCommandMenu: SlashCommandMenuControl;
 }
 
 export function ChatComposer({
@@ -65,6 +79,7 @@ export function ChatComposer({
   onRemoveAttachment,
   onSelectSkill,
   onRemoveSelectedSkill,
+  slashCommandMenu,
 }: ChatComposerProps) {
   const capabilityState = useComposerAgentCapabilities({
     projectId,
@@ -81,6 +96,7 @@ export function ChatComposer({
     reasoningEffortOptions,
     serviceTierOptions,
     modeOptions,
+    supportsExecutionPolicies,
     loading: modelsLoading,
     refreshing,
     error: capabilityError,
@@ -98,6 +114,21 @@ export function ChatComposer({
   )?.label || modelShortLabel(preferences.model);
   const settingsSummary = `${providerLabel} · ${modelLabel}`;
   const skillsEnabled = capabilityState.providerCapabilities?.features?.skills !== "none";
+	const selectedModelCapability = capabilityState.providerCapabilities?.models.find(
+		(item) => item.id === preferences.model,
+	) ?? capabilityState.providerCapabilities?.models.find((item) => item.id === "");
+	const attachmentsUnsupported = !!selectedModelCapability?.inputModalities?.length
+		&& !selectedModelCapability.inputModalities.includes("image");
+  const capabilityNotice = capabilityError
+    || capabilityState.providerCapabilities?.warning
+    || (capabilityState.providerCapabilities?.source === "fallback"
+      ? "Using fallback capabilities; refresh to retry live discovery"
+      : "");
+  const hasExecutionControls =
+    supportsExecutionPolicies
+    || reasoningEffortOptions.length > 0
+    || serviceTierOptions.length > 0
+    || modeOptions.length > 1;
 
   function toggleMobileSettings() {
     setMobileSettingsOpen((open) => {
@@ -107,27 +138,33 @@ export function ChatComposer({
   }
 
   return (
-    <div class="codex-composer-shell flex-none z-20 relative bg-[#0b0d11] border-t border-white/10">
+    <div class="codex-composer-shell relative z-20 flex-none bg-canvas">
       {dragging && <ComposerDropOverlay />}
 
       <SelectedSkillChips skills={selectedSkills} onRemove={onRemoveSelectedSkill} />
       <QueuedPromptList queuedPrompts={queuedPrompts} onRemove={onRemoveQueued} />
       <AttachmentTray attachments={attachments} onRemove={onRemoveAttachment} />
 
-      <div class="codex-composer-card mx-3 my-2 overflow-visible rounded-xl border border-white/10 bg-[#15171c] shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+      {/* One card: the prompt gets the full width, controls sit beneath it. */}
+      <div class="codex-composer-card mx-3 mb-3 overflow-visible rounded-panel border border-line bg-surface shadow-pop">
         <form
           onSubmit={(event) => {
             event.preventDefault();
             onSend();
           }}
-          class="codex-composer-form composer-form flex gap-1.5 items-end px-2 pt-2"
+          class="codex-composer-form composer-form relative flex flex-col px-2.5 pt-2"
         >
-          <AttachButton
-            fileInputRef={fileInputRef}
-            uploading={uploading}
-            disconnected={disconnected}
-            onFilesSelected={onFilesSelected}
-          />
+          {slashCommandMenu.open && (
+            <SlashCommandMenu
+              items={slashCommandMenu.items}
+              highlight={slashCommandMenu.highlight}
+              loading={slashCommandMenu.loading}
+              error={slashCommandMenu.error}
+              query={slashCommandMenu.query}
+              onChoose={slashCommandMenu.onChoose}
+              onHighlight={slashCommandMenu.onHighlight}
+            />
+          )}
           <PromptTextarea
             textareaRef={textareaRef}
             text={text}
@@ -137,35 +174,82 @@ export function ChatComposer({
             onTextChange={onTextChange}
             onPaste={onPaste}
             onSend={onSend}
+            onKeyDown={slashCommandMenu.onKeyDown}
           />
-          <button
-            type="button"
-            onClick={toggleMobileSettings}
-            class={`codex-mobile-settings-trigger min-w-0 items-center gap-1.5 rounded-full border px-3 text-left transition md:hidden
-                    ${mobileSettingsOpen ? "border-accent-blue/40 bg-accent-blue/[0.12] text-accent-blue" : "border-white/10 bg-white/[0.045] text-ink-200"}`}
-            aria-label={`${mobileSettingsOpen ? "Hide" : "Show"} composer settings. ${settingsSummary}`}
-            aria-controls="mobile-composer-settings"
-            aria-expanded={mobileSettingsOpen}
-          >
-            <Settings class="h-3.5 w-3.5 flex-none" aria-hidden="true" />
-            <span class="min-w-0 flex-1 truncate text-[12px] font-semibold">{settingsSummary}</span>
-            <ChevronDown
-              class={`h-3 w-3 flex-none transition-transform ${mobileSettingsOpen ? "rotate-180" : ""}`}
-              aria-hidden="true"
+
+          <div class="codex-composer-control-deck flex min-w-0 items-center gap-1.5 pt-1.5">
+            <AttachButton
+              fileInputRef={fileInputRef}
+              uploading={uploading}
+              disconnected={disconnected}
+              unsupported={attachmentsUnsupported}
+              onFilesSelected={onFilesSelected}
             />
-          </button>
-          <SendControls
-            streaming={streaming}
-            canSend={canSend}
-            disconnected={disconnected}
-            onCancel={onCancel}
-          />
+
+            <div class="hidden min-w-0 flex-1 items-center gap-1.5 md:flex">
+              <ComposerAgentControls
+                projectId={projectId}
+                model={preferences.model}
+                provider={preferences.provider}
+                streaming={streaming}
+                providerOptions={providerOptions}
+                modelOptions={modelOptions}
+                modelsLoading={modelsLoading}
+                modelsRefreshing={refreshing}
+                modelError={capabilityNotice}
+                selectedSkills={selectedSkills}
+                providerLabel={providerLabel}
+                skillsEnabled={skillsEnabled}
+                onSelectSkill={onSelectSkill}
+                onAgentChange={preferenceActions.changeAgent}
+                onRefreshModels={refreshCapabilities}
+              />
+              {hasExecutionControls && (
+                <>
+                  <span class="h-4 w-px flex-none bg-line-strong" aria-hidden="true" />
+                  <ComposerExecutionControls
+                    preferences={preferences}
+                    preferenceActions={preferenceActions}
+                    streaming={streaming}
+                    reasoningEffortOptions={reasoningEffortOptions}
+                    serviceTierOptions={serviceTierOptions}
+                    modeOptions={modeOptions}
+                    supportsExecutionPolicies={supportsExecutionPolicies}
+                  />
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleMobileSettings}
+              class={`codex-mobile-settings-trigger flex h-8 min-w-0 flex-1 items-center gap-1.5 rounded-control px-2 text-left transition md:hidden
+                      ${mobileSettingsOpen ? "bg-accent-blue/[0.14] text-accent-blue" : "text-ink-300 hover:bg-tint-strong"}`}
+              aria-label={`${mobileSettingsOpen ? "Hide" : "Show"} composer settings. ${settingsSummary}`}
+              aria-controls="mobile-composer-settings"
+              aria-expanded={mobileSettingsOpen}
+            >
+              <Settings class="h-3.5 w-3.5 flex-none" aria-hidden="true" />
+              <span class="min-w-0 flex-1 truncate text-[12px] font-medium">{settingsSummary}</span>
+              <ChevronDown
+                class={`h-3 w-3 flex-none transition-transform ${mobileSettingsOpen ? "rotate-180" : ""}`}
+                aria-hidden="true"
+              />
+            </button>
+
+            <SendControls
+              streaming={streaming}
+              canSend={canSend}
+              disconnected={disconnected}
+              onCancel={onCancel}
+            />
+          </div>
         </form>
 
         {mobileSettingsOpen && (
           <div
             id="mobile-composer-settings"
-            class="codex-mobile-settings-panel border-t border-white/[0.07] px-2.5 pb-2.5 pt-2 md:hidden"
+            class="codex-mobile-settings-panel border-t border-line px-2.5 pb-2.5 pt-2 md:hidden"
             role="group"
             aria-label="Composer settings"
           >
@@ -181,7 +265,7 @@ export function ChatComposer({
               modelOptions={modelOptions}
               modelsLoading={modelsLoading}
               modelsRefreshing={refreshing}
-              modelError={capabilityError}
+              modelError={capabilityNotice}
               selectedSkills={selectedSkills}
               providerLabel={providerLabel}
               skillsEnabled={skillsEnabled}
@@ -190,48 +274,24 @@ export function ChatComposer({
               onRefreshModels={refreshCapabilities}
             />
 
-            <div class="mb-1.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
-              Execution
-            </div>
-            <ComposerExecutionControls
-              preferences={preferences}
-              preferenceActions={preferenceActions}
-              streaming={streaming}
-              reasoningEffortOptions={reasoningEffortOptions}
-              serviceTierOptions={serviceTierOptions}
-              modeOptions={modeOptions}
-            />
+            {hasExecutionControls && (
+              <>
+                <div class="mb-1.5 mt-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
+                  Execution
+                </div>
+                <ComposerExecutionControls
+                  preferences={preferences}
+                  preferenceActions={preferenceActions}
+                  streaming={streaming}
+                  reasoningEffortOptions={reasoningEffortOptions}
+                  serviceTierOptions={serviceTierOptions}
+                  modeOptions={modeOptions}
+                  supportsExecutionPolicies={supportsExecutionPolicies}
+                />
+              </>
+            )}
           </div>
         )}
-
-        <div class="codex-composer-control-deck hidden min-w-0 flex-wrap items-center justify-between gap-1.5 border-t border-white/[0.07] px-2 py-1.5 md:flex">
-          <ComposerAgentControls
-            projectId={projectId}
-            model={preferences.model}
-            provider={preferences.provider}
-            streaming={streaming}
-            providerOptions={providerOptions}
-            modelOptions={modelOptions}
-            modelsLoading={modelsLoading}
-            modelsRefreshing={refreshing}
-            modelError={capabilityError}
-            selectedSkills={selectedSkills}
-            providerLabel={providerLabel}
-            skillsEnabled={skillsEnabled}
-            onSelectSkill={onSelectSkill}
-            onAgentChange={preferenceActions.changeAgent}
-            onRefreshModels={refreshCapabilities}
-          />
-
-          <ComposerExecutionControls
-            preferences={preferences}
-            preferenceActions={preferenceActions}
-            streaming={streaming}
-            reasoningEffortOptions={reasoningEffortOptions}
-            serviceTierOptions={serviceTierOptions}
-            modeOptions={modeOptions}
-          />
-        </div>
       </div>
     </div>
   );

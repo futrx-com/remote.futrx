@@ -9,7 +9,7 @@ import { WorkspaceActions } from "../../ui/chat/header/WorkspaceActions";
 import { HistoryDrawer } from "../../ui/chat/history/HistoryDrawer";
 import { FileManagerDrawer } from "../../ui/chat/files/FileManagerDrawer";
 import { ScheduleDrawer } from "../../ui/chat/schedules/ScheduleDrawer";
-import { chatAttachmentState } from "../../state/chat/chatAttachmentState";
+import { chatAttachmentService } from "../../services/chat/chatAttachmentService.ts";
 import { useChat } from "../../state/hooks/chat/useChat";
 import { useChatBrowserController } from "../../state/hooks/chat/useChatBrowserController";
 import { useChatComposerController } from "../../state/hooks/chat/useChatComposerController";
@@ -17,7 +17,8 @@ import { useChatDrawerController } from "../../state/hooks/chat/useChatDrawerCon
 import { useChatKeyboardShortcuts } from "../../state/hooks/chat/useChatKeyboardShortcuts";
 import { useChatPreferences } from "../../state/hooks/chat/useChatPreferences";
 import { useChatReadMarker } from "../../state/hooks/chat/useChatReadMarker";
-import { useTerminalOverlayController } from "../../state/hooks/chat/useTerminalOverlayController";
+import { useSlashCommandMenu } from "../../state/hooks/chat/useSlashCommandMenu";
+import { useTerminalOverlayController } from "../../ui/chat/terminal/useTerminalOverlayController";
 import { useWorkspaceGitRepos } from "../../state/hooks/chat/useWorkspaceGitRepos";
 
 export function ChatContainer({
@@ -41,13 +42,15 @@ export function ChatContainer({
     sendPrompt,
     promptOutcome,
     cancel,
+    respondInteraction,
     rewind,
     loadOlder,
     refreshMeta,
   } = useChat(chat.id);
   const preferences = useChatPreferences({ chat, loadedMeta: meta, refreshMeta });
   const { displayMeta, displayMode, selectedSkills } = preferences;
-  const attachmentBasePath = chatAttachmentState.basePath(displayMeta, projects);
+  const attachmentBasePath = chatAttachmentService.basePath(displayMeta, projects);
+  const project = projects.find((candidate) => candidate.id === displayMeta.projectId);
   const composer = useChatComposerController({
     chatId: chat.id,
     eventCount,
@@ -59,6 +62,14 @@ export function ChatContainer({
     rewind,
     refreshMeta,
     attachmentBasePath,
+  });
+  const slashCommandMenu = useSlashCommandMenu({
+    provider: displayMeta.provider || "codex",
+    projectId: displayMeta.projectId,
+    text: composer.text,
+    onSelectSkill: preferences.selectSkill,
+    onTextChange: composer.setText,
+    focusTextarea: () => composer.textareaRef.current?.focus(),
   });
   const browser = useChatBrowserController({
     chat: displayMeta,
@@ -141,12 +152,16 @@ export function ChatContainer({
       mode: displayMode,
       reasoningEffort: displayMeta.reasoningEffort || "",
       serviceTier: displayMeta.serviceTier || "",
+      approvalPolicy: displayMeta.approvalPolicy,
+      sandboxPolicy: displayMeta.sandboxPolicy,
     },
     preferenceActions: {
       changeAgent: preferences.changeAgent,
       changeMode: preferences.changeMode,
       changeReasoningEffort: preferences.changeReasoningEffort,
       changeServiceTier: preferences.changeServiceTier,
+      changeApprovalPolicy: preferences.changeApprovalPolicy,
+      changeSandboxPolicy: preferences.changeSandboxPolicy,
     },
     queuedPrompts: composer.queue.queuedPrompts,
     selectedSkills,
@@ -165,6 +180,17 @@ export function ChatContainer({
     onRemoveAttachment: composer.upload.removeAttachment,
     onSelectSkill: preferences.selectSkill,
     onRemoveSelectedSkill: preferences.removeSelectedSkill,
+    slashCommandMenu: {
+      open: slashCommandMenu.open,
+      loading: slashCommandMenu.loading,
+      error: slashCommandMenu.error,
+      query: slashCommandMenu.query,
+      items: slashCommandMenu.items,
+      highlight: slashCommandMenu.highlight,
+      onHighlight: slashCommandMenu.setHighlight,
+      onChoose: slashCommandMenu.choose,
+      onKeyDown: slashCommandMenu.onKeyDown,
+    },
   };
 
   return (
@@ -187,13 +213,11 @@ export function ChatContainer({
             onScroll={composer.scroll.onScroll}
             onJumpToBottom={composer.scroll.jumpToBottom}
             onAnswerQuestion={composer.handleAnswerQuestion}
+            onRespondInteraction={respondInteraction}
             onLoadOlder={loadOlder}
             onRewind={composer.handleRewind}
-            mobileToolbar={
-              <aside class="workspace-action-toolbar relative z-30 flex flex-none justify-end border-b border-white/10 bg-[#101318] px-3 py-2 md:hidden">
-                <WorkspaceActions {...workspaceActions} orientation="horizontal" />
-              </aside>
-            }
+            projectName={project?.name}
+            actions={<WorkspaceActions {...workspaceActions} orientation="horizontal" />}
           />
         </div>
         <HistoryDrawer
@@ -231,9 +255,6 @@ export function ChatContainer({
             onClose={drawers.closeTerminal}
           />
         )}
-        <aside class="workspace-action-rail top-chrome z-20 hidden w-12 flex-none flex-col items-center border-l border-white/10 bg-[#101318] px-1.5 pb-2 md:flex">
-          <WorkspaceActions {...workspaceActions} orientation="vertical" />
-        </aside>
       </div>
       <MediaViewerOverlay />
     </div>

@@ -32,8 +32,66 @@ func TestParserMapsSessionAndComplete(t *testing.T) {
 	if events[0].Type != agent.EventSessionUpdated || events[0].SessionID != "session-1" || events[0].Model != "sonnet" {
 		t.Fatalf("unexpected session event: %#v", events[0])
 	}
-	if events[1].Type != agent.EventRunCompleted || string(events[1].Usage) != `{"input_tokens":1}` {
+	if events[1].Type != agent.EventRunCompleted ||
+		string(events[1].Usage) != `{"schema_version":1,"input_tokens":1,"model":"sonnet"}` {
 		t.Fatalf("unexpected completion event: %#v", events[1])
+	}
+}
+
+// The `result` message is the only place any provider reports a price, so the
+// parser must lift cost, duration and turn count out of it alongside tokens.
+func TestParserNormalizesResultUsageWithReportedCost(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "chat-1"})
+	if _, err := parser.ParseLine([]byte(
+		`{"type":"system","subtype":"init","session_id":"s1","model":"claude-sonnet-4-5"}`,
+	)); err != nil {
+		t.Fatal(err)
+	}
+	events, err := parser.ParseLine([]byte(`{"type":"result","subtype":"success","session_id":"s1",` +
+		`"total_cost_usd":0.0731,"duration_ms":8421,"num_turns":4,` +
+		`"usage":{"input_tokens":120,"output_tokens":340,` +
+		`"cache_read_input_tokens":5600,"cache_creation_input_tokens":78}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != agent.EventRunCompleted {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+	usage, ok := agent.ParseUsage(events[0].Usage)
+	if !ok {
+		t.Fatalf("usage not parsed from %s", events[0].Usage)
+	}
+	if usage.InputTokens != 120 || usage.OutputTokens != 340 ||
+		usage.CacheReadTokens != 5600 || usage.CacheWriteTokens != 78 {
+		t.Fatalf("unexpected tokens: %#v", usage)
+	}
+	if usage.CostUSD == nil || *usage.CostUSD != 0.0731 {
+		t.Fatalf("cost = %v, want 0.0731", usage.CostUSD)
+	}
+	if usage.DurationMs != 8421 || usage.Turns != 4 {
+		t.Fatalf("duration/turns = %d/%d", usage.DurationMs, usage.Turns)
+	}
+	if usage.Model != "claude-sonnet-4-5" {
+		t.Fatalf("model = %q", usage.Model)
+	}
+}
+
+// A run that ends in an error still burned tokens; the failure event carries
+// them so operators can see the spend even though the ledger does not bill it.
+func TestParserKeepsUsageOnFailedResult(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "chat-1", Model: "claude-opus-4-5"})
+	events, err := parser.ParseLine([]byte(
+		`{"type":"result","is_error":true,"result":"boom","usage":{"input_tokens":9,"output_tokens":2}}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Type != agent.EventRunFailed {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+	usage, ok := agent.ParseUsage(events[0].Usage)
+	if !ok || usage.InputTokens != 9 || usage.OutputTokens != 2 || usage.Model != "claude-opus-4-5" {
+		t.Fatalf("unexpected usage: %#v (ok=%t)", usage, ok)
 	}
 }
 

@@ -4,7 +4,7 @@ import { NoChatSelected } from "remote.futrx-web";
 const noop = () => {};
 
 export const WithProjects = () => (
-  <div className="w-full max-w-2xl flex flex-col border border-white/10 rounded-lg overflow-hidden" style={{ minHeight: 420 }}>
+  <div className="w-full max-w-2xl flex flex-col border border-line rounded-lg overflow-hidden" style={{ minHeight: 420 }}>
     <NoChatSelected
       hasProjects
       onNewProject={noop}
@@ -15,7 +15,7 @@ export const WithProjects = () => (
 );
 
 export const FirstRun = () => (
-  <div className="w-full max-w-2xl flex flex-col border border-white/10 rounded-lg overflow-hidden" style={{ minHeight: 420 }}>
+  <div className="w-full max-w-2xl flex flex-col border border-line rounded-lg overflow-hidden" style={{ minHeight: 420 }}>
     <NoChatSelected
       hasProjects={false}
       onNewProject={noop}

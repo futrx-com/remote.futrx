@@ -72,15 +72,43 @@ func TestParserMapsCommandToolLifecycle(t *testing.T) {
 
 func TestParserMapsTurnCompletedUsage(t *testing.T) {
 	parser := NewParser(agent.RunRequest{ConversationID: "chat-1"})
-	events, err := parser.ParseLine([]byte(`{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":3,"output_tokens":4,"reasoning_output_tokens":2}}`))
+	events, err := parser.ParseLine([]byte(`{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":3,"cache_write_input_tokens":2,"output_tokens":4,"reasoning_output_tokens":2}}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(events) != 1 || events[0].Type != agent.EventRunCompleted {
 		t.Fatalf("unexpected events: %#v", events)
 	}
-	if string(events[0].Usage) != `{"cache_read_input_tokens":3,"input_tokens":10,"output_tokens":4,"reasoning_output_tokens":2}` {
+	if string(events[0].Usage) != `{"schema_version":1,"input_tokens":5,"output_tokens":4,"cache_read_input_tokens":3,"cache_creation_input_tokens":2,"reasoning_output_tokens":2}` {
 		t.Fatalf("unexpected usage: %s", events[0].Usage)
+	}
+}
+
+// Codex never prices a turn, so the normalized payload must carry tokens and
+// the model but leave cost unset for the ledger to estimate.
+func TestParserTurnCompletedCarriesModelWithoutCost(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "chat-1", Model: "gpt-5-codex"})
+	events, err := parser.ParseLine([]byte(
+		`{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":3,"output_tokens":4}}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage, ok := agent.ParseUsage(events[0].Usage)
+	if !ok {
+		t.Fatalf("usage not parsed from %s", events[0].Usage)
+	}
+	if usage.Model != "gpt-5-codex" {
+		t.Fatalf("model = %q", usage.Model)
+	}
+	if usage.CostUSD != nil {
+		t.Fatalf("cost = %v, want unknown", *usage.CostUSD)
+	}
+	if usage.InputTokens != 7 || usage.CacheReadTokens != 3 || usage.OutputTokens != 4 {
+		t.Fatalf("unexpected tokens: %#v", usage)
+	}
+	if usage.TotalTokens() != 14 {
+		t.Fatalf("total tokens = %d, want 14", usage.TotalTokens())
 	}
 }
 

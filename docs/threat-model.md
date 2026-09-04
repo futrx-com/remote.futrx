@@ -95,11 +95,23 @@ External users reach only Caddy, which terminates TLS and forwards to the loopba
 
 - **Residual gap:** apply the membership predicate per event, not only to the snapshot.
 
-### 16. Stateless 30-day sessions, no revocation — **Medium** ✓ code-verified
+### 16. Stateless 30-day sessions, no revocation — **Medium** ✓ code-verified — partially resolved for opted-in accounts
 
-**Spoofing.** Sessions are stateless HMAC tokens with a hardcoded 30-day expiry ([`session_codec.go`](../backend/internal/service/auth/session_codec.go)); there is no server-side store. Logout only clears the cookie. A captured token is replayable for up to 30 days. The only kill switches are deleting the user (a per-request `IsRegistered` check then rejects them) or rotating `session.key` (which logs everyone out).
+**Spoofing.** Sessions are stateless HMAC tokens with a hardcoded 30-day expiry ([`session_codec.go`](../backend/internal/service/auth/session_codec.go)); there is no server-side store by default. Logout clears the cookie and, for an account that has turned on "single active session" (see below), also revokes the server-side registry record. A captured token for an account that has not opted into single-session tracking is replayable for up to 30 days. The only kill switches for such an account remain deleting the user (a per-request `IsRegistered` check then rejects them) or rotating `session.key` (which logs everyone out).
 
-- **Residual gap:** no per-session revocation, no idle timeout, no rotation-on-logout. Severity rises to High if any token-leak vector exists.
+- **Resolved for accounts that turn on "single active session" (Settings → Security), independently of whether TOTP 2FA is also enabled.** Once on, a `SessionRegistry` record tracks one active session id per account (`backend/internal/service/auth/session_registry.go`); a new login immediately supersedes the previous session, and logout revokes it. TOTP-based 2FA is a separate, independently-toggleable control (`backend/internal/service/auth/twofactor.go`) that adds a second factor to login itself; it does not by itself change session revocability. See `docs/known-limitations.md` for the exact opt-in scoping.
+- **Residual gap, unchanged for every account that leaves "single active session" off (the default):** no per-session revocation, no idle timeout, no rotation-on-logout. Severity rises to High if any token-leak vector exists. Turning the preference on is a user choice, not an enforced policy, so this residual gap persists fleet-wide until an account opts in.
+
+### 16b. Second-factor token and code handling — **code-verified**
+
+**Elevation of privilege.** The signed-payload envelope backing sessions, pending 2FA logins, and pending enrollments is one primitive keyed by the same `session.key` ([`signed_payload.go`](../backend/internal/service/auth/signed_payload.go)), and the three payload shapes overlap on `email`/`exp`. Each codec therefore binds a distinct domain string into the HMAC, so a token minted for one purpose cannot verify as another.
+
+- **Why it matters:** without domain separation the half-authenticated pending-login token decodes as a fully valid `Session`. A caller who knows only the first factor could present it as `remote_session` and skip the second factor entirely. The session codec deliberately keeps the empty domain so cookies issued before this existed still verify.
+- **Replay.** A TOTP code is accepted for exactly one sign-in: `TwoFactorRecord.LastUsedTOTPCounter` records the matched time step and anything at or below it is refused (RFC 6238 §5.2). An observed code is otherwise usable for the rest of its ~90s window.
+- **Single use.** Recovery codes are consumed under a per-account lock ([`keyed_mutex.go`](../backend/internal/service/auth/keyed_mutex.go)), so two concurrent challenges cannot redeem the same code.
+- **Account binding.** Enrollment confirmation checks the token's account against the caller's session *before* persisting, so another account's enrollment token cannot install a secret.
+- **Rate limiting.** `/auth/2fa/verify` shares the per-IP limiter used by password login (5 failures / 5 minutes), bounding brute force against the 6-digit space.
+- **Residual gap:** the rate limiter is per-process and per-IP, so it neither survives a restart nor constrains a distributed attacker.
 
 ### 17. No CSRF tokens; WebSocket origin checks disabled — **Medium**
 

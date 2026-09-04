@@ -13,6 +13,7 @@ type Flow string
 const (
 	FlowCode     Flow = "code"
 	FlowDevice   Flow = "device"
+	FlowAPIKey   Flow = "api-key"
 	FlowExternal Flow = "external"
 )
 
@@ -58,6 +59,8 @@ type Binding struct {
 	cancelCode       func(context.Context) error
 	isCodeInputError func(error) bool
 	startDevice      func(context.Context) (DeviceState, error)
+	setAPIKey        func(context.Context, string) error
+	deleteAPIKey     func(context.Context) error
 }
 
 func NewCodeBinding(id agent.ProviderID, service *CodeService) Binding {
@@ -127,6 +130,25 @@ func NewExternalBinding(id agent.ProviderID) Binding {
 		id: id, flow: FlowExternal,
 		snapshot: func() Snapshot { return Snapshot{} },
 	}
+}
+
+// NewAPIKeyBinding exposes a write-only managed credential flow. Status and
+// subscriptions reveal only whether a key exists; the key is never returned.
+func NewAPIKeyBinding(id agent.ProviderID, service *APIKeyService) Binding {
+	binding := Binding{id: id, flow: FlowAPIKey}
+	if service == nil {
+		return binding
+	}
+	binding.status = func() any { return service.Status() }
+	binding.subscribe = statusSubscription(service.Subscribe)
+	binding.authenticated = service.Authenticated
+	binding.snapshot = func() Snapshot {
+		return Snapshot{Authenticated: service.Authenticated()}
+	}
+	binding.snapshotSub = binding.subscribe
+	binding.setAPIKey = service.Set
+	binding.deleteAPIKey = service.Delete
+	return binding
 }
 
 // WithWarning adds a live provider-specific diagnostic to the normalized
@@ -223,6 +245,20 @@ func (b Binding) StartDevice(ctx context.Context) (DeviceState, error) {
 		return DeviceState{}, ErrUnsupportedFlow
 	}
 	return b.startDevice(ctx)
+}
+
+func (b Binding) SetAPIKey(ctx context.Context, key string) error {
+	if b.setAPIKey == nil {
+		return ErrUnsupportedFlow
+	}
+	return b.setAPIKey(ctx, key)
+}
+
+func (b Binding) DeleteAPIKey(ctx context.Context) error {
+	if b.deleteAPIKey == nil {
+		return ErrUnsupportedFlow
+	}
+	return b.deleteAPIKey(ctx)
 }
 
 // Subscription reads concrete provider status values from their original

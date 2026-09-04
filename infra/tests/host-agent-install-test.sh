@@ -7,6 +7,8 @@ INSTALLER="$TESTS_DIR/../install.sh"
 CHECKOUT_STEP="$TESTS_DIR/../steps/00-checkout.sh"
 HOST_DEPS="$TESTS_DIR/../steps/01-host-deps.sh"
 APP_STEP="$TESTS_DIR/../steps/02-app.sh"
+BACKEND_SERVICE_TEMPLATE="$TESTS_DIR/../templates/remote.futrx.service.tmpl"
+HOST_CLI_PROFILE_TEMPLATE="$TESTS_DIR/../templates/remote-futrx-host-clis.sh.tmpl"
 
 fail() {
     echo "FAIL: $*" >&2
@@ -17,7 +19,8 @@ bash -n "$INSTALLER"
 bash -n "$CHECKOUT_STEP"
 bash -n "$HOST_DEPS"
 bash -n "$APP_STEP"
-grep -Fq 'go run ./cmd/install-host-agents' "$APP_STEP" || \
+bash -n "$HOST_CLI_PROFILE_TEMPLATE"
+grep -Fq 'go run ./cmd/install-host-agents --prefix "$HOST_CLI_PREFIX"' "$APP_STEP" || \
     fail "application step does not invoke the module-driven host installer"
 if grep -Fq 'go run ./cmd/install-host-agents' "$HOST_DEPS"; then
     fail "host installer runs before the selected application checkout is available"
@@ -32,6 +35,14 @@ if [ -z "$checkout_source_line" ] || [ -z "$host_deps_source_line" ] || [ -z "$a
 fi
 grep -Fq 'exec bash "$INSTALL_DIR/infra/install.sh" "$@"' "$CHECKOUT_STEP" || \
     fail "checkout selection does not re-execute the selected installer"
+grep -Fq 'HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"' "$INSTALLER" || \
+    fail "installer does not define an application-owned host CLI prefix"
+grep -Fq 'PATH="$HOST_CLI_BIN_DIR:/usr/local/sbin:/usr/local/bin:' "$INSTALLER" || \
+    fail "installer does not put the managed host CLI directory first on PATH"
+grep -Fq 'Environment=PATH=${HOST_CLI_BIN_DIR}:/usr/local/sbin:/usr/local/bin:' "$BACKEND_SERVICE_TEMPLATE" || \
+    fail "backend service does not use the managed host CLI directory first"
+grep -Fq '${HOST_CLI_BIN_DIR}${PATH:+:$PATH}' "$HOST_CLI_PROFILE_TEMPLATE" || \
+    fail "login shells do not receive the managed host CLI path"
 
 for stale_contract in \
     'ensure_agent_cli' \

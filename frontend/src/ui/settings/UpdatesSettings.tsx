@@ -1,5 +1,7 @@
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
-import { AlertCircle, Download, Loader, RotateCcw } from "../primitives/icons";
+import { Download, Loader, RotateCcw } from "../primitives/icons";
+import { UpdateRunCard } from "./updates/UpdateRunCard";
+import { formatUpdateTime } from "./updates/updateTime";
 
 export function UpdatesSettings({
   status,
@@ -22,7 +24,7 @@ export function UpdatesSettings({
 }) {
   if (loading && status == null) {
     return (
-      <div class="rounded-lg border border-white/10 bg-[#101318] px-4 py-12 flex items-center justify-center gap-2 text-[13px] text-ink-300">
+      <div class="rounded-card border border-line bg-surface px-4 py-12 flex items-center justify-center gap-2 text-[13px] text-ink-300">
         <Loader class="w-4 h-4 animate-spin" /> Loading update status…
       </div>
     );
@@ -38,9 +40,9 @@ export function UpdatesSettings({
 
   return (
     <div class="space-y-4">
-      <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
+      <section class="rounded-card border border-line bg-surface overflow-hidden">
         <header class="px-4 py-3 flex items-start gap-3">
-          <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+          <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
             <Download class="w-4 h-4 text-ink-200" />
           </div>
           <div class="flex-1 min-w-0">
@@ -53,7 +55,7 @@ export function UpdatesSettings({
                   {lastCheck.updateAvailable && latestTag !== ""
                     ? `release ${latestTag} is available`
                     : "up to date with the newest release"}
-                  {` · checked ${formatTime(lastCheck.checkedAt)}`}
+                  {` · checked ${formatUpdateTime(lastCheck.checkedAt)}`}
                 </>
               )}
             </div>
@@ -62,7 +64,7 @@ export function UpdatesSettings({
             type="button"
             onClick={() => void onCheck()}
             disabled={checking || runActive}
-            class="h-9 px-2.5 rounded-md inline-flex items-center gap-2 text-[12px] text-ink-200 hover:text-ink-50 hover:bg-white/[0.08] disabled:opacity-60"
+            class="h-9 px-2.5 rounded-md inline-flex items-center gap-2 text-[12px] text-ink-200 hover:text-ink-50 hover:bg-tint-strong disabled:opacity-60"
           >
             <RotateCcw class={`w-3.5 h-3.5 ${checking ? "animate-spin" : ""}`} />
             <span class="hidden sm:inline">{checking ? "Checking…" : "Check for updates"}</span>
@@ -105,7 +107,7 @@ export function UpdatesSettings({
             type="button"
             onClick={() => void onApply(latestTag)}
             disabled={applying}
-            class="mt-3 h-10 px-3 rounded bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50"
+            class="btn btn-primary mt-3 disabled:opacity-50"
           >
             {applying
               ? infrastructureUpdate
@@ -118,67 +120,7 @@ export function UpdatesSettings({
         </section>
       )}
 
-      {run && (
-        <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-          <header class="px-4 py-3 border-b border-white/[0.06]">
-            {run.state === "running" && (
-              <div class="flex items-center gap-2 text-[13.5px] font-semibold text-ink-50">
-                <Loader class="w-4 h-4 animate-spin text-accent-blue" />
-                {run.updateKind === "application"
-                  ? `Deploying application release ${run.target}…`
-                  : `Updating infrastructure to ${run.target}…`}
-              </div>
-            )}
-            {run.state === "succeeded" && (
-              <div class="text-[13.5px] font-semibold text-accent-green">
-                {run.updateKind === "application" ? "Deployed" : "Updated to"} {run.target}
-              </div>
-            )}
-            {run.state === "failed" && (
-              <div class="flex items-center gap-2 text-[13.5px] font-semibold text-accent-red">
-                <AlertCircle class="w-4 h-4 flex-none" />
-                {run.updateKind === "application" ? "Deployment of" : "Update to"} {run.target} failed
-                {typeof run.exitCode === "number" ? ` (exit ${run.exitCode})` : ""}
-              </div>
-            )}
-            <div class="text-[12px] text-ink-300 mt-0.5">
-              Started {formatTime(run.startedAt)}
-              {run.startedBy ? ` by ${run.startedBy}` : ""}
-              {run.finishedAt ? ` · finished ${formatTime(run.finishedAt)}` : ""}
-            </div>
-            {run.state === "running" && restarting && (
-              <div class="mt-2 text-[12px] text-accent-yellow">
-                {run.updateKind === "application"
-                  ? "The application is restarting — reconnecting…"
-                  : "The server is restarting as part of the update — reconnecting… This can take a few minutes while containers are recycled."}
-              </div>
-            )}
-            {run.state === "succeeded" && (
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                class="mt-2.5 h-9 px-3 rounded bg-accent-green/80 hover:bg-accent-green text-white text-[13px] font-medium"
-              >
-                Reload to use the new version
-              </button>
-            )}
-          </header>
-          {run.log && (
-            <pre class="m-0 px-4 py-3 text-[11px] leading-snug font-mono text-ink-200 bg-black/30 max-h-72 overflow-auto whitespace-pre-wrap">
-              {run.log}
-            </pre>
-          )}
-        </section>
-      )}
+      {run && <UpdateRunCard run={run} restarting={restarting} />}
     </div>
   );
-}
-
-function formatTime(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }

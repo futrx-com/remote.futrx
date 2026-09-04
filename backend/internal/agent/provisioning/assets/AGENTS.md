@@ -9,17 +9,18 @@ crashed processes, and deleted files stay within this project.
 
 - `/workspace` - your project files. Persistent, survives container
   restarts and reprovisions.
-- `/root/.codex`, `/root/.claude`, `/root/.kimi-code`, and
+- `/root/.codex`, `/root/.minimax`, `/root/.claude`, `/root/.kimi-code`, and
   `/root/.gemini/antigravity-cli` - persistent, project-specific provider
   homes. The host mounts and manages these paths so provider configuration,
   authentication, and session state survive container replacement. Only the
   Antigravity subdirectory is mounted, not all of `/root/.gemini`. Keep project
   artifacts in `/workspace`, not in these homes.
-- `/root/.claude/CLAUDE.md` AND `/root/.codex/AGENTS.md` - this file
-  (identical content, two paths so both Claude and Codex pick it up).
-  The host re-pushes both whenever the template changes; don't edit
+- `/root/.claude/CLAUDE.md`, `/root/.codex/AGENTS.md`, AND
+  `/root/.minimax/AGENTS.md` - this file (identical content, three paths so
+  Claude, Codex, and MiniMax pick it up). The host re-pushes all three whenever
+  the template changes; don't edit
   them expecting changes to stick.
-- Everything else outside the five durable mounts: replaceable.
+- Everything else outside the six durable mounts: replaceable.
 
 ## Capabilities
 
@@ -44,7 +45,11 @@ crashed processes, and deleted files stay within this project.
 `python3` + `pip`, `node 22` + `npm`, `claude`, `codex`, `kimi`, `agy`. Anything else:
 `apt-get install` or `npm i -g` freely.
 
-**Persistence rule.** `/workspace/**` and the four provider homes listed
+The MiniMax agent also uses the `codex` binary, with isolated state under
+`/root/.minimax`. Remote injects its host-managed Token Plan subscription key only into MiniMax
+runs; do not ask users to add it as a project secret.
+
+**Persistence rule.** `/workspace/**` and the five provider homes listed
 above are host bind-mounts and survive container replacement. Other paths
 (`/usr/local/`, unmounted paths under `/root/`, and packages you apt-install)
 are gone if the container is recreated. If you install a tool the project
@@ -373,12 +378,13 @@ Project-scoped skills have one source of truth:
 - `/workspace/.agents/skills/<name>/SKILL.md`
 
 The host provisions that directory at launch and before each prompt. It also
-keeps compatibility symlinks so Claude and legacy Codex paths resolve to the
-same files:
+keeps compatibility symlinks so Claude, Codex, and MiniMax paths resolve to
+the same files:
 
 - `/workspace/.claude/skills -> ../.agents/skills`
 - `/workspace/.codex/skills -> ../.agents/skills`
+- `/workspace/.minimax/skills -> ../.agents/skills`
 
 When suggesting that the user create a new project skill, use the
 `/workspace/.agents/skills/` location. Never duplicate the same skill into
-`.claude/` or `.codex/`.
+`.claude/`, `.codex/`, or `.minimax/`.

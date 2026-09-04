@@ -23,6 +23,7 @@ type ProjectHandler struct {
 	projects           *serviceproject.Service
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
+	usage              *UsageHandler
 	projectHostPattern *regexp.Regexp
 	codeHostPattern    *regexp.Regexp
 }
@@ -46,6 +47,14 @@ func NewProjectHandler(
 			`^([a-z0-9][a-z0-9-]*)\.code\.` + escapedHostname + `$`,
 		),
 	}
+}
+
+// WithUsage attaches the usage handler so /api/projects/{id}/usage can be
+// served from the existing project route, which already resolves the project
+// and authorizes the caller.
+func (h *ProjectHandler) WithUsage(usage *UsageHandler) *ProjectHandler {
+	h.usage = usage
+	return h
 }
 
 func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -179,6 +188,15 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 
 	if len(parts) >= 2 && parts[1] == "agent-browser" {
 		h.handleAgentBrowser(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "usage" {
+		if h.usage == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "usage ledger unavailable")
+			return
+		}
+		h.usage.HandleProjectSummary(w, r, string(id), email, isAdmin)
 		return
 	}
 

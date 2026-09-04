@@ -12,7 +12,7 @@ import type {
   ResourceInfo,
   WorkspaceInfo,
 } from "../../../models/project";
-import type { ProjectContainerRecord } from "../../../state/projects/projectContainerRecords";
+import type { ProjectContainerRecord } from "../../../models/project";
 import { AlertCircle } from "../../primitives/icons";
 import { Field, Grid, Loading, Panel } from "./ProjectContainerPrimitives";
 import {
@@ -82,10 +82,10 @@ export function ContainerStateBadge({ state }: { state: string }) {
     state === "RUNNING"
       ? "text-accent-green bg-accent-green/[0.12]"
       : state === "STOPPED"
-      ? "text-ink-300 bg-white/[0.06]"
+      ? "text-ink-300 bg-tint"
       : state === "MISSING"
       ? "text-accent-red bg-accent-red/[0.12]"
-      : "text-ink-300 bg-white/[0.06]";
+      : "text-ink-300 bg-tint";
   return (
     <span class={`inline-flex items-center h-5 px-1.5 rounded text-[11px] font-medium ${tone}`}>
       {state.toLowerCase()}
@@ -133,7 +133,7 @@ function DisksPanel({ disks }: { disks: DiskUsage[] }) {
           return (
             <div
               key={disk.mountPath}
-              class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2"
+              class="rounded-md border border-line bg-tint px-3 py-2"
             >
               <div class="flex items-center justify-between gap-2 min-w-0">
                 <div class="font-mono text-[12.5px] text-ink-100 truncate">{disk.mountPath}</div>
@@ -143,7 +143,7 @@ function DisksPanel({ disks }: { disks: DiskUsage[] }) {
                 </div>
               </div>
               {percent != null && (
-                <div class="mt-1.5 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                <div class="mt-1.5 h-1 rounded-full bg-tint overflow-hidden">
                   <div
                     class={`h-full ${percent > 85 ? "bg-accent-red" : percent > 60 ? "bg-accent-orange" : "bg-accent-green"}`}
                     style={{ width: `${Math.min(100, percent)}%` }}
@@ -206,7 +206,7 @@ function NetworkPanel({
         {ifaces.map((network) => (
           <div
             key={network.name}
-            class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2 space-y-1"
+            class="rounded-md border border-line bg-tint px-3 py-2 space-y-1"
           >
             <div class="flex items-center gap-2 min-w-0">
               <span class="font-mono text-[12.5px] text-ink-100">{network.name}</span>
@@ -232,7 +232,7 @@ function NetworkPanel({
         type="button"
         onClick={() => void repair()}
         disabled={repairing}
-        class="mt-2 h-9 w-full rounded-md border border-white/10 bg-white/[0.04] px-3 text-[13px] font-medium text-ink-100 hover:bg-white/[0.08] disabled:opacity-45 disabled:cursor-not-allowed"
+        class="mt-2 h-9 w-full rounded-md border border-line bg-tint px-3 text-[13px] font-medium text-ink-100 hover:bg-tint-strong disabled:opacity-45 disabled:cursor-not-allowed"
         title="Re-runs DHCP on eth0 inside the container. Fixes the 'running but no internet' state."
       >
         {repairing ? "Repairing network..." : "Repair network"}
@@ -324,7 +324,7 @@ function AuthBundlesPanel({ bundles }: { bundles: AuthBundleStatus[] }) {
     <Panel title="Auth bundles">
       <div class="space-y-3">
         {bundles.map((bundle) => (
-          <div key={bundle.name} class="rounded-md border border-white/[0.08] bg-white/[0.03] p-2.5 space-y-2">
+          <div key={bundle.name} class="rounded-md border border-line bg-tint p-2.5 space-y-2">
             <div class="text-[12.5px] font-semibold text-ink-100">{bundle.name}</div>
             <div class="space-y-1.5">
               {bundle.files.map((file) => (
@@ -358,7 +358,7 @@ function AuthFileRow({ file }: { file: AuthBundleFileStatus }) {
     ? "host only"
     : "container only";
   return (
-    <div class="rounded border border-white/[0.06] bg-black/20 px-2.5 py-1.5">
+    <div class="rounded border border-line bg-inset px-2.5 py-1.5">
       <div class="font-mono text-[11.5px] text-ink-200 break-all">{file.containerPath}</div>
       <div class={`text-[11px] mt-0.5 ${tone}`}>{label}</div>
       <div class="text-[10.5px] font-mono text-ink-400 mt-0.5">

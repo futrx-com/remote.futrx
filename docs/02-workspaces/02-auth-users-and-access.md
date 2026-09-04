@@ -4,8 +4,8 @@ The application separates three concerns:
 
 1. Platform identity: who may open `remote.futrx`.
 2. Agent credentials: whether a provider can run, with host-wide onboarding
-   for Claude, Codex, and Kimi and a supported project-local sign-in flow for
-   Antigravity.
+   for Claude, Codex, Kimi, and MiniMax, plus a supported project-local sign-in
+   flow for Antigravity.
 3. Project membership: which registered users may access a project.
 
 ## Application gate
@@ -16,7 +16,10 @@ stateDiagram-v2
     CheckServerClaim --> ClaimAdmin: server is unclaimed
     CheckServerClaim --> SignIn: server is claimed
     ClaimAdmin --> CheckLocalAdmin: admin creates email and password
-    SignIn --> CheckLocalAdmin: valid local or Google session
+    SignIn --> CheckTwoFactor: valid password or Google credentials
+    CheckTwoFactor --> TwoFactorChallenge: account has 2FA enabled
+    CheckTwoFactor --> CheckLocalAdmin: account has no 2FA record
+    TwoFactorChallenge --> CheckLocalAdmin: correct authenticator code or recovery code
     CheckLocalAdmin --> WaitForAdmin: legacy admin password setup is incomplete
     CheckLocalAdmin --> CheckProvider: local admin is configured
     CheckProvider --> ConnectProvider: no gate-eligible module is ready and caller is admin
@@ -28,12 +31,16 @@ stateDiagram-v2
 
 The backend middleware applies the same order to `/api/*` and `/ws*`: valid
 registered session, completed local-admin setup, then at least one agent module
-marked `SatisfiesAccessGate` ready. Managed code/device modules require an
+marked `SatisfiesAccessGate` ready. Managed code/device/API-key modules require an
 authenticated binding; no-auth modules are ready immediately; external flows
 cannot be gate providers because Remote has no authoritative status signal.
 `GET /api/agent-auth`, normalized `/ws/agent-auth/<provider>` streams, and
 legacy provider-auth routes are exempt from the final check so onboarding can
 finish.
+
+The `CheckTwoFactor`/`TwoFactorChallenge` step only exists for accounts that
+have opted into TOTP 2FA (see below); every other account skips straight from
+`SignIn` to `CheckLocalAdmin`, unchanged from before 2FA existed.
 
 ## Identities and roles
 
@@ -65,6 +72,21 @@ sequenceDiagram
 ```
 
 The first claim is public only while no admin exists. A legacy installation that already has an administrator identity but no password requires authorization by that existing admin.
+
+## Two-factor authentication
+
+From Settings → Security, any account (local admin or invited user) can independently turn on:
+
+| Toggle | Effect | Depends on |
+| --- | --- | --- |
+| **Two-factor authentication (TOTP)** | Password/Google login returns a pending challenge instead of a session; `POST /auth/2fa/verify` (a 6-digit authenticator code, or an unused recovery code) completes it | Nothing |
+| **Single active session** | A new login immediately supersedes the account's previous session | Nothing — works with or without 2FA |
+| **Sign-in history** | Every login (bounded, newest-first) is recorded and shown in the Security tab | Nothing — works with or without 2FA |
+| **Recovery-code alert** | A login completed with a recovery code (instead of a normal authenticator code) sets an alert shown on `/auth/me` until acknowledged | Two-factor authentication must already be on — recovery codes only exist once 2FA is enrolled |
+
+Enrollment issues a TOTP secret (shown as a QR code and as text for manual entry), confirms one code from the user's authenticator app, and returns ten one-time recovery codes shown exactly once. Confirming enrollment, or turning on single active session, re-issues the browser's *current* session as tracked in the same response, so the tab that just made the change is never immediately treated as "the other device."
+
+An account that leaves all four toggles off — the default for every account, including ones that predate this feature — sees byte-for-byte the same login flow, session cookie, and `/auth/me` response as before any of this existed.
 
 ## Invited user flow
 
@@ -115,6 +137,16 @@ flowchart TD
 ```
 
 Claude uses an interactive authorization URL plus a pasted code. Codex and Kimi use device-code flows. Credential files are later synchronized into project containers before agent execution.
+
+MiniMax is project-only but uses a host-managed API-key binding for Token Plan
+subscription keys only. Its global card opens a write-only key field, states
+that pay-as-you-go keys are unsupported, and links only to MiniMax's Token Plan
+subscription page. The backend requires the documented `sk-cp-…` prefix and
+validates a submitted key against MiniMax's non-generation Token Plan quota
+endpoint before storing it; rejected keys remain unconfigured. The status
+stream publishes only whether a validated key exists. Before setup, the project
+picker lists MiniMax as locked under **Sign in to use** and does not expose its
+models. MiniMax does not satisfy the initial provider gate.
 
 Antigravity is deliberately outside this host-wide flow. Its global card shows
 the module's provider-managed instructions but has no managed login action or
@@ -182,5 +214,8 @@ sequenceDiagram
 - Agent-auth handler: [`backend/internal/transport/http/handlers/agent_auth_handler.go`](../../backend/internal/transport/http/handlers/agent_auth_handler.go)
 - Auth middleware: [`backend/internal/transport/http/middleware/auth.go`](../../backend/internal/transport/http/middleware/auth.go)
 - Auth service: [`backend/internal/service/auth/service.go`](../../backend/internal/service/auth/service.go)
+- TOTP/recovery-code sub-component: [`backend/internal/service/auth/twofactor.go`](../../backend/internal/service/auth/twofactor.go)
+- Session registry (single-session, history, alert): [`backend/internal/service/auth/session_registry.go`](../../backend/internal/service/auth/session_registry.go)
+- 2FA challenge and Security-tab handlers: [`backend/internal/transport/http/handlers/auth_twofactor_handler.go`](../../backend/internal/transport/http/handlers/auth_twofactor_handler.go), [`backend/internal/transport/http/handlers/security_handler.go`](../../backend/internal/transport/http/handlers/security_handler.go)
 - User service: [`backend/internal/service/user/service.go`](../../backend/internal/service/user/service.go)
 - Access adapter: [`backend/internal/transport/transport.go`](../../backend/internal/transport/transport.go)

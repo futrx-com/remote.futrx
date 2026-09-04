@@ -1,12 +1,12 @@
 {
   "name": "remote.futrx",
-  "version": "0.7.0",
+  "version": "0.8.1",
   "private": true,
   "scripts": {
-    "qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/install.sh",
-    "qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/update.sh",
-    "qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-app.sh",
-    "qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-/workspace/remote.futrx/.qa.env} bash infra/qa/deploy-local.sh",
+    "qa:install": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/install.sh",
+    "qa:update": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/update.sh",
+    "qa:deploy-app": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-app.sh",
+    "qa:deploy-local": "QA_ENV_FILE=${QA_ENV_FILE:-./.qa.env} bash infra/qa/deploy-local.sh",
     "qa:test": "bash infra/tests/qa-scripts-test.sh"
   }
 }

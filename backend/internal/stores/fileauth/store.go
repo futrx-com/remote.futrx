@@ -10,13 +10,26 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
+
+const agentAPIKeysFile = "agent-api-keys.json"
 
 type Store struct {
 	dataDir string
 	mu      sync.Mutex
+}
+
+// setupTokenRecord is the file-owned representation of auth's setup-token
+// state. JSON field names are persistence details and do not leak into the
+// service model.
+type setupTokenRecord struct {
+	Hash      string    `json:"hash"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Used      bool      `json:"used"`
 }
 
 func New(dataDir string) *Store {
@@ -67,6 +80,78 @@ func (s *Store) SaveOAuthConfig(ctx context.Context, cfg serviceauth.OAuthConfig
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.writeJSONLocked("oauth.json", cfg)
+}
+
+func (s *Store) AgentAPIKey(ctx context.Context, provider agent.ProviderID) (string, error) {
+	select {
+	case <-ctx.Done():
+		return "", ctx.Err()
+	default:
+	}
+	if provider == "" {
+		return "", errors.New("agent provider is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys, err := s.agentAPIKeysLocked()
+	if err != nil {
+		return "", err
+	}
+	return keys[string(provider)], nil
+}
+
+func (s *Store) SaveAgentAPIKey(ctx context.Context, provider agent.ProviderID, key string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	key = strings.TrimSpace(key)
+	if provider == "" || key == "" {
+		return errors.New("agent provider and API key are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys, err := s.agentAPIKeysLocked()
+	if err != nil {
+		return err
+	}
+	keys[string(provider)] = key
+	return s.writeJSONLocked(agentAPIKeysFile, keys)
+}
+
+func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider agent.ProviderID) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if provider == "" {
+		return errors.New("agent provider is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	keys, err := s.agentAPIKeysLocked()
+	if err != nil {
+		return err
+	}
+	delete(keys, string(provider))
+	return s.writeJSONLocked(agentAPIKeysFile, keys)
+}
+
+func (s *Store) agentAPIKeysLocked() (map[string]string, error) {
+	data, err := os.ReadFile(filepath.Join(s.dataDir, agentAPIKeysFile))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return make(map[string]string), nil
+		}
+		return nil, fmt.Errorf("read %s: %w", agentAPIKeysFile, err)
+	}
+	keys := make(map[string]string)
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", agentAPIKeysFile, err)
+	}
+	return keys, nil
 }
 
 func (s *Store) LocalAdmin(ctx context.Context) (*serviceauth.LocalAdminCredential, error) {
@@ -146,6 +231,58 @@ func (s *Store) DeleteLocalAdmin(ctx context.Context, expected serviceauth.Local
 		return fmt.Errorf("delete local-admin.json: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) SetupToken(ctx context.Context) (*serviceauth.SetupTokenRecord, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := os.ReadFile(filepath.Join(s.dataDir, "setup-token.json"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read setup-token.json: %w", err)
+	}
+	var record setupTokenRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, fmt.Errorf("parse setup-token.json: %w", err)
+	}
+	if record.Hash == "" {
+		return nil, errors.New("setup-token.json is incomplete")
+	}
+	return &serviceauth.SetupTokenRecord{
+		Hash:      record.Hash,
+		ExpiresAt: record.ExpiresAt,
+		Used:      record.Used,
+	}, nil
+}
+
+// SaveSetupToken overwrites any existing record, which is what makes a
+// restart or a CLI reissue rotate the token rather than accumulate several
+// live ones.
+func (s *Store) SaveSetupToken(ctx context.Context, record serviceauth.SetupTokenRecord) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if record.Hash == "" {
+		return errors.New("setup token record is incomplete")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeJSONLocked("setup-token.json", setupTokenRecord{
+		Hash:      record.Hash,
+		ExpiresAt: record.ExpiresAt,
+		Used:      record.Used,
+	})
 }
 
 func (s *Store) SessionKey(ctx context.Context) ([]byte, error) {

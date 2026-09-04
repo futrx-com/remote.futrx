@@ -26,8 +26,8 @@ without login controls.
 
 Claude, Codex, and Kimi authentication is host-wide and administrator-managed.
 Sign in once on the parent host; Remote then seeds those provider credentials
-into project containers. Antigravity uses a different per-project flow
-described below.
+into project containers. MiniMax uses a host-managed Token Plan subscription
+key. Antigravity uses a project-local sign-in flow; both are described below.
 
 ![Administrator view of Claude, Codex, and Kimi authentication](/assets/docs/screenshots/03-agent-authentication-01m05s.webp)
 
@@ -56,6 +56,34 @@ credentials, choose **Refresh models** again afterward.
 5. Return to Remote and wait for the connected state.
 
 Remote may also detect a configured API key, but subscription/device authentication is the intended shared-host flow.
+
+### Use MiniMax
+
+MiniMax is project-only and runs `MiniMax-M3` through Remote's pinned Codex
+app-server harness. It deliberately uses an isolated `/root/.minimax` home, so
+its model catalog, sessions, and provider settings do not replace the normal
+Codex account or `/root/.codex` state. This is runtime separation, not a
+security boundary: container root can read every provider home mounted in that
+project.
+
+Configure MiniMax once for the Remote installation:
+
+1. Open **Settings → Agents** and choose **Sign in with MiniMax** (or
+   **Refresh MiniMax login** when replacing a key).
+2. Follow the **Get a MiniMax Token Plan subscription key** link to subscribe,
+   create, or retrieve the supported key from MiniMax. Remote does not link to
+   the pay-as-you-go key console because standard API keys are not supported.
+3. Paste the `sk-cp-…` key into the masked field and choose **Save API key**.
+   Remote checks that it is a Token Plan key and validates it with MiniMax's
+   subscription quota endpoint before storing it.
+4. Return to a project chat and select **MiniMax** and **MiniMax-M3**.
+
+Remote passes the key to the Codex process as an environment variable and
+configures Codex to read that variable. It does not embed the key in the
+generated model catalog or command-line configuration. The key is never
+returned to the browser after saving. MiniMax is not offered for loose chats.
+In project chats it stays visible as a locked **Sign in to use** provider, but
+its model list remains unavailable until a validated key exists.
 
 ### Connect Kimi
 
@@ -111,6 +139,9 @@ connect one of the current gate-eligible modules: Claude, Codex, or Kimi.
 - Antigravity is project-local rather than host-wide, but its credential state
   is still readable by container root and shared by everyone with authority in
   that project.
+- MiniMax runs only in projects, but its Token Plan subscription key is
+  installation-wide and administrator-managed. It is injected into MiniMax
+  runs and is subject to that MiniMax subscription's quota.
 
 Non-admins can use connected providers but cannot connect or refresh them.
 
@@ -187,6 +218,7 @@ Use the sign-out control in the account footer. This clears the platform session
 | Change own appearance | Yes | Yes |
 | View own account and server information | Yes | Yes |
 | Connect or refresh agent providers | Yes | No |
+| Add, replace, or remove the MiniMax Token Plan subscription key | Yes | No |
 | Sign in to Antigravity inside an assigned project | Yes | Yes |
 | Configure Google OAuth | Yes | No |
 | Add, remove, promote, or demote users | Yes | No |

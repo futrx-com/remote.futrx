@@ -29,7 +29,10 @@ func (i *containerCredentialInspector) inspect(ctx context.Context, containerNam
 		if credentials.Empty() {
 			continue
 		}
-		status := serviceproject.AuthBundleStatus{Name: credentials.Name}
+		status := serviceproject.AuthBundleStatus{
+			Name:  credentials.Name,
+			Files: make([]serviceproject.AuthBundleFileStatus, 0, len(credentials.Files)),
+		}
 		for _, file := range credentials.Files {
 			status.Files = append(status.Files, i.inspectFile(ctx, containerName, state, file.HostPath, file.ContainerPath))
 		}

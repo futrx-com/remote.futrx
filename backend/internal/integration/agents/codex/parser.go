@@ -59,7 +59,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 
 	case "turn.completed":
 		events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
-			ev.Usage = normalizeUsage(raw.Usage)
+			ev.Usage = p.normalizeUsage(raw.Usage)
 		}))
 
 	case "turn.failed":
@@ -339,29 +339,21 @@ func collabOutput(item codexItem) string {
 	return ""
 }
 
-func normalizeUsage(raw json.RawMessage) json.RawMessage {
+// normalizeUsage folds `turn.completed.usage` into the shared usage shape.
+// ParseUsage converts Codex's inclusive input count into disjoint uncached,
+// cache-read, and cache-write buckets. Codex reports no price, so cost stays
+// unknown here and is estimated from the price table downstream.
+func (p *Parser) normalizeUsage(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return nil
 	}
-	var usage struct {
-		InputTokens           int64 `json:"input_tokens"`
-		CachedInputTokens     int64 `json:"cached_input_tokens"`
-		OutputTokens          int64 `json:"output_tokens"`
-		ReasoningOutputTokens int64 `json:"reasoning_output_tokens"`
-	}
-	if err := json.Unmarshal(raw, &usage); err != nil {
+	usage, ok := agent.ParseUsage(raw)
+	if !ok {
 		return raw
 	}
-	out, err := json.Marshal(map[string]int64{
-		"input_tokens":            usage.InputTokens,
-		"cache_read_input_tokens": usage.CachedInputTokens,
-		"output_tokens":           usage.OutputTokens,
-		"reasoning_output_tokens": usage.ReasoningOutputTokens,
-	})
-	if err != nil {
-		return raw
-	}
-	return out
+	usage = agent.NormalizeInclusiveInput(usage)
+	usage.Model = p.req.Model
+	return usage.Raw()
 }
 
 func mustJSON(v any) json.RawMessage {

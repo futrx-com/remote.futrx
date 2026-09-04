@@ -15,13 +15,13 @@ export function GenericCall({ name, input, output, status, isError }: ToolCallPr
       <div class="divide-y divide-ink-500">
         {input && Object.keys(input).length > 0 && (
           <div>
-            <div class="px-3 py-1 text-[11px] text-ink-300 bg-white/[0.04]">Input</div>
+            <div class="px-3 py-1 text-[11px] text-ink-300 bg-tint">Input</div>
             <CodeBlock text={JSON.stringify(input, null, 2)} lang="json" />
           </div>
         )}
         {output && (
           <div>
-            <div class="px-3 py-1 text-[11px] text-ink-300 bg-white/[0.04]">Output</div>
+            <div class="px-3 py-1 text-[11px] text-ink-300 bg-tint">Output</div>
             <CodeBlock text={truncate(output, 6000)} />
           </div>
         )}

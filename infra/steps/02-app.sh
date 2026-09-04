@@ -22,7 +22,7 @@ cd "$INSTALL_DIR"
 log "Converging configured host agent CLIs"
 (
     cd backend
-    go run ./cmd/install-host-agents
+    go run ./cmd/install-host-agents --prefix "$HOST_CLI_PREFIX"
 )
 ok "configured host agent CLIs match the selected module catalog"
 

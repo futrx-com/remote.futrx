@@ -205,9 +205,10 @@ func TestListUsesModuleIdentityAndPublishesDefensiveMetadata(t *testing.T) {
 		Auth:             agentmodule.AuthExternal,
 		AuthInstructions: "Run future-agent login.",
 		Features: agentmodule.Features{
-			Sessions:       agentmodule.SessionSupport{Resume: true},
-			Skills:         agentmodule.SkillsInstructions,
-			ScheduledTools: true,
+			Sessions:          agentmodule.SessionSupport{Resume: true},
+			Skills:            agentmodule.SkillsInstructions,
+			ScheduledTools:    true,
+			ExecutionPolicies: true,
 		},
 	}}
 	catalog := New(
@@ -228,7 +229,8 @@ func TestListUsesModuleIdentityAndPublishesDefensiveMetadata(t *testing.T) {
 	if got.Provider != "future-agent" || got.Label != "Future Agent" || !got.Default ||
 		len(got.ExecutionScopes) != 1 || got.ExecutionScopes[0] != "host" ||
 		got.Authentication.Mode != "external" || got.Authentication.Instructions != "Run future-agent login." ||
-		!got.Features.Sessions.Resume || got.Features.Skills != "instructions" || !got.Features.ScheduledTools {
+		!got.Features.Sessions.Resume || got.Features.Skills != "instructions" || !got.Features.ScheduledTools ||
+		!got.Features.ExecutionPolicies {
 		t.Fatalf("decorated capabilities = %#v", got)
 	}
 	items[0].ExecutionScopes[0] = "changed"
