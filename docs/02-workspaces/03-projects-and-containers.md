@@ -46,6 +46,7 @@ flowchart LR
 
     Workspace --> Mount["Bind-mounted at /workspace"]
     Homes --> Codex["Mounted at /root/.codex"]
+    Homes --> MiniMax["Mounted at /root/.minimax"]
     Homes --> Claude["Mounted at /root/.claude"]
     Homes --> Kimi["Mounted at /root/.kimi-code"]
     Homes --> Antigravity["Mounted at /root/.gemini/antigravity-cli"]
@@ -94,16 +95,21 @@ provider policy. The factory retains a defensive profile snapshot and passes
 independent exact validated clones to its shared project preparer and provider
 build callback. That profile owns the CLI install/repair spec, credential
 synchronization, persistent-state mounts, shared instructions, workspace-skill
-compatibility, and optional browser MCP templates. A project-capable module
+compatibility, non-secret runtime assets, and optional browser MCP templates. A project-capable module
 without a complete matching profile is rejected when the module catalog is
 built. Shared workspace provisioners converge all catalog-configured
 instruction and skill targets rather than only the currently selected
 provider's target.
 
+Profiles may also publish non-secret runtime assets for the selected agent.
+MiniMax uses this path for its Codex model catalog; its Token Plan subscription key remains a
+project secret and is never written into that template.
+
 The reusable Ubuntu 24.04 base image contains:
 
 - Node.js 22, Git, SSH client, `jq`, build tools, Python, and GitHub CLI.
-- Claude Code, Codex, Kimi Code, and Antigravity at pinned versions.
+- Claude Code, Codex, Kimi Code, and Antigravity at pinned versions. MiniMax
+  reuses the pinned Codex CLI with an isolated provider configuration.
 - The Agent Browser stack and Chromium.
 - `code-server` with on-demand startup.
 
@@ -111,15 +117,20 @@ Launch-time provisioning then:
 
 1. Seeds or synchronizes registered agent credentials into project credential locations, primarily the durable provider homes.
 2. Links agent skill directories into the workspace.
-3. publishes current browser scripts and browser skill.
-4. applies browser process limits.
-5. configures the project IDE.
+3. Publishes current browser scripts and browser skill.
+4. Applies browser process limits.
+5. Configures the project IDE.
 
 When a prompt selects **Scheduled Tasks**, Remote also publishes the
 provider-neutral `remote-schedule` CLI and skill under `/workspace` before
 starting the provider.
 
 These launch steps are best-effort so one optional capability does not prevent the container from starting.
+
+Before each selected-provider run, shared preparation verifies that provider's
+CLI, converges instructions and its runtime assets, refreshes skill links,
+and prepares any requested Browser or Scheduled Tasks capability. Required
+steps fail the run with a specific preparation error.
 
 ## Start and restart behavior
 

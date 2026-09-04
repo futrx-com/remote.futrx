@@ -10,12 +10,23 @@ import {
   lineSummary,
 } from "./projectContainerFormat";
 
+/** Draft state for the "Add new secret" form, lifted to survive tab switches. */
+export interface SecretDraft {
+  key: string;
+  value: string;
+}
+
 export function ProjectSecretsSection({
   record,
+  draft,
+  onDraftChange,
   onSave,
   onDelete,
 }: {
   record: SecretsRecord;
+  /** Lifted draft state — persists when the user switches away from this tab. */
+  draft: SecretDraft;
+  onDraftChange: (patch: Partial<SecretDraft>) => void;
   onSave: (key: string, value: string) => Promise<void>;
   onDelete: (key: string) => Promise<void>;
 }) {
@@ -27,7 +38,7 @@ export function ProjectSecretsSection({
           <div class="text-accent-red break-words">{record.error}</div>
         </div>
       )}
-      <SecretEditor onSave={onSave} />
+      <SecretEditor draft={draft} onDraftChange={onDraftChange} onSave={onSave} />
       <SecretsList list={record.data ?? []} loading={record.loading && !record.data} onSave={onSave} onDelete={onDelete} />
       <p class="text-[11.5px] text-ink-400 leading-relaxed">
         Secrets are passed to the selected agent CLI as <span class="font-mono">--env KEY=VALUE</span> on every prompt run. They never land in the container's filesystem and are not synced back from it.
@@ -37,18 +48,21 @@ export function ProjectSecretsSection({
 }
 
 function SecretEditor({
+  draft,
+  onDraftChange,
   onSave,
 }: {
+  /** Lifted draft state — caller owns this so it survives tab navigation. */
+  draft: SecretDraft;
+  onDraftChange: (patch: Partial<SecretDraft>) => void;
   onSave: (key: string, value: string) => Promise<void>;
 }) {
-  const [key, setKey] = useState("");
-  const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async (event: Event) => {
     event.preventDefault();
-    const normalizedKey = key.trim();
+    const normalizedKey = draft.key.trim();
     if (!normalizedKey) {
       setErr("Key is required.");
       return;
@@ -60,9 +74,9 @@ function SecretEditor({
     setErr(null);
     setSubmitting(true);
     try {
-      await onSave(normalizedKey, value);
-      setKey("");
-      setValue("");
+      await onSave(normalizedKey, draft.value);
+      // Clear the draft on success so the form resets.
+      onDraftChange({ key: "", value: "" });
     } catch (error) {
       setErr((error as Error).message);
     } finally {
@@ -70,18 +84,20 @@ function SecretEditor({
     }
   };
 
+  const hasDraft = draft.key.trim() !== "" || draft.value !== "";
+
   return (
     <form onSubmit={submit} class="rounded-md border border-line bg-tint p-2.5 space-y-2">
       <div class="grid gap-2 sm:grid-cols-[1fr_2fr_auto] items-start">
         <input
-          value={key}
-          onInput={(event) => setKey((event.target as HTMLInputElement).value)}
+          value={draft.key}
+          onInput={(event) => onDraftChange({ key: (event.target as HTMLInputElement).value })}
           placeholder="KEY"
           class="h-9 px-2.5 rounded border border-line bg-inset text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
         />
         <textarea
-          value={value}
-          onInput={(event) => setValue((event.target as HTMLTextAreaElement).value)}
+          value={draft.value}
+          onInput={(event) => onDraftChange({ value: (event.target as HTMLTextAreaElement).value })}
           placeholder="value (multi-line OK — paste PEM keys, JSON, etc.)"
           rows={1}
           spellcheck={false}
@@ -98,6 +114,11 @@ function SecretEditor({
         </button>
       </div>
       {err && <div class="text-[11.5px] text-accent-red">{err}</div>}
+      {hasDraft && !err && (
+        <p class="text-[11px] text-ink-400">
+          Draft preserved — switch tabs freely and return to finish.
+        </p>
+      )}
     </form>
   );
 }

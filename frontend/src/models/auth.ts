@@ -16,7 +16,12 @@ export interface GoogleOAuthSettings {
   redirectUrl: string;
 }
 
-export type AgentAuthMode = "managed-code" | "managed-device" | "external" | "none";
+export type AgentAuthMode =
+  | "managed-code"
+  | "managed-device"
+  | "managed-api-key"
+  | "external"
+  | "none";
 
 /** How one provider's login stands, as the settings row draws it. */
 export type AgentAuthStatusKind = "no-auth" | "authenticated" | "external" | "unconfigured";
@@ -47,6 +52,11 @@ export interface AgentAuthProvider {
     mode: AgentAuthMode;
     instructions?: string;
     satisfiesAccessGate: boolean;
+    apiKey?: {
+      createUrl: string;
+      createLabel: string;
+      credentialLabel: string;
+    };
   };
   status: AgentAuthSnapshot;
 }

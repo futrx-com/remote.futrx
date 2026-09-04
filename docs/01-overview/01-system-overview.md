@@ -2,8 +2,8 @@
 
 ## What the application is
 
-`remote.futrx` is a self-hosted browser workspace for Claude Code, Codex, Kimi
-Code, and Antigravity. Users create project-scoped containers, run interactive
+`remote.futrx` is a self-hosted browser workspace for Claude Code, Codex,
+MiniMax, Kimi Code, and Antigravity. Users create project-scoped containers, run interactive
 or scheduled agent turns against those projects, and inspect the result through
 chat, files, Git, a terminal, an IDE, or a live app preview.
 
@@ -143,10 +143,13 @@ The main shell switches between three views without browser routing:
   order and application-wide policy; the catalog builds one runtime containing
   matching provider and auth registries.
 - Each project owns its `/workspace` files and processes.
-- Each project also has durable Codex, Claude, Kimi, and Antigravity homes
-  mounted at their provider-native paths. Antigravity mounts only
+- Each project also has durable Codex, MiniMax, Claude, Kimi, and Antigravity
+  homes mounted at their provider-native paths. Antigravity mounts only
   `/root/.gemini/antigravity-cli`.
-- Agent-provider credentials are host-managed and synchronized into project credential locations, primarily those homes; Claude also uses `/root/.claude.json` outside its mounted home.
+- Claude, Codex, and Kimi credentials are host-managed and synchronized into
+  project credential locations, primarily those homes; Claude also uses
+  `/root/.claude.json` outside its mounted home. Remote injects MiniMax's
+  host-managed Token Plan subscription key only into MiniMax runs.
 - Remote's supported Antigravity flow authenticates inside each project and
   stores its current state in the durable
   `/root/.gemini/antigravity-cli` provider mount.

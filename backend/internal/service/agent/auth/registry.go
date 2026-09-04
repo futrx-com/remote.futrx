@@ -28,7 +28,8 @@ func (r *Registry) Register(binding Binding) error {
 	if binding.ID() == "" {
 		return fmt.Errorf("%w: provider ID is empty", ErrInvalidBinding)
 	}
-	if binding.Flow() != FlowCode && binding.Flow() != FlowDevice && binding.Flow() != FlowExternal {
+	if binding.Flow() != FlowCode && binding.Flow() != FlowDevice && binding.Flow() != FlowAPIKey &&
+		binding.Flow() != FlowExternal {
 		return fmt.Errorf("%w: provider %q has unknown flow %q", ErrInvalidBinding, binding.ID(), binding.Flow())
 	}
 	if r.byID == nil {

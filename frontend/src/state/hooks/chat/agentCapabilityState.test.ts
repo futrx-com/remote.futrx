@@ -9,6 +9,13 @@ const catalog: AgentCapabilitiesCatalog = {
     label: "Codex",
     source: "live",
     defaultMode: "default",
+    features: {
+      sessions: { resume: true, fork: true },
+      skills: "dollar-mention",
+      browserTools: true,
+      scheduledTools: true,
+      executionPolicies: true,
+    },
     modes: [{ value: "default", label: "Default" }, { value: "plan", label: "Plan" }],
     models: [
       {
@@ -32,6 +39,7 @@ test("resolves thinking and speed from the selected model", () => {
   assert.deepEqual(state.reasoningEffortOptions.map((option) => option.value), ["", "low"]);
   assert.deepEqual(state.serviceTierOptions.map((option) => option.value), ["", "priority"]);
   assert.deepEqual(state.modeOptions.map((option) => option.value), ["default", "plan"]);
+  assert.equal(state.supportsExecutionPolicies, true);
 });
 
 test("falls back to the auto model for an unknown saved model", () => {
@@ -90,6 +98,76 @@ test("keeps a saved provider available when discovery temporarily omits it", () 
   assert.deepEqual(state.modelOptions, [
     { value: "opus", label: "opus", sub: "current selection" },
   ]);
+});
+
+test("keeps a managed API-key provider locked until its credential exists", () => {
+  const withMiniMax: AgentCapabilitiesCatalog = {
+    providers: [
+      ...catalog.providers,
+      {
+        provider: "minimax",
+        label: "MiniMax",
+        source: "fallback",
+        authentication: {
+          mode: "managed-api-key",
+          satisfiesAccessGate: false,
+          apiKey: {
+            createUrl: "https://platform.minimax.io/subscribe/token-plan",
+            createLabel: "Get a MiniMax Token Plan subscription key",
+            credentialLabel: "MiniMax Token Plan subscription key",
+          },
+        },
+        features: {
+          sessions: { resume: true, fork: true },
+          skills: "dollar-mention",
+          browserTools: true,
+          scheduledTools: true,
+          executionPolicies: true,
+        },
+        models: [{
+          id: "MiniMax-M3",
+          label: "MiniMax M3",
+          reasoningEfforts: [],
+          serviceTiers: [],
+        }],
+        modes: [],
+      },
+    ],
+  };
+
+  const state = agentCapabilityState.resolve(
+    withMiniMax,
+    "minimax",
+    "MiniMax-M3",
+    false,
+    { minimax: "Sign in to MiniMax in Settings → Agents, then refresh models." },
+  );
+
+  assert.deepEqual(state.providerOptions.map((option) => option.value), ["codex", "minimax"]);
+  assert.equal(state.providerOptions[1].disabled, true);
+  assert.equal(
+    state.providerOptions[1].disabledReason,
+    "Sign in to MiniMax in Settings → Agents, then refresh models.",
+  );
+  assert.equal(state.providerCapabilities?.provider, "minimax");
+  assert.equal(state.supportsExecutionPolicies, true);
+});
+
+test("hides execution policies when the selected provider does not advertise them", () => {
+  const withoutExecutionPolicies: AgentCapabilitiesCatalog = {
+    providers: [{
+      ...catalog.providers[0],
+      provider: "claude",
+      label: "Claude",
+      features: {
+        ...catalog.providers[0].features!,
+        executionPolicies: false,
+      },
+    }],
+  };
+
+  const state = agentCapabilityState.resolve(withoutExecutionPolicies, "claude", "", false);
+  assert.equal(state.supportsExecutionPolicies, false);
 });
 
 test("corrects selections unsupported by a live catalog", () => {

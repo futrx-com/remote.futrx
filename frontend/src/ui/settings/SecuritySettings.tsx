@@ -26,6 +26,14 @@ export function SecuritySettings({ controller }: { controller: SecuritySettingsC
         />
       )}
       <TwoFactorSettings controller={controller} />
+      {settings?.twoFactorEnabled && (
+        <SecurityPreferenceToggle
+          title="Alert on depleted recovery codes"
+          description="Show an alert when you are running low on recovery codes to avoid getting locked out."
+          checked={settings.recoveryCodeAlertEnabled ?? false}
+          onChange={controller.setRecoveryCodeAlertEnabled}
+        />
+      )}
       <SecurityPreferenceToggle
         title="Single active session"
         description="Signing in on a new device immediately signs you out everywhere else."

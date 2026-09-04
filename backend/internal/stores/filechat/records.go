@@ -3,6 +3,7 @@ package filechat
 import (
 	"encoding/json"
 
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -24,6 +25,8 @@ type metaRecord struct {
 	Mode                 string            `json:"mode,omitempty"`
 	ReasoningEffort      string            `json:"reasoningEffort,omitempty"`
 	ServiceTier          string            `json:"serviceTier,omitempty"`
+	ApprovalPolicy       string            `json:"approvalPolicy,omitempty"`
+	SandboxPolicy        string            `json:"sandboxPolicy,omitempty"`
 	ProjectID            string            `json:"projectId,omitempty"`
 	ForkPending          bool              `json:"forkPending,omitempty"`
 	SelectedSkills       []skillRefRecord  `json:"selectedSkills,omitempty"`
@@ -56,6 +59,8 @@ func metaRecordFromDomain(m servicechat.Meta) metaRecord {
 		Mode:                 m.Mode,
 		ReasoningEffort:      m.ReasoningEffort,
 		ServiceTier:          m.ServiceTier,
+		ApprovalPolicy:       m.ApprovalPolicy,
+		SandboxPolicy:        m.SandboxPolicy,
 		ProjectID:            string(m.ProjectID),
 		ForkPending:          m.ForkPending,
 		SelectedSkills:       skillRefRecordsFromDomain(m.SelectedSkills),
@@ -86,6 +91,8 @@ func (r metaRecord) toDomain() servicechat.Meta {
 		Mode:                 r.Mode,
 		ReasoningEffort:      servicechat.NormalizeReasoningEffort(r.ReasoningEffort),
 		ServiceTier:          servicechat.NormalizeServiceTier(r.ServiceTier),
+		ApprovalPolicy:       servicechat.NormalizeApprovalPolicy(r.ApprovalPolicy),
+		SandboxPolicy:        servicechat.NormalizeSandboxPolicy(r.SandboxPolicy),
 		ProjectID:            servicechat.ProjectID(r.ProjectID),
 		ForkPending:          r.ForkPending,
 		SelectedSkills:       servicechat.NormalizeSelectedSkills(skillRefRecordsToDomain(r.SelectedSkills), provider),
@@ -149,29 +156,33 @@ func skillRefRecordsToDomain(records []skillRefRecord) []servicechat.SkillRef {
 }
 
 type eventRecord struct {
-	Seq                  int64           `json:"seq,omitempty"`
-	T                    int64           `json:"t"`
-	Type                 string          `json:"type"`
-	Text                 string          `json:"text,omitempty"`
-	MessageID            string          `json:"messageId,omitempty"`
-	ID                   string          `json:"id,omitempty"`
-	Name                 string          `json:"name,omitempty"`
-	Input                json.RawMessage `json:"input,omitempty"`
-	Output               string          `json:"output,omitempty"`
-	IsError              bool            `json:"isError,omitempty"`
-	ToolName             string          `json:"toolName,omitempty"`
-	Subtype              string          `json:"subtype,omitempty"`
-	Data                 json.RawMessage `json:"data,omitempty"`
-	SessionID            string          `json:"sessionId,omitempty"`
-	ClaudeSessionID      string          `json:"claudeSessionId,omitempty"`
-	CodexSessionID       string          `json:"codexSessionId,omitempty"`
-	KimiSessionID        string          `json:"kimiSessionId,omitempty"`
-	AntigravitySessionID string          `json:"antigravitySessionId,omitempty"`
-	Provider             string          `json:"provider,omitempty"`
-	Usage                json.RawMessage `json:"usage,omitempty"`
-	Message              string          `json:"message,omitempty"`
-	Running              bool            `json:"running,omitempty"`
-	ScheduledTaskID      string          `json:"scheduledTaskId,omitempty"`
+	Seq                  int64                 `json:"seq,omitempty"`
+	T                    int64                 `json:"t"`
+	Type                 string                `json:"type"`
+	TurnID               string                `json:"turnId,omitempty"`
+	Text                 string                `json:"text,omitempty"`
+	MessageID            string                `json:"messageId,omitempty"`
+	ID                   string                `json:"id,omitempty"`
+	Name                 string                `json:"name,omitempty"`
+	Input                json.RawMessage       `json:"input,omitempty"`
+	Output               string                `json:"output,omitempty"`
+	IsError              bool                  `json:"isError,omitempty"`
+	ToolName             string                `json:"toolName,omitempty"`
+	Subtype              string                `json:"subtype,omitempty"`
+	Data                 json.RawMessage       `json:"data,omitempty"`
+	SessionID            string                `json:"sessionId,omitempty"`
+	ClaudeSessionID      string                `json:"claudeSessionId,omitempty"`
+	CodexSessionID       string                `json:"codexSessionId,omitempty"`
+	KimiSessionID        string                `json:"kimiSessionId,omitempty"`
+	AntigravitySessionID string                `json:"antigravitySessionId,omitempty"`
+	Provider             string                `json:"provider,omitempty"`
+	Usage                json.RawMessage       `json:"usage,omitempty"`
+	Message              string                `json:"message,omitempty"`
+	Running              bool                  `json:"running,omitempty"`
+	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
+	Native               *agent.NativeEnvelope `json:"native,omitempty"`
+	InteractionID        string                `json:"interactionId,omitempty"`
+	Status               string                `json:"status,omitempty"`
 }
 
 func eventRecordFromDomain(ev servicechat.Event) eventRecord {
@@ -180,6 +191,7 @@ func eventRecordFromDomain(ev servicechat.Event) eventRecord {
 		Seq:                  ev.Seq,
 		T:                    ev.T,
 		Type:                 ev.Type,
+		TurnID:               ev.TurnID,
 		Text:                 ev.Text,
 		MessageID:            ev.MessageID,
 		ID:                   ev.ID,
@@ -200,6 +212,9 @@ func eventRecordFromDomain(ev servicechat.Event) eventRecord {
 		Message:              ev.Message,
 		Running:              ev.Running,
 		ScheduledTaskID:      ev.ScheduledTaskID,
+		Native:               ev.Native,
+		InteractionID:        ev.InteractionID,
+		Status:               ev.Status,
 	}
 }
 
@@ -208,6 +223,7 @@ func (r eventRecord) toDomain() servicechat.Event {
 		Seq:                  r.Seq,
 		T:                    r.T,
 		Type:                 r.Type,
+		TurnID:               r.TurnID,
 		Text:                 r.Text,
 		MessageID:            r.MessageID,
 		ID:                   r.ID,
@@ -228,6 +244,9 @@ func (r eventRecord) toDomain() servicechat.Event {
 		Message:              r.Message,
 		Running:              r.Running,
 		ScheduledTaskID:      r.ScheduledTaskID,
+		Native:               r.Native,
+		InteractionID:        r.InteractionID,
+		Status:               r.Status,
 	}
 	event.NormalizeSession()
 	return event

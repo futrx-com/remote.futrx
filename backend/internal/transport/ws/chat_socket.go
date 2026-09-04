@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceprompt "github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -24,6 +25,7 @@ type ChatLookup interface {
 type PromptRunner interface {
 	Start(serviceprompt.StartInput, func(servicechat.Event)) (serviceprompt.RunHandle, error)
 	CancelPrompt(id servicechat.ID) bool
+	RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error
 }
 
 // ProjectAccessChecker is the subset of the auth gate the chat WS needs:
@@ -140,9 +142,12 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 			return
 		}
 		var msg struct {
-			Type     string `json:"type"`
-			Text     string `json:"text,omitempty"`
-			ClientID string `json:"clientId,omitempty"`
+			Type          string          `json:"type"`
+			Text          string          `json:"text,omitempty"`
+			ClientID      string          `json:"clientId,omitempty"`
+			InteractionID string          `json:"interactionId,omitempty"`
+			Result        json.RawMessage `json:"result,omitempty"`
+			Error         json.RawMessage `json:"error,omitempty"`
 		}
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			continue
@@ -166,6 +171,15 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 					T:       time.Now().UnixMilli(),
 					Type:    "error",
 					Message: "no prompt is currently running",
+				})
+			}
+		case "interaction_response":
+			err := s.runner.RespondInteraction(id, agent.InteractionResponse{
+				ID: msg.InteractionID, Result: msg.Result, Error: msg.Error,
+			})
+			if err != nil {
+				sub.SendTransient(servicechat.Event{
+					T: time.Now().UnixMilli(), Type: "error", Message: err.Error(),
 				})
 			}
 		}

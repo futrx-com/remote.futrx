@@ -214,7 +214,16 @@ func TestStartWithoutLedgerStillRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	var completed bool
+	var turnID string
 	for _, event := range events {
+		if event.TurnID == "" {
+			t.Fatalf("persisted event has no turn id: %#v", event)
+		}
+		if turnID == "" {
+			turnID = event.TurnID
+		} else if event.TurnID != turnID {
+			t.Fatalf("one prompt produced multiple turn ids: %#v", events)
+		}
 		if event.Type == "complete" {
 			completed = true
 		}

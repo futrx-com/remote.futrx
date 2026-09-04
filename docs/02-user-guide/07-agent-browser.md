@@ -10,9 +10,9 @@ preview.
 ## Before you begin
 
 - Use a project chat. Agent Browser is scoped to a project, not to one chat.
-- For agent control, choose Claude or Codex and add the `browser` skill before
-  sending the prompt. Kimi does not currently receive equivalent Browser MCP
-  access.
+- For agent control, choose Claude, Codex, or MiniMax and add the `browser`
+  skill before sending the prompt. Kimi and Antigravity do not currently
+  receive equivalent Browser MCP access.
 - Decide whether the selected agent may access the sites and account data in
   this browser profile. Login state is deliberately shared and persistent.
 - Follow the target site's terms. Human intervention is not permission to
@@ -27,8 +27,8 @@ preview.
    **core ready**.
 4. In the live browser, navigate to the site and complete the permitted login,
    consent, or account-selection steps.
-5. In the chat, select Claude or Codex, add the `browser` skill, and send a
-   precise browser task.
+5. In the chat, select Claude, Codex, or MiniMax, add the `browser` skill, and
+   send a precise browser task.
 6. Watch the same window. Take over with the mouse and keyboard whenever the
    site needs a human decision, then tell the agent to continue.
 7. When finished, either select **Close browser** to leave the agent-facing
@@ -46,7 +46,7 @@ therefore immediately available to the browser-enabled agent.
 ```mermaid
 flowchart LR
     Human["Human controls<br/>noVNC pane"] --> Display["Shared virtual display"]
-    Agent["Claude or Codex<br/>browser skill"] -->|"MCP over CDP"| Chromium["Headed Chromium"]
+    Agent["Claude, Codex, or MiniMax<br/>browser skill"] -->|"MCP over CDP"| Chromium["Headed Chromium"]
     Chromium --> Display
     Chromium --> Profile["Persistent project<br/>browser profile"]
 ```

@@ -119,6 +119,33 @@ func TestExternalBindingDeclaresProviderOwnedAuthentication(t *testing.T) {
 	}
 }
 
+func TestAPIKeyBindingExposesManagedStatusWithoutCredential(t *testing.T) {
+	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{}}
+	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding := NewAPIKeyBinding(agent.ProviderMiniMax, service)
+	if binding.Flow() != FlowAPIKey || !binding.Available() || binding.Authenticated() {
+		t.Fatalf("binding = %#v", binding)
+	}
+	if err := binding.SetAPIKey(context.Background(), "private-key"); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot := binding.Snapshot(); !snapshot.Authenticated || snapshot.Login.Active {
+		t.Fatalf("snapshot = %#v", snapshot)
+	}
+	if status, ok := binding.Status().(APIKeyStatus); !ok || !status.Authenticated {
+		t.Fatalf("status = %#v", binding.Status())
+	}
+	if err := binding.DeleteAPIKey(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if binding.Authenticated() {
+		t.Fatal("binding stayed authenticated after delete")
+	}
+}
+
 func TestCodeBindingClassifiesConfiguredInputErrors(t *testing.T) {
 	required := errors.New("code required")
 	noSession := errors.New("no session")

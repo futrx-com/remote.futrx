@@ -1,10 +1,9 @@
 package codex
 
 import (
-	"time"
-
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
 )
 
 const (
@@ -20,21 +19,8 @@ const (
 )
 
 var codexProfile = provisioning.Profile{
-	ID: string(agent.ProviderCodex),
-	CLI: provisioning.CLISpec{
-		Name:               "Codex",
-		ImageLabel:         "codex",
-		Binary:             "codex",
-		VersionArgs:        []string{"--version"},
-		PackageName:        "@openai/codex",
-		Version:            provisioning.MustCLIVersion("CODEX_CLI_VERSION"),
-		CheckVersion:       true,
-		VerifyAfterInstall: true,
-		ReportVersion:      true,
-		InstallMode:        provisioning.InstallWithNPM,
-		InstallTimeout:     5 * time.Minute,
-		WaitTimeout:        2 * time.Minute,
-	},
+	ID:  string(agent.ProviderCodex),
+	CLI: codexharness.NewCLISpec("Codex", "codex"),
 	Credentials: provisioning.CredentialSpec{
 		Name:         "codex",
 		HostDir:      hostCodexDir,

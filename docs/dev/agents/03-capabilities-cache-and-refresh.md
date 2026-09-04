@@ -1,9 +1,9 @@
 # Capabilities, cache, and refresh
 
 Remote does not keep a compiled frontend list of provider models. The backend
-asks each registered provider adapter what its installed CLI and current
-account can use, normalizes those answers, and exposes one catalog to every
-client.
+asks each registered provider adapter for its current catalog, whether that is
+discovered from an installed CLI/account or declared by the provider adapter,
+normalizes those answers, and exposes one catalog to every client.
 
 The main contracts are:
 
@@ -90,6 +90,7 @@ never parses a provider protocol.
 | --- | --- | --- |
 | Claude | Runs local `/model`, parses its available selection aliases, and resolves each alias to a versioned display label with up to four workers. It runs `/effort` in parallel. | `--help` can supply effort choices. Failure to read `/model` uses the conservative built-in selection catalog; unresolved aliases keep fallback labels and a warning. Fast mode is exposed only on eligible Auto/Opus choices. |
 | Codex | Starts `codex app-server`, initializes the experimental API, reads every paginated `model/list` page, and requests `collaborationMode/list`. Model records retain per-model efforts, service tiers, and defaults. | `codex debug models` is the structured model fallback when app-server discovery fails. It cannot supply collaboration modes, so the result carries a warning. Total failure returns an Auto-only fallback. Capability probes explicitly clear `OPENAI_API_KEY`. |
+| MiniMax | Returns the provider-owned `MiniMax-M3` catalog with Think-Off/Adaptive reasoning and Default/Plan modes. It is project-scoped and performs no credential-bearing discovery probe. | The backend may cache the same static catalog before setup, but the frontend presents MiniMax as locked and withholds its model UI until managed auth reports a key; launch performs the authoritative key check. |
 | Kimi | Reads `kimi provider list --json`; the plain `provider list` supplies the configured default, and `kimi --help` supplies the Plan hint. Aliases and their overrides are normalized into model records. | Failure of the JSON catalog returns an Auto-only fallback. Failure of only the plain/help commands preserves models and adds a warning. |
 | Antigravity | Parses model display names from `agy models` and effort/mode choices from `agy --help`. | When the model command fails, the adapter returns fallback controls plus an `unavailableReason` explaining where to sign in. Project sign-in happens in the project terminal. |
 

@@ -79,6 +79,8 @@ fi
 SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=lib/install-migration.sh
 . "$SCRIPT_INFRA_DIR/lib/install-migration.sh"
+# shellcheck source=lib/update-progress.sh
+. "$SCRIPT_INFRA_DIR/lib/update-progress.sh"
 migrate_legacy_install_dir "$INSTALL_DIR" "$LEGACY_INSTALL_DIR"
 
 if [ ! -d "$INSTALL_DIR/.git" ]; then
@@ -117,6 +119,7 @@ fi
 export FUTRX_CHECKOUT_REF="${TARGET_REF:-origin/main}"
 
 if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
+    write_update_progress "host-convergence" "Converging the host and rebuilding the workspace image"
     # Rebuild once in install.sh, after the new backend has been built. The
     # workspace upgrader then only needs to recycle containers onto that image.
     FUTRX_INSTALL_CHECKOUT_SELECTED=1 FORCE_REBUILD_BASE_IMAGE=1 \
@@ -126,11 +129,14 @@ if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
     if [ "$INCLUDE_BUSY" -eq 1 ]; then
         WORKSPACE_ARGS+=(--include-busy)
     fi
+    write_update_progress "workspace-migration" "Preparing workspace migration"
     bash "$INFRA_DIR/upgrade-workspaces.sh" "${WORKSPACE_ARGS[@]}"
 else
+    write_update_progress "host-convergence" "Converging the host and application"
     FUTRX_INSTALL_CHECKOUT_SELECTED=1 \
         bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
 fi
 
+write_update_progress "finishing" "Finishing the infrastructure update"
 echo
 echo "✓ update complete"

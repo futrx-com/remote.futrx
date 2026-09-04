@@ -87,6 +87,8 @@ never owns the model catalog.
 | [Provisioning and updates](05-provisioning-and-updates.md) | Profiles, host installation, base images, runtime repair, persistent state, and release paths |
 | [Features and platform consumers](06-features-and-platform-consumers.md) | Current feature inventory, consumers, cross-layer extension workflow, and a worked general-command design |
 | [Adding an agent](07-adding-an-agent.md) | End-to-end implementation checklist, example factory, required tests, documentation, and release validation |
+| [Codex App Server architecture](08-codex-app-server-architecture.md) | Production JSON-RPC lifecycle, interaction round trips, native event persistence, cancellation, subagent reporting, and capability discovery |
+| [Codex App Server compatibility gaps](issues/codex-app-server-compatibility.md) | Open UI-client gaps, evidence, target boundary, implementation order, and acceptance criteria |
 
 ## Core invariants
 

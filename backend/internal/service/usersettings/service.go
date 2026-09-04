@@ -85,38 +85,11 @@ func (s *Service) Update(ctx context.Context, key Key, input UpdateInput) (Setti
 		settings.Appearance.Theme = theme
 	}
 
-	if input.Chat != nil {
-		if input.Chat.Provider != nil {
-			provider := normalizeChatProvider(*input.Chat.Provider)
-			if !s.validProvider(provider) {
-				return Settings{}, ErrInvalidChatProvider
-			}
-			settings.Chat.Provider = provider
-		}
-		if input.Chat.Model != nil {
-			settings.Chat.Model = strings.TrimSpace(*input.Chat.Model)
-		}
-		if input.Chat.Mode != nil {
-			mode := normalizeChatMode(*input.Chat.Mode)
-			if !ValidChatMode(mode) {
-				return Settings{}, ErrInvalidChatMode
-			}
-			settings.Chat.Mode = mode
-		}
-		if input.Chat.ReasoningEffort != nil {
-			effort := normalizeReasoningEffort(*input.Chat.ReasoningEffort)
-			if !ValidReasoningEffort(effort) {
-				return Settings{}, ErrInvalidReasoningEffort
-			}
-			settings.Chat.ReasoningEffort = effort
-		}
-		if input.Chat.ServiceTier != nil {
-			tier := normalizeServiceTier(*input.Chat.ServiceTier)
-			if !ValidServiceTier(tier) {
-				return Settings{}, ErrInvalidServiceTier
-			}
-			settings.Chat.ServiceTier = tier
-		}
+	if err := s.applyChatUpdate(&settings.Chat, input.Chat, agentmodule.ScopeHost); err != nil {
+		return Settings{}, err
+	}
+	if err := s.applyChatUpdate(&settings.ProjectChat, input.ProjectChat, agentmodule.ScopeProject); err != nil {
+		return Settings{}, err
 	}
 
 	settings.UpdatedAt = time.Now().UnixMilli()
@@ -128,23 +101,16 @@ func (s *Service) normalize(settings Settings) Settings {
 	if !ValidTheme(settings.Appearance.Theme) {
 		settings.Appearance.Theme = defaults.Appearance.Theme
 	}
-	settings.Chat.Provider = normalizeChatProvider(settings.Chat.Provider)
-	if !s.validProvider(settings.Chat.Provider) {
-		settings.Chat.Provider = defaults.Chat.Provider
+
+	// Settings written before projectChat existed used chat for both scopes.
+	// Preserve that preference when its provider can also run in a project.
+	projectChat := settings.ProjectChat
+	if normalizeChatProvider(projectChat.Provider) == "" &&
+		s.validProviderForScope(settings.Chat.Provider, agentmodule.ScopeProject) {
+		projectChat = settings.Chat
 	}
-	settings.Chat.Model = strings.TrimSpace(settings.Chat.Model)
-	settings.Chat.Mode = normalizeChatMode(settings.Chat.Mode)
-	if !ValidChatMode(settings.Chat.Mode) {
-		settings.Chat.Mode = defaults.Chat.Mode
-	}
-	settings.Chat.ReasoningEffort = normalizeReasoningEffort(settings.Chat.ReasoningEffort)
-	if !ValidReasoningEffort(settings.Chat.ReasoningEffort) {
-		settings.Chat.ReasoningEffort = defaults.Chat.ReasoningEffort
-	}
-	settings.Chat.ServiceTier = normalizeServiceTier(settings.Chat.ServiceTier)
-	if !ValidServiceTier(settings.Chat.ServiceTier) {
-		settings.Chat.ServiceTier = defaults.Chat.ServiceTier
-	}
+	settings.Chat = s.normalizeChat(settings.Chat, defaults.Chat, agentmodule.ScopeHost)
+	settings.ProjectChat = s.normalizeChat(projectChat, defaults.ProjectChat, agentmodule.ScopeProject)
 	return settings
 }
 
@@ -154,20 +120,104 @@ func (s *Service) defaultSettings() Settings {
 		if provider := providers.DefaultProvider(agentmodule.ScopeHost); provider != "" {
 			settings.Chat.Provider = provider
 		}
+		if provider := providers.DefaultProvider(agentmodule.ScopeProject); provider != "" {
+			settings.ProjectChat.Provider = provider
+		}
 	}
 	return settings
+}
+
+func (s *Service) applyChatUpdate(chat *Chat, update *ChatUpdate, scope agentmodule.ExecutionScope) error {
+	if update == nil {
+		return nil
+	}
+	if update.Provider != nil {
+		provider := normalizeChatProvider(*update.Provider)
+		if !s.validProviderForScope(provider, scope) {
+			return ErrInvalidChatProvider
+		}
+		chat.Provider = provider
+	}
+	if update.Model != nil {
+		chat.Model = strings.TrimSpace(*update.Model)
+	}
+	if update.Mode != nil {
+		mode := normalizeChatMode(*update.Mode)
+		if !ValidChatMode(mode) {
+			return ErrInvalidChatMode
+		}
+		chat.Mode = mode
+	}
+	if update.ReasoningEffort != nil {
+		effort := normalizeReasoningEffort(*update.ReasoningEffort)
+		if !ValidReasoningEffort(effort) {
+			return ErrInvalidReasoningEffort
+		}
+		chat.ReasoningEffort = effort
+	}
+	if update.ServiceTier != nil {
+		tier := normalizeServiceTier(*update.ServiceTier)
+		if !ValidServiceTier(tier) {
+			return ErrInvalidServiceTier
+		}
+		chat.ServiceTier = tier
+	}
+	if update.ApprovalPolicy != nil {
+		policy := ApprovalPolicy(strings.TrimSpace(string(*update.ApprovalPolicy)))
+		if !ValidApprovalPolicy(policy) {
+			return ErrInvalidApprovalPolicy
+		}
+		chat.ApprovalPolicy = policy
+	}
+	if update.SandboxPolicy != nil {
+		policy := SandboxPolicy(strings.TrimSpace(string(*update.SandboxPolicy)))
+		if !ValidSandboxPolicy(policy) {
+			return ErrInvalidSandboxPolicy
+		}
+		chat.SandboxPolicy = policy
+	}
+	return nil
+}
+
+func (s *Service) normalizeChat(chat, defaults Chat, scope agentmodule.ExecutionScope) Chat {
+	chat.Provider = normalizeChatProvider(chat.Provider)
+	if !s.validProviderForScope(chat.Provider, scope) {
+		chat.Provider = defaults.Provider
+	}
+	chat.Model = strings.TrimSpace(chat.Model)
+	chat.Mode = normalizeChatMode(chat.Mode)
+	if !ValidChatMode(chat.Mode) {
+		chat.Mode = defaults.Mode
+	}
+	chat.ReasoningEffort = normalizeReasoningEffort(chat.ReasoningEffort)
+	if !ValidReasoningEffort(chat.ReasoningEffort) {
+		chat.ReasoningEffort = defaults.ReasoningEffort
+	}
+	chat.ServiceTier = normalizeServiceTier(chat.ServiceTier)
+	if !ValidServiceTier(chat.ServiceTier) {
+		chat.ServiceTier = defaults.ServiceTier
+	}
+	chat.ApprovalPolicy = ApprovalPolicy(strings.TrimSpace(string(chat.ApprovalPolicy)))
+	if !ValidApprovalPolicy(chat.ApprovalPolicy) {
+		chat.ApprovalPolicy = defaults.ApprovalPolicy
+	}
+	chat.SandboxPolicy = SandboxPolicy(strings.TrimSpace(string(chat.SandboxPolicy)))
+	if !ValidSandboxPolicy(chat.SandboxPolicy) {
+		chat.SandboxPolicy = defaults.SandboxPolicy
+	}
+	return chat
 }
 
 func normalizeChatProvider(provider ChatProvider) ChatProvider {
 	return agent.NormalizeProviderID(string(provider))
 }
 
-func (s *Service) validProvider(provider ChatProvider) bool {
+func (s *Service) validProviderForScope(provider ChatProvider, scope agentmodule.ExecutionScope) bool {
 	if !ValidChatProvider(provider) {
 		return false
 	}
 	return s.providers == nil ||
-		(s.providers.HasProvider(string(provider)) && s.providers.SupportsScope(string(provider), agentmodule.ScopeHost))
+		(s.providers.HasProvider(string(provider)) && s.providers.SupportsScope(string(provider), scope))
 }
 
 func normalizeChatMode(mode ChatMode) ChatMode {

@@ -211,6 +211,12 @@ func (f antigravityTestWorkspace) EnsureSkillLinks(context.Context, string) erro
 	return errors.New("stale skill link")
 }
 
+type antigravityTestRuntimeAssets struct{}
+
+func (antigravityTestRuntimeAssets) Ensure(context.Context, string, []provisioning.RuntimeAsset) error {
+	return nil
+}
+
 type antigravityTestBrowser struct{ calls *antigravityPreparationCalls }
 
 func (f antigravityTestBrowser) EnsureSkill(context.Context, string) error {
@@ -252,6 +258,7 @@ func antigravityContainerDependencies(calls *antigravityPreparationCalls) provis
 		CLI:           antigravityTestCLI{calls},
 		Credentials:   antigravityTestCredentials{calls},
 		Workspace:     antigravityTestWorkspace{calls},
+		RuntimeAssets: antigravityTestRuntimeAssets{},
 		Browser:       antigravityTestBrowser{calls},
 		ScheduleTools: antigravityTestSchedule{calls},
 		Lifecycle:     antigravityTestLifecycle{calls},

@@ -26,6 +26,10 @@ class ChatPreferenceState {
       reasoningEffort:
         chat.reasoningEffort ?? baseMeta.reasoningEffort ?? defaults.reasoningEffort,
       serviceTier: chat.serviceTier ?? baseMeta.serviceTier ?? defaults.serviceTier,
+      approvalPolicy:
+        chat.approvalPolicy ?? baseMeta.approvalPolicy ?? defaults.approvalPolicy,
+      sandboxPolicy:
+        chat.sandboxPolicy ?? baseMeta.sandboxPolicy ?? defaults.sandboxPolicy,
       selectedSkills,
     };
   }

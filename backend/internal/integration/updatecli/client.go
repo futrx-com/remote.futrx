@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 )
 
 const lsRemoteTimeout = 30 * time.Second
@@ -58,11 +60,11 @@ func (Client) ListRemoteTags(ctx context.Context, installDir string) ([]string, 
 // exit code is written to donePath — that file, not the process, is the
 // durable record of the outcome, because the backend that spawned the run is
 // usually replaced before the run ends.
-func (Client) StartUpdater(installDir, tag, kind, logPath, donePath string) (int, error) {
-	if kind != "application" && kind != "infrastructure" {
-		return 0, fmt.Errorf("unknown update kind: %s", kind)
+func (Client) StartUpdater(launch serviceselfupdate.UpdaterLaunch) (int, error) {
+	if launch.Kind != serviceselfupdate.UpdateKindApplication && launch.Kind != serviceselfupdate.UpdateKindInfrastructure {
+		return 0, fmt.Errorf("unknown update kind: %s", launch.Kind)
 	}
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	logFile, err := os.OpenFile(launch.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return 0, err
 	}
@@ -78,10 +80,11 @@ esac
 status=$?
 printf '{"exitCode":%d,"finishedAt":%d}\n' "$status" "$(date +%s)" > "$3.tmp" && mv "$3.tmp" "$3"
 exit "$status"`
-	cmd := exec.Command("bash", "-c", script, "self-update", installDir, tag, donePath, kind)
-	cmd.Dir = installDir
+	cmd := exec.Command("bash", "-c", script, "self-update", launch.InstallDir, launch.Target, launch.DonePath, string(launch.Kind))
+	cmd.Dir = launch.InstallDir
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
+	cmd.Env = append(os.Environ(), "FUTRX_UPDATE_PROGRESS_PATH="+launch.ProgressPath)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return 0, err

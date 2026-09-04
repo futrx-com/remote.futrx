@@ -5,11 +5,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 )
+
+func TestRepositoryDiscoverySkipsProviderCompatibilityHomes(t *testing.T) {
+	for _, directory := range []string{".claude", ".codex", ".minimax"} {
+		if !slices.Contains(skippedDirectories, directory) {
+			t.Fatalf("skippedDirectories is missing %q", directory)
+		}
+	}
+}
 
 func TestResolveRepositoryPath(t *testing.T) {
 	workspaceRoot := filepath.Join(t.TempDir(), "workspace")

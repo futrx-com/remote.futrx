@@ -1,10 +1,41 @@
+import type { ApprovalPolicy, SandboxPolicy } from "../models/chat";
+
+export const APPROVAL_POLICY_OPTIONS: readonly {
+  value: ApprovalPolicy;
+  label: string;
+}[] = [
+  { value: "on-request", label: "Ask when needed" },
+  { value: "untrusted", label: "Untrusted only" },
+  { value: "never", label: "Never ask" },
+];
+
+export const SANDBOX_POLICY_OPTIONS: readonly {
+  value: SandboxPolicy;
+  label: string;
+}[] = [
+  { value: "workspaceWrite", label: "Workspace write" },
+  { value: "readOnly", label: "Read only" },
+  { value: "dangerFullAccess", label: "Full access" },
+];
+
 export function modelShortLabel(model?: string): string {
   return model || "auto";
 }
 
 export function providerDisplayLabel(provider?: string): string {
   if (!provider) return "Codex";
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
+  const knownLabels: Record<string, string> = {
+    antigravity: "Antigravity",
+    claude: "Claude",
+    codex: "Codex",
+    kimi: "Kimi",
+    minimax: "MiniMax",
+  };
+  return knownLabels[provider] ?? provider
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 /**

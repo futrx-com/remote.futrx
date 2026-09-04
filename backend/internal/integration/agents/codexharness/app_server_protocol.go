@@ -1,16 +1,9 @@
-package codex
+package codexharness
 
 import (
 	"encoding/json"
-	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
-)
-
-const (
-	appServerInitializeRequestID = 1
-	appServerThreadRequestID     = 2
-	appServerTurnRequestID       = 3
 )
 
 type appServerEnvelope struct {
@@ -32,7 +25,14 @@ type appServerThreadResult struct {
 }
 
 type appServerThread struct {
-	ID string `json:"id"`
+	ID             string  `json:"id"`
+	ParentThreadID *string `json:"parentThreadId,omitempty"`
+	AgentNickname  *string `json:"agentNickname,omitempty"`
+	AgentRole      *string `json:"agentRole,omitempty"`
+}
+
+type appServerThreadStartedParams struct {
+	Thread appServerThread `json:"thread"`
 }
 
 type appServerThreadRequest struct {
@@ -82,23 +82,34 @@ type appServerSandboxPolicy struct {
 }
 
 type appServerItem struct {
-	ID               string          `json:"id,omitempty"`
-	Type             string          `json:"type,omitempty"`
-	Text             string          `json:"text,omitempty"`
-	Command          string          `json:"command,omitempty"`
-	AggregatedOutput string          `json:"aggregatedOutput,omitempty"`
-	ExitCode         *int            `json:"exitCode,omitempty"`
-	Status           string          `json:"status,omitempty"`
-	Server           string          `json:"server,omitempty"`
-	Tool             string          `json:"tool,omitempty"`
-	Namespace        string          `json:"namespace,omitempty"`
-	Arguments        json.RawMessage `json:"arguments,omitempty"`
-	Result           json.RawMessage `json:"result,omitempty"`
-	Error            json.RawMessage `json:"error,omitempty"`
-	Changes          json.RawMessage `json:"changes,omitempty"`
-	Query            string          `json:"query,omitempty"`
-	Action           json.RawMessage `json:"action,omitempty"`
-	Raw              json.RawMessage `json:"-"`
+	ID                string                         `json:"id,omitempty"`
+	Type              string                         `json:"type,omitempty"`
+	Text              string                         `json:"text,omitempty"`
+	Command           string                         `json:"command,omitempty"`
+	AggregatedOutput  string                         `json:"aggregatedOutput,omitempty"`
+	ExitCode          *int                           `json:"exitCode,omitempty"`
+	Status            string                         `json:"status,omitempty"`
+	Server            string                         `json:"server,omitempty"`
+	Tool              string                         `json:"tool,omitempty"`
+	Namespace         string                         `json:"namespace,omitempty"`
+	Arguments         json.RawMessage                `json:"arguments,omitempty"`
+	Result            json.RawMessage                `json:"result,omitempty"`
+	Error             json.RawMessage                `json:"error,omitempty"`
+	Changes           json.RawMessage                `json:"changes,omitempty"`
+	Query             string                         `json:"query,omitempty"`
+	Action            json.RawMessage                `json:"action,omitempty"`
+	SenderThreadID    string                         `json:"senderThreadId,omitempty"`
+	ReceiverThreadIDs []string                       `json:"receiverThreadIds,omitempty"`
+	AgentsStates      map[string]appServerAgentState `json:"agentsStates,omitempty"`
+	Prompt            *string                        `json:"prompt,omitempty"`
+	Model             *string                        `json:"model,omitempty"`
+	ReasoningEffort   *string                        `json:"reasoningEffort,omitempty"`
+	Raw               json.RawMessage                `json:"-"`
+}
+
+type appServerAgentState struct {
+	Status  string  `json:"status"`
+	Message *string `json:"message,omitempty"`
 }
 
 func (item *appServerItem) UnmarshalJSON(data []byte) error {
@@ -141,18 +152,44 @@ type appServerTurnCompletedParams struct {
 	Turn appServerTurnResult `json:"turn"`
 }
 
+type appServerThreadStatusParams struct {
+	ThreadID string `json:"threadId"`
+	Status   struct {
+		Type        string   `json:"type"`
+		ActiveFlags []string `json:"activeFlags,omitempty"`
+	} `json:"status"`
+}
+
+type appServerRequestResolvedParams struct {
+	ThreadID  string          `json:"threadId"`
+	RequestID json.RawMessage `json:"requestId"`
+}
+
 type appServerTurnResult struct {
+	ID     string          `json:"id"`
 	Status string          `json:"status"`
 	Error  *appServerError `json:"error"`
+	Items  []appServerItem `json:"items,omitempty"`
 }
 
 type appServerErrorParams struct {
-	Message string `json:"message"`
+	Error     appServerErrorDetail `json:"error"`
+	WillRetry bool                 `json:"willRetry,omitempty"`
+}
+
+type appServerErrorDetail struct {
+	Message           string          `json:"message"`
+	CodexErrorInfo    json.RawMessage `json:"codexErrorInfo,omitempty"`
+	AdditionalDetails json.RawMessage `json:"additionalDetails,omitempty"`
 }
 
 type appServerUserInputRequestParams struct {
-	ItemID    string                  `json:"itemId"`
-	Questions []appServerUserQuestion `json:"questions"`
+	ThreadID         string                  `json:"threadId"`
+	TurnID           string                  `json:"turnId"`
+	ItemID           string                  `json:"itemId"`
+	Questions        []appServerUserQuestion `json:"questions"`
+	IsBlocking       bool                    `json:"isBlocking"`
+	AutoResolutionMs *uint64                 `json:"autoResolutionMs"`
 }
 
 type appServerUserQuestion struct {
@@ -160,92 +197,11 @@ type appServerUserQuestion struct {
 	ID       string                    `json:"id"`
 	Question string                    `json:"question"`
 	Options  []appServerQuestionOption `json:"options"`
+	IsOther  bool                      `json:"isOther"`
+	IsSecret bool                      `json:"isSecret"`
 }
 
 type appServerQuestionOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
-}
-
-func buildAppServerThreadRequest(req agent.RunRequest) appServerThreadRequest {
-	request := appServerThreadRequest{
-		Method: "thread/start",
-		Params: appServerThreadParams{
-			ApprovalPolicy: "never",
-			Sandbox:        "danger-full-access",
-			ServiceName:    "remote-futrx",
-		},
-	}
-	if cwd := strings.TrimSpace(req.Cwd); cwd != "" {
-		request.Params.Cwd = cwd
-	}
-	if model := sanitizeModel(req.Model); model != "" {
-		request.Params.Model = model
-	}
-	if tier := serviceTierArg(req.Preferences.ServiceTier); tier != "" {
-		request.Params.ServiceTier = tier
-	}
-	if req.ResumeID == "" {
-		return request
-	}
-	request.Params.ServiceName = ""
-	request.Params.ThreadID = req.ResumeID
-	if req.Fork {
-		request.Method = "thread/fork"
-		return request
-	}
-	request.Method = "thread/resume"
-	return request
-}
-
-func buildAppServerTurnParams(req agent.RunRequest, threadID, model string) appServerTurnParams {
-	mode := agent.RunModeDefault
-	if req.Mode == agent.RunModePlan {
-		mode = agent.RunModePlan
-	}
-	effort := reasoningEffortArg(req.Preferences.ReasoningEffort)
-	if effort == "" && mode == agent.RunModePlan {
-		// Codex's native Plan preset uses medium reasoning when the user has not
-		// selected an explicit effort.
-		effort = "medium"
-	}
-	var reasoningEffort *string
-	if effort != "" {
-		reasoningEffort = &effort
-	}
-	params := appServerTurnParams{
-		ApprovalPolicy: "never",
-		CollaborationMode: appServerCollaborationMode{
-			Mode: mode,
-			Settings: appServerCollaborationSettings{
-				Model:           model,
-				ReasoningEffort: reasoningEffort,
-			},
-		},
-		Effort:        effort,
-		Input:         []appServerUserInput{{Text: req.Prompt, Type: "text"}},
-		Model:         model,
-		SandboxPolicy: appServerSandboxPolicy{Type: "dangerFullAccess"},
-		ThreadID:      threadID,
-	}
-	if tier := serviceTierArg(req.Preferences.ServiceTier); tier != "" {
-		params.ServiceTier = tier
-	}
-	return params
-}
-
-func rpcResponseID(raw json.RawMessage) (int, bool) {
-	if len(raw) == 0 {
-		return 0, false
-	}
-	var id int
-	if err := json.Unmarshal(raw, &id); err != nil {
-		return 0, false
-	}
-	return id, true
-}
-
-func isMissingCodexThread(message string) bool {
-	lower := strings.ToLower(message)
-	return strings.Contains(lower, "not found") || strings.Contains(lower, "no rollout")
 }

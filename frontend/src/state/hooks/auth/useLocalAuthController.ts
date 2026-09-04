@@ -4,6 +4,7 @@ import type { LoginMode } from "../../../models/auth";
 import { localAuthFormState } from "./localAuthFormState";
 import { returnUrlPolicy } from "./returnUrlPolicy";
 import { usePendingTwoFactorChallenge } from "./usePendingTwoFactorChallenge";
+import { useSetupToken } from "./useSetupToken";
 
 interface LocalAuthControllerOptions {
   mode: LoginMode;
@@ -19,6 +20,7 @@ export function useLocalAuthController({
   ////////////////
   // Local State
   ////////////////
+  const setupToken = useSetupToken();
   const [email, setEmail] = useState(mode === "legacy-setup" ? adminEmail : "");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -63,7 +65,7 @@ export function useLocalAuthController({
     setError(null);
     try {
       if (setup) {
-        await localAuthApi.claim(submission.email, password);
+        await localAuthApi.claim(submission.email, password, setupToken);
         await onSuccess();
         return;
       }
@@ -97,6 +99,7 @@ export function useLocalAuthController({
     setEmail,
     setPassword,
     setup,
+    setupToken,
     submit,
     submitting,
     challenge: {

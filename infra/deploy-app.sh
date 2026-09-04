@@ -79,6 +79,8 @@ done
 SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=lib/release-version.sh
 . "$SCRIPT_INFRA_DIR/lib/release-version.sh"
+# shellcheck source=lib/update-progress.sh
+. "$SCRIPT_INFRA_DIR/lib/update-progress.sh"
 
 cd "$INSTALL_DIR"
 PREVIOUS_SHA="$(git rev-parse --verify 'HEAD^{commit}')"
@@ -121,6 +123,7 @@ finish() {
 }
 trap 'finish $?' EXIT
 
+write_update_progress "application-build" "Building the application update"
 echo "==> Deploying application release $TARGET_REF ($TARGET_COMMIT)"
 echo "    infrastructure, base image, and project containers will be unchanged"
 git reset --hard "$TARGET_COMMIT"
@@ -143,12 +146,14 @@ APP_VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 
 install -m 0755 "$STAGED_BINARY" "$BINARY"
 BINARY_REPLACED=1
+write_update_progress "application-restart" "Restarting the application"
 systemctl restart "$SERVICE_NAME"
 
 # shellcheck source=lib/health-check.sh
 . "$INSTALL_DIR/infra/lib/health-check.sh"
 wait_for_http_health "http://127.0.0.1:${SERVICE_PORT}/" 30
 systemctl is-active --quiet "$SERVICE_NAME"
+write_update_progress "finishing" "Verifying the application update"
 
 DEPLOYED_SHA="$(git rev-parse --verify 'HEAD^{commit}')"
 if [ "$DEPLOYED_SHA" != "$TARGET_COMMIT" ]; then

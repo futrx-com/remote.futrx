@@ -18,6 +18,8 @@ export interface AgentAuthRegistryState {
   submitCode: (provider: string, code: string) => Promise<void>;
   cancelCodeLogin: (provider: string) => Promise<void>;
   startDeviceLogin: (provider: string) => Promise<void>;
+  saveAPIKey: (provider: string, apiKey: string) => Promise<boolean>;
+  deleteAPIKey: (provider: string) => Promise<boolean>;
 }
 
 export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
@@ -64,8 +66,10 @@ export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
     setProviderError(provider, "");
     try {
       await action();
+      return true;
     } catch (caught) {
       setProviderError(provider, (caught as Error).message);
+      return false;
     } finally {
       setProviderStarting(provider, false);
     }
@@ -101,6 +105,18 @@ export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
     });
   }, [runAction, updateLogin]);
 
+  const saveAPIKey = useCallback(async (provider: string, apiKey: string) =>
+    runAction(provider, async () => {
+      const status = await agentAuthApi.saveAPIKey(provider, apiKey);
+      setProviders((current) => agentAuthRegistryService.updateProvider(current, provider, status));
+    }), [runAction]);
+
+  const deleteAPIKey = useCallback(async (provider: string) =>
+    runAction(provider, async () => {
+      const status = await agentAuthApi.deleteAPIKey(provider);
+      setProviders((current) => agentAuthRegistryService.updateProvider(current, provider, status));
+    }), [runAction]);
+
   ////////////////
   // Effects
   ////////////////
@@ -129,6 +145,7 @@ export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
           if (
             entry.authentication.mode !== "managed-code"
             && entry.authentication.mode !== "managed-device"
+            && entry.authentication.mode !== "managed-api-key"
           ) continue;
           subscriptions.push(agentAuthApi.subscribe(entry.provider, (status) => {
             if (cancelled) return;
@@ -162,6 +179,8 @@ export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
     submitCode,
     cancelCodeLogin,
     startDeviceLogin,
+    saveAPIKey,
+    deleteAPIKey,
   }), [
     providers,
     loading,
@@ -173,5 +192,7 @@ export function useAgentAuthRegistry(enabled: boolean): AgentAuthRegistryState {
     submitCode,
     cancelCodeLogin,
     startDeviceLogin,
+    saveAPIKey,
+    deleteAPIKey,
   ]);
 }

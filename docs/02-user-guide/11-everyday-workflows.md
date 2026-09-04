@@ -52,7 +52,7 @@ Concurrent chats in one project share the same files, processes, ports, browser 
 
 1. Open the existing project chat.
 2. Wait for any active run to finish or cancel it.
-3. Choose **Codex**, **Claude**, **Kimi**, or **Antigravity** in the composer.
+3. Choose **Codex**, **MiniMax**, **Claude**, **Kimi**, or **Antigravity** in the composer.
 4. Recheck the model, thinking level, speed, and selected skills.
 5. State what the new provider should continue or verify.
 6. Send the prompt.
@@ -96,7 +96,7 @@ Use the Agent Browser when the task needs a real login, consent screen, anti-bot
 3. Wait for the live browser pane.
 4. Sign in yourself.
 5. Return to the composer.
-6. Select the `browser` skill for Claude or Codex.
+6. Select the `browser` skill for Claude, Codex, or MiniMax.
 7. Describe the permitted website task and the stopping condition.
 8. Watch the shared browser and intervene when needed.
 9. Use the square **Stop the agent browser** control when finished.

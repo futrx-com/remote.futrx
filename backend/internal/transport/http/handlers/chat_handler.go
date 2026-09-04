@@ -112,6 +112,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 		switch parts[1] {
 		case "events":
 			h.handleEvents(w, r, id)
+		case "transcript":
+			h.handleTranscript(w, r, id)
 		case "rewind":
 			h.handleRewind(w, r, id)
 		case "fork":
@@ -197,6 +199,22 @@ func (h *ChatHandler) handleEvents(w http.ResponseWriter, r *http.Request, id se
 	httptransport.SendJSON(w, http.StatusOK, page)
 }
 
+func (h *ChatHandler) handleTranscript(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	page, err := h.chats.TranscriptPage(r.Context(), id, servicechat.TranscriptPageQuery{
+		Limit:     intQuery(r, "limit", 0),
+		BeforeSeq: int64Query(r, "before", 0),
+	})
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, page)
+}
+
 func (h *ChatHandler) handleRewind(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
 	if r.Method != http.MethodPost {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -213,12 +231,21 @@ func (h *ChatHandler) handleRewind(w http.ResponseWriter, r *http.Request, id se
 		sendChatError(w, err)
 		return
 	}
-	page, err := h.chats.EventPage(r.Context(), id, servicechat.EventPageQuery{Limit: 200})
+	page, err := h.chats.TranscriptPage(r.Context(), id, servicechat.TranscriptPageQuery{})
 	if err != nil {
 		sendChatError(w, err)
 		return
 	}
-	httptransport.SendJSON(w, http.StatusOK, page)
+	events := make([]servicechat.Event, 0)
+	for _, turn := range page.Turns {
+		events = append(events, turn.Events...)
+	}
+	httptransport.SendJSON(w, http.StatusOK, servicechat.EventPage{
+		Events:     events,
+		NextBefore: page.NextBefore,
+		LastSeq:    page.LastSeq,
+		HasMore:    page.HasMore,
+	})
 }
 
 func (h *ChatHandler) handleFork(w http.ResponseWriter, r *http.Request, id servicechat.ID) {

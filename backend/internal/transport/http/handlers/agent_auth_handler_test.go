@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -45,6 +46,16 @@ func TestAgentAuthCatalogPublishesOrderedFactoryMetadata(t *testing.T) {
 			Auth:            agentmodule.AuthManagedDevice, AuthInstructions: "Complete device login.",
 			SatisfiesAccessGate: true,
 		},
+		{
+			ID: agent.ProviderMiniMax, Label: "MiniMax",
+			ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+			Auth:            agentmodule.AuthManagedAPIKey, AuthInstructions: "Add an API key.",
+			APIKeyAuth: &agentmodule.APIKeyAuth{
+				CreateURL:       "https://platform.minimax.io/subscribe/token-plan",
+				CreateLabel:     "Get a MiniMax Token Plan subscription key",
+				CredentialLabel: "MiniMax Token Plan subscription key",
+			},
+		},
 	}
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
@@ -57,7 +68,7 @@ func TestAgentAuthCatalogPublishesOrderedFactoryMetadata(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if len(response.Providers) != 2 || response.Providers[0].Provider != "future-agent" ||
+	if len(response.Providers) != 3 || response.Providers[0].Provider != "future-agent" ||
 		!response.Providers[0].Default || response.Providers[0].Authentication.Mode != agentmodule.AuthExternal {
 		t.Fatalf("providers = %#v", response.Providers)
 	}
@@ -65,6 +76,14 @@ func TestAgentAuthCatalogPublishesOrderedFactoryMetadata(t *testing.T) {
 	if codex.Provider != "codex" || codex.Authentication.Mode != agentmodule.AuthManagedDevice ||
 		!codex.Authentication.SatisfiesAccessGate || codex.Status.Authenticated {
 		t.Fatalf("codex = %#v", codex)
+	}
+	miniMax := response.Providers[2]
+	if miniMax.Authentication.Mode != agentmodule.AuthManagedAPIKey ||
+		miniMax.Authentication.APIKey == nil ||
+		miniMax.Authentication.APIKey.CreateURL != "https://platform.minimax.io/subscribe/token-plan" ||
+		miniMax.Authentication.APIKey.CreateLabel != "Get a MiniMax Token Plan subscription key" ||
+		miniMax.Authentication.APIKey.CredentialLabel != "MiniMax Token Plan subscription key" {
+		t.Fatalf("minimax = %#v", miniMax)
 	}
 
 	rec = httptest.NewRecorder()
@@ -124,6 +143,83 @@ func TestAgentAuthMutationRoutesRemainPostOnly(t *testing.T) {
 				t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestAgentAuthAPIKeyRouteSavesAndDeletesWithoutReturningCredential(t *testing.T) {
+	handler := newTestAgentAuthHandler()
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPost,
+		"/api/minimax/login/api-key",
+		strings.NewReader(`{"apiKey":" secret-key "}`),
+	))
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"authenticated":true,"login":{"active":false}}`+"\n" {
+		t.Fatalf("save response = %d %q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret-key") {
+		t.Fatal("API key leaked in response")
+	}
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/minimax/login/api-key", nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"authenticated":false,"login":{"active":false}}`+"\n" {
+		t.Fatalf("delete response = %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAgentAuthAPIKeyRouteValidatesMethodAndKey(t *testing.T) {
+	handler := newTestAgentAuthHandler()
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	tests := []struct {
+		method string
+		body   string
+		want   int
+	}{
+		{method: http.MethodGet, want: http.StatusMethodNotAllowed},
+		{method: http.MethodPost, body: `{"apiKey":" "}`, want: http.StatusBadRequest},
+	}
+	for _, test := range tests {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(test.method, "/api/minimax/login/api-key", strings.NewReader(test.body)))
+		if rec.Code != test.want {
+			t.Fatalf("%s response = %d %q, want %d", test.method, rec.Code, rec.Body.String(), test.want)
+		}
+	}
+}
+
+func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
+	apiKeys, err := agentauth.NewAPIKeyService(
+		context.Background(),
+		agent.ProviderMiniMax,
+		&agentAuthMemoryKeyStore{keys: map[agent.ProviderID]string{}},
+		agentauth.APIKeyValidatorFunc(func(context.Context, string) error {
+			return agentauth.ErrAPIKeyRejected
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := NewAgentAuthHandler([]agentauth.Binding{
+		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
+	}, nil)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(
+		http.MethodPost,
+		"/api/minimax/login/api-key",
+		strings.NewReader(`{"apiKey":"rejected-key"}`),
+	))
+	if rec.Code != http.StatusBadRequest ||
+		rec.Body.String() != `{"error":"API key is invalid or unauthorized"}`+"\n" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -235,9 +331,35 @@ func newTestAgentAuthHandler() *AgentAuthHandler {
 		})
 	}
 
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, &agentAuthMemoryKeyStore{
+		keys: map[agent.ProviderID]string{},
+	}, nil)
+	if err != nil {
+		panic(err)
+	}
+
 	return NewAgentAuthHandler([]agentauth.Binding{
 		agentauth.NewCodeBinding(agent.ProviderClaude, code),
 		agentauth.NewDeviceBinding(agent.ProviderCodex, device("codex CLI not found on PATH - install it first")),
 		agentauth.NewDeviceBinding(agent.ProviderKimi, device("kimi CLI not found on PATH - install it first")),
+		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
 	}, nil)
+}
+
+type agentAuthMemoryKeyStore struct {
+	keys map[agent.ProviderID]string
+}
+
+func (s *agentAuthMemoryKeyStore) AgentAPIKey(_ context.Context, id agent.ProviderID) (string, error) {
+	return s.keys[id], nil
+}
+
+func (s *agentAuthMemoryKeyStore) SaveAgentAPIKey(_ context.Context, id agent.ProviderID, key string) error {
+	s.keys[id] = key
+	return nil
+}
+
+func (s *agentAuthMemoryKeyStore) DeleteAgentAPIKey(_ context.Context, id agent.ProviderID) error {
+	delete(s.keys, id)
+	return nil
 }

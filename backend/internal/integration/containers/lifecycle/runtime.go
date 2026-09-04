@@ -104,7 +104,8 @@ func (c *Client) PullDirectory(ctx context.Context, container, source, hostTarge
 		return true, nil
 	}
 	lower := strings.ToLower(out)
-	if strings.Contains(lower, "file does not exist") || strings.Contains(lower, "no such file") {
+	if strings.Contains(lower, "file does not exist") || strings.Contains(lower, "no such file") ||
+		strings.Contains(lower, "not found") {
 		return false, nil
 	}
 	return false, fmt.Errorf("pull %s from %s: %w; output: %s", source, container, err, out)

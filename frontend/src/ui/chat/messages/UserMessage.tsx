@@ -1,4 +1,5 @@
 import { RotateCcw } from "../../primitives/icons";
+import { getTextAlignClass, getTextDirection } from "../markdown/bidi";
 
 export function UserMessage({
   text,
@@ -9,12 +10,19 @@ export function UserMessage({
   t: number;
   onRewind?: (t: number, text: string) => void;
 }) {
+  const dir = getTextDirection(text);
+  const align = getTextAlignClass(text);
+
   return (
-    <div class="group flex justify-end">
-      <div class="max-w-[92%] sm:max-w-[78%] flex flex-col items-end gap-1.5">
-        <div class="codex-user-bubble max-w-full rounded-panel rounded-br-control border border-line
+    <div class="group flex min-w-0 justify-end">
+      <div class="max-w-[92%] sm:max-w-[78%] min-w-0 flex flex-col items-end gap-1.5">
+        <div
+          dir={dir}
+          class={`codex-user-bubble max-w-full rounded-panel rounded-br-control border border-line
                     bg-tint-strong px-3.5 py-2.5 text-[14px] leading-relaxed text-ink-100
-                    whitespace-pre-wrap">
+                    whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${align}`}
+          style={{ unicodeBidi: "plaintext" }}
+        >
           {text}
         </div>
         {onRewind && (

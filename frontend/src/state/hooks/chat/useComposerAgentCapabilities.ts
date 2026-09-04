@@ -11,7 +11,7 @@ import { useAuthContext } from "../../context/AuthContext";
 import { useAgentCapabilities } from "./useAgentCapabilities";
 
 interface CapabilityPreferenceActions {
-  changeMode: (mode: ChatMode) => void;
+  changeMode: (mode: ChatMode, modelPreset?: string, reasoningPreset?: string) => void;
   changeReasoningEffort: (reasoningEffort: ReasoningEffort) => void;
   changeServiceTier: (serviceTier: ServiceTier) => void;
 }

@@ -10,6 +10,7 @@ export interface TwoFactorSettingsActions {
   beginTwoFactorEnrollment: () => Promise<TwoFactorEnrollment>;
   confirmTwoFactorEnrollment: (enrollmentToken: string, code: string) => Promise<string[]>;
   disableTwoFactor: (code: string) => Promise<void>;
+  regenerateRecoveryCodes: (code: string) => Promise<string[]>;
 }
 
 export interface SecuritySettingsController extends TwoFactorSettingsActions {
@@ -18,6 +19,7 @@ export interface SecuritySettingsController extends TwoFactorSettingsActions {
   error: string | null;
   setSingleSessionEnabled: (enabled: boolean) => Promise<void>;
   setHistoryEnabled: (enabled: boolean) => Promise<void>;
+  setRecoveryCodeAlertEnabled: (enabled: boolean) => Promise<void>;
   acknowledgeAlert: () => Promise<void>;
 }
 
@@ -64,6 +66,15 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     [refresh]
   );
 
+  const regenerateRecoveryCodes = useCallback(
+    async (code: string) => {
+      const recoveryCodes = await securityApi.regenerateRecoveryCodes(code);
+      await refresh();
+      return recoveryCodes;
+    },
+    [refresh]
+  );
+
   const updatePreferences = useCallback(async (input: SecurityPreferencesInput) => {
     setSettings(await securityApi.updatePreferences(input));
   }, []);
@@ -75,6 +86,11 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
 
   const setHistoryEnabled = useCallback(
     (enabled: boolean) => updatePreferences({ historyEnabled: enabled }),
+    [updatePreferences]
+  );
+
+  const setRecoveryCodeAlertEnabled = useCallback(
+    (enabled: boolean) => updatePreferences({ recoveryCodeAlertEnabled: enabled }),
     [updatePreferences]
   );
 
@@ -90,8 +106,10 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     beginTwoFactorEnrollment,
     confirmTwoFactorEnrollment,
     disableTwoFactor,
+    regenerateRecoveryCodes,
     setSingleSessionEnabled,
     setHistoryEnabled,
+    setRecoveryCodeAlertEnabled,
     acknowledgeAlert,
   };
 }

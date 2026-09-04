@@ -4,8 +4,8 @@ This document describes how remote.futrx is put together: its runtime topology, 
 
 ## What it is
 
-remote.futrx is a **single-server, self-hosted** workspace for the Claude
-Code, Codex, Kimi Code, and Antigravity agent CLIs. A user creates a project,
+remote.futrx is a **single-server, self-hosted** workspace for Claude Code,
+Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -95,10 +95,11 @@ Composition roots: [`backend/cmd/remote/main.go`](backend/cmd/remote/main.go) (s
 
 Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-workspaces/02-auth-users-and-access.md)):
 
-1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup.
+1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup. The first claim is gated on a one-time token generated at startup and printed only to the server terminal (`setup-token.json` holds its SHA-256, never the token), so an unclaimed server cannot be taken over by whoever loads the page first; once an administrator exists, that administrator authorises any further claim instead.
 2. **Agent-provider credentials.** Host-wide OAuth tokens for
    Claude/Codex/Kimi, connected once by an admin and **shared by all projects
-   and users** on the box. Antigravity instead authenticates through `agy`
+   and users** on the box. MiniMax instead reads `MINIMAX_API_KEY` from each
+   project's secret store, while Antigravity authenticates through `agy`
    inside one project and stores that state in its project-specific durable
    provider mount.
 3. **Per-project membership.** A flat email access-list per project (`projectaccess/<id>.json`). Any member — not only admins — can read/write that project's secrets and edit its member list.
@@ -154,9 +155,10 @@ enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
 adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
 [`integration/agents/codex`](backend/internal/integration/agents/codex),
+[`integration/agents/minimax`](backend/internal/integration/agents/minimax),
 [`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
 [`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
-CLI's available output into a shared event stream. Antigravity print mode
+provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
 Agent composition uses the validated provider-owned factory contract in
@@ -233,6 +235,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
+| MiniMax project state | `/var/lib/remote/projects/<slug>/agent-home/minimax` | Codex-harness files | bind-mounted to `/root/.minimax`; its API key remains in the project secret store |
 | Antigravity project auth/session | `/var/lib/remote/projects/<slug>/agent-home/antigravity` | provider files | bind-mounted to `/root/.gemini/antigravity-cli`; survives container replacement |
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
@@ -243,15 +246,15 @@ JSON and metadata writes use temp-file + rename. Chat events are different: they
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Five bind mounts per project:** `workspace` → `/workspace`, plus the
-  provider-declared persistent directories for Claude, Codex, Kimi, and
-  Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+- **Six bind mounts per project:** `workspace` → `/workspace`, plus the
+  provider-declared persistent directories for Claude, Codex, MiniMax, Kimi,
+  and Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
   whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
   unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
   races.
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) targets **4 GiB memory, 6 CPUs, 2000 processes** and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. Default/profile resource convergence is best-effort because errors from the default `resources.Ensure` path are discarded; explicit per-project overrides fail launch when they cannot be applied. There is **no default disk quota.**
 - **Networking:** containers share LXD's default bridge; Caddy reaches them by `<slug>.lxd:<port>` DNS. The bridge has no inter-container ACLs by default.
-- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, and skill links.
+- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, provider runtime assets, and skill links.
 
 The rootfs is disposable — [`upgrade-workspaces`](backend/cmd/upgrade-workspaces/main.go) replaces containers wholesale onto a new base image, so anything installed outside `/workspace` and the agent homes is lost on upgrade.
 
@@ -278,7 +281,7 @@ Three capabilities live inside each container ([deep dive](docs/03-platform/06-p
 
 - **App previews:** the backend runs `ss` inside the container to discover listening ports ([`listeners/scanner.go`](backend/internal/integration/containers/listeners/scanner.go), loopback binds excluded), and each becomes a `<slug>--<port>.dev.<host>` URL. No per-app proxy config is written — DNS + Caddy regex do the routing.
 - **Per-project IDE:** a pinned code-server listens on `127.0.0.1:8081` with `auth: none`, reachable only through a socket-activated proxy on `:8842` that scales to zero when idle. Authentication is entirely at the Caddy edge.
-- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude or Codex.
+- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude, Codex, or MiniMax.
 
 ## Frontend
 

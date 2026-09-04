@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
@@ -27,6 +28,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
@@ -41,6 +43,9 @@ func main() {
 	// Prepare configuration
 	ctx := context.Background()
 	cfg := config.Load()
+	if runCLICommand(ctx, cfg, os.Args) {
+		return
+	}
 	publicHostname, err := config.PublicHostname(cfg.BaseURL)
 	if err != nil {
 		log.Fatalf("configure public hostname: %v", err)
@@ -71,6 +76,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}
+	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
+	selfUpdateService := serviceselfupdate.New(
+		version.Version,
+		cfg.InstallDir,
+		cfg.DataDir,
+		updatecli.New(),
+	)
 
 	// Register application services
 	tmuxClient := tmuxcli.New()
@@ -91,6 +103,7 @@ func main() {
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
 		AgentModules:      agentModules,
+		AgentAPIKeys:      storeSet.AgentAPIKeys,
 		AgentOptions: service.AgentOptions{
 			CapabilityTimeout:          cfg.Agent.CapabilityTimeout,
 			CapabilityCacheTTL:         cfg.Agent.CapabilityCacheTTL,
@@ -103,6 +116,7 @@ func main() {
 			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
 			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
 			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
+			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
 		},
 		TmuxClient:    tmuxClient,
 		ValidTmuxName: tmuxcli.ValidName,
@@ -111,10 +125,11 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
-		AppStore:     storeSet.Applications,
-		AppRegistry:  appRegistry,
-		AppInstaller: containerStack.AppInstaller,
-		AppPorts:     containerStack.AppPorts,
+		AppStore:        storeSet.Applications,
+		AppRegistry:     appRegistry,
+		AppInstaller:    containerStack.AppInstaller,
+		AppPorts:        containerStack.AppPorts,
+		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {
 		log.Fatalf("init services: %v", err)
@@ -124,6 +139,12 @@ func main() {
 		serviceSet.Auth.GoogleOAuthEnabled(),
 		cfg.BaseURL,
 	)
+	// On a first boot nobody exists to authorise the local-admin claim, so the
+	// setup token is minted and printed here and nowhere else: the operator's
+	// terminal is the one channel a passer-by loading the page cannot reach.
+	// Issuing on every gated start also rotates it, so a token that leaked
+	// before a restart is already dead.
+	announceSetupToken(ctx, serviceSet.Auth, cfg.BaseURL, log.Writer())
 	if err := serviceSet.Reconcile(ctx); err != nil {
 		log.Printf("services: reconcile warning: %v", err)
 	}
@@ -151,12 +172,7 @@ func main() {
 			cfg.DataDir,
 			fileproject.WorkspaceRoot,
 		),
-		SelfUpdate: serviceselfupdate.New(
-			version.Version,
-			cfg.InstallDir,
-			cfg.DataDir,
-			updatecli.New(),
-		),
+		SelfUpdate: selfUpdateService,
 		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
 		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),
 		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot),

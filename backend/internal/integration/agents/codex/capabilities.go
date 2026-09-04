@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,6 +25,26 @@ type modelListItem struct {
 	IsDefault                 bool                  `json:"isDefault"`
 	SupportedReasoningEfforts []reasoningEffortItem `json:"supportedReasoningEfforts"`
 	ServiceTiers              []serviceTierItem     `json:"serviceTiers"`
+	InputModalities           []string              `json:"inputModalities"`
+	SupportsPersonality       bool                  `json:"supportsPersonality"`
+	MultiAgentVersion         string                `json:"multiAgentVersion"`
+	Hidden                    bool                  `json:"hidden"`
+	ModelSpecialty            string                `json:"modelSpecialty"`
+	Upgrade                   string                `json:"upgrade"`
+	UpgradeInfo               json.RawMessage       `json:"upgradeInfo"`
+	AvailabilityNux           json.RawMessage       `json:"availabilityNux"`
+	Raw                       json.RawMessage       `json:"-"`
+}
+
+func (item *modelListItem) UnmarshalJSON(data []byte) error {
+	type alias modelListItem
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*item = modelListItem(decoded)
+	item.Raw = cloneRaw(data)
+	return nil
 }
 
 type reasoningEffortItem struct {
@@ -42,8 +63,22 @@ type collaborationModeListResponse struct {
 }
 
 type collaborationModeItem struct {
-	Name string `json:"name"`
-	Mode string `json:"mode"`
+	Name            string          `json:"name"`
+	Mode            string          `json:"mode"`
+	Model           string          `json:"model"`
+	ReasoningEffort string          `json:"reasoning_effort"`
+	Raw             json.RawMessage `json:"-"`
+}
+
+func (item *collaborationModeItem) UnmarshalJSON(data []byte) error {
+	type alias collaborationModeItem
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*item = collaborationModeItem(decoded)
+	item.Raw = cloneRaw(data)
+	return nil
 }
 
 func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
@@ -84,6 +119,15 @@ func buildCapabilities(models modelListResponse, providerModes collaborationMode
 			ProviderDefault:        raw.IsDefault,
 			DefaultReasoningEffort: raw.DefaultReasoningEffort,
 			DefaultServiceTier:     raw.DefaultServiceTier,
+			InputModalities:        append([]string(nil), raw.InputModalities...),
+			SupportsPersonality:    raw.SupportsPersonality,
+			MultiAgentVersion:      raw.MultiAgentVersion,
+			Hidden:                 raw.Hidden,
+			ModelSpecialty:         raw.ModelSpecialty,
+			Upgrade:                raw.Upgrade,
+			UpgradeInfo:            cloneRaw(raw.UpgradeInfo),
+			AvailabilityNux:        cloneRaw(raw.AvailabilityNux),
+			Raw:                    cloneRaw(raw.Raw),
 		}
 		if len(raw.SupportedReasoningEfforts) > 0 {
 			model.ReasoningEfforts = append(model.ReasoningEfforts, agent.AutoOption())
@@ -103,20 +147,41 @@ func buildCapabilities(models modelListResponse, providerModes collaborationMode
 		}
 		items = append(items, model)
 	}
-	nativePlan := false
-	for _, mode := range providerModes.Data {
-		if strings.EqualFold(mode.Mode, string(agent.RunModePlan)) {
-			nativePlan = true
-		}
-	}
+	modes := collaborationModeOptions(providerModes)
 	return agent.Capabilities{
 		Provider:    agent.ProviderCodex,
 		Label:       "Codex",
 		Source:      agent.CapabilitySourceLive,
 		Models:      agent.WithAutoModel(items, "Codex default"),
-		Modes:       agent.ProviderModes(nativePlan),
+		Modes:       modes,
 		DefaultMode: agent.RunModeDefault,
 	}
+}
+
+func collaborationModeOptions(providerModes collaborationModeListResponse) []agent.CapabilityOption {
+	options := make([]agent.CapabilityOption, 0, len(providerModes.Data))
+	seen := make(map[string]struct{}, len(providerModes.Data))
+	for _, mode := range providerModes.Data {
+		value := agent.NormalizeCapabilityValue(mode.Mode)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		options = append(options, agent.CapabilityOption{
+			Value:           value,
+			Label:           firstNonEmpty(mode.Name, effortLabel(value)),
+			Model:           mode.Model,
+			ReasoningEffort: mode.ReasoningEffort,
+			Raw:             cloneRaw(mode.Raw),
+		})
+	}
+	if len(options) == 0 {
+		return agent.ProviderModes(false)
+	}
+	return options
 }
 
 func fallbackCapabilities() agent.Capabilities {
@@ -147,4 +212,8 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func cloneRaw(raw json.RawMessage) json.RawMessage {
+	return append(json.RawMessage(nil), raw...)
 }

@@ -82,6 +82,20 @@ test("a real change notifies once with the new snapshot", () => {
   assert.deepEqual(seen, [2]);
 });
 
+test("a seeded chat lands in the list, and the server's own upsert is a no-op", () => {
+  const { store, send } = connectedStore();
+  send({ type: "workspace.snapshot", chats: [chat("a")], projects: [] });
+
+  store.getState().seedChat(chat("created", 9));
+  assert.deepEqual(store.getState().snapshot.chats.map((c) => c.id), ["created", "a"]);
+
+  // Seeding takes the same door the feed does, so the upsert that follows finds
+  // the chat already there and changes nothing rather than inserting it twice.
+  const seeded = store.getState().snapshot;
+  send({ type: "chat.upsert", chat: chat("created", 9) });
+  assert.equal(store.getState().snapshot, seeded);
+});
+
 test("disconnecting closes the feed and clears what it delivered", () => {
   const { store, send, closedCount } = connectedStore();
   send({ type: "workspace.snapshot", chats: [chat("a")], projects: [] });

@@ -7,6 +7,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
 )
 
 type Provider struct {
@@ -50,7 +51,7 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	if err != nil {
 		return err
 	}
-	err = runAppServer(ctx, cmd, req, emit)
+	err = codexharness.Run(ctx, cmd, req, "Codex", emit)
 	if err == nil && containerName != "" && p.credentialCollector != nil {
 		syncCtx, cancel := context.WithTimeout(context.Background(), p.credentialSyncTimeout)
 		defer cancel()

@@ -15,7 +15,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
@@ -31,13 +33,21 @@ func main() {
 
 	log.SetFlags(log.Ltime)
 
+	if err := run(*alias, *overwrite); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// run builds and publishes the base image under alias, optionally deleting
+// any existing image at that alias first.
+func run(alias string, overwrite bool) error {
 	lxcClient := lxc.New()
 	if !lxcClient.Available() {
-		log.Fatalf("lxc CLI not found on PATH - install LXD on the host first")
+		return errors.New("lxc CLI not found on PATH - install LXD on the host first")
 	}
 	agentModules, err := config.NewAgentModules()
 	if err != nil {
-		log.Fatalf("configure agent modules: %v", err)
+		return fmt.Errorf("configure agent modules: %w", err)
 	}
 	containerStack := config.NewContainerStack(
 		lxcClient,
@@ -50,20 +60,21 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
-	if *overwrite {
-		log.Printf("removing existing image %q (if any)...", *alias)
+	if overwrite {
+		log.Printf("removing existing image %q (if any)...", alias)
 		// Best-effort: ignore the error so a missing alias is fine.
-		if out, err := lxcClient.Run(ctx, "image", "delete", *alias); err != nil {
+		if out, err := lxcClient.Run(ctx, "image", "delete", alias); err != nil {
 			log.Printf("note: image delete returned: %v; output: %s", err, out)
 		}
 	}
 
-	log.Printf("building %q from %q...", *alias, serviceimage.SourceImage)
+	log.Printf("building %q from %q...", alias, serviceimage.SourceImage)
 	log.Printf("(the first build can take up to 10 minutes; progress is reported every 30 seconds)")
 
-	if err := containerStack.Images.Build(ctx, *alias); err != nil {
-		log.Fatalf("build failed: %v", err)
+	if err := containerStack.Images.Build(ctx, alias); err != nil {
+		return fmt.Errorf("build failed: %w", err)
 	}
 
-	log.Printf("done. published %q. new project containers will launch from this image.", *alias)
+	log.Printf("done. published %q. new project containers will launch from this image.", alias)
+	return nil
 }

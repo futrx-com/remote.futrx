@@ -115,16 +115,20 @@ func TestClientReadsLocalDiskDeviceFromLXDQuery(t *testing.T) {
 }
 
 func TestClientPullDirectoryTreatsMissingProviderHomeAsEmpty(t *testing.T) {
-	runner := &recordingRunner{available: true, responses: []runnerResponse{{
-		out: "Error: file does not exist", err: errors.New("exit 1"),
-	}}}
-	pulled, err := NewClient(runner).PullDirectory(context.Background(), "project-1", "/root/.kimi-code", "/host/staging")
-	if err != nil || pulled {
-		t.Fatalf("PullDirectory() = %t, %v", pulled, err)
+	for _, output := range []string{"Error: file does not exist", "Error: Not Found"} {
+		t.Run(output, func(t *testing.T) {
+			runner := &recordingRunner{available: true, responses: []runnerResponse{{
+				out: output, err: errors.New("exit 1"),
+			}}}
+			pulled, err := NewClient(runner).PullDirectory(context.Background(), "project-1", "/root/.kimi-code", "/host/staging")
+			if err != nil || pulled {
+				t.Fatalf("PullDirectory() = %t, %v", pulled, err)
+			}
+			assertArgv(t, runner.calls, [][]string{{
+				"file", "pull", "--recursive", "project-1/root/.kimi-code", "/host/staging",
+			}})
+		})
 	}
-	assertArgv(t, runner.calls, [][]string{{
-		"file", "pull", "--recursive", "project-1/root/.kimi-code", "/host/staging",
-	}})
 }
 
 func TestClientMountedDistinguishesAnOrdinaryDirectory(t *testing.T) {

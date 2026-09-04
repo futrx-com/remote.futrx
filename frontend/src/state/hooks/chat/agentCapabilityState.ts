@@ -29,8 +29,7 @@ class AgentCapabilityState {
       models: item.models.map((modelItem) => ({
         value: modelItem.id,
         label: modelItem.label,
-        sub: modelItem.description
-          || (modelItem.providerDefault ? "provider default" : "available model"),
+		sub: this.modelSubtitle(modelItem),
       })),
     })) ?? [];
     const savedProviderFallback: ComposerProviderOption = {
@@ -59,6 +58,8 @@ class AgentCapabilityState {
       reasoningEffortOptions: selectedModel?.reasoningEfforts ?? [],
       serviceTierOptions: selectedModel?.serviceTiers ?? [],
       modeOptions: providerCapabilities?.modes ?? [],
+      supportsExecutionPolicies:
+        providerCapabilities?.features?.executionPolicies === true,
     };
   }
 
@@ -116,6 +117,22 @@ class AgentCapabilityState {
   private providerLabel(provider: string): string {
     return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : "Agent";
   }
+
+	private modelSubtitle(model: {
+		description?: string;
+		providerDefault?: boolean;
+		multiAgentVersion?: string;
+		inputModalities?: string[];
+	}): string {
+		const metadata = [
+			model.multiAgentVersion ? `multi-agent ${model.multiAgentVersion}` : "",
+			model.inputModalities?.length ? model.inputModalities.join(" + ") : "",
+		].filter(Boolean).join(" · ");
+		return [
+			model.description || (model.providerDefault ? "provider default" : "available model"),
+			metadata,
+		].filter(Boolean).join(" · ");
+	}
 }
 
 export const agentCapabilityState = new AgentCapabilityState();

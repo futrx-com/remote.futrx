@@ -18,7 +18,10 @@ interface UserSettingsContextValue {
   error: string | null;
   refresh: () => Promise<void>;
   setTheme: (theme: AppearanceTheme) => Promise<void>;
-  setChatSettings: (chat: Partial<ChatSettings>) => Promise<void>;
+  setChatSettings: (
+    scope: "host" | "project",
+    chat: Partial<ChatSettings>
+  ) => Promise<void>;
 }
 
 const UserSettingsContext = createContext<UserSettingsContextValue | null>(null);
@@ -85,12 +88,16 @@ export function UserSettingsProvider({ children }: { children: ComponentChildren
     }
   }, [settings]);
 
-  const setChatSettings = useCallback(async (chat: Partial<ChatSettings>) => {
+  const setChatSettings = useCallback(async (
+    scope: "host" | "project",
+    chat: Partial<ChatSettings>
+  ) => {
     const previous = settings;
-    setSettings({ ...settings, chat: { ...settings.chat, ...chat } });
+    const key = scope === "project" ? "projectChat" : "chat";
+    setSettings({ ...settings, [key]: { ...settings[key], ...chat } });
     setSaving(true);
     try {
-      setSettings(await settingsApi.update({ chat }));
+      setSettings(await settingsApi.update({ [key]: chat }));
       setError(null);
     } catch (e) {
       setSettings(previous);

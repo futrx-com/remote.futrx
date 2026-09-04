@@ -17,6 +17,7 @@ import (
 )
 
 var _ servicechat.Repository = (*Store)(nil)
+var _ servicechat.TranscriptEventSource = (*Store)(nil)
 
 // Store manages chat dirs on disk. Single writer per chat via a per-id mutex
 // map; concurrent access across different chats is fine.
@@ -240,6 +241,22 @@ func (s *Store) ReadEvents(ctx context.Context, id servicechat.ID) ([]servicecha
 		return nil, servicechat.ErrInvalidID
 	}
 	return s.readEventsFile(id)
+}
+
+// ScanEvents visits the raw append-only event stream in storage order. The
+// caller owns any projection policy applied while visiting.
+func (s *Store) ScanEvents(
+	ctx context.Context,
+	id servicechat.ID,
+	visit func(servicechat.Event),
+) error {
+	if !servicechat.ValidID(id) {
+		return servicechat.ErrInvalidID
+	}
+	return s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+		visit(event)
+		return true
+	})
 }
 
 func (s *Store) ReadEventsPage(

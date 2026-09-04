@@ -13,11 +13,78 @@ func TestDefaultSettingsUseCodexChatDefaults(t *testing.T) {
 	if settings.Chat.Provider != ChatProviderCodex {
 		t.Fatalf("expected codex default provider, got %q", settings.Chat.Provider)
 	}
+	if settings.ProjectChat.Provider != ChatProviderCodex {
+		t.Fatalf("expected codex project default provider, got %q", settings.ProjectChat.Provider)
+	}
 	if settings.Chat.Mode != ChatModeDefault {
 		t.Fatalf("expected provider default mode, got %q", settings.Chat.Mode)
 	}
 	if settings.Chat.Model != "" || settings.Chat.ReasoningEffort != "" {
 		t.Fatalf("expected auto model and reasoning effort, got %+v", settings.Chat)
+	}
+	if settings.Chat.ApprovalPolicy != "on-request" || settings.Chat.SandboxPolicy != "workspaceWrite" {
+		t.Fatalf("expected default execution policies, got %+v", settings.Chat)
+	}
+}
+
+func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
+	repo := &memoryRepo{}
+	service := New(repo, WithProviderCatalog(scopedTestProviderCatalog{
+		"codex":   {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
+		"minimax": {agentmodule.ScopeProject: true},
+	}))
+	provider := ChatProviderMiniMax
+	model := "MiniMax-M3"
+	approvalPolicy := ApprovalPolicy("never")
+	sandboxPolicy := SandboxPolicy("readOnly")
+
+	settings, err := service.Update(context.Background(), "sub:user", UpdateInput{
+		ProjectChat: &ChatUpdate{
+			Provider:       &provider,
+			Model:          &model,
+			ApprovalPolicy: &approvalPolicy,
+			SandboxPolicy:  &sandboxPolicy,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ProjectChat.Provider != ChatProviderMiniMax || settings.ProjectChat.Model != model {
+		t.Fatalf("unexpected project chat settings: %+v", settings.ProjectChat)
+	}
+	if settings.ProjectChat.ApprovalPolicy != approvalPolicy ||
+		settings.ProjectChat.SandboxPolicy != sandboxPolicy {
+		t.Fatalf("unexpected project execution policy: %+v", settings.ProjectChat)
+	}
+	if settings.Chat.Provider != ChatProviderCodex {
+		t.Fatalf("host chat provider = %q, want codex", settings.Chat.Provider)
+	}
+
+	_, err = service.Update(context.Background(), "sub:user", UpdateInput{
+		Chat: &ChatUpdate{Provider: &provider},
+	})
+	if !errors.Is(err, ErrInvalidChatProvider) {
+		t.Fatalf("host Update error = %v, want ErrInvalidChatProvider", err)
+	}
+}
+
+func TestGetMigratesLegacyChatPreferenceToProjectScope(t *testing.T) {
+	legacy := DefaultSettings()
+	legacy.Chat.Provider = ChatProviderKimi
+	legacy.Chat.Model = "kimi-model"
+	legacy.ProjectChat = Chat{}
+	repo := &memoryRepo{settings: legacy, exists: true}
+	service := New(repo, WithProviderCatalog(scopedTestProviderCatalog{
+		"codex": {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
+		"kimi":  {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
+	}))
+
+	settings, err := service.Get(context.Background(), "sub:user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.ProjectChat.Provider != ChatProviderKimi || settings.ProjectChat.Model != "kimi-model" {
+		t.Fatalf("legacy project preference was not preserved: %+v", settings.ProjectChat)
 	}
 }
 
@@ -104,6 +171,20 @@ func TestUpdateRejectsInvalidChatPreferences(t *testing.T) {
 			}},
 			want: ErrInvalidReasoningEffort,
 		},
+		{
+			name: "approval policy",
+			in: UpdateInput{Chat: &ChatUpdate{
+				ApprovalPolicy: ptr(ApprovalPolicy("bad")),
+			}},
+			want: ErrInvalidApprovalPolicy,
+		},
+		{
+			name: "sandbox policy",
+			in: UpdateInput{Chat: &ChatUpdate{
+				SandboxPolicy: ptr(SandboxPolicy("bad")),
+			}},
+			want: ErrInvalidSandboxPolicy,
+		},
 	}
 
 	for _, tt := range tests {
@@ -121,6 +202,17 @@ type testProviderCatalog map[string]bool
 func (c testProviderCatalog) HasProvider(provider string) bool { return c[provider] }
 func (c testProviderCatalog) SupportsScope(provider string, _ agentmodule.ExecutionScope) bool {
 	return c[provider]
+}
+
+type scopedTestProviderCatalog map[string]map[agentmodule.ExecutionScope]bool
+
+func (c scopedTestProviderCatalog) HasProvider(provider string) bool {
+	_, ok := c[provider]
+	return ok
+}
+
+func (c scopedTestProviderCatalog) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+	return c[provider][scope]
 }
 
 type defaultTestProviderCatalog struct {

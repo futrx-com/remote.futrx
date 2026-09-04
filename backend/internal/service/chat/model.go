@@ -40,6 +40,8 @@ type Meta struct {
 	Mode                 string     `json:"mode"`
 	ReasoningEffort      string     `json:"reasoningEffort"`
 	ServiceTier          string     `json:"serviceTier"`
+	ApprovalPolicy       string     `json:"approvalPolicy"`
+	SandboxPolicy        string     `json:"sandboxPolicy"`
 	ProjectID            ProjectID  `json:"projectId,omitempty"`
 	ForkPending          bool       `json:"forkPending,omitempty"`
 	SelectedSkills       []SkillRef `json:"selectedSkills,omitempty"`
@@ -56,6 +58,7 @@ type Event struct {
 	Seq                  int64           `json:"seq,omitempty"`
 	T                    int64           `json:"t"`
 	Type                 string          `json:"type"`
+	TurnID               string          `json:"turnId,omitempty"`
 	Text                 string          `json:"text,omitempty"`
 	MessageID            string          `json:"messageId,omitempty"`
 	ID                   string          `json:"id,omitempty"`
@@ -78,7 +81,10 @@ type Event struct {
 	// ScheduledTaskID marks events produced by a scheduled run rather than an
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
-	ScheduledTaskID string `json:"scheduledTaskId,omitempty"`
+	ScheduledTaskID string                `json:"scheduledTaskId,omitempty"`
+	Native          *agent.NativeEnvelope `json:"native,omitempty"`
+	InteractionID   string                `json:"interactionId,omitempty"`
+	Status          string                `json:"status,omitempty"`
 }
 
 // NormalizeSessions makes the provider-keyed session map authoritative while
@@ -265,6 +271,8 @@ type CreateInput struct {
 	Mode            string     `json:"mode,omitempty"`
 	ReasoningEffort string     `json:"reasoningEffort,omitempty"`
 	ServiceTier     string     `json:"serviceTier,omitempty"`
+	ApprovalPolicy  string     `json:"approvalPolicy,omitempty"`
+	SandboxPolicy   string     `json:"sandboxPolicy,omitempty"`
 	ProjectID       ProjectID  `json:"projectId,omitempty"`
 	SelectedSkills  []SkillRef `json:"selectedSkills,omitempty"`
 }
@@ -277,6 +285,8 @@ type UpdateInput struct {
 	Mode            *string     `json:"mode,omitempty"`
 	ReasoningEffort *string     `json:"reasoningEffort,omitempty"`
 	ServiceTier     *string     `json:"serviceTier,omitempty"`
+	ApprovalPolicy  *string     `json:"approvalPolicy,omitempty"`
+	SandboxPolicy   *string     `json:"sandboxPolicy,omitempty"`
 	SelectedSkills  *[]SkillRef `json:"selectedSkills,omitempty"`
 }
 
@@ -289,25 +299,21 @@ func NormalizeProvider(provider Provider) Provider {
 }
 
 func NormalizeReasoningEffort(effort string) string {
-	return normalizeCapabilityValue(effort)
+	return agent.NormalizePreferenceValue(effort)
 }
 
 // NormalizeServiceTier keeps future provider tiers usable without requiring a
 // frontend/backend release for every catalog addition. "" means Auto.
 func NormalizeServiceTier(tier string) string {
-	return normalizeCapabilityValue(tier)
+	return agent.NormalizePreferenceValue(tier)
 }
 
-func normalizeCapabilityValue(value string) string {
-	value = strings.TrimSpace(value)
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-			r == '-' || r == '_' || r == '.' {
-			continue
-		}
-		return ""
-	}
-	return value
+func NormalizeApprovalPolicy(policy string) string {
+	return agent.NormalizeApprovalPolicy(policy)
+}
+
+func NormalizeSandboxPolicy(policy string) string {
+	return agent.NormalizeSandboxPolicy(policy)
 }
 
 func NormalizeSelectedSkills(skills []SkillRef, fallbackProvider Provider) []SkillRef {

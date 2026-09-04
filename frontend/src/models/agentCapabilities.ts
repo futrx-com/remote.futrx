@@ -4,6 +4,9 @@ export interface AgentCapabilityOption {
   value: string;
   label: string;
   description?: string;
+  model?: string;
+  reasoningEffort?: string;
+  raw?: unknown;
 }
 
 export interface AgentModelCapability {
@@ -15,6 +18,15 @@ export interface AgentModelCapability {
   defaultReasoningEffort?: string;
   serviceTiers: AgentCapabilityOption[];
   defaultServiceTier?: string;
+  inputModalities?: string[];
+  supportsPersonality?: boolean;
+  multiAgentVersion?: string;
+  hidden?: boolean;
+  modelSpecialty?: string;
+  upgrade?: string;
+  upgradeInfo?: unknown;
+  availabilityNux?: unknown;
+  raw?: unknown;
 }
 
 export interface AgentProviderCapabilities {
@@ -23,15 +35,21 @@ export interface AgentProviderCapabilities {
   default?: boolean;
   executionScopes?: Array<"host" | "project">;
   authentication?: {
-    mode: "managed-code" | "managed-device" | "external" | "none";
+    mode: "managed-code" | "managed-device" | "managed-api-key" | "external" | "none";
     instructions?: string;
     satisfiesAccessGate: boolean;
+    apiKey?: {
+      createUrl: string;
+      createLabel: string;
+      credentialLabel: string;
+    };
   };
   features?: {
     sessions: { resume: boolean; fork: boolean };
     skills: "none" | "slash-command" | "dollar-mention" | "instructions";
     browserTools: boolean;
     scheduledTools: boolean;
+    executionPolicies: boolean;
   };
   version?: string;
   source: "live" | "fallback";
@@ -110,6 +128,7 @@ export interface ComposerCapabilityState {
   reasoningEffortOptions: AgentCapabilityOption[];
   serviceTierOptions: AgentCapabilityOption[];
   modeOptions: AgentCapabilityOption[];
+  supportsExecutionPolicies: boolean;
 }
 
 export interface CapabilityPreferenceSelection {

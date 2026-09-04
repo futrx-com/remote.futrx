@@ -69,3 +69,60 @@ test("treats omitted and empty selected-skill collections as equivalent", () => 
 
   assert.equal(same, current);
 });
+
+test("detects selected-skill field changes from a workspace upsert", () => {
+  const current: ChatMeta[] = [{
+    id: "chat",
+    title: "Chat",
+    createdAt: 1,
+    lastMessageAt: 1,
+    selectedSkills: [{ name: "browser", command: "browser", provider: "claude", source: "builtin" }],
+  }];
+
+  const same = workspaceDataProjector.upsertChat(current, {
+    ...current[0],
+    selectedSkills: [{ name: "browser", command: "browser", provider: "claude", source: "builtin" }],
+  });
+  assert.equal(same, current);
+
+  // The chip renders `name || command`, so a rename under a stable command has
+  // to reach the list or the old label stays on screen.
+  const renamed = workspaceDataProjector.upsertChat(current, {
+    ...current[0],
+    selectedSkills: [{ name: "Browser", command: "browser", provider: "claude", source: "builtin" }],
+  });
+  assert.notEqual(renamed, current);
+  assert.equal(renamed[0].selectedSkills?.[0].name, "Browser");
+
+  const swapped = workspaceDataProjector.upsertChat(current, {
+    ...current[0],
+    selectedSkills: [{ name: "run", command: "run", provider: "claude", source: "builtin" }],
+  });
+  assert.notEqual(swapped, current);
+  assert.equal(swapped[0].selectedSkills?.[0].command, "run");
+});
+
+test("detects approval and sandbox preference changes from a workspace upsert", () => {
+  const current: ChatMeta[] = [{
+    id: "chat",
+    title: "Chat",
+    createdAt: 1,
+    lastMessageAt: 1,
+    approvalPolicy: "on-request",
+    sandboxPolicy: "workspaceWrite",
+  }];
+
+  const approvalChanged = workspaceDataProjector.upsertChat(current, {
+    ...current[0],
+    approvalPolicy: "never",
+  });
+  assert.notEqual(approvalChanged, current);
+  assert.equal(approvalChanged[0].approvalPolicy, "never");
+
+  const sandboxChanged = workspaceDataProjector.upsertChat(current, {
+    ...current[0],
+    sandboxPolicy: "dangerFullAccess",
+  });
+  assert.notEqual(sandboxChanged, current);
+  assert.equal(sandboxChanged[0].sandboxPolicy, "dangerFullAccess");
+});

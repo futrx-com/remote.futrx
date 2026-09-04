@@ -156,7 +156,7 @@ function addErrorCorrection(data, version) {
 function alignmentPositions(version) {
   if (version === 1) return [];
   const count = Math.floor(version / 7) + 2;
-  const step = version === 32 ? 26 : Math.ceil((version * 4 + count * 2 + 1) / (count * 2 - 2)) * 2;
+  const step = version === 32 ? 26 : Math.floor((version * 4 + count * 2 + 1) / (count * 2 - 2)) * 2;
   const positions = [6];
   for (let position = version * 4 + 10; positions.length < count; position -= step) positions.splice(1, 0, position);
   return positions;
@@ -191,7 +191,7 @@ function drawFormat(matrix, reserved, mask) {
   const data = mask; // Medium error correction uses format bits 00.
   let remainder = data;
   for (let index = 0; index < 10; index++) remainder = remainder << 1 ^ (remainder >>> 9) * 0x537;
-  const bits = data << 10 | remainder ^ 0x5412;
+  const bits = (data << 10 | remainder) ^ 0x5412;
   const bit = (index) => (bits >>> index & 1) !== 0;
 
   for (let index = 0; index <= 5; index++) setFunction(matrix, reserved, index, 8, bit(index));

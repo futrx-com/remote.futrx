@@ -30,8 +30,9 @@ type room struct {
 }
 
 type runState struct {
-	id     uint64
-	cancel context.CancelFunc
+	id              uint64
+	cancel          context.CancelFunc
+	cancelRequested bool
 }
 
 const subscriptionLiveBuffer = 4096
@@ -242,15 +243,17 @@ func (h *Hub) CancelRun(chatID servicechat.ID) bool {
 		r.mu.Unlock()
 		return false
 	}
-	r.running = nil
-	r.broadcastLocked(servicechat.Event{
-		T:    time.Now().UnixMilli(),
-		Type: "sync",
-	})
+	if running.cancelRequested {
+		r.mu.Unlock()
+		return true
+	}
+	// Cancellation is only a request. Keep the run lock and running=true sync
+	// state until the provider loop exits and FinishRun publishes the
+	// authoritative terminal transition.
+	running.cancelRequested = true
 	r.mu.Unlock()
 
 	running.cancel()
-	h.publishRunning(chatID, false)
 	return true
 }
 

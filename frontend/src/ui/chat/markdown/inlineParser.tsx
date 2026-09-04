@@ -2,8 +2,15 @@ import type { ComponentChildren } from "preact";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
 import { internalPathOpenUrl } from "../ideLinks";
+import { hasLtrText, isRtlText, splitBidiSegments } from "./bidi";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
+
+export interface InlineRenderContext {
+  chatId?: string;
+  cwd?: string;
+  isRtl?: boolean;
+}
 
 export function renderInline(text: string, keyPrefix: string, context: InlineRenderContext = {}): ComponentChildren[] {
   const nodes: ComponentChildren[] = [];
@@ -11,19 +18,15 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
   let index = 0;
 
   const flush = () => {
-    if (plain) {
-      nodes.push(plain);
-      plain = "";
-    }
+    if (!plain) return;
+    nodes.push(...renderPlainText(plain, keyPrefix, nodes.length, context));
+    plain = "";
   };
 
   const addWrapped = (tag: "strong" | "em" | "del", content: string, markerLength: number, end: number) => {
     flush();
     const key = `${keyPrefix}-${nodes.length}`;
-    const children = renderInline(content, key, context);
-    if (tag === "strong") nodes.push(<strong key={key}>{children}</strong>);
-    if (tag === "em") nodes.push(<em key={key}>{children}</em>);
-    if (tag === "del") nodes.push(<del key={key}>{children}</del>);
+    nodes.push(renderWrappedText(tag, content, key, context));
     index = end + markerLength;
   };
 
@@ -33,7 +36,12 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       if (end > index + 1) {
         flush();
         nodes.push(
-          <code key={`${keyPrefix}-${nodes.length}`} class="bg-tint-strong text-ink-100 px-1 py-0.5 rounded text-[12.5px] font-mono">
+          <code
+            key={`${keyPrefix}-${nodes.length}`}
+            dir="ltr"
+            style={{ unicodeBidi: "isolate" }}
+            class="bg-tint-strong text-ink-100 px-1 py-0.5 rounded text-[12.5px] font-mono break-all [overflow-wrap:anywhere]"
+          >
             {text.slice(index + 1, end)}
           </code>
         );
@@ -49,7 +57,6 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
         continue;
       }
     }
-
     if (text.startsWith("~~", index)) {
       const end = text.indexOf("~~", index + 2);
       if (end > index + 2) {
@@ -57,7 +64,6 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
         continue;
       }
     }
-
     if (text[index] === "*" && text[index + 1] !== "*") {
       const end = text.indexOf("*", index + 1);
       if (end > index + 1) {
@@ -76,16 +82,20 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
           if (href) {
             flush();
             const key = `${keyPrefix}-${nodes.length}`;
+            const labelText = text.slice(index + 1, labelEnd);
+            const isLtr = isLtrOnly(labelText);
             nodes.push(
               <a
                 key={key}
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-accent-blue hover:underline"
+                dir={isLtr ? "ltr" : undefined}
+                style={isLtr ? { unicodeBidi: "isolate" } : undefined}
+                class="text-accent-blue hover:underline break-all [overflow-wrap:anywhere]"
                 onClick={(event) => maybeOpenMediaViewer(event, href)}
               >
-                {renderInline(text.slice(index + 1, labelEnd), key, context)}
+                {renderInline(labelText, key, isLtr ? { ...context, isRtl: false } : context)}
               </a>
             );
             index = hrefEnd + 1;
@@ -100,7 +110,15 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       const href = trimTrailingUrlPunctuation(url);
       flush();
       nodes.push(
-        <a key={`${keyPrefix}-${nodes.length}`} href={href} target="_blank" rel="noopener noreferrer" class="text-accent-blue hover:underline">
+        <a
+          key={`${keyPrefix}-${nodes.length}`}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          dir="ltr"
+          style={{ unicodeBidi: "isolate" }}
+          class="text-accent-blue hover:underline break-all [overflow-wrap:anywhere]"
+        >
           {href}
         </a>
       );
@@ -116,9 +134,50 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
   return nodes;
 }
 
-interface InlineRenderContext {
-  chatId?: string;
-  cwd?: string;
+function renderPlainText(
+  text: string,
+  keyPrefix: string,
+  nodeOffset: number,
+  context: InlineRenderContext,
+): ComponentChildren[] {
+  if (!context.isRtl && !isRtlText(text)) return [text];
+
+  const nodes: ComponentChildren[] = [];
+  for (const segment of splitBidiSegments(text)) {
+    if (segment.isLtr) {
+      nodes.push(
+        <span
+          key={`${keyPrefix}-bidi-${nodeOffset + nodes.length}`}
+          dir="ltr"
+          style={{ unicodeBidi: "isolate" }}
+        >
+          {segment.text}
+        </span>
+      );
+    } else if (segment.text) {
+      nodes.push(segment.text);
+    }
+  }
+  return nodes;
+}
+
+function renderWrappedText(
+  tag: "strong" | "em" | "del",
+  content: string,
+  key: string,
+  context: InlineRenderContext,
+) {
+  const isLtr = isLtrOnly(content);
+  const children = renderInline(content, key, isLtr ? { ...context, isRtl: false } : context);
+  const props = isLtr ? { dir: "ltr" as const, style: { unicodeBidi: "isolate" as const } } : {};
+
+  if (tag === "strong") return <strong key={key} {...props}>{children}</strong>;
+  if (tag === "em") return <em key={key} {...props}>{children}</em>;
+  return <del key={key} {...props}>{children}</del>;
+}
+
+function isLtrOnly(text: string): boolean {
+  return !isRtlText(text) && hasLtrText(text);
 }
 
 function safeHref(raw: string, context: InlineRenderContext): string | null {

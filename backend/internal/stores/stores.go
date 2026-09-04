@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -32,6 +33,13 @@ type AuthStore interface {
 	serviceauth.Store
 }
 
+// ChatStore retains the complete file-chat capability until composition can
+// project it into each service's narrower repository and transcript contracts.
+type ChatStore interface {
+	servicechat.Repository
+	servicechat.TranscriptEventSource
+}
+
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities
 // required at the application composition boundary.
 type PushStore interface {
@@ -41,7 +49,7 @@ type PushStore interface {
 }
 
 type Stores struct {
-	Chats           servicechat.Repository
+	Chats           ChatStore
 	Projects        serviceproject.Repository
 	ProjectSecrets  serviceproject.SecretsRepository
 	ProjectAccess   serviceproject.AccessRepository
@@ -54,6 +62,7 @@ type Stores struct {
 	Applications    serviceapplications.Store
 	Push            PushStore
 	Usage           serviceusage.Repository
+	AgentAPIKeys    agentauth.APIKeyStore
 }
 
 func New(dataDir string) (Stores, error) {
@@ -116,13 +125,14 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init push subscriptions store: %w", err)
 	}
 
+	authStore := fileauth.New(dataDir)
 	return Stores{
 		Chats:           chats,
 		Projects:        projects,
 		ProjectSecrets:  projectSecrets,
 		ProjectAccess:   projectAccess,
 		Schedules:       schedules,
-		Auth:            fileauth.New(dataDir),
+		Auth:            authStore,
 		Users:           users,
 		UserSettings:    userSettings,
 		TwoFactor:       twoFactor,
@@ -130,5 +140,6 @@ func New(dataDir string) (Stores, error) {
 		Applications:    applications,
 		Push:            push,
 		Usage:           usage,
+		AgentAPIKeys:    authStore,
 	}, nil
 }

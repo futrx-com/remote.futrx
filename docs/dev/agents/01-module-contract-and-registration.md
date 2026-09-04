@@ -55,6 +55,7 @@ composition root for compiled-in integrations:
 builders := []module.FactoryBuilder{
     claude.NewFactory,
     codex.NewFactory,
+    minimax.NewFactory,
     kimi.NewFactory,
     antigravity.NewFactory,
 }

@@ -156,6 +156,45 @@ func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 	}
 }
 
+func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
+	ctx := context.Background()
+	store, err := filechat.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.Create(ctx, servicechat.Meta{
+		ID:        "abcdef123456",
+		Provider:  servicechat.ProviderCodex,
+		ProjectID: "project-1",
+		Cwd:       "/var/lib/remote/projects/example/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &recoveryProvider{}
+	registry := agent.NewRegistry()
+	if err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
+	policy := testAgentPolicy{"codex": {
+		ID:              agent.ProviderCodex,
+		Label:           "Codex",
+		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+	}}
+	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	if err := service.runPrompt(ctx, meta.ID, "use the browser", func(ChatEvent) {}, func(ChatEvent) {}); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(provider.requests) != 1 {
+		t.Fatalf("requests = %d, want 1", len(provider.requests))
+	}
+	if got := provider.requests[0].Cwd; got != agent.ProjectWorkspacePath {
+		t.Fatalf("project run cwd = %q, want %q", got, agent.ProjectWorkspacePath)
+	}
+}
+
 func TestClearSessionIDForProvider(t *testing.T) {
 	meta := &ChatMeta{
 		Sessions:        servicechat.SessionIDs{"future-agent": "future", servicechat.ProviderCodex: "o"},

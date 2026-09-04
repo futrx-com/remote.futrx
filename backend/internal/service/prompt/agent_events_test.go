@@ -88,6 +88,37 @@ func TestChatEventFromAgentEventPersistsCompletionProvider(t *testing.T) {
 	}
 }
 
+func TestChatEventFromAgentEventPersistsTurnStatusProvider(t *testing.T) {
+	ev, ok := chatEventFromAgentEvent(agent.Event{
+		T:        123,
+		Type:     agent.EventTurnStatus,
+		Provider: agent.ProviderMiniMax,
+		Status:   "inProgress",
+	})
+	if !ok {
+		t.Fatal("expected event to map")
+	}
+	if ev.Type != "turn_status" || ev.Provider != servicechat.Provider(agent.ProviderMiniMax) ||
+		ev.Status != "inProgress" {
+		t.Fatalf("unexpected turn status event: %#v", ev)
+	}
+}
+
+func TestChatEventFromAgentEventPreservesMessageIdentity(t *testing.T) {
+	ev, ok := chatEventFromAgentEvent(agent.Event{
+		T:      123,
+		Type:   agent.EventAssistantTextDelta,
+		ItemID: "message-1",
+		Text:   "hello",
+	})
+	if !ok {
+		t.Fatal("expected event to map")
+	}
+	if ev.Type != "assistant_text" || ev.MessageID != "message-1" || ev.Text != "hello" {
+		t.Fatalf("assistant identity was lost: %#v", ev)
+	}
+}
+
 func TestChatEventFromAgentEventMapsToolLifecycle(t *testing.T) {
 	input := json.RawMessage(`{"cmd":"go test ./..."}`)
 	start, ok := chatEventFromAgentEvent(agent.Event{

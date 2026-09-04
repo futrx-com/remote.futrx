@@ -71,16 +71,21 @@ export function WorkspaceProvider({
     dispatch({ type: "select-chat", chatId });
   }, []);
 
+  const activateNewChat = useCallback((chat: ChatMeta): ChatMeta => {
+    data.seedChat(chat);
+    dispatch({ type: "select-chat", chatId: chat.id });
+    return chat;
+  }, [data.seedChat]);
+
   const createProject = useCallback(async (name: string): Promise<ProjectMeta> => {
     const project = await projectApi.create(name);
     return project;
   }, []);
 
   const createChat = useCallback(async (projectId?: string): Promise<ChatMeta> => {
-    const chat = await chatApi.create(createChatInput(settings.chat, projectId));
-    dispatch({ type: "select-chat", chatId: chat.id });
-    return chat;
-  }, [settings.chat]);
+    const chat = await chatApi.create(createChatInput(settings, projectId));
+    return activateNewChat(chat);
+  }, [settings, activateNewChat]);
 
   const deleteChat = useCallback(async (chatId: string) => {
     await chatApi.delete(chatId);
@@ -88,9 +93,8 @@ export function WorkspaceProvider({
 
   const forkChat = useCallback(async (chatId: string): Promise<ChatMeta> => {
     const chat = await chatApi.fork(chatId);
-    dispatch({ type: "select-chat", chatId: chat.id });
-    return chat;
-  }, []);
+    return activateNewChat(chat);
+  }, [activateNewChat]);
 
   const deleteProject = useCallback(async (projectId: string) => {
     await projectApi.delete(projectId);

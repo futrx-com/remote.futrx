@@ -15,7 +15,7 @@ The page can report:
 - process count, CPU time, current and peak memory, swap, and disk usage;
 - interfaces, IP addresses, traffic counters, MAC addresses, and MTU;
 - workspace and provider-home mounts;
-- installed Claude and Codex versions;
+- installed agent CLI versions and instruction state, including MiniMax's shared Codex harness;
 - agent instructions and credential-bundle freshness;
 - effective CPU, memory, and root-disk limits.
 

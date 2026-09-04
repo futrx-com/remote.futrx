@@ -18,6 +18,8 @@ test("preserves normalized skill identity and chat defaults", () => {
         mode: "default",
         reasoningEffort: "high",
         serviceTier: "priority",
+        approvalPolicy: "on-request",
+        sandboxPolicy: "workspaceWrite",
       }
     ),
     {
@@ -30,6 +32,8 @@ test("preserves normalized skill identity and chat defaults", () => {
       mode: "default",
       reasoningEffort: "high",
       serviceTier: "priority",
+      approvalPolicy: "on-request",
+      sandboxPolicy: "workspaceWrite",
       selectedSkills: [],
     }
   );
@@ -83,6 +87,8 @@ test("prefers live workspace selections from another client", () => {
       mode: "default",
       reasoningEffort: "",
       serviceTier: "",
+      approvalPolicy: "on-request",
+      sandboxPolicy: "workspaceWrite",
     },
   );
 
@@ -121,6 +127,8 @@ test("does not restore stale detail skills after a live workspace removal", () =
       mode: "default",
       reasoningEffort: "",
       serviceTier: "",
+      approvalPolicy: "on-request",
+      sandboxPolicy: "workspaceWrite",
     },
   );
 
@@ -147,6 +155,8 @@ test("preserves an explicit per-chat Auto selection", () => {
       mode: "plan",
       reasoningEffort: "high",
       serviceTier: "fast",
+      approvalPolicy: "on-request",
+      sandboxPolicy: "workspaceWrite",
     },
   );
 

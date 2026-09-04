@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 )
 
 func TestStartUpdaterSelectsReleaseScript(t *testing.T) {
@@ -24,7 +26,7 @@ func TestStartUpdaterSelectsReleaseScript(t *testing.T) {
 			}
 			markerPath := filepath.Join(installDir, "selected")
 			for _, script := range []string{"deploy-app", "update"} {
-				contents := "#!/usr/bin/env bash\nprintf '%s:%s' '" + script + "' \"$1\" > \"$MARKER_PATH\"\n"
+				contents := "#!/usr/bin/env bash\nprintf '%s:%s:%s' '" + script + "' \"$1\" \"$FUTRX_UPDATE_PROGRESS_PATH\" > \"$MARKER_PATH\"\n"
 				if err := os.WriteFile(filepath.Join(infraDir, script+".sh"), []byte(contents), 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -33,7 +35,15 @@ func TestStartUpdaterSelectsReleaseScript(t *testing.T) {
 
 			logPath := filepath.Join(installDir, "run.log")
 			donePath := filepath.Join(installDir, "done.json")
-			if _, err := (Client{}).StartUpdater(installDir, "0.4.2", test.kind, logPath, donePath); err != nil {
+			progressPath := filepath.Join(installDir, "progress.json")
+			if _, err := (Client{}).StartUpdater(serviceselfupdate.UpdaterLaunch{
+				InstallDir:   installDir,
+				Target:       "0.4.2",
+				Kind:         serviceselfupdate.UpdateKind(test.kind),
+				LogPath:      logPath,
+				DonePath:     donePath,
+				ProgressPath: progressPath,
+			}); err != nil {
 				t.Fatal(err)
 			}
 			waitForDone(t, donePath)
@@ -42,7 +52,7 @@ func TestStartUpdaterSelectsReleaseScript(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := string(selected), test.wantScript+":--ref=0.4.2"; got != want {
+			if got, want := string(selected), test.wantScript+":--ref=0.4.2:"+progressPath; got != want {
 				t.Fatalf("selected script = %q, want %q", got, want)
 			}
 		})
@@ -51,7 +61,14 @@ func TestStartUpdaterSelectsReleaseScript(t *testing.T) {
 
 func TestStartUpdaterRejectsUnknownKind(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := (Client{}).StartUpdater(dir, "0.4.2", "surprise", filepath.Join(dir, "log"), filepath.Join(dir, "done")); err == nil {
+	if _, err := (Client{}).StartUpdater(serviceselfupdate.UpdaterLaunch{
+		InstallDir:   dir,
+		Target:       "0.4.2",
+		Kind:         "surprise",
+		LogPath:      filepath.Join(dir, "log"),
+		DonePath:     filepath.Join(dir, "done"),
+		ProgressPath: filepath.Join(dir, "progress"),
+	}); err == nil {
 		t.Fatal("StartUpdater accepted an unknown update kind")
 	}
 }

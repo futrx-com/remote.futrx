@@ -1,6 +1,6 @@
 # Contributing to remote.futrx
 
-Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, Kimi Code, Antigravity, and future agent integrations.
+Thanks for your interest in improving remote.futrx — a self-hosted workspace for Claude Code, Codex, MiniMax, Kimi Code, Antigravity, and future agent integrations.
 
 Before you start, please read this document. It covers how the repository is laid out, how to build and test each part, and what we expect from commits and pull requests.
 

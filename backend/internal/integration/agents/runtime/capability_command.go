@@ -25,7 +25,7 @@ func NewCapabilityCommand(
 		cmd.Env = mergeEnvironment(os.Environ(), environment)
 		return cmd
 	}
-	lxcArgs := []string{"exec", "--cwd", "/workspace"}
+	lxcArgs := []string{"exec", "--cwd", agent.ProjectWorkspacePath}
 	for _, entry := range environment {
 		lxcArgs = append(lxcArgs, "--env", entry)
 	}

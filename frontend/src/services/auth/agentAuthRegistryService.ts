@@ -56,6 +56,14 @@ class AgentAuthRegistryService {
     const unavailable: Partial<Record<string, string>> = {};
     for (const entry of providers) {
       if (
+        entry.authentication.mode === "managed-api-key"
+        && !entry.status.authenticated
+      ) {
+        unavailable[entry.provider] =
+          `Sign in to ${entry.label} in Settings → Agents, then refresh models.`;
+        continue;
+      }
+      if (
         (entry.authentication.mode === "managed-code"
           || entry.authentication.mode === "managed-device")
         && !entry.status.authenticated

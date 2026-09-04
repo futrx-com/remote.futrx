@@ -16,6 +16,7 @@ import (
 	containerlisteners "github.com/futrx-com/remote.futrx.com/internal/integration/containers/listeners"
 	containernetwork "github.com/futrx-com/remote.futrx.com/internal/integration/containers/network"
 	containerresources "github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
+	containerruntimeassets "github.com/futrx-com/remote.futrx.com/internal/integration/containers/runtimeassets"
 	containerscheduletools "github.com/futrx-com/remote.futrx.com/internal/integration/containers/scheduletools"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
@@ -45,6 +46,7 @@ type ContainerStack struct {
 	Listeners     *containerlisteners.Scanner
 	Network       *containernetwork.Repairer
 	Workspace     *containerworkspace.Provisioner
+	RuntimeAssets *containerruntimeassets.Adapter
 	Images        *serviceimage.Builder
 	AppInstaller  *containerapplications.Installer
 	AppPorts      *containerapplications.HostPortAllocator
@@ -81,6 +83,7 @@ func (s ContainerStack) AgentDependencies() provisioning.ContainerDependencies {
 		CLI:           s.CLI,
 		Credentials:   s.Credentials,
 		Workspace:     s.Workspace,
+		RuntimeAssets: s.RuntimeAssets,
 		Browser:       s.Browser,
 		ScheduleTools: s.ScheduleTools,
 		Lifecycle:     s.Lifecycle,
@@ -115,6 +118,7 @@ func NewContainerStack(
 		publisher,
 		options.AgentInstructions,
 	)
+	runtimeAssets := containerruntimeassets.NewAdapter(runner, publisher)
 	images := serviceimage.NewBuilder(
 		containerbaseimage.NewClient(runner),
 		profiles,
@@ -170,6 +174,7 @@ func NewContainerStack(
 		Listeners:     listeners,
 		Network:       network,
 		Workspace:     workspace,
+		RuntimeAssets: runtimeAssets,
 		Images:        images,
 		AppInstaller:  appInstaller,
 		AppPorts:      appPorts,

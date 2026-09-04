@@ -35,7 +35,51 @@ test("encodes a representative authenticator enrollment URI", () => {
   );
 
   assert.equal(code.size, 41);
-  assert.deepEqual(matrixFingerprint(code), { darkModules: 816, hash: "2b3d6c2d" });
+  assert.deepEqual(matrixFingerprint(code), { darkModules: 866, hash: "ced53afd" });
+});
+
+// Both format-information copies must be one of the eight ISO/IEC 18004 medium-ECC
+// bit strings, otherwise scanners reject the symbol before reading any data.
+const MEDIUM_FORMAT_BITS = [
+  "101010000010010", "101000100100101", "101111001111100", "101101101001011",
+  "100010111111001", "100000011001110", "100111110010111", "100101010100000",
+];
+
+function readFormatBits(code: QRCodeMatrix, positions: [number, number][]): string {
+  return positions.map(([x, y]) => (code.isDark(x, y) ? "1" : "0")).reverse().join("");
+}
+
+test("writes spec-conformant format information in both copies", () => {
+  for (const value of ["HELLO WORLD", "REMOTE FUTRX 2FA", "012345678901234567890123456789"]) {
+    const code = qrGenerator.createMatrix(value);
+    const last = code.size - 1;
+    const primary: [number, number][] = [
+      [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [8, 7], [8, 8],
+      [7, 8], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8],
+    ];
+    const secondary: [number, number][] = [
+      [last, 8], [last - 1, 8], [last - 2, 8], [last - 3, 8], [last - 4, 8],
+      [last - 5, 8], [last - 6, 8], [last - 7, 8],
+      [8, code.size - 7], [8, code.size - 6], [8, code.size - 5],
+      [8, code.size - 4], [8, code.size - 3], [8, code.size - 2], [8, last],
+    ];
+
+    const bits = readFormatBits(code, primary);
+    assert.ok(MEDIUM_FORMAT_BITS.includes(bits), `${value} produced format bits ${bits}`);
+    assert.equal(readFormatBits(code, secondary), bits);
+    assert.equal(code.isDark(8, code.size - 8), true);
+  }
+});
+
+test("places version 7 alignment patterns at the coordinates required by the spec", () => {
+  const code = qrGenerator.createMatrix("x".repeat(107));
+
+  assert.equal(code.size, 45);
+  for (const [x, y] of [[22, 22], [22, 38], [38, 22], [6, 22], [22, 6]]) {
+    assert.equal(code.isDark(x, y), true);
+    assert.equal(code.isDark(x - 1, y), false);
+    assert.equal(code.isDark(x - 2, y), true);
+  }
 });
 
 test("selects numeric, alphanumeric, and UTF-8 byte modes", () => {

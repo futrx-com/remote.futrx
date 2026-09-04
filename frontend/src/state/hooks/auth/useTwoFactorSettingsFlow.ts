@@ -10,6 +10,8 @@ export function useTwoFactorSettingsFlow(actions: TwoFactorSettingsActions) {
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [disableCode, setDisableCode] = useState("");
   const [showDisable, setShowDisable] = useState(false);
+  const [regenerateCode, setRegenerateCode] = useState("");
+  const [showRegenerate, setShowRegenerate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +60,21 @@ export function useTwoFactorSettingsFlow(actions: TwoFactorSettingsActions) {
     }
   }
 
+  async function regenerateRecoveryCodes() {
+    setError(null);
+    setBusy(true);
+    try {
+      const codes = await actions.regenerateRecoveryCodes(regenerateCode);
+      setRecoveryCodes(codes);
+      setShowRegenerate(false);
+      setRegenerateCode("");
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return {
     busy,
     cancelDisable: () => setShowDisable(false),
@@ -75,7 +92,19 @@ export function useTwoFactorSettingsFlow(actions: TwoFactorSettingsActions) {
     setConfirmCode,
     setDisableCode,
     showDisable,
-    showDisableForm: () => setShowDisable(true),
+    showDisableForm: () => {
+      setShowDisable(true);
+      setShowRegenerate(false);
+    },
     startEnrollment,
+    showRegenerate,
+    showRegenerateForm: () => {
+      setShowRegenerate(true);
+      setShowDisable(false);
+    },
+    cancelRegenerate: () => setShowRegenerate(false),
+    regenerateCode,
+    setRegenerateCode,
+    regenerateRecoveryCodes,
   };
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseModelCatalogResultReturnsEverySelection(t *testing.T) {
-	result := "Current model: Opus 4.8 (1M context) (default)\n" +
+	result := "Current model: `Opus 4.8 (1M context) (default)`\n" +
 		"Usage: /model <name>. Available: sonnet, opus, haiku, fable, best, " +
 		"sonnet[1m], opus[1m], fable[1m], opusplan, default, or a full model ID."
 
@@ -25,6 +25,37 @@ func TestParseModelCatalogResultReturnsEverySelection(t *testing.T) {
 	}
 	if !slices.Equal(selections, want) {
 		t.Fatalf("selections = %#v, want %#v", selections, want)
+	}
+}
+
+func TestCurrentModelLabelStripsInlineCodeFormatting(t *testing.T) {
+	tests := []struct {
+		name   string
+		result string
+		want   string
+	}{
+		{
+			name:   "default marker inside backticks",
+			result: "Current model: `Opus 5 (1M context) (default)`",
+			want:   "Opus 5 (1M context)",
+		},
+		{
+			name:   "explicit selection",
+			result: "Current model: `Sonnet 5`",
+			want:   "Sonnet 5",
+		},
+		{
+			name:   "default marker outside backticks",
+			result: "Current model: `Haiku 4.5` (default)",
+			want:   "Haiku 4.5",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := currentModelLabel(test.result); got != test.want {
+				t.Fatalf("currentModelLabel() = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

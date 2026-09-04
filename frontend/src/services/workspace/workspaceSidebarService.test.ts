@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatMeta } from "../../models/chat.ts";
 import type { ProjectMeta } from "../../models/project.ts";
+import { workspaceDataProjector } from "./workspaceDataProjector.ts";
 import { workspaceSidebarService } from "./workspaceSidebarService.ts";
 
 const projects: ProjectMeta[] = [
@@ -50,6 +51,35 @@ test("a deleted active chat hands over to the next chat, not the empty state", (
   assert.equal(workspaceSidebarService.initialChatId(true, null, remaining), "old-chat");
   // Deleting the last chat is the one case that legitimately clears selection.
   assert.equal(workspaceSidebarService.replacementChatId([]), null);
+});
+
+test("a chat created from this client opens instead of bouncing back", () => {
+  // The create response lands before the chat.upsert that carries the new chat
+  // into the list, so the selection is made against a list that predates it.
+  const created: ChatMeta = {
+    id: "created",
+    title: "New chat",
+    projectId: "newer",
+    createdAt: 4,
+    lastMessageAt: 4,
+  };
+
+  // Selecting it against the stale list reads as "the active chat is gone", and
+  // the delete handover then drags the user back to the chat they came from.
+  const listed = workspaceDataProjector.replaceChats(chats, []);
+  assert.equal(workspaceSidebarService.isActiveChatMissing(listed, created.id), true);
+  assert.equal(workspaceSidebarService.replacementChatId(listed), "loose");
+
+  // Seeding the created chat locally closes that window: it is already in the
+  // list by the time the handover check runs, so the selection stands.
+  const seeded = workspaceDataProjector.upsertChat(listed, created);
+  assert.equal(workspaceSidebarService.isActiveChatMissing(seeded, created.id), false);
+  assert.equal(workspaceSidebarService.activeChat(seeded, created.id)?.id, created.id);
+  // Newest first, so the new chat is also the one the sidebar shows on top.
+  assert.equal(seeded[0].id, created.id);
+
+  // The chat.upsert that follows is a no-op rather than a second insertion.
+  assert.equal(workspaceDataProjector.upsertChat(seeded, created), seeded);
 });
 
 test("project drag-reorder respects which side of the target it was dropped on", () => {

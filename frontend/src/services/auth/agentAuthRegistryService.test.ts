@@ -11,7 +11,7 @@ function provider(
 ): AgentAuthProvider {
   return {
     provider: id,
-    label: id === "future-agent" ? "Future Agent" : id,
+    label: id === "future-agent" ? "Future Agent" : id === "minimax" ? "MiniMax" : id,
     executionScopes: ["host"],
     authentication: { mode, satisfiesAccessGate },
     status: { authenticated, login: { active: false } },
@@ -53,4 +53,12 @@ test("auth display state follows the declared flow before generic status", () =>
   assert.equal(agentAuthRegistryService.statusKind(provider("future-agent", "managed-device", true)), "authenticated");
   assert.equal(agentAuthRegistryService.statusKind(provider("external-agent", "external", false)), "external");
   assert.equal(agentAuthRegistryService.statusKind(provider("future-agent", "managed-code", false)), "unconfigured");
+  assert.equal(agentAuthRegistryService.statusKind(provider("minimax", "managed-api-key", false)), "unconfigured");
+  assert.deepEqual(
+    agentAuthRegistryService.unavailableReasons(
+      [provider("minimax", "managed-api-key", false)],
+      true,
+    ),
+    { minimax: "Sign in to MiniMax in Settings → Agents, then refresh models." },
+  );
 });

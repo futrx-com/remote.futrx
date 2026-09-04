@@ -9,6 +9,7 @@ import { ToolShell } from "../ui/chat/tool-calls/ToolShell";
 import { CodeBlock } from "../ui/chat/tool-calls/CodeBlock";
 import { ModelPicker } from "../ui/chat/header/ModelPicker";
 import { ErrorMessage } from "../ui/chat/messages/ErrorMessage";
+import { ThinkingBlock } from "../ui/chat/messages/ThinkingBlock";
 import { UsagePill } from "../ui/chat/header/UsagePill";
 import { TerminalIcon } from "../ui/primitives/icons";
 import "../index.css";
@@ -94,6 +95,17 @@ function Parts() {
             badge="exit 1"
             status="done"
             isError
+          />
+        </Section>
+
+        <Section title="Reasoning">
+          <ThinkingBlock
+            text="I should inspect the existing flow before choosing the smallest safe change."
+            active={false}
+          />
+          <ThinkingBlock
+            text="The provider is still streaming this reasoning segment into the same disclosure."
+            active
           />
         </Section>
       </div>

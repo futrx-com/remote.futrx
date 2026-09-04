@@ -16,11 +16,11 @@ import (
 // claimAndEnroll drives a fresh mux through claim + full 2FA enrollment and
 // returns the jar holding the authenticated session, the TOTP secret, and the
 // one-time recovery codes.
-func claimAndEnroll(t *testing.T, mux *http.ServeMux, email, password string) (*cookieJar, []byte, []string) {
+func claimAndEnroll(t *testing.T, mux *http.ServeMux, auth *serviceauth.Service, email, password string) (*cookieJar, []byte, []string) {
 	t.Helper()
 	jar := newCookieJar(mux)
 	if rec := jar.do(t, http.MethodPost, "/auth/local/claim", map[string]string{
-		"email": email, "password": password,
+		"email": email, "password": password, "setupToken": setupTokenFor(t, auth),
 	}); rec.Code != http.StatusCreated {
 		t.Fatalf("claim status = %d, body = %s", rec.Code, rec.Body.String())
 	}
@@ -48,10 +48,10 @@ func claimAndEnroll(t *testing.T, mux *http.ServeMux, email, password string) (*
 // guard for the 2FA bypass: a caller who knows only the password receives a
 // pending token, and replaying it as remote_session must not authenticate.
 func TestPendingTokenIsNotAcceptedAsSessionCookie(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
-	claimAndEnroll(t, mux, email, password)
+	claimAndEnroll(t, mux, auth, email, password)
 
 	attacker := newCookieJar(mux)
 	loginRec := attacker.do(t, http.MethodPost, "/auth/local/login", map[string]string{
@@ -79,9 +79,9 @@ func TestPendingTokenIsNotAcceptedAsSessionCookie(t *testing.T) {
 // TestSecurityEndpointsRejectAnonymousCallers keeps every /api/me/security
 // route behind a session.
 func TestSecurityEndpointsRejectAnonymousCallers(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
-	claimAndEnroll(t, mux, email, "correct horse battery staple")
+	claimAndEnroll(t, mux, auth, email, "correct horse battery staple")
 
 	for _, route := range []struct {
 		method string
@@ -107,8 +107,8 @@ func TestSecurityEndpointsRejectAnonymousCallers(t *testing.T) {
 // TestSecurityEndpointsRejectForgedSessionCookie proves the routes rely on a
 // verified signature, not merely on a cookie being present.
 func TestSecurityEndpointsRejectForgedSessionCookie(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
-	claimAndEnroll(t, mux, "admin@example.com", "correct horse battery staple")
+	mux, auth := newTwoFactorTestMux(t)
+	claimAndEnroll(t, mux, auth, "admin@example.com", "correct horse battery staple")
 
 	forged := newCookieJar(mux)
 	forged.cookies = map[string]*http.Cookie{
@@ -122,8 +122,8 @@ func TestSecurityEndpointsRejectForgedSessionCookie(t *testing.T) {
 // TestTwoFactorVerifyWithoutPendingChallengeIsRejected stops the challenge
 // endpoint from being driven without a first factor.
 func TestTwoFactorVerifyWithoutPendingChallengeIsRejected(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
-	_, secret, _ := claimAndEnroll(t, mux, "admin@example.com", "correct horse battery staple")
+	mux, auth := newTwoFactorTestMux(t)
+	_, secret, _ := claimAndEnroll(t, mux, auth, "admin@example.com", "correct horse battery staple")
 
 	anon := newCookieJar(mux)
 	rec := anon.do(t, http.MethodPost, "/auth/2fa/verify", map[string]string{
@@ -139,10 +139,10 @@ func TestTwoFactorVerifyWithoutPendingChallengeIsRejected(t *testing.T) {
 
 // TestTwoFactorCancelClearsPendingChallenge covers the documented cancel flow.
 func TestTwoFactorCancelClearsPendingChallenge(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
-	_, secret, _ := claimAndEnroll(t, mux, email, password)
+	_, secret, _ := claimAndEnroll(t, mux, auth, email, password)
 
 	client := newCookieJar(mux)
 	client.do(t, http.MethodPost, "/auth/local/login", map[string]string{"email": email, "password": password})
@@ -165,10 +165,10 @@ func TestTwoFactorCancelClearsPendingChallenge(t *testing.T) {
 // TestTwoFactorVerifyIsRateLimited pins the brute-force guard on a 6-digit
 // secret-independent code space.
 func TestTwoFactorVerifyIsRateLimited(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
-	claimAndEnroll(t, mux, email, password)
+	claimAndEnroll(t, mux, auth, email, password)
 
 	client := newCookieJar(mux)
 	client.do(t, http.MethodPost, "/auth/local/login", map[string]string{"email": email, "password": password})
@@ -192,10 +192,10 @@ func TestTwoFactorVerifyIsRateLimited(t *testing.T) {
 // TestPasswordAndTwoFactorFailuresShareRateLimit keeps both stages of local
 // authentication inside the documented five-failure per-IP bucket.
 func TestPasswordAndTwoFactorFailuresShareRateLimit(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
-	claimAndEnroll(t, mux, email, password)
+	claimAndEnroll(t, mux, auth, email, password)
 
 	client := newCookieJar(mux)
 	if rec := client.do(t, http.MethodPost, "/auth/local/login", map[string]string{
@@ -229,11 +229,11 @@ func TestPasswordAndTwoFactorFailuresShareRateLimit(t *testing.T) {
 // for one account cannot enroll a secret onto the calling account (or the
 // token's account) - and that nothing is persisted when it is rejected.
 func TestConfirmEnrollmentRejectsAnotherAccountsToken(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	jar := newCookieJar(mux)
 	const email = "admin@example.com"
 	if rec := jar.do(t, http.MethodPost, "/auth/local/claim", map[string]string{
-		"email": email, "password": "correct horse battery staple",
+		"email": email, "password": "correct horse battery staple", "setupToken": setupTokenFor(t, auth),
 	}); rec.Code != http.StatusCreated {
 		t.Fatalf("claim status = %d", rec.Code)
 	}
@@ -255,10 +255,10 @@ func TestConfirmEnrollmentRejectsAnotherAccountsToken(t *testing.T) {
 
 // TestDisableThenLoginNeedsNoSecondFactor is the full opt-out round trip.
 func TestDisableThenLoginNeedsNoSecondFactor(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
 	const password = "correct horse battery staple"
-	jar, secret, _ := claimAndEnroll(t, mux, email, password)
+	jar, secret, _ := claimAndEnroll(t, mux, auth, email, password)
 
 	if rec := jar.do(t, http.MethodPost, "/api/me/security/2fa/disable", map[string]string{
 		"code": serviceauth.TOTPCode(secret, time.Now()),
@@ -282,9 +282,9 @@ func TestDisableThenLoginNeedsNoSecondFactor(t *testing.T) {
 // TestWrongPasswordNeverStartsATwoFactorChallenge keeps the first factor
 // authoritative.
 func TestWrongPasswordNeverStartsATwoFactorChallenge(t *testing.T) {
-	mux := newTwoFactorTestMux(t)
+	mux, auth := newTwoFactorTestMux(t)
 	const email = "admin@example.com"
-	claimAndEnroll(t, mux, email, "correct horse battery staple")
+	claimAndEnroll(t, mux, auth, email, "correct horse battery staple")
 
 	client := newCookieJar(mux)
 	rec := client.do(t, http.MethodPost, "/auth/local/login", map[string]string{

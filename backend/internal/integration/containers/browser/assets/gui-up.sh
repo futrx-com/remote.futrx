@@ -28,8 +28,12 @@ export DISPLAY=":$DISPLAY_NUM"
 # chrome "network," rule (baked by AgentBrowserInstallScript since 2026-07-08;
 # Ubuntu's stock chrome profile otherwise denies all its sockets inside
 # nested LXD AppArmor namespaces — CreatePlatformSocket EPERM).
+# Playwright's per-arch Chromium layout: the binary lives under
+# chrome-linux64/ on x86_64 hosts and chrome-linux/ on aarch64. Probe both so
+# aarch64 installs (which succeed via Playwright's arm64 build) are found.
 CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome; do
+for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
+                   /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
   [ -x "$browser_bin" ] || continue
   if "$browser_bin" --version 2>/dev/null | grep -Fq "$EXPECTED_CHROME_VERSION"; then
     CHROME="$browser_bin"

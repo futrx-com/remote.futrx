@@ -1,7 +1,7 @@
 {
   "name": "remote.futrx",
   "short_name": "remote",
-  "description": "Self-hosted workspace for Claude Code, Codex, Kimi Code, and Antigravity agents.",
+  "description": "Self-hosted workspace for Claude Code, Codex, MiniMax, Kimi Code, and Antigravity agents.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

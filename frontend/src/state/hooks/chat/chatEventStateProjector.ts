@@ -52,9 +52,13 @@ class ChatEventStateProjector {
   }
 
   statusAfter(event: ChatEvent, current: ChatStatus): ChatStatus {
-    if (event.type === "complete" || event.type === "error") {
+    const terminalTurnStatus = event.type === "turn_status"
+      && ["completed", "failed", "interrupted"].includes(event.status || "");
+    if (event.type === "complete" || event.type === "error" || terminalTurnStatus) {
       // The backend clears the run lock in a later sync event. Keep streaming
-      // until sync running=false so queued prompts are not sent into a locked run.
+      // until sync running=false so queued prompts are not sent into a locked
+      // run. If that sync arrived first, a terminal provider event must not
+      // reactivate the already-finished run.
       return current === "streaming" ? "streaming" : "ready";
     }
     return "streaming";
