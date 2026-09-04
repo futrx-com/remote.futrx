@@ -161,6 +161,13 @@ export interface CreatedProjectShare extends ProjectShare {
   url: string;
 }
 
+export interface SharePortRow {
+  port: number;
+  process?: string;
+  /** Number of cached links currently pointing at this port. */
+  shareCount: number;
+}
+
 export interface ContainerApp {
   port: number;
   address?: string;

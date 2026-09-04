@@ -7,7 +7,7 @@ import type {
   ProjectMeta,
   SharesRecord,
 } from "../../../models/project";
-import { addShare, removeShare } from "../../projects/projectShareState";
+import { projectShareService } from "../../../services/projects/projectShareService";
 
 /**
  * Public preview links for one project, alongside the container's listening
@@ -49,7 +49,7 @@ export function useProjectShares(project: ProjectMeta | null) {
         ...current,
         loading: false,
         // The url is the one-time secret; it never enters the stored list.
-        data: addShare(current.data ?? [], metadata),
+        data: projectShareService.add(current.data ?? [], metadata),
       }));
       return created;
     },
@@ -63,7 +63,7 @@ export function useProjectShares(project: ProjectMeta | null) {
       setRecord((current) => ({
         ...current,
         loading: false,
-        data: removeShare(current.data ?? [], shareId),
+        data: projectShareService.remove(current.data ?? [], shareId),
       }));
     },
     [project]

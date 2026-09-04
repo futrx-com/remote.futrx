@@ -1,6 +1,6 @@
 import type { ComponentChildren, ComponentType } from "preact";
 import { useCallback, useState } from "preact/hooks";
-import { describeShareCount, liveShares } from "../../state/projects/projectShareState";
+import { projectShareService } from "../../services/projects/projectShareService";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
 import {
@@ -421,7 +421,9 @@ function accessDescription(record: AccessRecord): string {
 function sharesDescription(record: SharesRecord): string {
   if (record.loading && !record.data) return "Loading public preview links…";
   if (record.error) return "Public preview links could not be loaded.";
-  return describeShareCount(liveShares(record.data ?? [], Date.now()).length);
+  return projectShareService.describeCount(
+    projectShareService.live(record.data ?? [], Date.now()).length,
+  );
 }
 
 function ProjectHeader({
