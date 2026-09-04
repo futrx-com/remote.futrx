@@ -22,6 +22,7 @@ import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { SecuritySettings } from "./SecuritySettings";
+import { NotificationsSettings } from "./NotificationsSettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
@@ -79,6 +80,12 @@ const tabs: Array<{
     label: "Security",
     description: "Manage two-factor authentication, sessions, and sign-in history.",
     Icon: ShieldCheck,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Get pinged when an agent finishes, fails, or needs you.",
+    Icon: Bell,
   },
   {
     id: "updates",
@@ -274,7 +281,14 @@ export function SettingsPage({
             )}
 
             {activeTab === "security" && <SecuritySettings controller={security} />}
-
+            {activeTab === "notifications" &&
+              (isAdmin ? (
+                <NotificationsSettings />
+              ) : (
+                <SettingsNotice>
+                  Notifications are managed by server administrators.
+                </SettingsNotice>
+              ))}
             {activeTab === "updates" &&
               (isAdmin ? (
                 <UpdatesSettings

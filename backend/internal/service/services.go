@@ -14,6 +14,7 @@ import (
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicenotify "github.com/futrx-com/remote.futrx.com/internal/service/notify"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -66,6 +67,7 @@ type Dependencies struct {
 	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
 	Usage             serviceusage.Repository
+	Notifications     servicenotify.Store
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -121,6 +123,7 @@ type Services struct {
 	Workspace         *workspacehub.Hub
 	Auth              *serviceauth.Service
 	Users             *serviceuser.Service
+	Notifications     *servicenotify.Service
 	UserSettings      *serviceusersettings.Service
 	Skills            *serviceskills.Catalog
 	Tmux              *servicetmux.Service
@@ -229,6 +232,13 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		usageService = serviceusage.New(deps.Usage, projectService, chats)
 		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
 	}
+	notifications := servicenotify.New(ctx, deps.Notifications, deps.AuthBaseURL)
+	runNotifications := &notifyObserver{
+		notifications: notifications,
+		chats:         chats,
+		projects:      projectService,
+	}
+	promptOptions = append(promptOptions, prompt.WithRunObserver(runNotifications))
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
@@ -246,6 +256,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		serviceschedule.WithMinInterval(deps.ScheduleLimits.MinInterval),
 		serviceschedule.WithMaxConcurrentRuns(deps.ScheduleLimits.MaxConcurrentRuns),
 		serviceschedule.WithMaxTasksPerProject(deps.ScheduleLimits.MaxTasksPerProject),
+		serviceschedule.WithRunObserver(runNotifications),
 	)
 	if err := scheduleService.Start(ctx); err != nil {
 		return Services{}, fmt.Errorf("start scheduled tasks: %w", err)
@@ -293,6 +304,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Workspace:         workspace,
 		Auth:              authService,
 		Users:             userService,
+		Notifications:     notifications,
 		UserSettings:      userSettingsService,
 		Skills:            skillCatalog,
 		Tmux:              tmuxService,

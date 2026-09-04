@@ -117,6 +117,10 @@ export const API_ROUTES = {
     check: "/api/admin/update/check",
     apply: "/api/admin/update/apply",
   },
+  notifications: {
+    settings: "/api/admin/notifications",
+    test: "/api/admin/notifications/test",
+  },
   skills: (query: string) => `/api/skills?${query}`,
   agentCapabilities: (query: string) =>
     `/api/agent-capabilities${query ? `?${query}` : ""}`,

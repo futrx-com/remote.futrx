@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer } from "preact/hooks";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "preact/hooks";
 import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
 import { chatApi } from "../../api/chatApi";
@@ -14,6 +14,7 @@ import { workspaceUiState } from "./workspaceUiState";
 import { workspaceSidebarService } from "../../services/workspace/workspaceSidebarService.ts";
 import { agentCapabilityCatalogStore } from "../stores/agents/agentCapabilityCatalogStore";
 import { takePushNotificationChatId } from "./pushNotificationNavigation";
+import { chatDeepLinkState } from "../../services/workspace/chatDeepLink";
 import { useAuthContext } from "./AuthContext";
 
 interface WorkspaceContextValue {
@@ -136,8 +137,26 @@ export function WorkspaceProvider({
     openChat: openPushChat,
   });
 
+  // A notification links to `/?chat=<id>`. Consume that parameter once the chat
+  // list has loaded, then fall back to the usual "most recent chat" behaviour.
+  const deepLinkChatId = useRef<string | null>(chatDeepLinkState.parse(location.search));
+
   useEffect(() => {
     const chatId = workspaceSidebarService.initialChatId(enabled, ui.activeChatId, data.chats);
+    if (!enabled || data.chats.length === 0) return;
+    const requested = deepLinkChatId.current;
+    deepLinkChatId.current = null;
+    if (requested) {
+      history.replaceState(
+        null,
+        "",
+        chatDeepLinkState.withoutChatParam(location.pathname, location.search, location.hash)
+      );
+      if (data.chats.some((chat) => chat.id === requested)) {
+        dispatch({ type: "select-chat", chatId: requested });
+        return;
+      }
+    }
     if (chatId) dispatch({ type: "select-chat", chatId });
   }, [data.chats, enabled, ui.activeChatId]);
 

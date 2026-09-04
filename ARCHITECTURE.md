@@ -230,6 +230,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
 | Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
 | Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
+| Notification settings | `DATA_DIR/notifications.json` | JSON | Telegram bot token + webhook secret, **plaintext**, mode 0600 |
 | Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
 | Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |

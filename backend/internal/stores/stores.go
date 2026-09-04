@@ -7,6 +7,7 @@ import (
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicenotify "github.com/futrx-com/remote.futrx.com/internal/service/notify"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
@@ -15,6 +16,7 @@ import (
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filenotify"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
@@ -60,6 +62,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	Notifications   servicenotify.Store
 }
 
 func New(dataDir string) (Stores, error) {
@@ -112,6 +115,10 @@ func New(dataDir string) (Stores, error) {
 	if err != nil {
 		return Stores{}, fmt.Errorf("init usage store: %w", err)
 	}
+	notifications, err := filenotify.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init notification settings store: %w", err)
+	}
 
 	push, err := filepush.New(dataDir)
 	if err != nil {
@@ -133,5 +140,6 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		Notifications:   notifications,
 	}, nil
 }
