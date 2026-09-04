@@ -23,6 +23,29 @@ const (
 // Valid reports whether s is a known scope.
 func (s Scope) Valid() bool { return s == ScopeGlobal || s == ScopeProject }
 
+// Kind separates images by what installing them actually does. It decides
+// whether an install touches a container at all, so it is the difference
+// between "provision MySQL" and "add a button to the UI".
+type Kind string
+
+const (
+	// KindService installs software that listens on a port and is managed by
+	// systemd. A global-scope install gets its own dedicated LXD container; a
+	// project-scope one installs into that project's container. This is the
+	// default when an image does not say.
+	KindService Kind = "service"
+	// KindUI installs nothing in any container: the image is a browser-side
+	// extension and its whole payload is its ui/ directory. No container, no
+	// port, no proxy device, no install script.
+	KindUI Kind = "ui"
+)
+
+// Valid reports whether k is a known kind.
+func (k Kind) Valid() bool { return k == KindService || k == KindUI }
+
+// NeedsContainer reports whether installing this kind has to reach a container.
+func (k Kind) NeedsContainer() bool { return k != KindUI }
+
 // Protocol is the transport a proxy device forwards.
 type Protocol string
 
@@ -77,17 +100,40 @@ type Connection struct {
 	DatabaseEnv string `json:"databaseEnv,omitempty"`
 }
 
+// ImageUI describes the browser-side extension an image ships in its ui/
+// directory. It is what lets an image contribute to the Remote UI itself —
+// a button, a panel, a popup — instead of only installing software in a
+// container. Every path is relative to images/<id>/ui/ and is validated at
+// catalog load time, so a broken reference fails loudly rather than 404ing
+// in the browser.
+type ImageUI struct {
+	// Entry is the ES module whose default export is called with the
+	// extension API when the SPA loads the image's UI.
+	Entry string `json:"entry,omitempty"`
+	// Styles are stylesheets injected into the document, in order.
+	Styles []string `json:"styles,omitempty"`
+	// Views are HTML fragments the entry module fetches by name, keyed by the
+	// name it asks for (e.g. "popup" -> "views/popup.html").
+	Views map[string]string `json:"views,omitempty"`
+}
+
 // Image is one catalog entry loaded from images/<id>/image.json.
 type Image struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	Category    string   `json:"category,omitempty"`
-	Version     string   `json:"version,omitempty"`
-	Icon        string   `json:"icon,omitempty"`
-	Scopes      []Scope  `json:"scopes"`
-	Port        Port     `json:"port"`
-	Env         []EnvVar `json:"env,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Version     string `json:"version,omitempty"`
+	// Icon is either a built-in icon key the frontend knows ("database",
+	// "cache", …) or a path to an image inside the image's own ui/ directory
+	// ("ui/assets/logo.svg"), which lets an image ship its own mark.
+	Icon string `json:"icon,omitempty"`
+	// Type decides whether installing this image provisions a container.
+	// Empty means KindService.
+	Type   Kind     `json:"type,omitempty"`
+	Scopes []Scope  `json:"scopes"`
+	Port   Port     `json:"port"`
+	Env    []EnvVar `json:"env,omitempty"`
 	// Service is the systemd unit name inside the container used for
 	// start/stop/status.
 	Service string `json:"service,omitempty"`
@@ -99,6 +145,9 @@ type Image struct {
 	// Base is the LXD image alias used when this app runs as a dedicated
 	// (global) container. Empty defaults to the platform default.
 	Base string `json:"base,omitempty"`
+	// UI is set when the image ships a ui/ directory. Nil means the image has
+	// no browser-side extension and the SPA loads nothing for it.
+	UI *ImageUI `json:"ui,omitempty"`
 }
 
 // SupportsScope reports whether the image may be installed at the given scope.

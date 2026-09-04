@@ -17,14 +17,19 @@ import (
 // infrastructure. Per-project routes are delegated here by ProjectHandler,
 // which has already enforced project membership.
 type ApplicationsHandler struct {
-	apps *serviceapplications.Service
-	auth *serviceauth.Service
+	apps     *serviceapplications.Service
+	auth     *serviceauth.Service
+	projects visibleProjects
 }
 
 // NewApplicationsHandler builds the handler. apps may be nil when the server
 // has no container runtime; routes then report the feature unavailable.
-func NewApplicationsHandler(apps *serviceapplications.Service, auth *serviceauth.Service) *ApplicationsHandler {
-	return &ApplicationsHandler{apps: apps, auth: auth}
+func NewApplicationsHandler(
+	apps *serviceapplications.Service,
+	auth *serviceauth.Service,
+	projects visibleProjects,
+) *ApplicationsHandler {
+	return &ApplicationsHandler{apps: apps, auth: auth, projects: projects}
 }
 
 func (h *ApplicationsHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -72,6 +77,21 @@ func (h *ApplicationsHandler) handleCollection(w http.ResponseWriter, r *http.Re
 
 func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/applications/")
+
+	// /api/applications/ui lists the extensions this caller should load. It is
+	// readable by any registered user because every user renders the UI of the
+	// apps installed around them.
+	if rest == "ui" {
+		h.serveUIImages(w, r)
+		return
+	}
+
+	// /api/applications/catalog/<imageID>/ui/<path> serves the browser-side
+	// extension an image ships. Same audience as the catalog it belongs to.
+	if strings.HasPrefix(rest, "catalog/") {
+		h.serveUIAsset(w, r, strings.TrimPrefix(rest, "catalog/"))
+		return
+	}
 
 	// /api/applications/catalog is readable by any registered user, since the
 	// project UI uses the same catalog.

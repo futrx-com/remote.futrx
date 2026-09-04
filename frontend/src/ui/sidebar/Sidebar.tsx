@@ -7,7 +7,9 @@ import { SidebarEmptyState, SidebarNoMatches } from "./SidebarEmptyState";
 import { SidebarSkeleton } from "./SidebarSkeleton";
 import { WorkspaceSearch } from "./WorkspaceSearch";
 import { AccountFooter } from "./AccountFooter";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { Skeleton } from "../primitives/Skeleton";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import { ChevronLeft, ChevronRight, Plus, Settings, X } from "../primitives/icons";
 
 // Sidebar chrome is deliberately unpainted until you touch it: the list is the
@@ -102,6 +104,9 @@ export function Sidebar({
               <span class="truncate text-[13px] font-semibold tracking-[-0.01em] text-ink-50">
                 Remote workspace
               </span>
+            </div>
+            <div class={`flex items-center gap-1 ${expandedOnly}`}>
+              <ExtensionSlot name={EXTENSION_SLOTS.sidebarHeaderActions} />
             </div>
             <button
               type="button"

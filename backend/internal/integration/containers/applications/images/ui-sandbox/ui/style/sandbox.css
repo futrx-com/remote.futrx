@@ -1,0 +1,83 @@
+/*
+ * Styles for the UI Sandbox fixture.
+ *
+ * Purple where UI Playground is neutral, so that with both installed it is
+ * obvious at a glance which extension drew what. Same rule as any extension:
+ * no Tailwind here, style with the platform's CSS custom properties.
+ */
+
+.sb-panel {
+  border: 1px solid rgb(var(--accent-purple) / 0.35);
+  border-radius: 10px;
+  background: rgb(var(--bg-surface-rgb));
+  padding: 12px 14px;
+}
+
+.sb-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sb-panel__logo {
+  color: rgb(var(--accent-purple));
+}
+
+.sb-panel__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(var(--fg-bright));
+}
+
+.sb-scope {
+  margin-left: auto;
+  border-radius: 999px;
+  background: rgb(var(--accent-purple) / 0.16);
+  padding: 2px 8px;
+  font-size: 10.5px;
+  color: rgb(var(--accent-purple));
+}
+
+.sb-lead {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: rgb(var(--fg-muted));
+}
+
+.sb-fields {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.sb-fields > div {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.sb-fields dt {
+  font-size: 11.5px;
+  color: rgb(var(--fg-subtle));
+}
+
+.sb-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12.5px;
+  color: rgb(var(--fg));
+}
+
+.sb-code {
+  margin: 12px 0 0;
+  overflow-x: auto;
+  border-radius: 6px;
+  background: rgb(var(--bg-inset-rgb));
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgb(var(--fg-dim));
+}

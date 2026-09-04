@@ -97,6 +97,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	applicationsHandler := httphandlers.NewApplicationsHandler(
 		deps.Services.Applications,
 		deps.Services.Auth,
+		deps.Services.Projects,
 	)
 
 	return httptransport.NewHandler(httptransport.Handlers{

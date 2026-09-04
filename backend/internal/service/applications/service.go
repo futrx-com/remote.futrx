@@ -20,6 +20,7 @@ var (
 	ErrNotFound         = errors.New("applications: instance not found")
 	ErrPortRange        = errors.New("applications: external port out of range")
 	ErrAlreadyInstalled = errors.New("applications: this image is already installed in this scope")
+	ErrNotSupported     = errors.New("applications: not supported for this image type")
 )
 
 // Clock returns the current unix time; injectable for tests.
@@ -138,21 +139,14 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 
 	id := newInstanceID()
 	inst := Instance{
-		ID:           id,
-		ImageID:      img.ID,
-		Name:         displayName(req.Name, img.Name),
-		Scope:        req.Scope,
-		DeviceName:   "app-" + id,
-		InternalPort: img.Port.Internal,
-		Protocol:     protoOr(img.Port.Protocol, ProtocolTCP),
-		BindAddress:  bindOr(req.BindAddress, img.Port.BindAddress),
-		Status:       StatusInstalling,
-		CreatedAt:    s.now(),
-		UpdatedAt:    s.now(),
-	}
-
-	if err := s.resolveContainerTarget(ctx, req, &inst); err != nil {
-		return View{}, err
+		ID:        id,
+		ImageID:   img.ID,
+		Name:      displayName(req.Name, img.Name),
+		Scope:     req.Scope,
+		ProjectID: req.ProjectID,
+		Status:    StatusInstalling,
+		CreatedAt: s.now(),
+		UpdatedAt: s.now(),
 	}
 
 	// Resolve env inputs (apply defaults, generate secrets, enforce required).
@@ -162,6 +156,26 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 	}
 	inst.Env = env
 
+	// A UI image has no container side at all: installing it only records that
+	// the user turned it on, which is what makes its ui/ load. Everything below
+	// this branch — container, port, proxy device, install script — exists only
+	// for images that actually run something.
+	if !img.Type.NeedsContainer() {
+		inst.Status = StatusRunning
+		if err := s.store.Put(ctx, inst); err != nil {
+			return View{}, err
+		}
+		return s.view(inst), nil
+	}
+
+	inst.DeviceName = "app-" + id
+	inst.InternalPort = img.Port.Internal
+	inst.Protocol = protoOr(img.Port.Protocol, ProtocolTCP)
+	inst.BindAddress = bindOr(req.BindAddress, img.Port.BindAddress)
+
+	if err := s.resolveContainerTarget(ctx, req, &inst); err != nil {
+		return View{}, err
+	}
 	if err := s.allocateHostPort(ctx, req, img, &inst); err != nil {
 		return View{}, err
 	}
@@ -199,7 +213,6 @@ func (s *Service) resolveContainerTarget(ctx context.Context, req InstallRequest
 		if err := s.projects.EnsureRunning(ctx, req.ProjectID); err != nil {
 			return err
 		}
-		inst.ProjectID = req.ProjectID
 		inst.ContainerName = name
 	case ScopeGlobal:
 		inst.ContainerName = appContainerName(inst.ID)
@@ -263,6 +276,9 @@ func (s *Service) SetPort(ctx context.Context, id string, port int) (View, error
 	if err != nil {
 		return View{}, err
 	}
+	if !img.Type.NeedsContainer() {
+		return View{}, fmt.Errorf("%w: %s has no port", ErrNotSupported, img.ID)
+	}
 	if port != inst.ExternalPort {
 		taken, err := s.reservedPorts(ctx)
 		if err != nil {
@@ -294,8 +310,10 @@ func (s *Service) Uninstall(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.installer.Uninstall(ctx, InstallSpec{Image: img, Instance: inst}); err != nil {
-		return err
+	if img.Type.NeedsContainer() {
+		if err := s.installer.Uninstall(ctx, InstallSpec{Image: img, Instance: inst}); err != nil {
+			return err
+		}
 	}
 	return s.store.Delete(ctx, id)
 }
@@ -308,6 +326,14 @@ func (s *Service) transition(ctx context.Context, id string, action func(Install
 	inst, img, err := s.load(ctx, id)
 	if err != nil {
 		return View{}, err
+	}
+	// Start/stop on a UI image is purely a record: "stopped" means the SPA
+	// stops loading its extension, which is the whole effect it can have.
+	if !img.Type.NeedsContainer() {
+		if err := s.saveStatus(ctx, &inst, target, ""); err != nil {
+			return View{}, err
+		}
+		return s.view(inst), nil
 	}
 	if inst.Scope == ScopeProject && s.projects != nil && target == StatusRunning {
 		if err := s.projects.EnsureRunning(ctx, inst.ProjectID); err != nil {

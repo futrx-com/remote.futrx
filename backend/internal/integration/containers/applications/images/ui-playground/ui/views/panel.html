@@ -1,0 +1,24 @@
+<!--
+  Panel view, rendered into the applications.panel slot. scripts/main.js fills
+  the [data-field] nodes; nothing here depends on the SPA's markup or classes.
+-->
+<section class="pg-panel">
+  <header class="pg-panel__head">
+    <img class="pg-panel__logo" data-field="logo" alt="" width="18" height="18">
+    <h4 class="pg-panel__title">UI Playground</h4>
+    <span class="pg-badge" data-field="apiVersion">api ?</span>
+  </header>
+
+  <p class="pg-lead">
+    This fixture contributes to every extension slot. Click any
+    <strong>flask icon</strong> in the app chrome to see the context that slot
+    passes, or run the API self-test below.
+  </p>
+
+  <ul class="pg-slots" data-field="slots"></ul>
+
+  <div class="pg-panel__foot">
+    <button type="button" class="pg-button" data-action="selftest">Run API self-test</button>
+    <span class="pg-clock" data-field="clock" title="Ticks while the panel is mounted; stops on cleanup"></span>
+  </div>
+</section>

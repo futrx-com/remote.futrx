@@ -22,6 +22,7 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 | --- | --- |
 | `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, and compiled-in agent modules |
 | `frontend/` | Preact + Vite SPA. The production build is written to `backend/public/` and embedded into the Go binary via `go:embed` |
+| `installable-images/` | Catalog of one-click installable apps, symlinked from the backend; each directory is an `image.json`, an `install.sh`, and an optional `ui/` extension |
 | `infra/` | Installer, updater, systemd/Caddy templates, base-image tooling, and shell test suite |
 | `docs/` | Architecture and subsystem deep-dives — start with `docs/01-overview/01-system-overview.md` |
 
@@ -42,6 +43,29 @@ complete registration, capability-discovery, authentication, execution,
 event-parsing, provisioning, frontend, testing, and release flow. Its
 [adding-an-agent checklist](docs/dev/agents/07-adding-an-agent.md) is the source
 of truth for new integrations.
+
+## Adding an installable app or UI plugin
+
+Installable apps ("Applications") are data, not code: one directory under
+`installable-images/` (a symlink to
+`backend/internal/integration/containers/applications/images/`) with an
+`image.json`, an `install.sh`, and — optionally — a `ui/` directory. The
+catalog is embedded into the binary, so adding an app is a directory plus a
+rebuild; no registration step.
+
+`ui/` is what makes an image a plugin rather than just a service: its
+`scripts/main.js` runs in every signed-in browser and can contribute buttons,
+panels, and popups to defined slots in the SPA. That is the path for a feature
+that needs both something installed in the container and something added to the
+interface — say, an alternative editor with a launcher button.
+
+Extension code runs on the main origin with the SPA's privileges and reaches
+the API as the signed-in user, so a `ui/` directory gets the same review as any
+other frontend change here.
+
+Read [`installable-images/README.md`](installable-images/README.md) for the
+`image.json` schema, the install-script contract, the extension API, and the
+slot list. `mysql/ui/` is the worked example.
 
 ## Development setup
 

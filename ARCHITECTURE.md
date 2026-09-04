@@ -287,7 +287,44 @@ Three capabilities live inside each container ([deep dive](docs/03-platform/06-p
 
 A **Preact** (not React) SPA built with Vite + Tailwind, whose production build is embedded into the Go binary via `go:embed` and served same-origin ([deep dive](docs/03-platform/07-data-and-frontend-state.md)). It is an installable **PWA**: `frontend/public/` supplies the manifest, icons, and a service worker for Web Push plus network-first navigation. The worker deliberately does not cache the app shell or API data; it caches only the self-contained `/offline.html` fallback and serves it when navigation cannot reach the network. Cache cleanup is restricted to Remote-owned offline-cache names. (The `code.<host>` **IDE launcher** in [`infra/launcher/`](infra/launcher/) is a separate PWA on a separate origin, with its own manifest and worker.)
 
-**Notifications.** The backend raises a Web Push notification when an agent calls `AskUserQuestion`, when a turn completes or fails, and when a scheduled run finishes. The trigger hangs off the chat repository's append path ([`push_notifier.go`](backend/internal/service/push_notifier.go)), so every producer — interactive prompts, scheduled runs, crash recovery — is covered by construction. The audience mirrors chat visibility: project members plus admins, or every registered user for a loose chat. VAPID signing and RFC 8291 payload encryption are implemented against the standard library only ([`integration/webpush`](backend/internal/integration/webpush/)), so push services relay ciphertext they cannot read and the dependency list is unchanged. It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML` anywhere, keeping the XSS surface narrow.
+**Notifications.** The backend raises a Web Push notification when an agent calls `AskUserQuestion`, when a turn completes or fails, and when a scheduled run finishes. The trigger hangs off the chat repository's append path ([`push_notifier.go`](backend/internal/service/push_notifier.go)), so every producer — interactive prompts, scheduled runs, crash recovery — is covered by construction. The audience mirrors chat visibility: project members plus admins, or every registered user for a loose chat. VAPID signing and RFC 8291 payload encryption are implemented against the standard library only ([`integration/webpush`](backend/internal/integration/webpush/)), so push services relay ciphertext they cannot read and the dependency list is unchanged. It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML`, keeping the XSS surface narrow — the one place the SPA does assign markup is the catalog extension host below, which renders assets compiled into the binary rather than anything a request supplied.
+
+**Catalog UI extensions.** An installable application image may ship a `ui/`
+directory ([`installable-images/README.md`](installable-images/README.md)), and
+the SPA loads it for the apps a user has **installed** — globally, or in a
+project they belong to, and only while the instance is running
+(`GET /api/applications/ui`; being in the catalog grants nothing). The install
+scope travels with each entry and becomes the render scope: a globally
+installed extension draws everywhere, a project-installed one only while the
+user is actually working inside that project — leaving it puts the extension
+away entirely — which the registry enforces per contribution rather than
+trusting the extension. Stylesheets
+are injected, `scripts/main.js` is dynamically imported, and it registers
+contributions into a closed set of named slots ([`frontend/src/app/extensions/`](frontend/src/app/extensions/)):
+the chat header rail, the composer deck, project rows, the sidebar header and
+its search field, and the applications surfaces. This is what lets a plugin add
+interface — an icon that opens a workspace in another editor, a panel, a popup —
+alongside whatever its `install.sh` provisions in a container. Each slot carries
+its own icon sizing, so a contributed button matches its neighbours without the
+extension knowing the app's chrome densities.
+Contributions render into plain DOM nodes rather than the component tree, so
+extension code stays framework-free, and a throwing entry module, predicate, or
+handler is caught per contribution.
+
+An image also declares a `type`: a `service` image runs software on a port and
+gets a container (a dedicated LXD one at global scope), while a `ui` image
+installs nothing anywhere — its whole payload is the extension, so installing it
+allocates no container, port, or proxy device. That keeps "add a button to the
+UI" from provisioning a Linux container to do it.
+
+The trust boundary here is **the build, not the request**: these assets are
+embedded by `//go:embed` next to the SPA and served from
+`/api/applications/catalog/<image>/ui/<path>` to signed-in users only, so
+extension code carries exactly the privileges of first-party frontend code and
+is reviewed as such. There is no sandbox and none is implied; the server-side
+guarantee is narrower — the registry resolves asset paths inside one image's
+`ui/` directory and nowhere else, and responses are typed from the file
+extension with `nosniff`.
 
 **Agent authentication UI.** The frontend loads ordered module metadata and a
 normalized auth snapshot from `GET /api/agent-auth`, then subscribes to

@@ -92,6 +92,12 @@ export const API_ROUTES = {
   },
   applications: {
     catalog: "/api/applications/catalog",
+    ui: "/api/applications/ui",
+    uiAsset: (imageId: string, assetPath: string) =>
+      `/api/applications/catalog/${encodeURIComponent(imageId)}/ui/${assetPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`,
     collection: "/api/applications",
     item: (appId: string) => `/api/applications/${encodeURIComponent(appId)}`,
     action: (appId: string, action: string) =>

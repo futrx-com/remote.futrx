@@ -1,99 +1,86 @@
 # Application images
 
-This is the catalog of one-click installable apps ("Applications" tab).
-It is **embedded into the backend binary** (`//go:embed images` in
-`registry.go`), and also surfaced at the repo root as `installable-images/`
-(a symlink) so the catalog is discoverable from the project root.
+This is the catalog of one-click installable apps ("Applications" tab). It is
+**embedded into the backend binary** (`//go:embed images` in `registry.go`) and
+surfaced at the repo root as `installable-images/` (a symlink) so it is
+discoverable from the project root.
 
-Each subdirectory is one app:
+An image is one directory. It can install software into a container, contribute
+to the Remote interface from the browser, or both:
 
 ```
 images/
+  docs/              ← full documentation (reserved name, not an image)
   postgresql/
-    image.json     # metadata: name, description, port, env, systemd service
-    install.sh     # idempotent installer, run as root inside the target container
+    image.json       metadata: name, description, port, env, systemd service
+    install.sh       idempotent installer, run as root inside the container
+  ui-playground/
+    image.json
+    ui/              browser extension: buttons, panels, popups
+      views/*.html
+      style/*.css
+      scripts/main.js
 ```
 
-## Adding a new app
+## 📚 Full documentation: [`docs/`](docs/)
 
-1. Create `images/<id>/image.json`. The `id` must equal the directory name.
-2. Create the install script referenced by `install` (default `install.sh`).
-3. Rebuild the backend. `NewRegistry()` validates every entry at startup, so a
-   malformed `image.json` fails the build/tests loudly (see `registry_test.go`).
+Everything is documented in detail there. Start with
+[`docs/README.md`](docs/README.md).
 
-No other code changes are required — the new app appears in the catalog
-automatically for both global and project installs.
-
-## `image.json` schema
-
-| field | type | notes |
-|---|---|---|
-| `id` | string | must match the directory name |
-| `name` | string | display name |
-| `description` | string | one-line summary |
-| `category` | string | e.g. `database`, `cache` (UI grouping) |
-| `version` | string | shown in the UI |
-| `icon` | string | icon key used by the frontend |
-| `scopes` | string[] | any of `global`, `project` |
-| `port.internal` | int | port the software listens on **inside** the container |
-| `port.defaultExternal` | int | preferred **host** port; auto-bumped on conflict |
-| `port.protocol` | string | `tcp` (default) or `udp` |
-| `port.bindAddress` | string | host interface for the proxy (default `127.0.0.1`) |
-| `env[]` | object[] | install-time inputs (see below) |
-| `service` | string | systemd unit name inside the container (start/stop/status) |
-| `connection` | object | maps env vars to canonical connection fields (see below) |
-| `install` | string | install-script filename (default `install.sh`) |
-| `base` | string | LXD image for a **dedicated global** container (default `ubuntu:24.04`) |
-| `healthcheck.command` | string | readiness probe run inside the container |
-
-### `env[]` entries
-
-| field | notes |
+| I want to… | Read |
 |---|---|
-| `key` | environment variable passed to the install script |
-| `label` | UI label |
-| `required` | reject install if left blank and no default/generator |
-| `secret` | value is redacted in API responses (passwords) |
-| `default` | applied when the user leaves the field blank |
-| `generate` | `password` → a strong value is generated when blank |
+| Understand the system | [Overview](docs/01-overview.md) |
+| Add a database or service | [Image types](docs/03-image-types.md), [Install scripts](docs/04-install-scripts.md) |
+| Add a button or panel to the UI | [Tutorial](docs/07-tutorial-build-a-plugin.md) |
+| Look up an `image.json` field | [image.json reference](docs/02-image-json.md) |
+| Look up an extension API method | [Extension API](docs/06-extension-api.md) |
+| Know where I can render | [Slots](docs/05-slots.md) |
+| Know who sees my extension | [Scoping and visibility](docs/08-scoping-and-visibility.md) |
+| Match the app's look | [Styling and icons](docs/09-styling-and-icons.md) |
+| Test it | [Fixtures](docs/10-fixtures.md), [Testing](docs/11-testing.md) |
+| Call the endpoints | [HTTP API](docs/12-http-api.md) |
+| Understand the trust model | [Security model](docs/13-security-model.md) |
+| Fix something broken | [Troubleshooting](docs/14-troubleshooting.md) |
 
-### `connection` object
+## Adding an app, in short
 
-Lets the UI show a uniform user/password/database panel for every server,
-regardless of how the image names its env vars:
+1. Create `images/<id>/image.json`. `id` must equal the directory name.
+2. Pick a `type`:
+   - `service` — runs software on a port. Add an `install.sh` and a
+     `port.internal`. A **global** install gets its own LXD container; a
+     **project** install goes into that project's existing container.
+   - `ui` — installs nothing anywhere. Add a `ui/` directory; declare no port.
+3. Optionally add `ui/` to contribute to the interface. The layout is the
+   manifest: `scripts/main.js` is the entry, `style/*.css` are injected,
+   `views/*.html` are loadable by name.
+4. Rebuild the backend. `NewRegistry()` validates every entry at startup, so a
+   malformed image fails the build and the tests rather than 404ing in a
+   browser.
 
-| field | notes |
-|---|---|
-| `user` | static username when there is no configurable one (e.g. MySQL `root`) |
-| `userEnv` | env var holding the username (takes precedence over `user`) |
-| `passwordEnv` | env var holding the password |
-| `databaseEnv` | env var holding the default database, if any |
+No other code changes are required — the app appears in the catalog
+automatically for both scopes.
 
-## Install-script contract
+## Two things that surprise people
 
-The script runs as root inside the target container via `bash -s`, with:
+**Being in the catalog grants nothing.** An extension loads only after a user
+installs the image — globally, or in a project they belong to — and only while
+that instance is running. Stopping an app turns its UI off. See
+[Scoping and visibility](docs/08-scoping-and-visibility.md).
 
-- `APP_INTERNAL_PORT` — the port the app must bind **inside** the container
-  (always `port.internal`).
-- one variable per `env[]` key, already resolved (defaults applied, secrets
-  generated).
+**Extension code is frontend code.** It runs on the main origin with the SPA's
+privileges; the trust boundary is the build, not the request. A new `ui/` in a
+pull request deserves the same review as any change under `frontend/src`. See
+[Security model](docs/13-security-model.md).
 
-It must be **idempotent** — it is re-run on every start/reconcile — and it must
-make the app listen on `APP_INTERNAL_PORT` on all interfaces so the LXD proxy
-device can forward the host port to it.
+## Fixtures
 
-## How exposure works
+Two `type: "ui"` images exist to exercise this surface, and install anywhere
+because they need no container:
 
-Every installed app is reached on the host through an LXD **proxy device**:
+- **`ui-playground`** — contributes to every slot with every mechanism, and
+  ships an in-app API self-test.
+- **`ui-sandbox`** — a second extension sharing those slots, which explains why
+  it is visible where it is.
 
-```
-listen = <protocol>:<bindAddress>:<externalPort>   # on the host
-connect = <protocol>:127.0.0.1:<internalPort>      # inside the container
-```
-
-- **Global** apps run in their own dedicated `futrx-app-<id>` container.
-- **Project** apps are installed inside that project's container (and are also
-  reachable on the LXD bridge at `<slug>.lxd:<internalPort>`).
-
-The host `externalPort` is allocated to avoid collisions with other apps and
-with anything already listening on the host, starting from `defaultExternal`.
+Install them at different scopes to see the whole feature in one pass. See
+[Fixtures](docs/10-fixtures.md).

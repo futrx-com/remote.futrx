@@ -5,12 +5,11 @@ package applications
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"path"
 	"sort"
-
-	"encoding/json"
 
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
@@ -40,6 +39,9 @@ func NewRegistry() (*Registry, error) {
 			continue
 		}
 		id := e.Name()
+		if isCatalogMetadataDirectory(id) {
+			continue
+		}
 		img, script, err := loadImage(id)
 		if err != nil {
 			return nil, fmt.Errorf("load image %q: %w", id, err)
@@ -67,9 +69,27 @@ func loadImage(id string) (svc.Image, []byte, error) {
 	if img.ID != id {
 		return svc.Image{}, nil, fmt.Errorf("image id %q does not match directory %q", img.ID, id)
 	}
+	if img.Type == "" {
+		img.Type = svc.KindService
+	}
 	if err := validate(img); err != nil {
 		return svc.Image{}, nil, err
 	}
+	ui, err := loadImageUI(catalogFS, path.Join("images", id, "ui"), img.UI)
+	if err != nil {
+		return svc.Image{}, nil, fmt.Errorf("ui: %w", err)
+	}
+	img.UI = ui
+
+	// A UI image installs nothing in a container, so it has no install script
+	// to read — its ui/ directory is the entire payload.
+	if !img.Type.NeedsContainer() {
+		if img.UI == nil {
+			return svc.Image{}, nil, fmt.Errorf("type %q requires a ui/ directory", img.Type)
+		}
+		return img, nil, nil
+	}
+
 	if img.Install == "" {
 		img.Install = "install.sh"
 	}
@@ -84,6 +104,9 @@ func validate(img svc.Image) error {
 	if img.Name == "" {
 		return fmt.Errorf("missing name")
 	}
+	if !img.Type.Valid() {
+		return fmt.Errorf("invalid type %q", img.Type)
+	}
 	if len(img.Scopes) == 0 {
 		return fmt.Errorf("missing scopes")
 	}
@@ -91,6 +114,15 @@ func validate(img svc.Image) error {
 		if !s.Valid() {
 			return fmt.Errorf("invalid scope %q", s)
 		}
+	}
+	// Ports, services, and health probes describe something running in a
+	// container. Requiring them of a UI image would be noise; accepting them
+	// would be a lie, since nothing would ever read them.
+	if !img.Type.NeedsContainer() {
+		if img.Port.Internal != 0 || img.Service != "" || img.Healthcheck.Command != "" {
+			return fmt.Errorf("type %q must not declare port, service, or healthcheck", img.Type)
+		}
+		return nil
 	}
 	if img.Port.Internal <= 0 {
 		return fmt.Errorf("missing port.internal")
@@ -121,3 +153,10 @@ func (r *Registry) Script(id string) ([]byte, bool) {
 }
 
 var _ svc.Registry = (*Registry)(nil)
+
+// isCatalogMetadataDirectory identifies directories embedded beside images
+// that describe the catalog itself. Every other directory is validated as an
+// image, so this list is intentionally closed and immutable.
+func isCatalogMetadataDirectory(name string) bool {
+	return name == "docs"
+}

@@ -13,6 +13,8 @@ import type { ProjectMeta } from "../../../models/project";
 /** Everything the Applications UI needs, independent of scope. */
 export interface ApplicationsController {
   scope: AppScope;
+  /** Set for project scope; the project these instances belong to. */
+  projectId?: string;
   catalog: AppImage[];
   catalogLoading: boolean;
   instances: AppInstance[];
@@ -38,10 +40,14 @@ interface Bindings {
   credentials: (appId: string) => Promise<AppCredentials>;
 }
 
+type ApplicationsChanged = () => void;
+
 function useApplicationsCore(
   scope: AppScope,
   enabled: boolean,
-  bindings: Bindings | null
+  bindings: Bindings | null,
+  onApplicationsChanged?: ApplicationsChanged,
+  projectId?: string,
 ): ApplicationsController {
   const [catalog, setCatalog] = useState<AppImage[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -103,24 +109,27 @@ function useApplicationsCore(
       if (!bindings) return;
       const inst = await bindings.install(req);
       upsert(inst);
+      onApplicationsChanged?.();
     },
-    [bindings, upsert]
+    [bindings, upsert, onApplicationsChanged],
   );
 
   const start = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.start(appId));
+      onApplicationsChanged?.();
     },
-    [bindings, upsert]
+    [bindings, upsert, onApplicationsChanged],
   );
 
   const stop = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.stop(appId));
+      onApplicationsChanged?.();
     },
-    [bindings, upsert]
+    [bindings, upsert, onApplicationsChanged],
   );
 
   const setPort = useCallback(
@@ -136,8 +145,9 @@ function useApplicationsCore(
       if (!bindings) return;
       await bindings.uninstall(appId);
       setInstances((current) => current.filter((x) => x.id !== appId));
+      onApplicationsChanged?.();
     },
-    [bindings]
+    [bindings, onApplicationsChanged],
   );
 
   const credentials = useCallback(
@@ -150,6 +160,7 @@ function useApplicationsCore(
 
   return {
     scope,
+    projectId,
     catalog,
     catalogLoading,
     instances,
@@ -166,7 +177,10 @@ function useApplicationsCore(
 }
 
 /** Global (server-wide) applications; admin-only. */
-export function useGlobalApplications(enabled: boolean): ApplicationsController {
+export function useGlobalApplications(
+  enabled: boolean,
+  onApplicationsChanged?: ApplicationsChanged,
+): ApplicationsController {
   const bindings = useMemo<Bindings>(
     () => ({
       list: applicationsApi.listGlobal,
@@ -179,13 +193,19 @@ export function useGlobalApplications(enabled: boolean): ApplicationsController 
     }),
     []
   );
-  return useApplicationsCore("global", enabled, bindings);
+  return useApplicationsCore(
+    "global",
+    enabled,
+    bindings,
+    onApplicationsChanged,
+  );
 }
 
 /** Applications scoped to a single project. */
 export function useProjectApplications(
   project: ProjectMeta | null,
-  enabled: boolean
+  enabled: boolean,
+  onApplicationsChanged?: ApplicationsChanged,
 ): ApplicationsController {
   const id = project?.id ?? null;
   const bindings = useMemo<Bindings | null>(
@@ -203,5 +223,11 @@ export function useProjectApplications(
         : null,
     [id]
   );
-  return useApplicationsCore("project", enabled && !!id, bindings);
+  return useApplicationsCore(
+    "project",
+    enabled && !!id,
+    bindings,
+    onApplicationsChanged,
+    id ?? undefined,
+  );
 }

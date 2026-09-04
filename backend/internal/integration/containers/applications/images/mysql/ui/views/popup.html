@@ -1,0 +1,28 @@
+<!--
+  Body of the connection popup. scripts/popup.js fills the [data-field] nodes
+  once the credentials request comes back.
+-->
+<dl class="mysql-ext-fields">
+  <div class="mysql-ext-field">
+    <dt>Host</dt>
+    <dd data-field="host">…</dd>
+  </div>
+  <div class="mysql-ext-field">
+    <dt>Port</dt>
+    <dd data-field="port">…</dd>
+  </div>
+  <div class="mysql-ext-field">
+    <dt>User</dt>
+    <dd data-field="username">…</dd>
+  </div>
+  <div class="mysql-ext-field">
+    <dt>Password</dt>
+    <dd data-field="password">…</dd>
+  </div>
+  <div class="mysql-ext-field">
+    <dt>Database</dt>
+    <dd data-field="database">…</dd>
+  </div>
+</dl>
+<p class="mysql-ext-error" data-field="error" hidden></p>
+<button type="button" class="mysql-ext-copy" data-action="copy">Copy connection URL</button>

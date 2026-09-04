@@ -1,4 +1,6 @@
 import { Search, X } from "../primitives/icons";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 
 export function WorkspaceSearch({
   query,
@@ -21,6 +23,7 @@ export function WorkspaceSearch({
         autocomplete="off"
         spellcheck={false}
       />
+      <ExtensionSlot name={EXTENSION_SLOTS.sidebarSearchActions} />
       {query && (
         <button
           type="button"

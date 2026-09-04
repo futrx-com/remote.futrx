@@ -7,6 +7,10 @@ import type {
   AppInstanceStatus,
 } from "../../models/application";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { useConfirm } from "../../state/context/ConfirmContext";
+import { AppIcon } from "./AppIcon";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import {
   AlertCircle,
   Check,
@@ -54,6 +58,13 @@ export function ApplicationsSection({
         <h3 class="text-[13px] font-medium text-ink-100">Available applications</h3>
         <CatalogGrid images={installable} installedIds={installedIds} controller={controller} />
       </div>
+
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.applicationsPanel}
+        scope={scope}
+        projectId={controller.projectId}
+        class="block"
+      />
 
       <p class="text-[11.5px] text-ink-400 leading-relaxed">
         {scope === "global"
@@ -121,7 +132,7 @@ function CatalogCard({
   return (
     <div class="rounded-md border border-white/[0.08] bg-white/[0.03] p-3 flex items-start gap-3">
       <div class="h-9 w-9 flex-none rounded-md bg-white/[0.06] grid place-items-center text-ink-200">
-        <Server class="w-4 h-4" />
+        <AppIcon image={image} class="w-4 h-4" />
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
@@ -292,6 +303,10 @@ function InstallDialog({
 
 function InstalledList({ controller }: { controller: ApplicationsController }) {
   const { instances, loading } = controller;
+  const imagesById = useMemo(
+    () => new Map(controller.catalog.map((image) => [image.id, image])),
+    [controller.catalog],
+  );
   if (loading && instances.length === 0) return <Muted text="Loading applications…" />;
   if (instances.length === 0) {
     return <Muted text="No applications installed yet." />;
@@ -299,7 +314,12 @@ function InstalledList({ controller }: { controller: ApplicationsController }) {
   return (
     <div class="space-y-2">
       {instances.map((inst) => (
-        <InstalledRow key={inst.id} inst={inst} controller={controller} />
+        <InstalledRow
+          key={inst.id}
+          inst={inst}
+          image={imagesById.get(inst.imageId)}
+          controller={controller}
+        />
       ))}
     </div>
   );
@@ -307,15 +327,19 @@ function InstalledList({ controller }: { controller: ApplicationsController }) {
 
 function InstalledRow({
   inst,
+  image,
   controller,
 }: {
   inst: AppInstance;
+  /** Catalog entry, if the catalog has loaded; drives the icon and layout. */
+  image?: AppImage;
   controller: ApplicationsController;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [editingPort, setEditingPort] = useState(false);
   const [portDraft, setPortDraft] = useState(String(inst.externalPort));
+  const confirm = useConfirm();
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -339,21 +363,41 @@ function InstalledRow({
       setEditingPort(false);
     });
 
-  const remove = () => {
-    if (!confirm(`Uninstall ${inst.name}? This removes its host port mapping.`)) return;
-    void run(() => controller.uninstall(inst.id));
-  };
-
   const running = inst.status === "running";
+  // A UI image has no container, port, or credentials — only an extension that
+  // is on or off. Showing it a port row would be showing it zeros.
+  const hasRuntime = image?.type !== "ui";
+
+  const remove = async () => {
+    // The dialog owns the request: a failure is shown inside it so the user can
+    // retry or back out, instead of closing and leaving an error behind a row.
+    await confirm({
+      title: `Uninstall ${inst.name}?`,
+      description: hasRuntime ? "This cannot be undone." : undefined,
+      message: uninstallConsequence(inst, hasRuntime),
+      confirmLabel: "Uninstall",
+      pendingLabel: "Uninstalling…",
+      tone: "danger",
+      action: () => controller.uninstall(inst.id),
+    });
+  };
 
   return (
     <div class="rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 space-y-1.5">
       <div class="flex items-center gap-2 min-w-0">
-        <Server class="w-4 h-4 flex-none text-ink-300" />
+        <span class="flex-none text-ink-300">
+          <AppIcon image={image ?? { id: inst.imageId, name: inst.name }} class="w-4 h-4" />
+        </span>
         <span class="text-[13px] font-medium text-ink-50 truncate">{inst.name}</span>
         <span class="text-[11px] text-ink-400 font-mono">{inst.imageId}</span>
         <StatusBadge status={inst.status} />
         <div class="ml-auto flex items-center gap-1">
+          <ExtensionSlot
+            name={EXTENSION_SLOTS.applicationCardActions}
+            scope={controller.scope}
+            projectId={inst.projectId}
+            instance={inst}
+          />
           {running ? (
             <IconBtn title="Stop" onClick={() => void run(() => controller.stop(inst.id))} disabled={busy}>
               <Square class="w-3.5 h-3.5" />
@@ -363,57 +407,64 @@ function InstalledRow({
               <Play class="w-3.5 h-3.5" />
             </IconBtn>
           )}
-          <IconBtn title="Uninstall" onClick={remove} disabled={busy} danger>
+          <IconBtn title="Uninstall" onClick={() => void remove()} disabled={busy} danger>
             <Trash class="w-3.5 h-3.5" />
           </IconBtn>
         </div>
       </div>
 
-      <div class="flex items-center gap-2 text-[12px] text-ink-300 flex-wrap">
-        <span class="text-ink-400">host</span>
-        {editingPort ? (
-          <span class="inline-flex items-center gap-1">
-            <input
-              value={portDraft}
-              inputMode="numeric"
-              onInput={(e) => setPortDraft((e.target as HTMLInputElement).value)}
-              class="h-7 w-20 px-2 rounded border border-white/10 bg-black/30 text-[12px] font-mono text-ink-50 focus:outline-none focus:border-accent-blue/50"
-            />
-            <IconBtn title="Save port" onClick={savePort} disabled={busy}>
-              <Check class="w-3.5 h-3.5" />
-            </IconBtn>
-            <IconBtn
-              title="Cancel"
-              onClick={() => {
-                setEditingPort(false);
-                setPortDraft(String(inst.externalPort));
-              }}
-              disabled={busy}
-            >
-              <X class="w-3.5 h-3.5" />
-            </IconBtn>
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditingPort(true)}
-            title="Change host port"
-            class="font-mono text-ink-100 hover:text-accent-blue underline decoration-dotted underline-offset-2"
-          >
-            {inst.bindAddress}:{inst.externalPort}
-          </button>
-        )}
-        <span class="text-ink-400">→ container</span>
-        <span class="font-mono text-ink-100">{inst.internalPort}</span>
-        {inst.envPublic &&
-          Object.entries(inst.envPublic).map(([k, v]) => (
-            <span key={k} class="text-ink-400 font-mono">
-              · {k}=<span class="text-ink-200">{v}</span>
+      {hasRuntime ? (
+        <div class="flex items-center gap-2 text-[12px] text-ink-300 flex-wrap">
+          <span class="text-ink-400">host</span>
+          {editingPort ? (
+            <span class="inline-flex items-center gap-1">
+              <input
+                value={portDraft}
+                inputMode="numeric"
+                onInput={(e) => setPortDraft((e.target as HTMLInputElement).value)}
+                class="h-7 w-20 px-2 rounded border border-white/10 bg-black/30 text-[12px] font-mono text-ink-50 focus:outline-none focus:border-accent-blue/50"
+              />
+              <IconBtn title="Save port" onClick={savePort} disabled={busy}>
+                <Check class="w-3.5 h-3.5" />
+              </IconBtn>
+              <IconBtn
+                title="Cancel"
+                onClick={() => {
+                  setEditingPort(false);
+                  setPortDraft(String(inst.externalPort));
+                }}
+                disabled={busy}
+              >
+                <X class="w-3.5 h-3.5" />
+              </IconBtn>
             </span>
-          ))}
-      </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditingPort(true)}
+              title="Change host port"
+              class="font-mono text-ink-100 hover:text-accent-blue underline decoration-dotted underline-offset-2"
+            >
+              {inst.bindAddress}:{inst.externalPort}
+            </button>
+          )}
+          <span class="text-ink-400">→ container</span>
+          <span class="font-mono text-ink-100">{inst.internalPort}</span>
+          {inst.envPublic &&
+            Object.entries(inst.envPublic).map(([key, value]) => (
+              <span key={key} class="text-ink-400 font-mono">
+                · {key}=<span class="text-ink-200">{value}</span>
+              </span>
+            ))}
+        </div>
+      ) : (
+        <div class="text-[12px] text-ink-400">
+          Interface extension — nothing runs in a container.{" "}
+          {running ? "Its UI is loaded." : "Start it to load its UI."}
+        </div>
+      )}
 
-      <ConnectionDetails inst={inst} controller={controller} />
+      {hasRuntime && <ConnectionDetails inst={inst} controller={controller} />}
 
       {inst.error && inst.status === "error" && (
         <div class="text-[11.5px] text-accent-red break-words">{inst.error}</div>
@@ -421,6 +472,16 @@ function InstalledRow({
       {err && <div class="text-[11.5px] text-accent-red break-words">{err}</div>}
     </div>
   );
+}
+
+function uninstallConsequence(inst: AppInstance, hasRuntime: boolean): string {
+  if (!hasRuntime) {
+    return `“${inst.name}” stops contributing to the interface. Nothing is removed from any container.`;
+  }
+  if (inst.scope === "global") {
+    return `“${inst.name}” runs in its own container, which is deleted along with its data. The host port ${inst.bindAddress}:${inst.externalPort} is released.`;
+  }
+  return `“${inst.name}” is stopped and disabled, and the host port ${inst.bindAddress}:${inst.externalPort} is released. Installed packages and data stay in the project container.`;
 }
 
 // ConnectionDetails shows how to reach an installed app and, on demand, its

@@ -1,0 +1,18 @@
+{
+  "id": "ui-sandbox",
+  "name": "UI Sandbox",
+  "description": "Second developer fixture. Install it alongside UI Playground — at a different scope — to see two extensions share the same slots.",
+  "category": "development",
+  "version": "1",
+  "icon": "ui/assets/logo.svg",
+  "type": "ui",
+  "scopes": ["global", "project"],
+  "ui": {
+    "entry": "scripts/main.js",
+    "styles": ["style/sandbox.css"],
+    "views": {
+      "panel": "views/panel.html",
+      "context": "views/context.html"
+    }
+  }
+}
