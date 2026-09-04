@@ -4,13 +4,13 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 
 | Folder | What it answers about |
 | --- | --- |
-| `auth/` | Which agent providers are logged in, and what that gates |
+| `auth/` | Which agent providers are logged in, and the recovery-code file a user saves |
 | `chat/` | Where an attachment is stored and what it is called |
 | `files/` | What a filename means: its kind, its icon, what a click does |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
 | `workspace/` | The sidebar: what it shows, and what the user folded away |
-| `platform/` | The browser and the language — storage, ids, time, diff |
+| `platform/` | The browser and the language — storage, ids, time, diff, downloads |
 
 The domain names are the ones the app already uses in `state/hooks/` and
 `ui/`, so a service sits under the same word as the hook and the screen that
