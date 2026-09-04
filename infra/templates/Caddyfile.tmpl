@@ -19,6 +19,10 @@
     on_demand_tls {
         ask http://127.0.0.1:${SERVICE_PORT}/internal/tls-ask
     }
+
+    # Optional user-provided global directives (e.g. acme_dns, cert issuers, etc.)
+    # Survives installer/update runs without requiring template edits or forks.
+    import /etc/caddy/conf.d/global/*.caddy
 }
 
 ${HOSTNAME} {
@@ -152,3 +156,7 @@ code.${HOSTNAME} {
     }
     respond "Use <slug>--<port>.dev.${HOSTNAME} (e.g. myproj--3000.dev.${HOSTNAME})" 400
 }
+
+# Optional user-provided site blocks (e.g. custom hostnames, wildcards, or reverse proxies).
+# Survives installer/update runs without requiring template edits or forks.
+import /etc/caddy/conf.d/sites/*.caddy
