@@ -63,39 +63,37 @@ var (
 	ErrUnavailable      = errors.New("share link store is not configured")
 )
 
-// Share is the stored record of one public preview link.
-//
-// The token itself is never persisted — only its SHA-256 digest — so a copy of
-// DATA_DIR cannot be replayed against a preview host.
-type Share struct {
-	ID        ID     `json:"id"`
-	TokenHash string `json:"tokenHash"`
-	Port      int    `json:"port"`
-	Label     string `json:"label,omitempty"`
-	CreatedBy string `json:"createdBy,omitempty"`
-	CreatedAt int64  `json:"createdAt"`
-	ExpiresAt int64  `json:"expiresAt"`
-	RevokedAt int64  `json:"revokedAt,omitempty"`
-}
-
-// Active reports whether the share can still authorize a request at nowMilli.
-func (s Share) Active(nowMilli int64) bool {
-	return s.RevokedAt == 0 && s.ExpiresAt > nowMilli
-}
-
-// CreateInput is the caller-supplied half of a new share link.
+// CreateInput is the application input for a new share link.
 type CreateInput struct {
-	Port     int    `json:"port"`
-	TTLHours int    `json:"ttlHours,omitempty"`
-	Label    string `json:"label,omitempty"`
+	Port     int
+	TTLHours int
+	Label    string
+}
+
+// Metadata is the management view of an active share link. It intentionally
+// excludes the token digest and revocation state kept by the repository.
+type Metadata struct {
+	ID        ID
+	Port      int
+	Label     string
+	CreatedBy string
+	CreatedAt int64
+	ExpiresAt int64
+}
+
+// AuthorizationGrant is the minimum information the edge needs after a
+// plaintext token has been validated.
+type AuthorizationGrant struct {
+	ID        ID
+	ExpiresAt int64
 }
 
 // Created carries the one and only copy of the plaintext token alongside the
-// persisted record and the project slug the link belongs to.
+// management metadata and the project slug the link belongs to.
 type Created struct {
-	Share Share
-	Token string
-	Slug  string
+	Metadata Metadata
+	Token    string
+	Slug     string
 }
 
 // ShareablePort reports whether port may back a public preview link.

@@ -27,9 +27,8 @@ const (
 // and drops the token from the URL.
 func TestVerifyAcceptsShareTokenAndIssuesScopedCookie(t *testing.T) {
 	handler, shares := newVerifyHandler(t)
-	shares.share = serviceshare.Share{
+	shares.grant = serviceshare.AuthorizationGrant{
 		ID:        "1f2e3d4c",
-		Port:      3000,
 		ExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
 	}
 	shares.validToken = "good-token"
@@ -164,9 +163,8 @@ func TestVerifyRejectsShareAttempts(t *testing.T) {
 			handler, shares := newVerifyHandler(t)
 			shares.validToken = test.validToken
 			shares.allows = test.allows
-			shares.share = serviceshare.Share{
+			shares.grant = serviceshare.AuthorizationGrant{
 				ID:        "1f2e3d4c",
-				Port:      3000,
 				ExpiresAt: time.Now().Add(time.Hour).UnixMilli(),
 			}
 
@@ -242,17 +240,17 @@ func newVerifyHandler(t *testing.T) (*authVerifyHandler, *shareAuthorizerStub) {
 
 type shareAuthorizerStub struct {
 	validToken string
-	share      serviceshare.Share
+	grant      serviceshare.AuthorizationGrant
 	allows     bool
 }
 
 func (s *shareAuthorizerStub) Validate(
 	_ context.Context, _ string, _ int, token string,
-) (serviceshare.Share, bool) {
+) (serviceshare.AuthorizationGrant, bool) {
 	if s.validToken == "" || token != s.validToken {
-		return serviceshare.Share{}, false
+		return serviceshare.AuthorizationGrant{}, false
 	}
-	return s.share, true
+	return s.grant, true
 }
 
 func (s *shareAuthorizerStub) Allows(context.Context, string, int, serviceshare.ID) bool {

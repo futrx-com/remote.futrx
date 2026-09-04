@@ -9,15 +9,15 @@ import (
 // Repository is the storage port for per-project share links. Implementations
 // persist atomically and serialize concurrent callers per project.
 type Repository interface {
-	List(ctx context.Context, projectID serviceproject.ID) ([]Share, error)
+	List(ctx context.Context, projectID serviceproject.ID) ([]Record, error)
 	// Update hands the project's stored links to fn and persists whatever fn
 	// returns. fn runs while the project's records are locked, so callers can
 	// read-modify-write without racing another request.
 	Update(
 		ctx context.Context,
 		projectID serviceproject.ID,
-		fn func([]Share) ([]Share, error),
-	) ([]Share, error)
+		fn func([]Record) ([]Record, error),
+	) ([]Record, error)
 }
 
 // Projects is the lookup the share service needs into the project directory:

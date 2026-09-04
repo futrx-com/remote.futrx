@@ -28,7 +28,7 @@ func TestListOnMissingProjectFileIsEmpty(t *testing.T) {
 func TestUpdateRoundTripsRecordsAndKeepsTheFilePrivate(t *testing.T) {
 	store := newStore(t)
 	ctx := context.Background()
-	record := serviceshare.Share{
+	record := serviceshare.Record{
 		ID:        "1f2e3d4c",
 		TokenHash: strings.Repeat("a", 64),
 		Port:      3000,
@@ -36,9 +36,10 @@ func TestUpdateRoundTripsRecordsAndKeepsTheFilePrivate(t *testing.T) {
 		CreatedBy: "owner@example.com",
 		CreatedAt: 1_700_000_000_000,
 		ExpiresAt: 1_700_086_400_000,
+		RevokedAt: 1_700_000_100_000,
 	}
 
-	saved, err := store.Update(ctx, projectID, func(current []serviceshare.Share) ([]serviceshare.Share, error) {
+	saved, err := store.Update(ctx, projectID, func(current []serviceshare.Record) ([]serviceshare.Record, error) {
 		return append(current, record), nil
 	})
 	if err != nil {
@@ -79,16 +80,16 @@ func TestUpdateRoundTripsRecordsAndKeepsTheFilePrivate(t *testing.T) {
 func TestUpdateErrorLeavesStoredRecordsUnchanged(t *testing.T) {
 	store := newStore(t)
 	ctx := context.Background()
-	record := serviceshare.Share{ID: "1f2e3d4c", TokenHash: "digest", Port: 3000, ExpiresAt: 1}
+	record := serviceshare.Record{ID: "1f2e3d4c", TokenHash: "digest", Port: 3000, ExpiresAt: 1}
 
-	if _, err := store.Update(ctx, projectID, func(current []serviceshare.Share) ([]serviceshare.Share, error) {
+	if _, err := store.Update(ctx, projectID, func(current []serviceshare.Record) ([]serviceshare.Record, error) {
 		return append(current, record), nil
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
 
 	sentinel := errors.New("boom")
-	if _, err := store.Update(ctx, projectID, func([]serviceshare.Share) ([]serviceshare.Share, error) {
+	if _, err := store.Update(ctx, projectID, func([]serviceshare.Record) ([]serviceshare.Record, error) {
 		return nil, sentinel
 	}); !errors.Is(err, sentinel) {
 		t.Fatalf("Update error = %v, want %v", err, sentinel)
@@ -107,12 +108,12 @@ func TestUpdateToEmptyRemovesTheFile(t *testing.T) {
 	store := newStore(t)
 	ctx := context.Background()
 
-	if _, err := store.Update(ctx, projectID, func(current []serviceshare.Share) ([]serviceshare.Share, error) {
-		return append(current, serviceshare.Share{ID: "1f2e3d4c", TokenHash: "digest", Port: 3000}), nil
+	if _, err := store.Update(ctx, projectID, func(current []serviceshare.Record) ([]serviceshare.Record, error) {
+		return append(current, serviceshare.Record{ID: "1f2e3d4c", TokenHash: "digest", Port: 3000}), nil
 	}); err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	if _, err := store.Update(ctx, projectID, func([]serviceshare.Share) ([]serviceshare.Share, error) {
+	if _, err := store.Update(ctx, projectID, func([]serviceshare.Record) ([]serviceshare.Record, error) {
 		return nil, nil
 	}); err != nil {
 		t.Fatalf("Update to empty: %v", err)

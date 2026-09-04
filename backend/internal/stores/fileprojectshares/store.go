@@ -24,11 +24,6 @@ import (
 
 var _ serviceshare.Repository = (*Store)(nil)
 
-type sharesFile struct {
-	Shares    []serviceshare.Share `json:"shares"`
-	UpdatedAt int64                `json:"updatedAt"`
-}
-
 type Store struct {
 	root string
 
@@ -60,7 +55,7 @@ func (s *Store) lock(id serviceproject.ID) *sync.Mutex {
 	return m
 }
 
-func (s *Store) List(_ context.Context, projectID serviceproject.ID) ([]serviceshare.Share, error) {
+func (s *Store) List(_ context.Context, projectID serviceproject.ID) ([]serviceshare.Record, error) {
 	mu := s.lock(projectID)
 	mu.Lock()
 	defer mu.Unlock()
@@ -70,8 +65,8 @@ func (s *Store) List(_ context.Context, projectID serviceproject.ID) ([]services
 func (s *Store) Update(
 	_ context.Context,
 	projectID serviceproject.ID,
-	fn func([]serviceshare.Share) ([]serviceshare.Share, error),
-) ([]serviceshare.Share, error) {
+	fn func([]serviceshare.Record) ([]serviceshare.Record, error),
+) ([]serviceshare.Record, error) {
 	if fn == nil {
 		return nil, errors.New("share update function is required")
 	}
@@ -93,7 +88,7 @@ func (s *Store) Update(
 	return next, nil
 }
 
-func (s *Store) loadLocked(id serviceproject.ID) ([]serviceshare.Share, error) {
+func (s *Store) loadLocked(id serviceproject.ID) ([]serviceshare.Record, error) {
 	raw, err := os.ReadFile(s.path(id))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -108,17 +103,17 @@ func (s *Store) loadLocked(id serviceproject.ID) ([]serviceshare.Share, error) {
 	if err := json.Unmarshal(raw, &file); err != nil {
 		return nil, fmt.Errorf("parse shares for %s: %w", id, err)
 	}
-	return file.Shares, nil
+	return shareRecordsToService(file.Shares), nil
 }
 
-func (s *Store) saveLocked(id serviceproject.ID, shares []serviceshare.Share) error {
+func (s *Store) saveLocked(id serviceproject.ID, shares []serviceshare.Record) error {
 	if len(shares) == 0 {
 		if err := os.Remove(s.path(id)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		return nil
 	}
-	out := sharesFile{Shares: shares, UpdatedAt: time.Now().UnixMilli()}
+	out := sharesFile{Shares: shareRecordsFromService(shares), UpdatedAt: time.Now().UnixMilli()}
 
 	tmp, err := os.CreateTemp(s.root, "."+string(id)+"-*.tmp")
 	if err != nil {

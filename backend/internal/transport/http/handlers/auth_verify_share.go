@@ -15,7 +15,7 @@ const shareQueryParam = "share"
 
 // shareAuthorizer is the slice of the share service this edge gate needs.
 type shareAuthorizer interface {
-	Validate(ctx context.Context, slug string, port int, token string) (serviceshare.Share, bool)
+	Validate(ctx context.Context, slug string, port int, token string) (serviceshare.AuthorizationGrant, bool)
 	Allows(ctx context.Context, slug string, port int, id serviceshare.ID) bool
 }
 
@@ -85,7 +85,7 @@ func (h *authVerifyHandler) startShareSession(
 	r *http.Request,
 	slug string,
 	port int,
-	granted serviceshare.Share,
+	granted serviceshare.AuthorizationGrant,
 	landing string,
 ) {
 	expires := time.UnixMilli(granted.ExpiresAt)

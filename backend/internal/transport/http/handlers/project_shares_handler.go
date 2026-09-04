@@ -14,6 +14,12 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
+type createShareRequest struct {
+	Port     int    `json:"port"`
+	TTLHours int    `json:"ttlHours,omitempty"`
+	Label    string `json:"label,omitempty"`
+}
+
 // shareResponse is the metadata view of a share link. The token and its digest
 // stay out of every response except the one that creates the link.
 type shareResponse struct {
@@ -84,7 +90,7 @@ func (h *ProjectHandler) listShares(w http.ResponseWriter, r *http.Request, id s
 }
 
 func (h *ProjectHandler) createShare(w http.ResponseWriter, r *http.Request, id serviceproject.ID) {
-	var body serviceshare.CreateInput
+	var body createShareRequest
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid json")
 		return
@@ -94,13 +100,17 @@ func (h *ProjectHandler) createShare(w http.ResponseWriter, r *http.Request, id 
 		httptransport.SendErr(w, http.StatusUnauthorized, "authentication required")
 		return
 	}
-	created, err := h.shares.Create(r.Context(), id, body, email)
+	created, err := h.shares.Create(r.Context(), id, serviceshare.CreateInput{
+		Port:     body.Port,
+		TTLHours: body.TTLHours,
+		Label:    body.Label,
+	}, email)
 	if err != nil {
 		sendShareError(w, err)
 		return
 	}
-	response := shareMetadata(created.Share)
-	response.URL = h.shareURL(created.Slug, created.Share.Port, created.Token)
+	response := shareMetadata(created.Metadata)
+	response.URL = h.shareURL(created.Slug, created.Metadata.Port, created.Token)
 	httptransport.SendJSON(w, http.StatusCreated, response)
 }
 
@@ -115,14 +125,14 @@ func (h *ProjectHandler) shareURL(slug string, port int, token string) string {
 		"/?" + shareQueryParam + "=" + url.QueryEscape(token)
 }
 
-func shareMetadata(record serviceshare.Share) shareResponse {
+func shareMetadata(metadata serviceshare.Metadata) shareResponse {
 	return shareResponse{
-		ID:        string(record.ID),
-		Port:      record.Port,
-		Label:     record.Label,
-		CreatedBy: record.CreatedBy,
-		CreatedAt: record.CreatedAt,
-		ExpiresAt: record.ExpiresAt,
+		ID:        string(metadata.ID),
+		Port:      metadata.Port,
+		Label:     metadata.Label,
+		CreatedBy: metadata.CreatedBy,
+		CreatedAt: metadata.CreatedAt,
+		ExpiresAt: metadata.ExpiresAt,
 	}
 }
 
