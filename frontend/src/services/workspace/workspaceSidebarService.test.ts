@@ -37,10 +37,21 @@ const chats: ChatMeta[] = [
 ];
 
 test("orders projects and their chats by recency", () => {
-  const model = workspaceSidebarService.model(chats, projects, "");
+  const model = workspaceSidebarService.model(chats, projects);
   assert.deepEqual(model.visibleProjects.map((node) => node.project.id), ["newer", "older"]);
   assert.deepEqual(model.visibleProjects[0].chats.map((chat) => chat.id), ["new-chat", "old-chat"]);
   assert.deepEqual(model.visibleLooseChats.map((chat) => chat.id), ["loose"]);
+});
+
+test("a chat left pointing at a deleted project stays visible as unassigned", () => {
+  const orphaned: ChatMeta[] = [
+    ...chats,
+    { id: "orphan", title: "Orphan", projectId: "deleted", createdAt: 4, lastMessageAt: 4 },
+  ];
+  const model = workspaceSidebarService.model(orphaned, projects);
+  // Bucketed under a project that is never rendered, it would vanish entirely.
+  assert.deepEqual(model.visibleLooseChats.map((chat) => chat.id), ["orphan", "loose"]);
+  assert.equal(model.visibleProjects.every((node) => node.project.id !== "deleted"), true);
 });
 
 test("a deleted active chat hands over to the next chat, not the empty state", () => {

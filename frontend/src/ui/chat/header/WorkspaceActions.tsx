@@ -1,4 +1,5 @@
 import { useId, useState } from "preact/hooks";
+import { isDismissShortcut } from "../../../config/shortcuts.ts";
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
 
@@ -151,7 +152,7 @@ function WorkspaceAction({
       setIsDismissed(false);
     },
     onKeyDown: (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isDismissShortcut(event)) return;
       setIsDismissed(true);
       event.stopPropagation();
     },

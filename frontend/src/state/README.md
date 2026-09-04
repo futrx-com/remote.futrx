@@ -19,6 +19,13 @@ where the coupling already was, not a grid imposed over it.
 and filing it under whichever domain holds today's callers would claim an
 ownership it does not have.
 
+`hooks/shared/` is the pressure valve, the way `platform/` is for services: a
+hook that knows nothing about any one domain goes there rather than being filed
+under whichever domain needed it first. `useShortcut` binds a chord to the
+window and `useDismissShortcut` puts one dismissible surface in front of the
+rest, and both are called from chat, workspace, projects and `ui/` alike. Keep
+it to that -- a hook about a domain has a domain folder.
+
 ## Pure functions are not a layer
 
 There used to be a fourth folder, `logic/`, holding the projectors, policies
@@ -68,6 +75,14 @@ This is about *global* state, not all state. Roughly half the hooks here own
 something local — a date range, a textarea's height, a drag in progress — and
 those should stay local. Promoting a form's fields to a store to keep the
 folder count tidy is the failure this rule exists to prevent.
+
+**A store holds the input, not the result.** Workspace search keeps its
+selection — the keyword, the filters, the sort — in `workspaceSearchStore`,
+because it outlives the surface that set it and the sidebar's copy is written
+back to storage. The index and the ranked hits are not in any store: they are a
+function of that selection and of the chats the feed is pushing, so
+`useWorkspaceSearch` derives them where both are in hand rather than mirroring
+them into state that could fall behind either input.
 
 **Commands may be dispatched from anywhere.** Writing to a store is not a
 subscription and carries no re-render obligation. This matters because some

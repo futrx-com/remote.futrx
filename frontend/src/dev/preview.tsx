@@ -7,6 +7,8 @@ import type { ChatMessageBlock } from "../models/chatMessage";
 import type { WorkspaceSidebarModel } from "../models/workspace";
 import { AppShell } from "../ui/layout/AppShell";
 import { Sidebar } from "../ui/sidebar/Sidebar";
+import { useWorkspaceSearch } from "../state/hooks/workspace/useWorkspaceSearch";
+import { paletteSearchStore } from "../state/stores/workspace/workspaceSearchStore";
 import { ThreadHeader } from "../ui/chat/header/ThreadHeader";
 import { WorkspaceActions } from "../ui/chat/header/WorkspaceActions";
 import { MessageList } from "../ui/chat/messages/MessageList";
@@ -44,8 +46,7 @@ const sidebarModel: WorkspaceSidebarModel = {
   visibleProjects: [
     {
       project: projects[0],
-      chats: [],
-      filteredChats: [
+      chats: [
         chat("c1", "Refactor and commit pending changes", hours(4), { running: true }),
         chat("c2", "Professional match chat rendering", hours(29)),
         chat("c3", "Team page 404 on click", hours(52), { lastReadAt: 0 }),
@@ -55,8 +56,7 @@ const sidebarModel: WorkspaceSidebarModel = {
     },
     {
       project: projects[1],
-      chats: [],
-      filteredChats: [
+      chats: [
         chat("c6", "Supabase integration sweep", hours(3210)),
         chat("c7", "User custom styles and theming", hours(3240)),
       ],
@@ -65,8 +65,6 @@ const sidebarModel: WorkspaceSidebarModel = {
   visibleLooseChats: [chat("c8", "Scratch: token migration notes", hours(8))],
   totalChats: 8,
   totalProjects: 2,
-  hasMatches: true,
-  query: "",
 };
 
 const blocks: ChatMessageBlock[] = [
@@ -98,7 +96,18 @@ const blocks: ChatMessageBlock[] = [
 const noop = () => {};
 const noopAsync = async () => {};
 
+// Every chat the fake model shows, so the real search hook has something to
+// rank when the search box in this harness is used.
+const previewChats = [
+  ...sidebarModel.visibleProjects.flatMap((node) => node.chats),
+  ...sidebarModel.visibleLooseChats,
+];
+
 function Preview() {
+  // The palette's store rather than the sidebar's: it starts from the
+  // defaults and saves nothing, so this harness cannot overwrite the filters
+  // the real sidebar remembers.
+  const search = useWorkspaceSearch(paletteSearchStore, previewChats, projects);
   const [text, setText] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -122,12 +131,12 @@ function Preview() {
           open={false}
           model={sidebarModel}
           loading={false}
-          query=""
+          search={search}
           collapsed={{}}
           sidebarCollapsed={false}
           activeChatId="c1"
           account={{ email: "me@ahmedwaleed.net", authenticated: true }}
-          onClose={noop} onQueryChange={noop} onClearQuery={noop} onToggleSidebar={noop}
+          onClose={noop} onOpenPalette={noop} onToggleSidebar={noop}
           onNewProject={noop} onNewChatInProject={noop} onToggleProject={noop}
           onSelectChat={noop} onDeleteChat={noop} onToggleChatUnread={noop} onForkChat={noop}
           onReorderProjects={noop} onOpenProjectContainers={noop} onOpenSettings={noop} onSignOut={noop}

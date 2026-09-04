@@ -5,12 +5,12 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 | Folder | What it answers about |
 | --- | --- |
 | `auth/` | Which agent providers are logged in, and what that gates |
-| `chat/` | Where an attachment is stored and what it is called |
+| `chat/` | Where an attachment is stored and what it is called, and where find-in-chat's matches are shown |
 | `files/` | What a filename means: its kind, its icon, what a click does |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
-| `workspace/` | The sidebar: what it shows, and what the user folded away |
-| `platform/` | The browser and the language — storage, ids, time, diff |
+| `workspace/` | The sidebar and its search: what they show, what filters them, and what the user folded away or filtered by |
+| `platform/` | The browser and the language — storage, ids, time, diff, text folding, text matching, DOM text search, which surface an Escape belongs to |
 
 The domain names are the ones the app already uses in `state/hooks/` and
 `ui/`, so a service sits under the same word as the hook and the screen that
