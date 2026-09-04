@@ -3,7 +3,7 @@ import { Key } from "../primitives/icons";
 
 export function ProviderLoginScreen() {
   return (
-    <div class="app-shell overflow-y-auto bg-[#090b0f] p-5 text-ink-100">
+    <div class="app-shell overflow-y-auto bg-app p-5 text-ink-100">
       <div class="mx-auto w-full max-w-2xl space-y-5 py-6">
         <div class="flex flex-col items-center gap-3 text-center">
           <div class="grid h-14 w-14 place-items-center rounded-lg border border-accent-blue/25 bg-accent-blue/[0.14]">

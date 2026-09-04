@@ -1,6 +1,5 @@
 import { useEffect } from "preact/hooks";
-
-const adminSetupPollIntervalMs = 3_000;
+import { ADMIN_SETUP_POLL_INTERVAL_MS } from "../../../config/auth";
 
 export function useAdminSetupPolling(
   refresh: () => Promise<void>,
@@ -17,11 +16,11 @@ export function useAdminSetupPolling(
       } catch {
         // A transient request failure should not stop setup discovery.
       } finally {
-        if (!cancelled) timer = window.setTimeout(poll, adminSetupPollIntervalMs);
+        if (!cancelled) timer = window.setTimeout(poll, ADMIN_SETUP_POLL_INTERVAL_MS);
       }
     };
 
-    timer = window.setTimeout(poll, adminSetupPollIntervalMs);
+    timer = window.setTimeout(poll, ADMIN_SETUP_POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
       if (timer !== undefined) window.clearTimeout(timer);

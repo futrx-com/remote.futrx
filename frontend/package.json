@@ -1,20 +1,21 @@
 {
   "name": "@remote.futrx/frontend",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "node --experimental-strip-types --test",
-    "test:project-preview-urls": "node --experimental-strip-types --test src/shared/projectPreviewUrls.test.ts"
+    "test:project-preview-urls": "node --experimental-strip-types --test src/services/projects/projectPreviewUrlService.test.ts"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "preact": "^10.23.0",
-    "tus-js-client": "^4.3.1"
+    "tus-js-client": "^4.3.1",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.9.1",

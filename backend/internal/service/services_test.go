@@ -17,6 +17,8 @@ import (
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 )
 
 type stubCLIProvisioner struct{}
@@ -76,17 +78,37 @@ func (staticScheduleToolIssuer) IssueScheduleTool(
 }
 
 func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
+	twoFactorStore, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init two-factor store: %v", err)
+	}
+	sessionRegistryStore, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init session registry store: %v", err)
+	}
 	auth, err := newAuth(
 		context.Background(),
 		fileauth.New(t.TempDir()),
 		nil,
 		"https://remote.example.com",
+		twoFactorStore,
+		sessionRegistryStore,
+		AuthOptions{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
+			SetupTokenTTL:       30 * time.Minute,
+		},
 	)
 	if err != nil {
 		t.Fatalf("newAuth: %v", err)
 	}
 	if auth.GoogleOAuthEnabled() {
 		t.Fatal("Google OAuth unexpectedly enabled")
+	}
+	if got := auth.SetupTokenTTL(); got != 30*time.Minute {
+		t.Fatalf("setup token TTL = %s, want 30m", got)
 	}
 }
 

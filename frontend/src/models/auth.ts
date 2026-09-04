@@ -16,7 +16,15 @@ export interface GoogleOAuthSettings {
   redirectUrl: string;
 }
 
-export type AgentAuthMode = "managed-code" | "managed-device" | "external" | "none";
+export type AgentAuthMode =
+  | "managed-code"
+  | "managed-device"
+  | "managed-api-key"
+  | "external"
+  | "none";
+
+/** How one provider's login stands, as the settings row draws it. */
+export type AgentAuthStatusKind = "no-auth" | "authenticated" | "external" | "unconfigured";
 
 export interface AgentAuthLoginSnapshot {
   active: boolean;
@@ -44,6 +52,11 @@ export interface AgentAuthProvider {
     mode: AgentAuthMode;
     instructions?: string;
     satisfiesAccessGate: boolean;
+    apiKey?: {
+      createUrl: string;
+      createLabel: string;
+      credentialLabel: string;
+    };
   };
   status: AgentAuthSnapshot;
 }
@@ -51,3 +64,6 @@ export interface AgentAuthProvider {
 export interface AgentAuthCatalog {
   providers: AgentAuthProvider[];
 }
+
+/** Which question the local login screen is asking. */
+export type LoginMode = "claim" | "login" | "legacy-setup";

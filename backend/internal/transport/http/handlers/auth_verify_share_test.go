@@ -12,6 +12,8 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 )
 
 const (
@@ -223,6 +225,9 @@ func newVerifyHandler(t *testing.T) (*authVerifyHandler, *shareAuthorizerStub) {
 		func(string, string, string) serviceauth.OAuthProvider { return verifyOAuthProvider{} },
 		"https://"+verifyBaseHost,
 		[]byte("verify-handler-test-key"),
+		twoFactorStoreForTest(t),
+		sessionRegistryStoreForTest(t),
+		testAuthOptions(),
 	)
 	if err != nil {
 		t.Fatalf("New auth service: %v", err)
@@ -281,4 +286,36 @@ type verifyOAuthProvider struct{}
 func (verifyOAuthProvider) AuthCodeURL(string) string { return "https://accounts.example.test" }
 func (verifyOAuthProvider) ExchangeUser(context.Context, string) (serviceauth.User, error) {
 	return serviceauth.User{}, nil
+}
+
+// twoFactorStoreForTest and sessionRegistryStoreForTest give the auth service
+// the two collaborators it now requires. Neither is exercised by these tests.
+func twoFactorStoreForTest(t *testing.T) serviceauth.TwoFactorStore {
+	t.Helper()
+	store, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("two-factor store: %v", err)
+	}
+	return store
+}
+
+func sessionRegistryStoreForTest(t *testing.T) serviceauth.SessionRegistryStore {
+	t.Helper()
+	store, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("session registry store: %v", err)
+	}
+	return store
+}
+
+// testAuthOptions are the auth service's tunings, spelled out because New
+// rejects a zero TTL or count and a test only needs them to be valid.
+func testAuthOptions() serviceauth.Options {
+	return serviceauth.Options{
+		PendingLoginTTL:     5 * time.Minute,
+		EnrollmentTTL:       10 * time.Minute,
+		RecoveryCodeCount:   10,
+		SessionHistoryLimit: 20,
+		SetupTokenTTL:       30 * time.Minute,
+	}
 }

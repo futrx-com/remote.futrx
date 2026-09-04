@@ -211,6 +211,12 @@ func (f antigravityTestWorkspace) EnsureSkillLinks(context.Context, string) erro
 	return errors.New("stale skill link")
 }
 
+type antigravityTestRuntimeAssets struct{}
+
+func (antigravityTestRuntimeAssets) Ensure(context.Context, string, []provisioning.RuntimeAsset) error {
+	return nil
+}
+
 type antigravityTestBrowser struct{ calls *antigravityPreparationCalls }
 
 func (f antigravityTestBrowser) EnsureSkill(context.Context, string) error {
@@ -252,6 +258,7 @@ func antigravityContainerDependencies(calls *antigravityPreparationCalls) provis
 		CLI:           antigravityTestCLI{calls},
 		Credentials:   antigravityTestCredentials{calls},
 		Workspace:     antigravityTestWorkspace{calls},
+		RuntimeAssets: antigravityTestRuntimeAssets{},
 		Browser:       antigravityTestBrowser{calls},
 		ScheduleTools: antigravityTestSchedule{calls},
 		Lifecycle:     antigravityTestLifecycle{calls},
@@ -286,7 +293,11 @@ func TestInstallScriptPinsVersionedRelease(t *testing.T) {
 		t.Fatal("install script must verify the pinned checksum")
 	}
 	if !strings.Contains(script, "/usr/local/bin/agy") {
-		t.Fatal("install script must install the agy binary")
+		t.Fatal("container install script must retain the standard agy default")
+	}
+	if !strings.Contains(script, "FUTRX_HOST_CLI_INSTALL_PATH") ||
+		!strings.Contains(script, `install -m 0755 "$tmp/antigravity" "$install_path"`) {
+		t.Fatal("install script must honor the host-managed executable path")
 	}
 	if strings.Contains(script, "/manifests/") {
 		t.Fatal("install script must not consult the moving latest manifest")

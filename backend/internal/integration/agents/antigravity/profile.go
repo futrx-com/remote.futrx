@@ -63,10 +63,13 @@ func Profile() provisioning.Profile {
 
 // installScript downloads the pinned agy release for the target execution
 // environment's architecture, verifies its repository-pinned checksum, and installs
-// /usr/local/bin/agy. It never consults Antigravity's moving latest manifest.
+// the path supplied by the execution environment. Container builds retain the
+// /usr/local/bin/agy default. It never consults Antigravity's moving latest
+// manifest.
 func installScript(version, linuxX64SHA512, linuxARM64SHA512 string) string {
 	return fmt.Sprintf(`set -euo pipefail
-if command -v agy >/dev/null 2>&1 && [ "$(agy --version 2>/dev/null)" = %[1]q ]; then
+install_path="${FUTRX_HOST_CLI_INSTALL_PATH:-/usr/local/bin/agy}"
+if [ -x "$install_path" ] && [ "$("$install_path" --version 2>/dev/null)" = %[1]q ]; then
     exit 0
 fi
 case "$(uname -m)" in
@@ -86,6 +89,7 @@ trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$url" -o "$tmp/agy.tar.gz"
 echo "${sha512}  $tmp/agy.tar.gz" | sha512sum -c - >/dev/null
 tar -xzf "$tmp/agy.tar.gz" -C "$tmp" antigravity
-install -m 0755 "$tmp/antigravity" /usr/local/bin/agy
-agy --version`, version, releaseBaseURL, linuxX64SHA512, linuxARM64SHA512)
+install -d -m 0755 "$(dirname "$install_path")"
+install -m 0755 "$tmp/antigravity" "$install_path"
+"$install_path" --version`, version, releaseBaseURL, linuxX64SHA512, linuxARM64SHA512)
 }

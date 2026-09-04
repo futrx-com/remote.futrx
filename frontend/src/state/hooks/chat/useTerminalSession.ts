@@ -119,10 +119,11 @@ export function useTerminalSession({
       if (connection.isOpen) fitAndResize();
     });
     resizeObserver.observe(hostRef.current);
-    window.setTimeout(fitAndResize, TERMINAL_INITIAL_FIT_DELAY_MS);
+    const initialFitTimer = window.setTimeout(fitAndResize, TERMINAL_INITIAL_FIT_DELAY_MS);
 
     return () => {
       disposed = true;
+      window.clearTimeout(initialFitTimer);
       resizeObserver.disconnect();
       inputSub.dispose();
       connection.close();

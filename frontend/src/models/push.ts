@@ -37,3 +37,24 @@ export interface PushPresencePayload {
   /** Monotonically increases so the server can reject delayed older reports. */
   revision: number;
 }
+
+export interface PushPresenceStoreState {
+  onScreenChatId: string | null;
+  claimedChatId: string | null;
+  revision: number;
+}
+
+export interface PushPresenceStoreActions {
+  setWatchedChat: (chatId: string | null) => void;
+}
+
+type ChatOpener = (chatId: string | null) => void;
+
+export interface PushNotificationStoreState {
+  visibleChatId: string | null;
+}
+
+export interface PushNotificationStoreActions {
+  connect: (openChat: ChatOpener) => void;
+  setVisibleChat: (chatId: string | null) => void;
+}

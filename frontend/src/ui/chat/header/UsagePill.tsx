@@ -12,7 +12,7 @@ export function UsagePill({
 }) {
   return (
     <div
-      class="h-9 inline-flex items-center gap-2 px-3 rounded-md bg-white/5 border border-white/10
+      class="h-9 inline-flex items-center gap-2 px-3 rounded-md bg-tint border border-line
              text-[12.5px] text-ink-300 flex-none"
       title={`Input ${totals.inputTokens}\nOutput ${totals.outputTokens}\nCache read ${totals.cacheReadTokens}\nCache write ${totals.cacheWriteTokens}`}
     >

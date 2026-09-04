@@ -2,6 +2,7 @@ package inspection
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -254,6 +255,36 @@ func TestAdapterCredentialProbeIncludesDynamicDirectoryFiles(t *testing.T) {
 	}
 	if len(stopped) != 1 || len(stopped[0].Files) != 1 || filepath.Base(stopped[0].Files[0].HostPath) != "host.json" {
 		t.Fatalf("stopped directory credentials = %#v", stopped)
+	}
+}
+
+func TestAdapterCredentialProbeEncodesAnEmptyDirectoryAsAnArray(t *testing.T) {
+	hostDirectory := t.TempDir()
+	containerDirectory := "/root/.future/credentials"
+	runner := &inspectionRecordingRunner{responses: map[string]inspectionResponse{
+		"exec c1 -- find " + containerDirectory + " -mindepth 1 -maxdepth 1 -type f -printf %f\\n": {},
+	}}
+	profiles := serviceprofiles.NewCatalog([]provisioning.Profile{{
+		ID: "future-agent",
+		Credentials: provisioning.CredentialSpec{
+			Name: "future-agent",
+			Directory: &provisioning.CredentialDirectory{
+				HostPath: hostDirectory, ContainerPath: containerDirectory,
+			},
+		},
+	}})
+	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+
+	bundles := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateRunning)
+	if len(bundles) != 1 || bundles[0].Files == nil || len(bundles[0].Files) != 0 {
+		t.Fatalf("empty directory credentials = %#v", bundles)
+	}
+	encoded, err := json.Marshal(bundles)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"files":[]`) {
+		t.Fatalf("empty directory credentials JSON = %s", encoded)
 	}
 }
 

@@ -17,6 +17,9 @@ func (h *authSessionHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *authSessionHandler) logout(w http.ResponseWriter, r *http.Request) {
+	if session, err := h.auth.CurrentSession(r.Context(), httptransport.SessionCookieValue(r)); err == nil && session != nil {
+		_ = h.auth.RevokeSession(r.Context(), session.Email)
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name: serviceauth.SessionCookieName, Path: "/", Domain: h.auth.CookieDomain(), MaxAge: -1,
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,

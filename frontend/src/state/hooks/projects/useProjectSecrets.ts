@@ -1,10 +1,10 @@
 import { useCallback, useState } from "preact/hooks";
 import { projectApi } from "../../../api/projectApi";
-import type { ProjectMeta } from "../../../models/project";
 import type {
   ProjectDataLoadSignal,
+  ProjectMeta,
   SecretsRecord,
-} from "../../projects/projectContainerRecords";
+} from "../../../models/project";
 
 export function useProjectSecrets(project: ProjectMeta | null) {
   const [record, setRecord] = useState<SecretsRecord>({ loading: false });

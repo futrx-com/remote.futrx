@@ -66,7 +66,7 @@ export const DeletedAndBinary = () => (
 
 export const RawFallback = () => (
   <div className="w-full max-w-2xl">
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] overflow-hidden">
+    <div className="rounded-lg border border-line bg-tint overflow-hidden">
       <DiffView diff={rawFallback} />
     </div>
   </div>

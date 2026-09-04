@@ -169,15 +169,16 @@ Maximum agency does not mean the agent controls both planes. It means the capabi
 
 ## The project home and provider homes
 
-Remote gives the agent a home in the product sense: the durable project. It is the continuity that lets an agent or human return to the same work, skills, browser identity, provider state, and host-stored history. In filesystem terms, **provider homes** are narrower: they are CLI-owned directories declared by registered module profiles and mounted under `/root`. The current built-in catalog contributes four.
+Remote gives the agent a home in the product sense: the durable project. It is the continuity that lets an agent or human return to the same work, skills, browser identity, provider state, and host-stored history. In filesystem terms, **provider homes** are narrower: they are CLI-owned directories declared by registered module profiles and mounted under `/root`. The current built-in catalog contributes five.
 
-Each converged project currently has five required writable mounts. They live on the host under the project root and are attached before a new container's first work run. A legacy migration may briefly start an existing container to recover old provider state before stopping it, attaching the missing homes, and returning it to the converged layout.
+Each converged project currently has six required writable mounts. They live on the host under the project root and are attached before a new container's first work run. A legacy migration may briefly start an existing container to recover old provider state before stopping it, attaching the missing homes, and returning it to the converged layout.
 
 ```mermaid
 flowchart LR
     subgraph Host["Host: /var/lib/remote/projects/project-slug"]
         WorkspaceHost["workspace/"]
         CodexHost["agent-home/codex/"]
+        MiniMaxHost["agent-home/minimax/"]
         ClaudeHost["agent-home/claude/"]
         KimiHost["agent-home/kimi/"]
         AntigravityHost["agent-home/antigravity/"]
@@ -186,6 +187,7 @@ flowchart LR
     subgraph Container["Unprivileged LXD project container"]
         Workspace["/workspace"]
         Codex["/root/.codex"]
+        MiniMax["/root/.minimax"]
         Claude["/root/.claude"]
         Kimi["/root/.kimi-code"]
         Antigravity["/root/.gemini/antigravity-cli"]
@@ -194,6 +196,7 @@ flowchart LR
 
     WorkspaceHost -->|"read/write bind mount"| Workspace
     CodexHost -->|"read/write bind mount"| Codex
+    MiniMaxHost -->|"read/write bind mount"| MiniMax
     ClaudeHost -->|"read/write bind mount"| Claude
     KimiHost -->|"read/write bind mount"| Kimi
     AntigravityHost -->|"read/write bind mount"| Antigravity
@@ -203,17 +206,18 @@ flowchart LR
 | --- | --- | --- |
 | Project workspace | `/workspace` | Source, artifacts, uploads, project skills, generated `.env`, browser profile, and project-owned state |
 | Codex home | `/root/.codex` | Codex provider configuration, authentication, sessions, and provider-owned state |
+| MiniMax home | `/root/.minimax` | Isolated Codex-harness model configuration, MiniMax sessions, and provider-owned state; the host injects the managed Token Plan subscription key at run time |
 | Claude home | `/root/.claude` | Claude provider configuration, authentication, sessions, and provider-owned state |
 | Kimi home | `/root/.kimi-code` | Kimi provider configuration, authentication, sessions, and provider-owned state |
 | Antigravity home | `/root/.gemini/antigravity-cli` | Project-local Antigravity authentication, conversations, and provider-owned state |
 | Host control-plane data | Application data directory | Project metadata, chats, event logs, scheduled tasks, access lists, settings, and the authoritative secret store |
 | Replaceable runtime | Container root filesystem outside the mounts | Base image, installed packages, temporary files, and operating-system state |
 
-The workspace is shared by all agents in the project. The four currently
+The workspace is shared by all agents in the project. The five currently
 mounted provider homes are separate because each CLI owns a different
 configuration and session format; they are **format-separated, not
 security-separated**.
-Container root can read and modify all four regardless of the selected
+Container root can read and modify all five regardless of the selected
 provider. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
 whole `.gemini` directory.
 Project skills have one canonical source at `/workspace/.agents/skills`;
@@ -235,12 +239,12 @@ The capability envelope should be complete enough that the agent can move from i
 | Filesystem | Read and write the complete project workspace and all provider homes mounted in that project container |
 | Package installation | `apt`, `npm`, `pip`, and project-local package managers may install what the work requires |
 | Core toolchain | Git, SSH client, `gh`, `jq`, build tools, Python, Node.js 22, npm, and npx |
-| Agent choice | Claude Code, Codex, Kimi Code, and Antigravity at pinned versions, behind one provider-neutral run model |
-| Skills | Project-authored procedures under `/workspace/.agents/skills`, including skills the agent creates for future work. Claude receives slash triggers, Codex dollar mentions, and Kimi/Antigravity explicit `SKILL.md` instruction paths; Scheduled Tasks additionally receives a scoped capability |
+| Agent choice | Claude Code, Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity at pinned versions, behind one provider-neutral run model |
+| Skills | Project-authored procedures under `/workspace/.agents/skills`, including skills the agent creates for future work. Claude receives slash triggers, Codex and MiniMax receive dollar mentions, and Kimi/Antigravity receive explicit `SKILL.md` instruction paths; Scheduled Tasks additionally receives a scoped capability |
 | Processes | Foreground and background processes; background work may continue between prompts while the container stays running |
 | Network | Outbound networking and project app listeners; the current project instructions describe network access as open |
 | Web applications | Any non-loopback TCP listener on an allowed preview port from 1024 through 65535 can be discovered and exposed through an authenticated project URL |
-| Browser automation | A headless Playwright utility plus a shared headed Chromium. Claude and Codex can receive per-run MCP/CDP preparation; Kimi and Antigravity do not yet have equivalent browser enablement |
+| Browser automation | A headless Playwright utility plus a shared headed Chromium. Claude, Codex, and MiniMax can receive per-run MCP/CDP preparation; Kimi and Antigravity do not yet have equivalent browser enablement |
 | Human-visible desktop | noVNC lets the user view and take over the same headed browser session |
 | Development surfaces | Terminal, browser IDE, files and media, uploads, Git history, app preview, element inspection, and scheduled tasks over the same workspace |
 | Project credentials | Agent runs receive project secrets as environment values; persistable single-line values also reach new container processes, and all values are mirrored to `/workspace/.env` for dotenv-aware tools |
@@ -317,10 +321,10 @@ Preparation happens before every run where correctness requires it. That allows
 a missing container to be recreated, a stale CLI to be repaired, current
 shared instructions to be republished, and compatibility links to be
 converged. Selected-skill preparation follows each module's strategy: Claude
-slash commands, Codex dollar mentions, and canonical `SKILL.md` instruction
-paths for Kimi and Antigravity. Per-run browser MCP preparation currently
-applies only to Claude and Codex. Scheduled Tasks additionally receives its
-provider-neutral scoped capability.
+slash commands, Codex and MiniMax dollar mentions, and canonical `SKILL.md`
+instruction paths for Kimi and Antigravity. Per-run browser MCP preparation
+currently applies to Claude, Codex, and MiniMax. Scheduled Tasks additionally
+receives its provider-neutral scoped capability.
 
 ## Persistence and replaceability
 
@@ -330,7 +334,7 @@ Remote separates valuable state from replaceable machinery. This lets the runtim
 flowchart TB
     Intent["Human intent and conversation history"] --> ProjectState["Durable project state"]
     ProjectState --> Workspace["Workspace, skills, artifacts, browser profile"]
-    ProjectState --> AgentHomes["Codex, Claude, Kimi, and Antigravity homes"]
+    ProjectState --> AgentHomes["Codex, MiniMax, Claude, Kimi, and Antigravity homes"]
     ProjectState --> Scheduled["Scheduled task definitions and claims"]
     ProjectState --> Metadata["Metadata, access, secrets, event logs"]
 
@@ -385,13 +389,18 @@ Remote has four credential classes, each with a different scope:
 | Credential class | Scope | Current behavior |
 | --- | --- | --- |
 | Platform session | User and Remote control plane | Kept in secure HTTP-only cookies and stripped before requests enter project-controlled apps and IDEs |
-| Agent-provider identity | Host-wide for Claude, Codex, and Kimi; supported project runtime for Antigravity | The three host providers are connected by an administrator and synchronized bidirectionally with project state. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
+| Agent-provider identity | Host-wide for Claude, Codex, Kimi, and the MiniMax Token Plan subscription key; supported project runtime for Antigravity | Claude, Codex, and Kimi are connected by an administrator and synchronized bidirectionally with project state. The write-only MiniMax subscription key is stored by the control plane and injected only into MiniMax runs, while Codex-harness state stays in each project's mounted MiniMax home. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
 | Project secret | One project | Stored in a host file with mode `0600` but without application-level encryption; passed to agent runs, persisted as container environment when single-line, and mirrored into the managed `.env` file |
 | Browser-session identity | One project browser profile | Created through human login and persisted with the project so the agent can use the authenticated session |
 
 Project secrets are **agent-readable authority**. They are not hidden capabilities: a sufficiently authorized agent process can read its environment and `/workspace/.env`. The correct safety question is not whether the model can see a secret it has been given, but whether that authority is scoped, observable, revocable, and appropriate for the project. Comprehensive audit coverage is a separate hardening requirement.
 
-Provider identities cross a wider boundary. Because all provider homes are writable and selected credential files synchronize back to the host, project code can potentially mutate authentication state later used by the fleet and other projects. This is a current shared-authority risk, not project-local secret isolation.
+Host-managed provider identities cross a wider boundary. Because their provider
+homes are writable and selected credential files synchronize back to the host,
+project code can potentially mutate authentication state later used by the
+fleet and other projects. MiniMax's installation-wide key also crosses project
+boundaries: Remote injects it into each MiniMax run, where that process can
+read it even though the Settings API never returns it.
 
 Likewise, a persistent authenticated browser is deliberately powerful. Web content may be hostile, prompt injection can influence the agent, and a logged-in session can perform external actions. Human confirmation rules in the browser skill are an agent policy; they are not a universal transaction gate enforced by the platform.
 
@@ -460,7 +469,7 @@ The philosophy is also an acceptance test. The following current behaviors narro
 | The optional LXD disk limit covers only the replaceable root filesystem | Writable workspace and provider-home bind mounts have no default quota and can exhaust host storage |
 | Durable project mounts have no built-in snapshot or backup layer | Container replacement preserves state, but destructive in-project writes may be unrecoverable without external Git history or operator backups |
 | Same-project chats can execute concurrently against shared files, Git state, ports, and processes | Per-chat locking prevents duplicate runs in one chat but does not prevent cross-chat races or conflicting work |
-| Kimi lacks the selected-skill prompt triggers and per-run browser MCP preparation used by Claude and Codex | Provider-neutral controls do not yet imply provider feature parity |
+| Kimi lacks the selected-skill prompt triggers and per-run browser MCP preparation used by Claude, Codex, and MiniMax | Provider-neutral controls do not yet imply provider feature parity |
 | The durable event stream covers provider-emitted run events, not every terminal, IDE, background process, browser, network, or secret action | Remote does not yet provide a comprehensive project audit log |
 | Run ownership and cancellation state are in memory while provider children may survive a backend restart | The control plane may lose visibility and cancellation authority over a surviving process and accept a new concurrent run |
 | Upgrade busy detection does not currently match the argument order used by provider `lxc exec` commands | An active project may be recycled during an upgrade instead of being safely skipped |
@@ -519,7 +528,7 @@ If those questions have no concrete answers, the feature is not yet compatible w
 | --- | --- |
 | Project computer | The durable project state plus its current namespaced runtime and work surfaces |
 | Project home | Product-level continuity across workspace, provider homes, browser state, and host-side project/chat records |
-| Provider home | One CLI-owned directory: `/root/.codex`, `/root/.claude`, or `/root/.kimi-code` |
+| Provider home | One CLI-owned directory, including `/root/.codex`, `/root/.minimax`, `/root/.claude`, `/root/.kimi-code`, and `/root/.gemini/antigravity-cli` |
 | Capability plane | The contained environment where agents, tools, apps, and browsers perform work |
 | Control plane | The host-owned system for identity, access, persistence, orchestration, limits, observation, and recovery |
 | Full-tool run | An agent invocation with approval-free local execution and access to the project computer |

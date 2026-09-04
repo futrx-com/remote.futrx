@@ -1,5 +1,5 @@
-import { serviceWorkerTransport } from "../transport/serviceWorkerTransport";
-import { PUSH_SERVICE_WORKER } from "../config/push";
+import { serviceWorkerTransport } from "../transport/serviceWorkerTransport.ts";
+import { PUSH_SERVICE_WORKER } from "../config/push.ts";
 
 interface PushServiceWorkerCallbacks {
   visibleChatId: () => string | null;

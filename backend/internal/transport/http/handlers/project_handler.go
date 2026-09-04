@@ -24,6 +24,7 @@ type ProjectHandler struct {
 	projects           *serviceproject.Service
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
+	usage              *UsageHandler
 	shares             *serviceshare.Service
 	publicHostname     string
 	projectHostPattern *regexp.Regexp
@@ -50,6 +51,14 @@ func NewProjectHandler(
 			`^([a-z0-9][a-z0-9-]*)\.code\.` + escapedHostname + `$`,
 		),
 	}
+}
+
+// WithUsage attaches the usage handler so /api/projects/{id}/usage can be
+// served from the existing project route, which already resolves the project
+// and authorizes the caller.
+func (h *ProjectHandler) WithUsage(usage *UsageHandler) *ProjectHandler {
+	h.usage = usage
+	return h
 }
 
 // WithShares enables the public preview link routes under
@@ -193,6 +202,14 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if len(parts) >= 2 && parts[1] == "usage" {
+		if h.usage == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "usage ledger unavailable")
+			return
+		}
+		h.usage.HandleProjectSummary(w, r, string(id), email, isAdmin)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "shares" {
 		h.handleShares(w, r, id, parts)
 		return

@@ -66,16 +66,21 @@ Each profile originates from the provider's local `NewFactory()`/`Profile()`;
 the installer applies the catalog without provider-specific branches.
 
 For each selected profile, the installer runs the provider-declared version
-arguments against its binary and compares the detected semver with the exact
-pin (or checks binary existence when version checks are disabled). The global
+arguments against its application-managed executable under
+`/opt/remote.futrx/data/host-clis/bin` and compares the detected semver with the
+exact pin (or checks binary existence when version checks are disabled). npm
+and standalone-script installers target the same managed prefix. The installer
+and backend service put that directory first on `PATH`, and convergence rejects
+any state where ordinary command resolution selects a different executable.
+The global
 `config.AgentOptions.HostCLIVersionTimeout` currently caps each host version
 command at 15 seconds. The installer
 installs stale/missing npm CLIs at the exact package pin or runs the profile's
 pinned install script, then applies the profile's post-install verification
 policy with a fresh version-probe budget from that same global setting. The
 provider-declared profile timeout bounds only the mutating install command.
-Providers are converged
-sequentially because global npm state is shared. Each install runs in an
+Providers are converged sequentially because they share the managed prefix.
+Each install runs in an
 isolated process group; cancellation terminates its descendants before the
 updater returns. Any provider-scoped install or verification error aborts the
 infrastructure step. Preview the derived plan without changing the host:

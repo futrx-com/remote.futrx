@@ -89,3 +89,46 @@ func TestParserSuppressesKnownSession(t *testing.T) {
 		t.Fatalf("got %+v, want only run-completed (no duplicate session.updated)", evs)
 	}
 }
+
+// kimi-code reports no tokens today, so a completed run must still name the
+// model while leaving every token bucket and the cost unknown.
+func TestParserRunCompletedCarriesModelWithoutTokens(t *testing.T) {
+	p := NewParser(agent.RunRequest{ConversationID: "c", Model: "kimi-k2-turbo"})
+	evs, err := p.ParseLine([]byte(`{"role":"meta","type":"session.resume_hint","session_id":"s1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := evs[len(evs)-1]
+	if completed.Type != agent.EventRunCompleted {
+		t.Fatalf("last event = %s, want run completed", completed.Type)
+	}
+	usage, ok := agent.ParseUsage(completed.Usage)
+	if !ok {
+		t.Fatalf("usage not parsed from %s", completed.Usage)
+	}
+	if usage.Model != "kimi-k2-turbo" {
+		t.Fatalf("model = %q", usage.Model)
+	}
+	if usage.TotalTokens() != 0 || usage.CostUSD != nil {
+		t.Fatalf("expected unknown tokens and cost, got %#v", usage)
+	}
+}
+
+// If a future kimi-code release starts emitting a usage object on any line,
+// the parser forwards it rather than silently dropping the counts.
+func TestParserForwardsUsageObjectWhenPresent(t *testing.T) {
+	p := NewParser(agent.RunRequest{ConversationID: "c"})
+	if _, err := p.ParseLine([]byte(
+		`{"role":"assistant","content":"hi","model":"kimi-k2","usage":{"prompt_tokens":11,"completion_tokens":5}}`,
+	)); err != nil {
+		t.Fatal(err)
+	}
+	evs, err := p.ParseLine([]byte(`{"role":"meta","type":"session.resume_hint","session_id":"s1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage, ok := agent.ParseUsage(evs[len(evs)-1].Usage)
+	if !ok || usage.InputTokens != 11 || usage.OutputTokens != 5 || usage.Model != "kimi-k2" {
+		t.Fatalf("unexpected usage: %#v (ok=%t)", usage, ok)
+	}
+}

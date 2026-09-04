@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { useConfirm } from "../../../state/context/ConfirmContext";
 import { chatApi } from "../../../api/chatApi";
 import type { ScheduledTask, UpdateScheduledTaskInput } from "../../../models/schedule";
 import {
@@ -40,6 +41,7 @@ export function ScheduleDrawer({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<{ id: string; action: TaskAction } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const confirm = useConfirm();
   const requestSequence = useRef(0);
   const sortedTasks = useMemo(() => sortScheduledTasks(tasks), [tasks]);
   const enabledCount = tasks.filter((task) => task.enabled).length;
@@ -106,7 +108,13 @@ export function ScheduleDrawer({
   }
 
   async function remove(task: ScheduledTask) {
-    if (!confirm(`Delete scheduled task "${task.name}"? Its run history will also be removed.`)) return;
+    const confirmed = await confirm({
+      title: "Delete scheduled task",
+      description: "This action cannot be undone.",
+      message: `“${task.name}” and its run history will be permanently removed.`,
+      confirmLabel: "Delete task",
+    });
+    if (!confirmed) return;
     await perform(task, "delete", async () => {
       await chatApi.deleteSchedule(task.id);
       setNotice(`Deleted “${task.name}”.`);
@@ -141,7 +149,7 @@ export function ScheduleDrawer({
   return (
     <aside
       id="workspace-schedules-pane"
-      class={`workspace-pane workspace-schedules-pane relative z-20 h-full flex-none overflow-hidden bg-[#101318] border-l border-white/10 shadow-2xl
+      class={`workspace-pane workspace-schedules-pane relative z-20 h-full flex-none overflow-hidden bg-surface border-l border-line shadow-2xl
               transition-[width,opacity] duration-200 ease-out ${open ? "opacity-100" : "opacity-0 border-l-0 pointer-events-none"}`}
       aria-hidden={!open}
       aria-label="Scheduled tasks"
@@ -150,8 +158,8 @@ export function ScheduleDrawer({
         class={`h-full min-h-0 w-full flex flex-col transition-transform duration-200 ease-out
                 ${open ? "translate-x-0" : "translate-x-full"}`}
       >
-        <header class="workspace-pane-header codex-header flex-none bg-[#191a1f] border-b border-white/10 px-3 md:px-4 pb-2.5 flex items-center gap-2">
-          <div class="h-9 w-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+        <header class="workspace-pane-header codex-header flex-none bg-surface border-b border-line px-3 md:px-4 pb-2.5 flex items-center gap-2">
+          <div class="h-9 w-9 rounded-md bg-tint border border-line grid place-items-center flex-none">
             <CalendarClock class="w-4 h-4 text-accent-blue" />
           </div>
           <div class="min-w-0 flex-1">
@@ -164,7 +172,7 @@ export function ScheduleDrawer({
             type="button"
             onClick={() => void load()}
             disabled={loading || !!busy}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center disabled:opacity-50"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:opacity-50"
             title="Refresh scheduled tasks"
             aria-label="Refresh scheduled tasks"
           >
@@ -173,7 +181,7 @@ export function ScheduleDrawer({
           <button
             type="button"
             onClick={onClose}
-            class="h-9 w-9 rounded-md bg-white/5 hover:bg-white/[0.09] border border-white/10 text-ink-200 grid place-items-center"
+            class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center"
             title="Close scheduled tasks"
             aria-label="Close scheduled tasks"
             data-workspace-pane-close
@@ -190,7 +198,7 @@ export function ScheduleDrawer({
               <button
                 type="button"
                 onClick={() => void load()}
-                class="flex-none text-[12px] text-ink-200 underline decoration-white/30 underline-offset-2 hover:text-white"
+                class="flex-none text-[12px] text-ink-200 underline decoration-ink-400/60 underline-offset-2 hover:text-white"
               >
                 Retry
               </button>
@@ -238,15 +246,15 @@ export function ScheduleDrawer({
 
 function EmptyScheduleState() {
   return (
-    <div class="mt-8 rounded-lg border border-dashed border-white/15 bg-white/[0.025] px-5 py-7 text-center">
-      <div class="mx-auto mb-3 h-10 w-10 rounded-lg border border-white/10 bg-white/[0.05] grid place-items-center">
+    <div class="mt-8 rounded-lg border border-dashed border-line-strong bg-tint px-5 py-7 text-center">
+      <div class="mx-auto mb-3 h-10 w-10 rounded-lg border border-line bg-tint grid place-items-center">
         <CalendarClock class="w-5 h-5 text-accent-blue" />
       </div>
       <h3 class="text-[14px] font-medium text-ink-100">No scheduled tasks</h3>
       <p class="mx-auto mt-1.5 max-w-sm text-[12.5px] leading-5 text-ink-400">
         Ask the agent to schedule work in this chat. It can create a one-time reminder or a recurring cron task.
       </p>
-      <div class="mx-auto mt-4 max-w-sm rounded-md border border-white/[0.08] bg-black/20 px-3 py-2 text-left text-[12px] leading-5 text-ink-300">
+      <div class="mx-auto mt-4 max-w-sm rounded-md border border-line bg-inset px-3 py-2 text-left text-[12px] leading-5 text-ink-300">
         “Watch the deploy every 5 minutes and stop when it is healthy.”
       </div>
     </div>
@@ -280,7 +288,7 @@ function ScheduledTaskCard({
   const toggleLabel = toggleActionLabel(task);
 
   return (
-    <article class={`rounded-lg border px-3 py-3 ${task.enabled ? "border-white/10 bg-white/[0.035]" : "border-white/[0.07] bg-white/[0.018]"}`}>
+    <article class={`rounded-lg border px-3 py-3 ${task.enabled ? "border-line bg-tint" : "border-line bg-tint"}`}>
       <div class="flex items-start gap-2">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 min-w-0">
@@ -298,7 +306,7 @@ function ScheduledTaskCard({
         {task.prompt}
       </p>
 
-      <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-md border border-white/[0.06] bg-black/15 px-2.5 py-2">
+      <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-md border border-line bg-inset px-2.5 py-2">
         <TaskDetail
           label="Next"
           value={task.enabled
@@ -317,7 +325,7 @@ function ScheduledTaskCard({
       )}
 
       {awaitingArm && (
-        <div class="mt-2 rounded-md border border-amber-400/25 bg-amber-400/[0.07] px-2.5 py-2 text-[11.5px] leading-4 text-amber-300/90">
+        <div class="mt-2 rounded-md border border-accent-yellow/25 bg-accent-yellow/[0.08] px-2.5 py-2 text-[11.5px] leading-4 text-accent-yellow">
           Created by the agent and parked. Press Arm to put it on the clock.
         </div>
       )}
@@ -330,7 +338,7 @@ function ScheduledTaskCard({
           class={`h-8 inline-flex items-center gap-1.5 rounded-md border px-2.5 text-[12px] disabled:opacity-45
                   ${awaitingArm
                     ? "border-accent-green/30 bg-accent-green/[0.08] text-accent-green hover:bg-accent-green/[0.14]"
-                    : "border-white/10 bg-white/[0.04] text-ink-200 hover:bg-white/[0.08]"}`}
+                    : "border-line bg-tint text-ink-200 hover:bg-tint-strong"}`}
           title={
             task.enabled
               ? "Pause schedule"
@@ -350,7 +358,7 @@ function ScheduledTaskCard({
           type="button"
           onClick={onRun}
           disabled={actionsDisabled}
-          class="h-8 inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[12px] text-ink-200 hover:bg-white/[0.08] disabled:opacity-45"
+          class="h-8 inline-flex items-center gap-1.5 rounded-md border border-line bg-tint px-2.5 text-[12px] text-ink-200 hover:bg-tint-strong disabled:opacity-45"
           title="Run this task now"
         >
           {busyAction === "run" ? <Loader class="w-3.5 h-3.5 animate-spin" /> : <Play class="w-3.5 h-3.5" />}
@@ -364,7 +372,7 @@ function ScheduledTaskCard({
           class={`h-8 w-8 rounded-md border grid place-items-center disabled:opacity-45
                   ${editing
                     ? "border-accent-blue/35 bg-accent-blue/[0.14] text-accent-blue"
-                    : "border-white/10 bg-white/[0.03] text-ink-400 hover:bg-white/[0.08] hover:text-ink-100"}`}
+                    : "border-line bg-tint text-ink-400 hover:bg-tint-strong hover:text-ink-100"}`}
           title={editing ? "Close editor" : "Edit scheduled task"}
           aria-label={`Edit ${task.name}`}
         >
@@ -374,7 +382,7 @@ function ScheduledTaskCard({
           type="button"
           onClick={onDelete}
           disabled={actionsDisabled}
-          class="ml-auto h-8 w-8 rounded-md border border-white/10 bg-white/[0.03] text-ink-400 grid place-items-center hover:bg-accent-red/[0.08] hover:text-accent-red disabled:opacity-45"
+          class="ml-auto h-8 w-8 rounded-md border border-line bg-tint text-ink-400 grid place-items-center hover:bg-accent-red/[0.08] hover:text-accent-red disabled:opacity-45"
           title="Delete scheduled task"
           aria-label={`Delete ${task.name}`}
         >
@@ -448,13 +456,13 @@ function EditTaskForm({
   }
 
   return (
-    <form onSubmit={submit} class="mt-3 space-y-2 rounded-md border border-white/[0.08] bg-black/20 p-2.5">
+    <form onSubmit={submit} class="mt-3 space-y-2 rounded-md border border-line bg-inset p-2.5">
       <EditField label="Name">
         <input
           type="text"
           value={name}
           onInput={(event) => setName((event.currentTarget as HTMLInputElement).value)}
-          class="h-8 w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 text-[12.5px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+          class="h-8 w-full rounded-md border border-line bg-inset px-2 text-[12.5px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
         />
       </EditField>
       <EditField label="Prompt">
@@ -462,7 +470,7 @@ function EditTaskForm({
           value={prompt}
           onInput={(event) => setPrompt((event.currentTarget as HTMLTextAreaElement).value)}
           rows={4}
-          class="w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 py-1.5 text-[12.5px] leading-5 text-ink-100 focus:outline-none focus:border-accent-blue/60"
+          class="w-full rounded-md border border-line bg-inset px-2 py-1.5 text-[12.5px] leading-5 text-ink-100 focus:outline-none focus:border-accent-blue/60"
         />
       </EditField>
       {task.kind === "cron" ? (
@@ -472,7 +480,7 @@ function EditTaskForm({
             value={cron}
             onInput={(event) => setCron((event.currentTarget as HTMLInputElement).value)}
             placeholder="*/10 * * * *"
-            class="h-8 w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 font-mono text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+            class="h-8 w-full rounded-md border border-line bg-inset px-2 font-mono text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
           />
         </EditField>
       ) : (
@@ -481,7 +489,7 @@ function EditTaskForm({
             type="datetime-local"
             value={at}
             onInput={(event) => setAt((event.currentTarget as HTMLInputElement).value)}
-            class="h-8 w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+            class="h-8 w-full rounded-md border border-line bg-inset px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
           />
         </EditField>
       )}
@@ -492,7 +500,7 @@ function EditTaskForm({
             value={timezone}
             onInput={(event) => setTimezone((event.currentTarget as HTMLInputElement).value)}
             placeholder="UTC"
-            class="h-8 w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+            class="h-8 w-full rounded-md border border-line bg-inset px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
           />
         </EditField>
         <EditField label="Max runs (0 = unlimited)">
@@ -502,7 +510,7 @@ function EditTaskForm({
             value={maxRuns}
             onInput={(event) => setMaxRuns((event.currentTarget as HTMLInputElement).value)}
             placeholder="0"
-            class="h-8 w-full rounded-md border border-white/10 bg-[#0b0d11] px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
+            class="h-8 w-full rounded-md border border-line bg-inset px-2 text-[12px] text-ink-100 focus:outline-none focus:border-accent-blue/60"
           />
         </EditField>
       </div>
@@ -514,7 +522,7 @@ function EditTaskForm({
           type="button"
           onClick={onCancel}
           disabled={saving}
-          class="h-8 rounded-md border border-white/10 bg-white/[0.03] px-2.5 text-[12px] text-ink-300 hover:bg-white/[0.07] disabled:opacity-45"
+          class="h-8 rounded-md border border-line bg-tint px-2.5 text-[12px] text-ink-300 hover:bg-tint-strong disabled:opacity-45"
         >
           Cancel
         </button>
@@ -551,7 +559,7 @@ function TaskStatus({ task }: { task: ScheduledTask }) {
   const label = !task.enabled && task.status === "scheduled" ? "paused" : task.status || (task.enabled ? "scheduled" : "paused");
   const classes = task.enabled
     ? "border-accent-green/25 bg-accent-green/[0.08] text-accent-green"
-    : "border-white/10 bg-white/[0.04] text-ink-400";
+    : "border-line bg-tint text-ink-400";
   return (
     <span class={`flex-none rounded-full border px-1.5 py-0.5 text-[9.5px] font-medium uppercase tracking-wide ${classes}`}>
       {humanize(label)}

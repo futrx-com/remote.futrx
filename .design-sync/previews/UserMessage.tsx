@@ -28,3 +28,20 @@ export const Multiline = () => (
     />
   </div>
 );
+
+// A pasted stack trace: namespaced class names and a deploy path give the line
+// no break opportunity, so the bubble has to wrap inside its column rather than
+// grow to fit them. See issue #62.
+export const UnbrokenRun = () => (
+  <div className="w-full max-w-xl">
+    <UserMessage
+      text={
+        "[2026-08-28 04:11:02] production.ERROR: " +
+        "Symfony\\Component\\HttpFoundation\\RedirectResponse::__construct(): " +
+        "Argument #1 ($url) must be of type string, null given, called in " +
+        "/var/www/gamerhead/releases/8c7723daf1de1dec7fab13dc5f80f57161fd23c/api/vendor/laravel/framework/src/Illuminate/Routing/Redirector.php on line 210"
+      }
+      t={4}
+    />
+  </div>
+);

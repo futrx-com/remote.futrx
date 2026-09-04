@@ -1,6 +1,6 @@
-import { requestJson } from "./apiRequest";
-import { API_ROUTES } from "../config/routes";
-import { sendHttpRequest } from "../transport/http";
+import { requestJson } from "./apiRequest.ts";
+import { API_ROUTES } from "../config/routes.ts";
+import { sendHttpRequest } from "../transport/http.ts";
 import type {
   PushConfig,
   PushPresencePayload,
