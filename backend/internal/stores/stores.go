@@ -10,6 +10,7 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
@@ -18,6 +19,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectshares"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
@@ -60,6 +62,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	ProjectShares   serviceshare.Repository
 }
 
 func New(dataDir string) (Stores, error) {
@@ -81,6 +84,11 @@ func New(dataDir string) (Stores, error) {
 	projectAccess, err := fileprojectaccess.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init project access store: %w", err)
+	}
+
+	projectShares, err := fileprojectshares.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init project shares store: %w", err)
 	}
 
 	schedules, err := fileschedule.New(dataDir)
@@ -133,5 +141,6 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		ProjectShares:   projectShares,
 	}, nil
 }
