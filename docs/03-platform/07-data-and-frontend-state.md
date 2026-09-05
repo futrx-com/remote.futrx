@@ -16,6 +16,7 @@ The application does not use a database. Durable metadata is stored as JSON file
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── smtp.json
 ├── session.key
 ├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
 └── uploads/tmp/                        tus chunks and sidecars
@@ -149,6 +150,7 @@ Project metadata and workspaces are separate:
 | --- | --- |
 | `local-admin.json` | Local administrator email and password hash |
 | `oauth.json` | Google OAuth client ID and secret |
+| `smtp.json` | Gmail SMTP sender address and app password |
 | `agent-api-keys.json` | Host-managed provider API keys, including MiniMax's Token Plan subscription key; mode `0600` |
 | `session.key` | Random key used to sign platform sessions |
 | `users.json` | Registered emails, roles, inviter, and timestamps |

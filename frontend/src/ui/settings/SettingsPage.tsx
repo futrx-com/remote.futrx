@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Download,
   Info,
+  Mail,
   Menu,
   Monitor,
   ShieldCheck,
@@ -20,6 +21,7 @@ import {
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
+import { EmailSettings } from "./EmailSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
@@ -36,7 +38,8 @@ export type SettingsTab =
   | "security"
   | "updates"
   | "info"
-  | "usage";
+  | "usage"
+  | "email";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -91,6 +94,12 @@ const tabs: Array<{
     label: "Info",
     description: "View details about the main parent server.",
     Icon: Info,
+  },
+  {
+    id: "email",
+    label: "Email",
+    description: "Send mail from this server through your Gmail account.",
+    Icon: Mail,
   },
 ];
 
@@ -303,6 +312,15 @@ export function SettingsPage({
                 error={serverInfoError}
                 onRefresh={onRefreshServerInfo}
               />
+            )}
+            {activeTab === "email" && (
+              isAdmin ? (
+                <EmailSettings defaultRecipient={currentEmail} />
+              ) : (
+                <SettingsNotice>
+                  Email delivery is managed by server administrators.
+                </SettingsNotice>
+              )
             )}
           </div>
         </main>

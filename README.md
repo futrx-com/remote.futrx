@@ -161,6 +161,9 @@ Replace `remote.example.com` with the hostname you set up above. The installer d
 4. Select **New project**.
 5. To use MiniMax, open **Settings → Agents**, choose the MiniMax sign-in action, and save a Token Plan subscription key. Pay-as-you-go MiniMax API keys are not supported.
 6. Start a chat and describe what you want in normal language.
+7. To send email from this server, open **Settings → Email** and enter a Gmail
+   address plus an app password. The Google account needs 2-Step Verification
+   enabled to generate a 16-character app password.
 
 Remote will show the agent's progress. When the work is ready, review it in the chat, IDE, terminal, file manager, Git history, or live preview.
 

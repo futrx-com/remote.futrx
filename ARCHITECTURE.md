@@ -91,6 +91,30 @@ integration/ & stores/  ── the outside world: lxc CLI, git CLI, tmux, host f
 
 Composition roots: [`backend/cmd/remote/main.go`](backend/cmd/remote/main.go) (server), [`backend/internal/service/services.go`](backend/internal/service/services.go) (services), [`backend/internal/config/containers.go`](backend/internal/config/containers.go) (the container-capability stack).
 
+### Sending email from a service
+
+`Services.Mailer` ([`service/email/mailer.go`](backend/internal/service/email/mailer.go)) is the one entry point for outbound email. A calling service composes a message with a fluent builder and never touches the stored Gmail credential, MIME multipart, `net/smtp`, or HTML email markup:
+
+```go
+err := deps.Services.Mailer.Mail().
+    ToUser(ownerEmail).                       // or .To("someone@example.com")
+    Subject("Your run finished").
+    Heading("Run finished").
+    Text("The agent finished the run you started.").
+    KeyValues([2]string{"Project", name}, [2]string{"Duration", d.String()}).
+    Button("Open the run", runURL).           // http/https only; anything else fails the mail
+    Note("You are receiving this because you started the run.").
+    SendAsync(ctx)                            // or Send(ctx) when the outcome matters
+```
+
+- **Blocks, one shell.** `Heading`, `Text`, `Button`, `List`, `KeyValues`, `Code`, `Divider`, `Note` stack inside the single branded card. Each block renders both the HTML and its plain-text equivalent, so every message ships a matching `text/plain` alternative that nobody has to hand-write.
+- **Errors are deferred** to `Build`, so the chain stays unbroken and the caller writes one error check. `SendAsync` still runs that validation and recipient resolution synchronously and returns the error immediately — only the actual SMTP round trip happens in the background, never a composition mistake.
+- **One message per recipient**, deduplicated — no recipient learns who else was mailed. Each recipient is its own SMTP session (there is no pooling), so a very large recipient list is not the intended use.
+- **`SendAsync` never blocks a request**: the background goroutine closes over the already-built messages, never the builder, and delivers on its own 30s budget with a bounded number of concurrent SMTP sessions (`maxConcurrentSends`), outliving the request context. Delivery is best-effort and in-memory — a send in flight when the process exits is lost.
+- **An unconfigured server is a logged no-op**, not an error — the same way push degrades without a VAPID key, and the log line masks the address (`j***@example.com`). A feature must not fail because an administrator has not set up Gmail. Mail that must actually arrive — a 2FA code, an invitation — calls `.Required()` before `Send`/`SendAsync`, which turns that same case into `ErrNotConfigured` instead of a silent drop. The admin-facing test send in `email.Service` uses `Required()` for the same reason: an administrator asked directly and must be told.
+
+`email.Service` still owns the credential itself (normalise → verify against Gmail → persist to `DATA_DIR/smtp.json`) and is handed only to the admin settings handler.
+
 ## Identity, sessions, and access
 
 Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-workspaces/02-auth-users-and-access.md)):
@@ -234,6 +258,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
+| SMTP credentials | `DATA_DIR/smtp.json` | JSON | Gmail address + app password, plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
 | MiniMax project state | `/var/lib/remote/projects/<slug>/agent-home/minimax` | Codex-harness files | bind-mounted to `/root/.minimax`; its API key remains in the project secret store |
 | Antigravity project auth/session | `/var/lib/remote/projects/<slug>/agent-home/antigravity` | provider files | bind-mounted to `/root/.gemini/antigravity-cli`; survives container replacement |

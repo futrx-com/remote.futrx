@@ -120,6 +120,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.Services.Auth,
 			deps.Services.Presence,
 		),
+		EmailSettings:    httphandlers.NewEmailSettingsHandler(deps.Services.Email, deps.Services.Auth),
 		ServerInfo:       httphandlers.NewServerInfoHandler(deps.ServerInfo),
 		SelfUpdate:       httphandlers.NewSelfUpdateHandler(deps.SelfUpdate, deps.Services.Auth),
 		Skills:           httphandlers.NewSkillHandler(deps.Services.Skills),
