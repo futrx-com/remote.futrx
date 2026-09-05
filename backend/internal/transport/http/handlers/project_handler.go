@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
@@ -473,7 +474,7 @@ func (h *ProjectHandler) HandleTLSAsk(w http.ResponseWriter, r *http.Request) {
 	if mm := h.projectHostPattern.FindStringSubmatch(domain); mm != nil {
 		slug = mm[1]
 		port, err := strconv.Atoi(mm[2])
-		if err != nil || port < 1024 || port > 65535 {
+		if err != nil || port < configconstants.ProjectPreviewMinPort || port > configconstants.ProjectPreviewMaxPort {
 			http.Error(w, "port out of range", http.StatusNotFound)
 			return
 		}

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -44,7 +45,7 @@ func TestCreateValidatesInput(t *testing.T) {
 		},
 		{
 			name:    "agent browser port",
-			input:   CreateInput{Port: AgentBrowserPort},
+			input:   CreateInput{Port: configconstants.ProjectPreviewAgentBrowserPort},
 			project: projectOne,
 			wantErr: ErrPortNotShareable,
 		},
@@ -98,7 +99,7 @@ func TestCreateValidatesInput(t *testing.T) {
 			if created.Metadata.CreatedBy != "owner@example.com" {
 				t.Fatalf("createdBy = %q, want it normalized", created.Metadata.CreatedBy)
 			}
-			wantTTL := DefaultTTL
+			wantTTL := configconstants.ProjectShareDefaultTTL
 			if test.input.TTLHours != 0 {
 				wantTTL = time.Duration(test.input.TTLHours) * time.Hour
 			}
@@ -136,19 +137,19 @@ func TestCreateBoundsLabelAndLinkCount(t *testing.T) {
 	service, _ := newTestService(t)
 	created, err := service.Create(context.Background(), projectOne, CreateInput{
 		Port:  3000,
-		Label: "  client\ndemo" + strings.Repeat("x", MaxLabelLength),
+		Label: "  client\ndemo" + strings.Repeat("x", configconstants.ProjectShareMaxLabelLength),
 	}, "owner@example.com")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if len([]rune(created.Metadata.Label)) > MaxLabelLength {
-		t.Fatalf("label length = %d, want at most %d", len(created.Metadata.Label), MaxLabelLength)
+	if len([]rune(created.Metadata.Label)) > configconstants.ProjectShareMaxLabelLength {
+		t.Fatalf("label length = %d, want at most %d", len(created.Metadata.Label), configconstants.ProjectShareMaxLabelLength)
 	}
 	if strings.ContainsAny(created.Metadata.Label, "\n\r") {
 		t.Fatalf("label = %q, want newlines flattened", created.Metadata.Label)
 	}
 
-	for i := 1; i < MaxPerProject; i++ {
+	for i := 1; i < configconstants.ProjectShareMaxPerProject; i++ {
 		if _, err := service.Create(
 			context.Background(), projectOne, CreateInput{Port: 3000}, "owner@example.com",
 		); err != nil {
@@ -204,17 +205,17 @@ func TestValidate(t *testing.T) {
 		},
 		{
 			name: "agent browser port",
-			slug: slugOne, port: AgentBrowserPort, token: created.Token, at: base,
+			slug: slugOne, port: configconstants.ProjectPreviewAgentBrowserPort, token: created.Token, at: base,
 		},
 		{
 			name: "one second before expiry",
 			slug: slugOne, port: 3000, token: created.Token,
-			at: base.Add(DefaultTTL - time.Second), want: true,
+			at: base.Add(configconstants.ProjectShareDefaultTTL - time.Second), want: true,
 		},
 		{
 			name: "after expiry",
 			slug: slugOne, port: 3000, token: created.Token,
-			at: base.Add(DefaultTTL + time.Second),
+			at: base.Add(configconstants.ProjectShareDefaultTTL + time.Second),
 		},
 	}
 

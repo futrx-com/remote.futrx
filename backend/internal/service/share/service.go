@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -91,7 +92,7 @@ func (s *Service) Create(
 
 	if _, err := s.repo.Update(ctx, projectID, func(stored []Record) ([]Record, error) {
 		live := activeOnly(stored, now.UnixMilli())
-		if len(live) >= MaxPerProject {
+		if len(live) >= configconstants.ProjectShareMaxPerProject {
 			return nil, ErrTooManyShares
 		}
 		return append(live, record), nil
@@ -232,10 +233,10 @@ func (s *Service) sharesForSlug(ctx context.Context, slug string) ([]Record, boo
 
 func resolveTTL(hours int) (time.Duration, error) {
 	if hours == 0 {
-		return DefaultTTL, nil
+		return configconstants.ProjectShareDefaultTTL, nil
 	}
 	ttl := time.Duration(hours) * time.Hour
-	if ttl < MinTTL || ttl > MaxTTL {
+	if ttl < configconstants.ProjectShareMinTTL || ttl > configconstants.ProjectShareMaxTTL {
 		return 0, ErrInvalidTTL
 	}
 	return ttl, nil
@@ -268,7 +269,7 @@ func hashToken(token string) string {
 }
 
 func newToken() (string, error) {
-	buf := make([]byte, TokenBytes)
+	buf := make([]byte, configconstants.ProjectShareTokenBytes)
 	if _, err := rand.Read(buf); err != nil {
 		return "", err
 	}
@@ -297,8 +298,8 @@ func sanitizeLabel(label string) string {
 	}, label)
 	cleaned = strings.TrimSpace(cleaned)
 	runes := []rune(cleaned)
-	if len(runes) > MaxLabelLength {
-		cleaned = strings.TrimSpace(string(runes[:MaxLabelLength]))
+	if len(runes) > configconstants.ProjectShareMaxLabelLength {
+		cleaned = strings.TrimSpace(string(runes[:configconstants.ProjectShareMaxLabelLength]))
 	}
 	return cleaned
 }
