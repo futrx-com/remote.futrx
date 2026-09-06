@@ -3,6 +3,7 @@ import type {
   AppInstance,
   AppPackage,
   AppScope,
+  AppUpgradeOutcome,
 } from "../../models/application";
 
 export interface CatalogInstallationState {
@@ -144,4 +145,37 @@ export function whereToInstall(pkg: AppPackage, viewing: AppScope): string {
   return viewing === "project"
     ? "It installs globally only — open Settings → Applications."
     : "It installs inside a project — open that project's Containers → Applications.";
+}
+
+/** Where this package is installed right now, in the operator's words. */
+export function describeInstalls(pkg: AppPackage): string {
+  const installs = pkg.installs ?? [];
+  const where = installs.map((install) =>
+    install.scope === "project" ? `project ${install.projectId}` : "globally",
+  );
+  return `Installed ${where.join(", ")}.`;
+}
+
+/** One upgraded copy, named the way the operator would look for it. */
+export function describeOutcome(outcome: AppUpgradeOutcome): string {
+  return outcome.scope === "project"
+    ? `${outcome.name} in project ${outcome.projectId}`
+    : outcome.name;
+}
+
+/** Enough provenance to tell two uploads of the same app apart. */
+export function packageSummary(pkg: AppPackage): string {
+  const parts: string[] = [];
+  if (pkg.uploadedAt) {
+    parts.push(`uploaded ${new Date(pkg.uploadedAt * 1000).toLocaleString()}`);
+  }
+  if (pkg.uploadedBy) parts.push(`by ${pkg.uploadedBy}`);
+  if (pkg.size) parts.push(formatBytes(pkg.size));
+  return parts.join(" · ");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

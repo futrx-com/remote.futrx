@@ -1,7 +1,13 @@
 import { useRef, useState } from "preact/hooks";
-import type { AppPackage, AppScope, AppUpgradeOutcome } from "../../models/application";
+import type { AppPackage, AppScope } from "../../models/application";
 import { useConfirm } from "../../state/context/ConfirmContext";
-import { packageScopes, whereToInstall } from "./applicationPresentation";
+import {
+  describeInstalls,
+  describeOutcome,
+  packageScopes,
+  packageSummary,
+  whereToInstall,
+} from "./applicationPresentation";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
 import {
   AlertCircle,
@@ -247,21 +253,6 @@ function UploadReceipt({ pkg, scope }: { pkg: AppPackage; scope: AppScope }) {
   );
 }
 
-/** Where this package is installed right now, in the operator's words. */
-function describeInstalls(pkg: AppPackage): string {
-  const installs = pkg.installs ?? [];
-  const where = installs.map((install) =>
-    install.scope === "project" ? `project ${install.projectId}` : "globally",
-  );
-  return `Installed ${where.join(", ")}.`;
-}
-
-function describeOutcome(outcome: AppUpgradeOutcome): string {
-  return outcome.scope === "project"
-    ? `${outcome.name} in project ${outcome.projectId}`
-    : outcome.name;
-}
-
 function PackageRow({
   pkg,
   scope,
@@ -304,21 +295,4 @@ function PackageRow({
       </button>
     </div>
   );
-}
-
-/** Enough provenance to tell two uploads of the same app apart. */
-function packageSummary(pkg: AppPackage): string {
-  const parts: string[] = [];
-  if (pkg.uploadedAt) {
-    parts.push(`uploaded ${new Date(pkg.uploadedAt * 1000).toLocaleString()}`);
-  }
-  if (pkg.uploadedBy) parts.push(`by ${pkg.uploadedBy}`);
-  if (pkg.size) parts.push(formatBytes(pkg.size));
-  return parts.join(" · ");
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
