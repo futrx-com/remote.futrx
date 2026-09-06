@@ -411,7 +411,11 @@ func (s *Service) UploadTarget(ctx context.Context, id ID) (string, error) {
 	// subdir isolates attachments from the source tree.
 	root := meta.Cwd
 	if meta.ProjectID != "" && s.projects != nil {
-		if ws, err := s.projects.WorkspaceForProject(ctx, meta.ProjectID); err == nil && ws != "" {
+		ws, err := s.projects.WorkspaceForProject(ctx, meta.ProjectID)
+		if err != nil {
+			return "", err
+		}
+		if ws != "" {
 			root = ws
 		}
 	}
