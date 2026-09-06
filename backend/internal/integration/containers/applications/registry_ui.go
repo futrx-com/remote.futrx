@@ -133,7 +133,7 @@ func cleanUIPath(relativePath string) (string, bool) {
 // UIAsset returns a file from an image's ui/ directory without permitting
 // traversal into the rest of the embedded catalog.
 func (r *Registry) UIAsset(imageID, assetPath string) ([]byte, bool) {
-	img, ok := r.byID[imageID]
+	img, catalog, ok := r.imageSource(imageID)
 	if !ok || img.UI == nil {
 		return nil, false
 	}
@@ -141,7 +141,7 @@ func (r *Registry) UIAsset(imageID, assetPath string) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	data, err := catalogFS.ReadFile(path.Join("images", imageID, "ui", clean))
+	data, err := fs.ReadFile(catalog, path.Join(catalogRoot, imageID, "ui", clean))
 	if err != nil {
 		return nil, false
 	}

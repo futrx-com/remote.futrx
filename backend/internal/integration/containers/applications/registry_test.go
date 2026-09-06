@@ -10,11 +10,30 @@ import (
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
 
+// The shipped catalog and the fixture catalog are held to the same rules: the
+// invariants below belong to the *kind* an image declares, not to any
+// particular image, so an installable image distributed outside this repository
+// is checked exactly as one embedded in it.
 func TestRegistryLoadsCatalog(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
+	for _, tc := range []struct {
+		name string
+		load func() (*Registry, error)
+	}{
+		{"shipped", NewRegistry},
+		{"fixture", func() (*Registry, error) { return NewRegistryFromFS(fixtureCatalog()) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := tc.load()
+			if err != nil {
+				t.Fatalf("load registry: %v", err)
+			}
+			assertCatalogInvariants(t, r)
+		})
 	}
+}
+
+func assertCatalogInvariants(t *testing.T, r *Registry) {
+	t.Helper()
 	imgs := r.List()
 	if len(imgs) == 0 {
 		t.Fatal("expected at least one image in catalog")
@@ -29,20 +48,32 @@ func TestRegistryLoadsCatalog(t *testing.T) {
 		if !img.Type.Valid() {
 			t.Errorf("image %s has invalid type %q", img.ID, img.Type)
 		}
-		// Ports and install scripts belong to images that run something; a UI
-		// image is its ui/ directory and a backend image its plugin/, and
-		// nothing else.
+		// Install scripts belong to images that provision something into a
+		// container; a UI image is its ui/ directory and a backend image its
+		// plugin/, and nothing else.
 		if img.Type.NeedsContainer() {
-			if img.Port.Internal <= 0 {
-				t.Errorf("image %s has invalid internal port %d", img.ID, img.Port.Internal)
-			}
 			if _, ok := r.Script(img.ID); !ok {
 				t.Errorf("image %s missing install script", img.ID)
+			}
+		}
+		// A port belongs only to a kind that is reachable on one. A tool runs
+		// in a container but exposes nothing.
+		if img.Type.NeedsPort() {
+			if img.Port.Internal <= 0 {
+				t.Errorf("image %s has invalid internal port %d", img.ID, img.Port.Internal)
 			}
 			continue
 		}
 		if img.Port.Internal != 0 {
 			t.Errorf("%s image %s declares port %d", img.Type, img.ID, img.Port.Internal)
+		}
+		if img.Type == svc.KindTool {
+			for _, sc := range img.Scopes {
+				if sc == svc.ScopeGlobal {
+					t.Errorf("tool image %s claims global scope", img.ID)
+				}
+			}
+			continue
 		}
 		switch img.Type {
 		case svc.KindUI:
@@ -84,16 +115,12 @@ func TestRegistrySkipsReservedDirectories(t *testing.T) {
 }
 
 func TestRegistryImageKinds(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
+	r := testRegistry(t)
 	for id, want := range map[string]svc.Kind{
-		"mysql":              svc.KindService,
-		"postgresql":         svc.KindService,
-		"redis":              svc.KindService,
-		"ui-playground":      svc.KindUI,
-		"backend-playground": svc.KindBackend,
+		fixtureService: svc.KindService,
+		fixtureTool:    svc.KindTool,
+		fixtureUI:      svc.KindUI,
+		fixtureBackend: svc.KindBackend,
 	} {
 		img, ok := r.Get(id)
 		if !ok {
@@ -109,16 +136,19 @@ func TestRegistryImageKinds(t *testing.T) {
 func TestValidateRejectsBadImages(t *testing.T) {
 	base := func() svc.Image {
 		return svc.Image{
-			Name:   "Test",
-			Type:   svc.KindService,
-			Scopes: []svc.Scope{svc.ScopeGlobal},
-			Port:   svc.Port{Internal: 1234},
+			Name:    "Test",
+			Version: "1.0.0",
+			Type:    svc.KindService,
+			Scopes:  []svc.Scope{svc.ScopeGlobal},
+			Port:    svc.Port{Internal: 1234},
 		}
 	}
 	for _, tc := range []struct {
 		name   string
 		mutate func(*svc.Image)
 	}{
+		{"no version", func(i *svc.Image) { i.Version = "" }},
+		{"blank version", func(i *svc.Image) { i.Version = "   " }},
 		{"unknown type", func(i *svc.Image) { i.Type = "daemon" }},
 		{"service without a port", func(i *svc.Image) { i.Port.Internal = 0 }},
 		{"ui image declaring a port", func(i *svc.Image) { i.Type = svc.KindUI }},
@@ -138,6 +168,21 @@ func TestValidateRejectsBadImages(t *testing.T) {
 			i.Port.Internal = 0
 			i.Service = "unit"
 		}},
+		{"tool image declaring a port", func(i *svc.Image) {
+			i.Type = svc.KindTool
+			i.Scopes = []svc.Scope{svc.ScopeProject}
+		}},
+		{"tool image declaring a healthcheck", func(i *svc.Image) {
+			i.Type = svc.KindTool
+			i.Scopes = []svc.Scope{svc.ScopeProject}
+			i.Port.Internal = 0
+			i.Healthcheck.Command = "true"
+		}},
+		{"tool image claiming global scope", func(i *svc.Image) {
+			i.Type = svc.KindTool
+			i.Port.Internal = 0
+			i.Scopes = []svc.Scope{svc.ScopeGlobal}
+		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			img := base()
@@ -149,68 +194,107 @@ func TestValidateRejectsBadImages(t *testing.T) {
 	}
 }
 
-func TestRegistryGetKnownImage(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
-	pg, ok := r.Get("postgresql")
+// A tool is the one kind that reaches a container without exposing anything:
+// it needs an install script like a service, and no port like an extension.
+// Getting either half wrong is what the kind exists to prevent.
+func TestToolImageInstallsWithoutExposingAPort(t *testing.T) {
+	r := testRegistry(t)
+	img, ok := r.Get(fixtureTool)
 	if !ok {
-		t.Fatal("expected postgresql image")
+		t.Fatal("expected the fixture tool image")
 	}
-	if !pg.SupportsScope(svc.ScopeGlobal) || !pg.SupportsScope(svc.ScopeProject) {
-		t.Errorf("postgresql should support both scopes, got %v", pg.Scopes)
+	if !img.Type.NeedsContainer() {
+		t.Error("a tool must reach a container")
 	}
-	if pg.Port.Internal != 5432 {
-		t.Errorf("postgresql internal port = %d, want 5432", pg.Port.Internal)
+	if img.Type.NeedsPort() {
+		t.Error("a tool must not need a host port")
+	}
+	if img.Port.Internal != 0 {
+		t.Errorf("internal port = %d, want none", img.Port.Internal)
+	}
+	if _, ok := r.Script(img.ID); !ok {
+		t.Error("a tool must ship an install script")
+	}
+	if img.SupportsScope(svc.ScopeGlobal) {
+		t.Error("a tool must not offer global scope: nobody works in that container")
+	}
+	if !img.SupportsScope(svc.ScopeProject) {
+		t.Error("a tool must offer project scope")
+	}
+	// Stop and uninstall act on the unit, so a tool that provisions a
+	// long-running thing has to name one.
+	if img.Service == "" {
+		t.Error("a tool that supervises something must name its systemd unit")
+	}
+}
+
+// A validated tool image accepts the shape the kind is for.
+func TestValidateAcceptsAToolImage(t *testing.T) {
+	img := svc.Image{
+		Name:    "Tool",
+		Version: "1.0.0",
+		Type:    svc.KindTool,
+		Scopes:  []svc.Scope{svc.ScopeProject},
+		Service: "unit",
+	}
+	if err := validate(img); err != nil {
+		t.Errorf("validate(tool) = %v, want nil", err)
+	}
+}
+
+func TestRegistryGetKnownImage(t *testing.T) {
+	r := testRegistry(t)
+	img, ok := r.Get(fixtureService)
+	if !ok {
+		t.Fatal("expected the fixture service image")
+	}
+	if !img.SupportsScope(svc.ScopeGlobal) || !img.SupportsScope(svc.ScopeProject) {
+		t.Errorf("image should support both scopes, got %v", img.Scopes)
+	}
+	if img.Port.Internal != 5432 {
+		t.Errorf("internal port = %d, want 5432", img.Port.Internal)
 	}
 }
 
 func TestRegistryDiscoversImageUI(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
-	mysql, ok := r.Get("mysql")
+	r := testRegistry(t)
+	img, ok := r.Get(fixtureService)
 	if !ok {
-		t.Fatal("expected mysql image")
+		t.Fatal("expected the fixture service image")
 	}
-	if mysql.UI == nil {
-		t.Fatal("mysql ships a ui/ directory, want a UI descriptor")
+	if img.UI == nil {
+		t.Fatal("the image ships a ui/ directory, want a UI descriptor")
 	}
-	if mysql.UI.Entry != "scripts/main.js" {
-		t.Errorf("entry = %q, want scripts/main.js", mysql.UI.Entry)
+	if img.UI.Entry != "scripts/main.js" {
+		t.Errorf("entry = %q, want scripts/main.js", img.UI.Entry)
 	}
-	if len(mysql.UI.Styles) == 0 {
+	if len(img.UI.Styles) == 0 {
 		t.Error("want stylesheets discovered under style/")
 	}
-	if _, ok := mysql.UI.Views["popup"]; !ok {
-		t.Errorf("want a %q view, got %v", "popup", mysql.UI.Views)
+	if _, ok := img.UI.Views["popup"]; !ok {
+		t.Errorf("want a %q view, got %v", "popup", img.UI.Views)
 	}
 
 	// An image without ui/ must stay nil so the SPA loads nothing for it.
-	redis, ok := r.Get("redis")
+	tool, ok := r.Get(fixtureTool)
 	if !ok {
-		t.Fatal("expected redis image")
+		t.Fatal("expected the fixture tool image")
 	}
-	if redis.UI != nil {
-		t.Errorf("redis has no ui/ directory, got %+v", redis.UI)
+	if tool.UI != nil {
+		t.Errorf("the tool has no ui/ directory, got %+v", tool.UI)
 	}
 }
 
-// ui-playground declares its ui block explicitly rather than relying on the
-// layout convention, so the catalog exercises both paths for real.
+// The fixture UI image declares its ui block explicitly rather than relying on
+// the layout convention, so the catalog exercises both paths for real.
 func TestRegistryLoadsDeclaredImageUI(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
-	img, ok := r.Get("ui-playground")
+	r := testRegistry(t)
+	img, ok := r.Get(fixtureUI)
 	if !ok {
-		t.Fatal("expected ui-playground image")
+		t.Fatal("expected the fixture ui image")
 	}
 	if img.UI == nil {
-		t.Fatal("ui-playground declares a ui block, want a UI descriptor")
+		t.Fatal("the image declares a ui block, want a UI descriptor")
 	}
 	if img.UI.Entry != "scripts/main.js" {
 		t.Errorf("entry = %q, want scripts/main.js", img.UI.Entry)
@@ -236,24 +320,21 @@ func TestRegistryLoadsDeclaredImageUI(t *testing.T) {
 }
 
 func TestRegistryUIAsset(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
-	if _, ok := r.UIAsset("mysql", "scripts/main.js"); !ok {
-		t.Error("want mysql entry module to be readable")
+	r := testRegistry(t)
+	if _, ok := r.UIAsset(fixtureService, "scripts/main.js"); !ok {
+		t.Error("want the entry module to be readable")
 	}
 	for _, tc := range []struct {
 		name  string
 		image string
 		asset string
 	}{
-		{"traversal out of ui", "mysql", "../install.sh"},
-		{"traversal into another image", "mysql", "../../redis/install.sh"},
-		{"absolute path", "mysql", "/etc/passwd"},
-		{"empty path", "mysql", ""},
-		{"missing file", "mysql", "scripts/nope.js"},
-		{"image without ui", "redis", "scripts/main.js"},
+		{"traversal out of ui", fixtureService, "../install.sh"},
+		{"traversal into another image", fixtureService, "../../" + fixtureTool + "/install.sh"},
+		{"absolute path", fixtureService, "/etc/passwd"},
+		{"empty path", fixtureService, ""},
+		{"missing file", fixtureService, "scripts/nope.js"},
+		{"image without ui", fixtureTool, "scripts/main.js"},
 		{"unknown image", "nope", "scripts/main.js"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

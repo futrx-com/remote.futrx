@@ -60,6 +60,10 @@ type ContainerStackOptions struct {
 	// AppRegistry is the installable-image catalog. When non-nil the stack
 	// builds the application installer/port-allocator over the same lxc runner.
 	AppRegistry *containerapplications.Registry
+	// DataDir is the server's state directory. An image that needs a host-side
+	// executable has it installed beneath this directory, never into the host's
+	// own package set.
+	DataDir string
 }
 
 // ProjectDependencies exposes only the capabilities consumed by project
@@ -159,7 +163,7 @@ func NewContainerStack(
 	var appInstaller *containerapplications.Installer
 	var appPorts *containerapplications.HostPortAllocator
 	if options.AppRegistry != nil {
-		appInstaller = containerapplications.NewInstaller(runner, options.AppRegistry)
+		appInstaller = containerapplications.NewInstaller(runner, options.AppRegistry, options.DataDir)
 		appPorts = containerapplications.NewHostPortAllocator()
 	}
 

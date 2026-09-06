@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/hosttools"
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
 
@@ -17,6 +20,10 @@ const (
 	// defaultBase is the upstream image a dedicated (global) app container is
 	// launched from when the image does not specify its own base.
 	defaultBase = "ubuntu:24.04"
+
+	// containerSkillsRoot is the project source of truth for agent skills;
+	// provider-specific directories are symlinks onto it.
+	containerSkillsRoot = "/workspace/.agents/skills"
 
 	execTimeout    = 8 * time.Minute
 	controlTimeout = 30 * time.Second
@@ -27,14 +34,18 @@ const (
 // lxc-facing for an app: launching the dedicated container (global scope),
 // running the install script, systemd control, and the host proxy device.
 type Installer struct {
-	runner   command.Runner
-	registry *Registry
+	hostTools hostToolEnsurer
+	runner    command.Runner
+	registry  *Registry
+	publisher *assets.Publisher
 }
 
-// NewInstaller builds an installer over an lxc command runner and the catalog
-// registry (used to fetch install scripts).
-func NewInstaller(runner command.Runner, registry *Registry) *Installer {
-	return &Installer{runner: runner, registry: registry}
+type hostToolEnsurer interface {
+	Ensure(context.Context, []svc.HostTool) error
+}
+
+func NewInstaller(runner command.Runner, registry *Registry, dataDir string) *Installer {
+	return &Installer{runner: runner, registry: registry, hostTools: hosttools.New(dataDir), publisher: assets.NewPublisher(runner)}
 }
 
 var _ svc.Installer = (*Installer)(nil)
@@ -42,10 +53,22 @@ var _ svc.Installer = (*Installer)(nil)
 // Install (re)runs the image's install script inside the target container and
 // (re)creates the proxy device that exposes it on the host.
 func (in *Installer) Install(ctx context.Context, spec svc.InstallSpec) error {
+	if len(spec.Image.HostTools) > 0 {
+		if in.hostTools == nil {
+			return fmt.Errorf("host tool installer unavailable")
+		}
+		if err := in.hostTools.Ensure(ctx, spec.Image.HostTools); err != nil {
+			return fmt.Errorf("install host dependencies: %w", err)
+		}
+	}
+
 	if err := in.ensureContainer(ctx, spec); err != nil {
 		return err
 	}
 	if err := in.runInstallScript(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.publishSkills(ctx, spec); err != nil {
 		return err
 	}
 	return in.ensureProxy(ctx, spec.Instance)
@@ -96,7 +119,41 @@ func (in *Installer) Uninstall(ctx context.Context, spec svc.InstallSpec) error 
 	if svcName := spec.Image.Service; svcName != "" {
 		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName)
 	}
+	in.removeSkills(ctx, spec)
 	return nil
+}
+
+// publishSkills puts an image's skills where the project's agent reads them.
+// A global app has no project workspace, so it publishes nothing.
+func (in *Installer) publishSkills(ctx context.Context, spec svc.InstallSpec) error {
+	if spec.Instance.Scope == svc.ScopeGlobal {
+		return nil
+	}
+	for _, name := range spec.Image.Skills {
+		body, ok := in.registry.Skill(spec.Image.ID, name)
+		if !ok {
+			return fmt.Errorf("skill %q is declared by image %q but cannot be read", name, spec.Image.ID)
+		}
+		dir := path.Join(containerSkillsRoot, name)
+		if out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "install", "-d", "-m", "755", dir); err != nil {
+			return fmt.Errorf("skill %q: create %s: %w; output: %s", name, dir, err, tail(out))
+		}
+		if err := in.publisher.Push(ctx, spec.Instance.ContainerName, body, path.Join(dir, skillHashFile), "644", path.Join(dir, skillFileName)); err != nil {
+			return fmt.Errorf("skill %q: %w", name, err)
+		}
+	}
+	return nil
+}
+
+// removeSkills takes back what publishSkills wrote. An uninstall that leaves
+// the skill behind would keep telling the agent about a feature that is gone.
+func (in *Installer) removeSkills(ctx context.Context, spec svc.InstallSpec) {
+	if spec.Instance.Scope == svc.ScopeGlobal {
+		return
+	}
+	for _, name := range spec.Image.Skills {
+		_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "rm", "-rf", path.Join(containerSkillsRoot, name))
+	}
 }
 
 // Expose (re)creates only the proxy device, leaving the running service
@@ -159,6 +216,11 @@ func (in *Installer) runInstallScript(ctx context.Context, spec svc.InstallSpec)
 // ensureProxy (re)creates the host proxy device for an instance. It removes any
 // existing device of the same name first so a changed port takes effect.
 func (in *Installer) ensureProxy(ctx context.Context, inst svc.Instance) error {
+	// A tool exposes nothing, so it is installed without a device name and
+	// there is no proxy to create.
+	if inst.DeviceName == "" {
+		return nil
+	}
 	if err := in.removeDevice(ctx, inst.ContainerName, inst.DeviceName); err != nil {
 		return err
 	}

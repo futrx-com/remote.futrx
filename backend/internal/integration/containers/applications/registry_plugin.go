@@ -98,11 +98,11 @@ func packageName(fsys fs.FS, name string) (string, error) {
 // ui/ assets they are never served, so there is no path-traversal surface here
 // — a caller gets the whole subtree or nothing.
 func (r *Registry) PluginSource(imageID string) (fs.FS, bool) {
-	img, ok := r.byID[imageID]
+	img, catalog, ok := r.imageSource(imageID)
 	if !ok || img.Backend == nil {
 		return nil, false
 	}
-	sub, err := fs.Sub(catalogFS, path.Join("images", imageID, pluginDir))
+	sub, err := fs.Sub(catalog, path.Join(catalogRoot, imageID, pluginDir))
 	if err != nil {
 		return nil, false
 	}

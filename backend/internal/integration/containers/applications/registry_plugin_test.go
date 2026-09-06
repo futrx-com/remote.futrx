@@ -143,18 +143,15 @@ func TestLoadImagePluginAllowsTestFilesAndAssets(t *testing.T) {
 // Plugin source is compiled, never served. The registry hands out the whole
 // subtree or nothing, and only for images that actually declare a backend.
 func TestRegistryPluginSource(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("load registry: %v", err)
-	}
-	source, ok := r.PluginSource("backend-playground")
+	r := testRegistry(t)
+	source, ok := r.PluginSource(fixtureBackend)
 	if !ok {
-		t.Fatal("backend-playground exposes no plugin source")
+		t.Fatal("the fixture backend image exposes no plugin source")
 	}
 	if _, err := fs.Stat(source, "main.go"); err != nil {
 		t.Errorf("plugin source is not rooted at plugin/: %v", err)
 	}
-	for _, id := range []string{"mysql", "ui-playground", "no-such-image"} {
+	for _, id := range []string{fixtureService, fixtureUI, "no-such-image"} {
 		if _, ok := r.PluginSource(id); ok {
 			t.Errorf("%s reports plugin source it does not have", id)
 		}
