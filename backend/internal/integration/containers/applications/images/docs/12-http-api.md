@@ -45,6 +45,16 @@ project UI uses the same catalog.
 This lists what *can* be installed. It grants nothing — see
 `/api/applications/ui` below.
 
+Each entry also carries `"source"`: `"builtin"` for an image compiled into the
+server, `"uploaded"` for one that came from an uploaded package. It is stamped
+by the registry, never read from `image.json`.
+
+### Packages
+
+`GET`, `POST` and `DELETE` on `/api/applications/packages[/{id}]` manage
+uploaded application packages. All admin-only; documented in full in
+[16 — Uploaded packages](16-uploaded-packages.md#http).
+
 ### `GET /api/applications/catalog/{imageID}/ui/{path}`
 
 One file from an image's `ui/` directory. Any registered user; `GET` and `HEAD`.

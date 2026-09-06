@@ -3,7 +3,9 @@
 This is the catalog of one-click installable apps ("Applications" tab). It is
 **embedded into the backend binary** (`//go:embed images` in `registry.go`) and
 surfaced at the repo root as `installable-images/` (a symlink) so it is
-discoverable from the project root.
+discoverable from the project root. A running server serves these images plus
+any an administrator has uploaded as a `.zip` — same shape, same validator,
+stored outside the binary. See [Uploaded packages](docs/16-uploaded-packages.md).
 
 An image is one directory. It can install software into a container, contribute
 to the Remote interface from the browser, add a Go backend that runs on the
@@ -15,6 +17,9 @@ images/
   postgresql/
     image.json       metadata: name, description, port, env, systemd service
     install.sh       idempotent installer, run as root inside the container
+  object-mount/
+    image.json       a "tool": installs into the project container, no port
+    install.sh
   ui-playground/
     image.json
     ui/              browser extension: buttons, panels, popups
@@ -48,14 +53,23 @@ Everything is documented in detail there. Start with
 | Call the endpoints | [HTTP API](docs/12-http-api.md) |
 | Understand the trust model | [Security model](docs/13-security-model.md) |
 | Fix something broken | [Troubleshooting](docs/14-troubleshooting.md) |
+| Add an app to a running server, without a release | [Uploaded packages](docs/16-uploaded-packages.md) |
+| Ship a new version to people who already installed it | [Versions and upgrades](docs/17-versions-and-upgrades.md) |
 
 ## Adding an app, in short
 
-1. Create `images/<id>/image.json`. `id` must equal the directory name.
+1. Create `images/<id>/image.json`. `id` must equal the directory name, and
+   `version` is required — changing it is what re-runs `install.sh` on copies
+   people already installed. See
+   [Versions and upgrades](docs/17-versions-and-upgrades.md).
 2. Pick a `type`:
    - `service` — runs software on a port. Add an `install.sh` and a
      `port.internal`. A **global** install gets its own LXD container; a
      **project** install goes into that project's existing container.
+   - `tool` — provisions software into the project's container and exposes
+     nothing. Add an `install.sh`, declare no port, and offer project scope
+     only. This is the shape for a CLI, a mount, or an agent that is useful
+     because it is *in* the workspace.
    - `ui` — installs nothing anywhere. Add a `ui/` directory; declare no port.
    - `backend` — installs nothing in a container. Add a `plugin/` directory of
      Go source; the server compiles it and runs it as a process.
@@ -72,6 +86,14 @@ Everything is documented in detail there. Start with
 
 No other code changes are required — the app appears in the catalog
 automatically for both scopes.
+
+## Adding an app without a release
+
+An administrator can upload the same directory as a `.zip` from **Settings →
+Applications**. It is stored in the server's state directory, loads through
+this exact validator, and becomes an ordinary catalog entry — and it survives
+updates, because updating replaces the binary and never touches that
+directory. See [Uploaded packages](docs/16-uploaded-packages.md).
 
 ## Three things that surprise people
 

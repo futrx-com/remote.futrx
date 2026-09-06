@@ -1,7 +1,8 @@
 # 04 — Install scripts
 
-Only `type: "service"` images have one. A `ui` image installs nothing and needs
-no script — see [03 — Image types](03-image-types.md).
+`service` and `tool` images have one. A `ui` or `backend` image installs
+nothing in a container and needs no script — see
+[03 — Image types](03-image-types.md).
 
 ## The contract
 
@@ -14,7 +15,8 @@ lxc exec <container> --env APP_INTERNAL_PORT=3306 --env … -- bash -s
 It receives:
 
 - `APP_INTERNAL_PORT` — the port the app must bind **inside** the container.
-  Always `port.internal` from `image.json`.
+  Always `port.internal` from `image.json`. A `tool` has no port, so it is `0`
+  and means nothing.
 - One variable per `env[]` entry, already resolved: defaults applied, secrets
   generated, required values checked.
 
@@ -24,15 +26,38 @@ It must:
    run must be a no-op, not a reinstall or a reset.
 2. **Bind `APP_INTERNAL_PORT` on all interfaces** (`0.0.0.0`), so the LXD proxy
    device can forward the host port to it. Binding only to `127.0.0.1` inside
-   the container makes the app unreachable from the host.
+   the container makes the app unreachable from the host. *A `tool` skips this
+   entirely: nothing listens, and there is no proxy device.*
 3. **Exit non-zero on failure.** A non-zero exit marks the instance `error` and
-   surfaces the tail of the output in the UI.
+   surfaces the tail of the output in the UI. This matters more for a tool,
+   which has no `healthcheck` to fall back on: the script is the only thing
+   that can decide the install worked. A mount tool waits for its mountpoint to
+   appear and fails if it never does.
 
 Standard output and standard error are captured; the last 2000 characters are
 attached to the error message when the script fails.
 
 There is an 8-minute timeout (`execTimeout` in `installer.go`), which is
 generous enough for an `apt-get install` on a cold container.
+
+## Bundled container files
+
+An image may include `container.tar.gz` beside `image.json`. The archive holds
+regular files and directories under `container/`. The catalog validates the
+archive and wraps the install script to extract it into a temporary directory
+inside the target container. The script receives that directory as
+`APP_PACKAGE_DIR`; cleanup runs when the script exits, including on failure.
+Images without an archive retain the plain `bash -s` behavior.
+
+For example, an image whose container-side program is a Go module builds it
+from `$APP_PACKAGE_DIR/container/`. That module, the image's host `plugin/` and
+its browser `ui/` all belong to the same image folder, and a packaging script
+in the image refreshes the archive from that source. The archive is what allows
+a catalog to carry nested Go modules, which `go:embed` does not traverse.
+
+Payloads are limited to 8 MiB compressed and 32 MiB expanded. Paths outside
+`container/`, links, duplicate entries and special files are rejected. This
+staging support is separate from the future upload endpoint.
 
 ## Skeleton
 
@@ -114,6 +139,32 @@ variables. Two rules:
 
 The same applies to non-secret user input. `ui-playground` used to escape
 `PLAYGROUND_TITLE` before writing it into HTML for exactly this reason.
+
+## Tools, which have no port to wait for
+
+A `tool` image's script is the same contract minus the port. A mount tool is
+the worked example: it installs `fuse3`, puts the binary in place, writes its
+credentials to a root-only environment file, generates a systemd unit, and then
+**waits for `mountpoint -q` to succeed** before exiting. That wait is the whole
+readiness check.
+
+A tool whose daemon runs for the life of the container should also declare
+itself to the idle-workspace probe, by writing its process name into
+`/etc/remote/workspace-idle.d/<name>`:
+
+```sh
+mkdir -p /etc/remote/workspace-idle.d
+printf '%s\n' "$UNIT" >"/etc/remote/workspace-idle.d/${UNIT}"
+```
+
+The probe treats any unrecognised process as someone working in the project, so
+without this an always-running daemon pins every workspace it is installed in
+and an idle project is never archived. Remote reads names from that directory
+and ships no list of its own — an image that leaves nothing running needs
+nothing here.
+
+Note what it does *not* do: it never echoes a secret, and it writes credentials
+to a `0600` file rather than into the unit, which is world-readable.
 
 ## Healthcheck
 

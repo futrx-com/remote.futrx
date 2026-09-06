@@ -85,6 +85,30 @@ A backend image, which needs almost nothing beyond its `plugin/` directory:
 }
 ```
 
+A tool image, which provisions into the project's container but exposes
+nothing — no port, no healthcheck, project scope only:
+
+```json
+{
+  "id": "object-mount",
+  "name": "Object Mount",
+  "description": "Mount a bucket as a normal filesystem inside this project's container.",
+  "category": "storage",
+  "version": "0.1.0",
+  "icon": "disk",
+  "type": "tool",
+  "scopes": ["project"],
+  "env": [
+    { "key": "MOUNT_BUCKET", "label": "Bucket", "required": true },
+    { "key": "MOUNT_POINT", "label": "Mount at", "default": "/workspace/bucket" },
+    { "key": "AWS_ACCESS_KEY_ID", "label": "Access key ID", "required": true, "secret": true },
+    { "key": "AWS_SECRET_ACCESS_KEY", "label": "Secret access key", "required": true, "secret": true }
+  ],
+  "service": "object-mount",
+  "install": "install.sh"
+}
+```
+
 A UI image, which needs far less:
 
 ```json
@@ -109,23 +133,24 @@ A UI image, which needs far less:
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `id` | string | yes | Must equal the directory name. Loading fails otherwise. |
+| `id` | string | yes | Must equal the directory name. Loading fails otherwise. An uploaded package must state it explicitly — it has no directory to inherit from. See [16 — Uploaded packages](16-uploaded-packages.md). |
 | `name` | string | yes | Display name in the catalog and on installed rows. |
 | `description` | string | no | One line; the card truncates to two lines. |
 | `category` | string | no | Free text, e.g. `database`, `cache`, `development`. |
-| `version` | string | no | Shown next to the name. A string, not a number — `"8.0"`, `"16"`. |
+| `version` | string | **yes** | A string, not a number — `"8.0"`, `"16"`, `"1.2.3-rc1"`. Shown next to the name, and the signal that re-runs `install.sh` on an installed copy when it changes. See [17 — Versions and upgrades](17-versions-and-upgrades.md). |
 | `icon` | string | no | Built-in key or a path into this image's `ui/`. See [09 — Styling and icons](09-styling-and-icons.md). |
-| `type` | string | no | `service` (default), `ui`, or `backend`. See [03 — Image types](03-image-types.md). |
+| `type` | string | no | `service` (default), `tool`, `ui`, or `backend`. See [03 — Image types](03-image-types.md). |
 | `scopes` | string[] | yes | Any of `global`, `project`. At least one. |
 | `base` | string | no | LXD image for a dedicated global container. Default `ubuntu:24.04`. `service` only. |
-| `port` | object | for `service` | See below. Forbidden on `ui` and `backend`. |
+| `port` | object | for `service` | See below. Forbidden on `tool`, `ui` and `backend`, none of which is reachable on a port. |
 | `env` | object[] | no | Install-time inputs. See below. |
-| `service` | string | no | systemd unit name inside the container. Forbidden on `ui` and `backend`. |
+| `service` | string | no | systemd unit name inside the container. Meaningful for `service` and `tool` — it is what stop and uninstall act on. Forbidden on `ui` and `backend`, which have no container. |
 | `connection` | object | no | Maps env vars to user/password/database. See below. |
-| `install` | string | no | Install-script filename. Default `install.sh`. Ignored for `ui`. |
-| `healthcheck` | object | no | `{ "command": "…" }` run inside the container. Forbidden on `ui` and `backend`. |
+| `install` | string | no | Install-script filename. Default `install.sh`. Required for `service` and `tool`; ignored for `ui` and `backend`. |
+| `healthcheck` | object | no | `{ "command": "…" }` run inside the container. It probes a port, so it is forbidden on `tool`, `ui` and `backend`. |
 | `ui` | object | no | Overrides what is loaded from `ui/`. See below. |
 | `backend` | object | no | Overrides the defaults for the Go plugin in `plugin/`. See below. |
+| `source` | string | — | **Server-set, not accepted from `image.json`.** `builtin` or `uploaded`; anything declared here is overwritten. |
 
 ### `port`
 
@@ -213,14 +238,22 @@ does an unknown `access` value or a negative `timeoutMs`.
 
 ## Validation rules
 
+Every image must declare a non-empty `version`. Loading fails without one —
+including for an uploaded package, which is refused at upload rather than
+half-added.
+
 Enforced in `registry.go:validate` and `registry.go:loadImage`:
 
 - `id` must equal the directory name.
 - `name` must not be empty.
-- `type` must be `service`, `ui`, or absent (which means `service`).
+- `version` must not be empty or whitespace.
+- `type` must be `service`, `tool`, `ui`, `backend`, or absent (which means
+  `service`).
 - `scopes` must be non-empty and contain only `global` / `project`.
 - For `service`: `port.internal` must be > 0, and the install script named by
   `install` must exist.
+- For `tool`: `port` and `healthcheck` must be absent, `scopes` must not
+  contain `global`, and the install script named by `install` must exist.
 - For `ui`: `port`, `service`, and `healthcheck` must all be absent, and a
   `ui/` directory must exist.
 - For `backend`: `port`, `service`, and `healthcheck` must all be absent, and a
@@ -236,3 +269,77 @@ Enforced in `registry.go:validate` and `registry.go:loadImage`:
 `docs/` inside the catalog is this documentation, not an image. The registry
 skips it (`registry.go:isCatalogMetadataDirectory`). Every other directory is loaded as an
 image, so do not put anything else beside them.
+
+## Skills
+
+An image directory may carry a `skills/` directory. Like `ui/`, it opts the
+image in by existing — nothing in `image.json` declares it. Each subdirectory
+holding a `SKILL.md` is one skill:
+
+```
+skills/
+  backup-ignore/
+    SKILL.md
+```
+
+Names must be lowercase words joined by hyphens, because they become
+directories in a project workspace. A subdirectory without a `SKILL.md` fails
+the catalog load rather than shipping something the agent cannot read.
+
+Installing a project-scoped image publishes each skill to
+`/workspace/.agents/skills/<name>/SKILL.md` in that project's container, where
+the agent picks it up alongside the platform's own skills; uninstalling removes
+it again. Publishing is idempotent — a `.skill.sha256` marker beside the file
+means an unchanged skill is not re-pushed. Global-scope apps have no project
+workspace and publish nothing.
+
+Ship a skill when using the image well requires knowledge the agent cannot
+infer from the container, and keep it to what an agent needs to act. It is not
+a place for user-facing documentation; that belongs in the image's README or
+its UI.
+
+## Host tools
+
+Some images need an executable on the **Remote host**, beside the server
+process, rather than inside a container. Remote ships none of them and keeps no
+package list: the image declares its own, and Remote downloads exactly that.
+
+```json
+"hostTools": [
+  {
+    "name": "restic",
+    "version": "0.19.1",
+    "downloads": {
+      "amd64": {
+        "url": "https://example.com/restic_0.19.1_linux_amd64.bz2",
+        "sha256": "f415…585c",
+        "compression": "bzip2"
+      },
+      "arm64": { "url": "…", "sha256": "…", "compression": "bzip2" }
+    },
+    "versionArgs": ["version"]
+  }
+]
+```
+
+* `downloads` is keyed by host architecture as Go names it (`amd64`, `arm64`).
+  A host whose architecture is missing cannot install the image.
+* `sha256` is the digest of the bytes at `url`, **before** decompression, and
+  is mandatory. A download that hashes to anything else is discarded and the
+  install fails; nothing is written to the host.
+* `compression` is `""`, `"gzip"` or `"bzip2"` — one compressed executable, not
+  an archive of several files. One image, one binary, one checksum to read.
+* `versionArgs` (default `["version"]`) runs the installed binary to prove it
+  works before the install is reported as successful.
+
+Tools install under the server's data directory (`host-tools/<name>/<version>/`,
+published as `host-tools/bin/<name>`), never into `/usr` and never through the
+host package manager. Nothing outside Remote's own state is modified. Remote
+prepares them before the guest install script runs, on both Install and Start,
+and reuses an existing copy instead of downloading again. Only provisioned
+images may declare them; uninstall leaves them in place.
+
+A host that installs no image declaring host tools downloads nothing, which is
+what keeps such an image a genuinely optional addition rather than a dependency
+every operator inherits.
+

@@ -29,6 +29,7 @@ degrades on an older one instead of failing to load.
 | `sidebarHeaderActions` | `sidebar.header.actions` | Sidebar header, beside "New project" | — |
 | `sidebarSearchActions` | `sidebar.search.actions` | Inside the sidebar search field, trailing | — |
 | `applicationCardActions` | `applications.card.actions` | Action row of an installed application's card | `scope`, `projectId`, `instance` |
+| `projectSettingsPanel` | `project.settings.panel` | Project settings, above resource limits | `scope`, `projectId` |
 | `applicationsPanel` | `applications.panel` | Below the applications list, per scope | `scope`, `projectId` |
 
 Always reference them through `remote.slots.<constant>` rather than typing the

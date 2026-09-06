@@ -6,6 +6,7 @@ particular whether it touches a container at all.
 | type | Installing it | Requires |
 |---|---|---|
 | `service` (default) | Runs software on a port under systemd | `port.internal`, an install script |
+| `tool` | Provisions software into the project's container and exposes nothing | an install script, project scope only |
 | `ui` | Nothing in any container — turns on the image's browser extension | a `ui/` directory |
 | `backend` | Nothing in any container — compiles and runs the image's Go plugin on the host | a `plugin/` directory |
 
@@ -81,6 +82,66 @@ connect = <protocol>:127.0.0.1:<internalPort>       inside the container
 
 A project app is additionally reachable from inside the project's own container
 on the LXD bridge at `<slug>.lxd:<internalPort>`.
+
+## `tool`
+
+A tool image provisions software into a container exactly as a service does —
+same install script, same systemd unit, same idempotency rules — but exposes
+nothing. No port is allocated, no proxy device is created, and nothing outside
+the container can reach it.
+
+That is the point. The value of a tool is that it is *present in the container
+someone is working in*: a CLI on the `PATH`, a mounted filesystem, an agent. A
+port would be a lie, and modelling one as a `service` would allocate a host port
+for something that is not listening.
+
+A mount tool is the worked example: it installs a FUSE binary and mounts a
+bucket at a path inside the project, under a systemd unit. Nothing listens.
+
+### Project scope only
+
+A tool declares `"scopes": ["project"]`. A global install would launch a
+dedicated container, provision the tool into it, and hand it to nobody — the
+container exists for the app, and there is no workspace in it to improve.
+`registry.go:validate` rejects a tool that claims global scope.
+
+### What install / start / stop / uninstall mean
+
+Identical to a project-scope service, minus the proxy device:
+
+| Action | Effect |
+|---|---|
+| Install | Run the install script in the project's container. No port is allocated. |
+| Start | Re-run the script, which is idempotent — the same path as install. |
+| Stop | `systemctl stop <service>`. The project container keeps running. |
+| Uninstall | `systemctl disable --now <service>`. Installed packages and data stay. |
+| Set port | Rejected with `ErrNotSupported` — there is no port. |
+
+### The install script contract, minus the port
+
+A tool's script is a normal install script (see
+[04 — Install scripts](04-install-scripts.md)) with two differences:
+
+- **There is no `APP_INTERNAL_PORT`.** Nothing is listening, so nothing has to
+  bind. The rule about binding `0.0.0.0` does not apply.
+- **`healthcheck` is rejected.** It probes a port, and there is none. A tool
+  proves it worked by exiting non-zero when it did not — a mount tool waits for
+  its mountpoint to appear and fails the install if it never does.
+
+The `service` field is still meaningful and still worth setting: it is what
+stop and uninstall act on. A tool that starts something long-running and does
+not name its unit cannot be stopped.
+
+### What the Applications tab shows
+
+A tool's installed row has no port row and no credentials panel — showing them
+would be showing zeros. It says instead:
+
+> Workspace tool — installed in this project's container. Nothing is exposed.
+
+followed by its non-secret env values, which is where a mount path or a bucket
+name shows up. The uninstall confirmation says nothing about releasing a host
+port, because none was held.
 
 ## `ui`
 
@@ -172,7 +233,10 @@ and the failure modes.
 
 ```
 Does installing it need to run software in a container?
-├── yes → "service"        (declare port.internal and an install script)
+├── yes
+│   ├── does anything need to reach it on a port?
+│   │   ├── yes → "service"   (declare port.internal and an install script)
+│   │   └── no  → "tool"      (install script, project scope, no port)
 └── no
     ├── does it need server-side code?  → "backend"   (ship a plugin/ directory)
     └── is it only browser code?        → "ui"        (ship a ui/ directory)
@@ -181,13 +245,19 @@ Does installing it need to run software in a container?
 Then add `ui/` or `plugin/` to it as needed — neither is restricted to the type
 named after it.
 
-## The gap: install script, no service
+## Two axes, not one
 
-There is currently no type for "run an install script in the project's
-container, but expose no port and no systemd unit" — installing a CLI tool into
-a workspace, say. Modelling that as `service` forces a port you do not want.
+`Kind` answers two independent questions, and the two predicates on it are the
+ones the rest of the code branches on:
 
-If you need it, the shape would be a fourth kind (`tool`: install script,
-project scope only, no port or unit) and it is a small addition to
-`Kind`, `validate`, and `Service.Install`. It has not been added because
-nothing in the catalog needs it yet.
+| | `NeedsContainer()` | `NeedsPort()` |
+|---|---|---|
+| `service` | yes | yes |
+| `tool` | yes | no |
+| `ui` | no | no |
+| `backend` | no | no |
+
+`NeedsContainer` decides whether an install has to reach `lxc` at all.
+`NeedsPort` decides whether it allocates a host port and gets a proxy device.
+They were the same predicate until `tool` existed; anything that still treats
+them as one is a bug waiting for a tool image.

@@ -162,10 +162,36 @@ That is not a security boundary. A malicious extension does not need to throw �
 it can simply do the harmful thing correctly. Robustness protects against bugs;
 the build boundary protects against malice.
 
-## If images ever become runtime-installable
+## Runtime-installable images: uploaded packages
 
-Everything above changes. The build boundary is what makes the current design
-sound; remove it and you need, at minimum:
+Images are also installable at runtime, as uploaded `.zip` packages — see
+[16 — Uploaded packages](16-uploaded-packages.md). That does not weaken the
+model above, because it does not widen who may add code. It moves the boundary
+from *the build* to *the administrator*, and nowhere further:
+
+- **Admin-only.** Every package route requires an administrator. The same
+  account can already install a global application, change the base image, and
+  run an install script as root in a container. Uploading a package is inside
+  that authority, not beyond it.
+- **Same validator.** An uploaded package loads through the same `loadImage`
+  the embedded catalog does. There is no path a package can take that a
+  built-in image cannot.
+- **Same privileges, and no more.** The `ui/` runs on the main origin, the
+  `plugin/` runs as a child of the server, the `install.sh` runs as root in a
+  container. Exactly as they do for a built-in image.
+- **No reserved id may be taken.** A package cannot claim the id of a built-in
+  image, so it cannot redefine what an application the operator already trusts
+  installs.
+- **The extractor is the one new attack surface.** It refuses escaping paths,
+  symlinks, special files, oversized members and compression bombs, and writes
+  nothing executable. Everything lands under `$DATA_DIR/app-packages/images/<id>/`.
+
+**Uploading a package is an act of trust identical to merging a directory into
+`images/`.** Review one the same way — the checklist below applies unchanged,
+and `plugin/` gets the [Backend plugins](#backend-plugins) checklist too.
+
+What is still *not* there, and what it would take to let non-administrators
+install extensions or to accept packages from an untrusted registry:
 
 - **Isolation.** An iframe on a separate origin with a `postMessage` bridge,
   rather than direct DOM and `fetch` access. Slots would post render intents
@@ -175,9 +201,10 @@ sound; remove it and you need, at minimum:
 - **CSP.** A policy that stops an extension reaching arbitrary third-party
   origins.
 - **Signing and provenance.** Some answer to "who wrote this and did it change".
+  The store records who uploaded a package and its SHA-256; it verifies neither
+  against anything.
 
-None of that exists today, deliberately, because none of it is needed for
-build-time code. Do not add runtime installation without it.
+Do not widen the audience for uploads without them.
 
 ## Reviewing an extension
 

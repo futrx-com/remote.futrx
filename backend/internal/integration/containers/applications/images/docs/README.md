@@ -4,10 +4,13 @@ This is the complete documentation for the **applications catalog**: the
 one-click installable apps in Remote, and the browser extensions they can ship
 to change the Remote interface itself.
 
-Three things live here, and the differences matter:
+Four things live here, and the differences matter:
 
 - **An application** installs software — MySQL, PostgreSQL, Redis — into a
   container and exposes it on a port.
+- **A workspace tool** installs software into the project's container and
+  exposes nothing — a CLI, a mount, an agent. It is useful because it is *in*
+  the workspace, not because anything can connect to it.
 - **A UI extension** installs nothing anywhere. It is a `ui/` directory that
   runs in the browser and contributes to defined places in the Remote
   interface: a button in the chat header, a panel, a popup.
@@ -15,7 +18,7 @@ Three things live here, and the differences matter:
   compiles it and runs it as a process, and the image's `ui/` calls it. It is
   how an image adds a server-side feature rather than only a button.
 
-One image can be any of these, or all three. A MySQL image can ship a "Connect"
+One image can be any of these, or several at once. A MySQL image can ship a "Connect"
 button alongside the database it provisions and a plugin that runs the queries
 behind it; an image that only adds a button ships no container side at all.
 
@@ -25,6 +28,7 @@ behind it; an image that only adds a button ships no container side at all.
 |---|---|
 | Understand how the whole thing fits together | [01 — Overview](01-overview.md) |
 | Add a database or service to the catalog | [03 — Image types](03-image-types.md), [04 — Install scripts](04-install-scripts.md) |
+| Add a tool to the project workspace | [03 — Image types](03-image-types.md#tool), [04 — Install scripts](04-install-scripts.md) |
 | Add a button, panel, or popup to the Remote UI | [07 — Tutorial](07-tutorial-build-a-plugin.md) |
 | Add a server-side feature in Go | [15 — Backend plugins](15-backend-plugins.md) |
 | Look up a field in `image.json` | [02 — image.json reference](02-image-json.md) |
@@ -37,6 +41,8 @@ behind it; an image that only adds a button ships no container side at all.
 | Call the endpoints directly | [12 — HTTP API](12-http-api.md) |
 | Understand the trust model | [13 — Security model](13-security-model.md) |
 | Fix something that is not working | [14 — Troubleshooting](14-troubleshooting.md) |
+| Ship an app to a running server without releasing Remote | [16 — Uploaded packages](16-uploaded-packages.md) |
+| Ship a new version of an app people already installed | [17 — Versions and upgrades](17-versions-and-upgrades.md) |
 
 ## All documents
 
@@ -55,6 +61,8 @@ behind it; an image that only adds a button ships no container side at all.
 13. [Security model](13-security-model.md) — what is enforced, where, and what is not.
 14. [Troubleshooting](14-troubleshooting.md) — symptoms, causes, fixes.
 15. [Backend plugins](15-backend-plugins.md) — shipping Go that runs on the server, and calling it from `ui/`.
+16. [Uploaded packages](16-uploaded-packages.md) — the same catalog entry, delivered as a `.zip` at runtime and surviving updates.
+17. [Versions and upgrades](17-versions-and-upgrades.md) — how `version` decides when an installed copy is re-provisioned.
 
 ## Conventions in these documents
 
