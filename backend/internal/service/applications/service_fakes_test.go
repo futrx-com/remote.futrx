@@ -18,7 +18,16 @@ func (f *fakeStore) ListProject(_ context.Context, projectID string) ([]Instance
 	return f.byProject[projectID], nil
 }
 
-func (f *fakeStore) ListAll(context.Context) ([]Instance, error) { return f.global, nil }
+// ListAll spans both scopes, as the real store does. A caller asking "is this
+// image installed anywhere" gets the wrong answer from a fake that only knows
+// about global instances.
+func (f *fakeStore) ListAll(context.Context) ([]Instance, error) {
+	all := append([]Instance(nil), f.global...)
+	for _, group := range projectInstanceGroups(f.byProject) {
+		all = append(all, group...)
+	}
+	return all, nil
+}
 
 // Get scans the lists the fixture was built from, so a test can hand the
 // service an instance without a second source of truth for it.

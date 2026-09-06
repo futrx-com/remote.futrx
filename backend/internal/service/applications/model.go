@@ -44,15 +44,29 @@ const (
 	// server-side feature — an endpoint its ui/ calls — instead of only
 	// drawing buttons or provisioning software.
 	KindBackend Kind = "backend"
+	// KindTool installs software into a container exactly as a service does,
+	// but exposes nothing: no port, no proxy device, nothing to connect to. It
+	// is how a workspace tool is provisioned into the project someone is
+	// working in — a CLI, a mount, an agent — where the value is that the tool
+	// is present in that container, not that it is reachable from outside.
+	//
+	// Project scope only. A dedicated global container running a tool nobody
+	// works in would have nothing to offer.
+	KindTool Kind = "tool"
 )
 
 // Valid reports whether k is a known kind.
 func (k Kind) Valid() bool {
-	return k == KindService || k == KindUI || k == KindBackend
+	return k == KindService || k == KindUI || k == KindBackend || k == KindTool
 }
 
 // NeedsContainer reports whether installing this kind has to reach a container.
-func (k Kind) NeedsContainer() bool { return k == KindService }
+func (k Kind) NeedsContainer() bool { return k == KindService || k == KindTool }
+
+// NeedsPort reports whether this kind is reachable on a host port, which is
+// what makes it need an allocated port and a proxy device forwarding to it.
+// A tool runs in a container but exposes nothing, so it needs neither.
+func (k Kind) NeedsPort() bool { return k == KindService }
 
 // Protocol is the transport a proxy device forwards.
 type Protocol string
@@ -108,6 +122,43 @@ type Connection struct {
 	DatabaseEnv string `json:"databaseEnv,omitempty"`
 }
 
+// HostTool is an executable an image needs on the Remote host itself, next to
+// the server process, rather than inside a container. Remote ships no tool of
+// its own and keeps no package list: the image supplies the download and the
+// checksum it must have, so installing Remote never pulls in a dependency only
+// one optional image cares about, and a host that installs nothing keeps
+// exactly the software it started with.
+//
+// The download is fetched over HTTPS and rejected unless it hashes to the
+// declared SHA-256, so the image — not the network, and not a package mirror —
+// decides what ends up on the host.
+type HostTool struct {
+	// Name is the executable's filename once installed. It is also how a
+	// consumer looks the tool up, so it must be a plain name: no slashes.
+	Name string `json:"name"`
+	// Version is recorded in the install path, so upgrading an image installs
+	// beside the old copy instead of overwriting a binary in use.
+	Version string `json:"version"`
+	// Downloads is keyed by host architecture as Go names it ("amd64",
+	// "arm64"). A host whose architecture is absent cannot install the image.
+	Downloads map[string]HostToolDownload `json:"downloads"`
+	// VersionArgs runs the installed binary to prove it works before the
+	// install is reported as successful. Defaults to ["version"].
+	VersionArgs []string `json:"versionArgs,omitempty"`
+}
+
+// HostToolDownload is one architecture's artifact.
+type HostToolDownload struct {
+	// URL must be https. It is fetched verbatim; no mirror is substituted.
+	URL string `json:"url"`
+	// SHA256 is the hex digest of the bytes at URL, before decompression.
+	SHA256 string `json:"sha256"`
+	// Compression is "", "gzip" or "bzip2" — how the artifact wraps the single
+	// executable. Archives holding more than one file are deliberately not
+	// supported: one image, one binary, one checksum to read.
+	Compression string `json:"compression,omitempty"`
+}
+
 // ImageUI describes the browser-side extension an image ships in its ui/
 // directory. It is what lets an image contribute to the Remote UI itself —
 // a button, a panel, a popup — instead of only installing software in a
@@ -125,17 +176,37 @@ type ImageUI struct {
 	Views map[string]string `json:"views,omitempty"`
 }
 
+// ImageSource says where a catalog entry came from. It is decided by the
+// registry that loaded the entry and overwrites anything image.json declares,
+// so a package cannot describe itself as built in.
+type ImageSource string
+
+const (
+	// SourceBuiltin marks an image compiled into the server binary.
+	SourceBuiltin ImageSource = "builtin"
+	// SourceUploaded marks an image that came from a package an administrator
+	// uploaded, and that can therefore be removed again.
+	SourceUploaded ImageSource = "uploaded"
+)
+
 // Image is one catalog entry loaded from images/<id>/image.json.
 type Image struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Category    string `json:"category,omitempty"`
-	Version     string `json:"version,omitempty"`
+	// HostTools are executables this image needs on the Remote host, each one
+	// downloaded and checksum-verified from the image's own declaration.
+	HostTools   []HostTool `json:"hostTools,omitempty"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description,omitempty"`
+	Category    string     `json:"category,omitempty"`
+	Version     string     `json:"version,omitempty"`
 	// Icon is either a built-in icon key the frontend knows ("database",
 	// "cache", …) or a path to an image inside the image's own ui/ directory
 	// ("ui/assets/logo.svg"), which lets an image ship its own mark.
 	Icon string `json:"icon,omitempty"`
+	// Source is filled in by the registry, not by image.json: it says whether
+	// this entry is built into the server or came from an uploaded package,
+	// which is what tells the UI whether it can be removed.
+	Source ImageSource `json:"source,omitempty"`
 	// Type decides whether installing this image provisions a container.
 	// Empty means KindService.
 	Type   Kind     `json:"type,omitempty"`
@@ -159,6 +230,12 @@ type Image struct {
 	// Backend is set when the image ships a plugin/ directory. Nil means the
 	// image has no Go plugin and nothing is compiled or run for it.
 	Backend *ImageBackend `json:"backend,omitempty"`
+	// Skills names the agent skills this image ships. Like UI, it is filled in
+	// by the registry from the image's own skills/ directory rather than
+	// declared in image.json: each subdirectory holding a SKILL.md is one
+	// skill, published into the project workspace when the image is installed
+	// and taken back when it is uninstalled.
+	Skills []string `json:"skills,omitempty"`
 }
 
 // SupportsScope reports whether the image may be installed at the given scope.
@@ -185,8 +262,15 @@ const (
 type Instance struct {
 	ID      string `json:"id"`
 	ImageID string `json:"imageId"`
-	Name    string `json:"name"`
-	Scope   Scope  `json:"scope"`
+	// ImageVersion is the image.json version this copy was last installed
+	// from. It is what makes an upgrade detectable: when the catalog's version
+	// for the image no longer matches, the install script has to run again.
+	// Empty means the instance predates version tracking, which is treated as
+	// "unknown, so re-install" — install scripts are idempotent, and assuming
+	// the container already holds the new version would be a guess.
+	ImageVersion string `json:"imageVersion,omitempty"`
+	Name         string `json:"name"`
+	Scope        Scope  `json:"scope"`
 	// ProjectID is set only for ScopeProject instances.
 	ProjectID string `json:"projectId,omitempty"`
 	// ContainerName is the LXD container the app runs in: a dedicated

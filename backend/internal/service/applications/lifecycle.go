@@ -24,7 +24,7 @@ func (s *Service) SetPort(ctx context.Context, id string, port int) (View, error
 	if err != nil {
 		return View{}, err
 	}
-	if !img.Type.NeedsContainer() {
+	if !img.Type.NeedsPort() {
 		return View{}, fmt.Errorf("%w: %s has no port", ErrNotSupported, img.ID)
 	}
 	if port != inst.ExternalPort {
@@ -104,9 +104,16 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 			return View{}, err
 		}
 	}
+	upgrading := target == StatusRunning && needsUpgrade(inst, img)
 	if err := s.moveContainer(ctx, InstallSpec{Image: img, Instance: inst}, target); err != nil {
 		_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
 		return View{}, err
+	}
+	// Only record the new version once the install that delivered it has
+	// actually run, so a failed start leaves the instance asking for the
+	// upgrade again rather than claiming to have it.
+	if upgrading {
+		inst.ImageVersion = img.Version
 	}
 	if err := s.moveBackend(ctx, img, inst, target); err != nil {
 		_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
@@ -121,9 +128,19 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 // moveContainer applies the requested lifecycle state to the container half
 // of an image. The transition workflow deliberately runs this before moving a
 // plugin and recording the final status.
+//
+// Starting an instance whose image has moved on installs rather than starts.
+// An upload upgrades the copies that are running and leaves stopped ones
+// alone — bringing an app back up is not something an upload should decide —
+// so this is where a stopped copy catches up, at the moment its owner asks for
+// it. It is also how a built-in image upgraded by a Remote release reaches an
+// app that was down when the release landed.
 func (s *Service) moveContainer(ctx context.Context, spec InstallSpec, target InstanceStatus) error {
-	if target == StatusRunning {
-		return s.installer.Start(ctx, spec)
+	if target != StatusRunning {
+		return s.installer.Stop(ctx, spec)
 	}
-	return s.installer.Stop(ctx, spec)
+	if needsUpgrade(spec.Instance, spec.Image) {
+		return s.installer.Install(ctx, spec)
+	}
+	return s.installer.Start(ctx, spec)
 }
