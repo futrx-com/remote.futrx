@@ -121,9 +121,9 @@ func upgradeAll(
 		}
 
 		if _, err := projects.Upgrade(ctx, meta.ID, includeBusy); err != nil {
-			if errors.Is(err, serviceproject.ErrProjectBusy) {
+			if errors.Is(err, serviceproject.ErrProjectBusy) || errors.Is(err, serviceproject.ErrWorkspaceArchived) {
 				skipped++
-				log.Printf("SKIP %s: active agent process", meta.Slug)
+				log.Printf("SKIP %s: %v", meta.Slug, err)
 				continue
 			}
 			failed++
