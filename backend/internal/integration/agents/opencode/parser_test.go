@@ -9,8 +9,11 @@ import (
 )
 
 // Fixtures are real `opencode run --format json` lines. The stop-finish
-// fixture is captured from the pinned opencode-ai v1.18.25, which reliably
-// emits a terminating step_finish after the last text part.
+// fixture is captured from opencode-ai v1.18.25, which reliably
+// emits a terminating step_finish after the last text part. The whole set
+// was re-validated against the pinned v1.18.29: identical wire format,
+// plus an optional `time` object on text parts that the parser ignores
+// (see TestParserHandlesReal11829Capture).
 const (
 	fixtureStepStart  = `{"type":"step_start","timestamp":1788169427440,"sessionID":"ses_abc","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_abc","type":"step-start"}}`
 	fixtureText       = `{"type":"text","timestamp":1788169431703,"sessionID":"ses_abc","part":{"id":"prt_2","messageID":"msg_2","sessionID":"ses_abc","type":"text","text":"The command ran successfully."}}`
@@ -22,6 +25,15 @@ const (
 
 // fixtureStopFinish118 is the final event of a real v1.18.25 text-only run.
 const fixtureStopFinish118 = `{"type":"step_finish","timestamp":1788172880424,"sessionID":"ses_abc","part":{"id":"prt_5","reason":"stop","messageID":"msg_2","sessionID":"ses_abc","type":"step-finish","tokens":{"total":44325,"input":44312,"output":2,"reasoning":11,"cache":{"write":0,"read":0}},"cost":0}}`
+
+// capture11829 is a complete real v1.18.29 minimal-agent run: step_start,
+// text (with the new optional time object), and a terminating step_finish
+// with reason "stop".
+var capture11829 = []string{
+	`{"type":"step_start","timestamp":1788719336666,"sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","part":{"id":"prt_077fb0cc60017FrBdvrrJtY3ii","messageID":"msg_077fa9771001ZloGnfjgqEXlP9","sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","type":"step-start"}}`,
+	`{"type":"text","timestamp":1788719336852,"sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","part":{"id":"prt_077fb0cd1001cHa3fxA6nyVzeZ","messageID":"msg_077fa9771001ZloGnfjgqEXlP9","sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","type":"text","text":"OK","time":{"start":1788719336657,"end":1788719336820}}}`,
+	`{"type":"step_finish","timestamp":1788719336852,"sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","part":{"id":"prt_077fb0d7b001XvV8sL28hluLEb","reason":"stop","messageID":"msg_077fa9771001ZloGnfjgqEXlP9","sessionID":"ses_f88056bd3ffeeOn6GHqMUGB5Gq","type":"step-finish","tokens":{"total":495,"input":493,"output":2,"reasoning":0,"cache":{"write":0,"read":0}},"cost":0}}`,
+}
 
 func TestParserCompletesPlain118RunWithStopFinish(t *testing.T) {
 	parser := NewParser(agent.RunRequest{ConversationID: "conv-1", Model: "opencode/test-model"})
@@ -40,6 +52,31 @@ func TestParserCompletesPlain118RunWithStopFinish(t *testing.T) {
 		t.Fatal(err)
 	}
 	if usage.InputTokens != 44312 || usage.OutputTokens != 2 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestParserHandlesReal11829Capture(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "conv-1", Model: "opencode/test-model"})
+	events := parseLines(t, parser, capture11829...)
+
+	textIndex := slices.IndexFunc(events, func(event agent.Event) bool {
+		return event.Type == agent.EventAssistantTextDelta
+	})
+	if textIndex < 0 || events[textIndex].Text != "OK" {
+		t.Fatalf("v1.18.29 text event = %#v", events)
+	}
+	completedIndex := slices.IndexFunc(events, func(event agent.Event) bool {
+		return event.Type == agent.EventRunCompleted
+	})
+	if completedIndex < 0 {
+		t.Fatalf("v1.18.29 stop finish did not complete the run: %#v", events)
+	}
+	var usage agent.Usage
+	if err := json.Unmarshal(events[completedIndex].Usage, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens != 493 || usage.OutputTokens != 2 {
 		t.Fatalf("usage = %#v", usage)
 	}
 }
