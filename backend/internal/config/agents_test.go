@@ -59,7 +59,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	for index, profile := range hostProfiles {
 		hostIDs[index] = profile.ID
 	}
-	if !slices.Equal(hostIDs, []string{"claude", "codex", "minimax", "kimi", "antigravity", "opencode"}) {
+	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity", "opencode"}) {
 		t.Fatalf("host profile order = %v", hostIDs)
 	}
 	opencodeCLI := hostProfiles[len(hostProfiles)-1].CLI
