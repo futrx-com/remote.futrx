@@ -137,11 +137,12 @@ func (h *Host) ensure(ctx context.Context, spec svc.BackendSpec) (*pluginProcess
 	instanceID := spec.Instance.ID
 
 	// A live process needs nothing else, and this is the path every request
-	// takes. The catalog is embedded, so an image's source — and therefore the
-	// binary compiled from it — cannot change while the server runs: there is
-	// nothing a per-call rebuild check could discover. Doing one anyway would
-	// re-read and re-hash the whole plugin on every request and funnel
-	// concurrent calls through the builder's per-image lock.
+	// takes. An image's source changes only when an administrator uploads a
+	// new version of its package, and the applications service stops this
+	// instance's process when that happens — so a running process is by
+	// construction current, and re-reading and re-hashing the whole plugin on
+	// every request would discover nothing while funnelling concurrent calls
+	// through the builder's per-image lock.
 	if current := h.lookup(instanceID); current != nil && current.running() {
 		return current, nil
 	}

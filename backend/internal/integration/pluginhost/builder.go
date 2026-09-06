@@ -136,7 +136,13 @@ func (b *Builder) compile(ctx context.Context, plan buildPlan) error {
 
 	// -trimpath keeps the fingerprint honest: without it the binary would
 	// embed the build directory's name, which contains the fingerprint.
-	arguments := []string{"build", "-trimpath", "-o", plan.binary + ".tmp", "."}
+	//
+	// -buildvcs=false because this tree is generated, never checked out: there
+	// is no revision to stamp. Left on, the toolchain probes for a repository
+	// anyway and fails the whole build on a host where that probe errors
+	// instead of reporting "no repository" — which would make every plugin
+	// uninstallable for a reason that has nothing to do with the plugin.
+	arguments := []string{"build", "-trimpath", "-buildvcs=false", "-o", plan.binary + ".tmp", "."}
 	offlineOutput, offlineErr := runGo(ctx, goTool, source, goEnv(b.root, true), arguments)
 	if offlineErr != nil {
 		// Falling back to the network covers the case the offline path cannot:

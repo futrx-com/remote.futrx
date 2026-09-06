@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
@@ -12,24 +13,99 @@ import (
 	"github.com/futrx-com/remote.futrx.com/pkg/appplugin"
 )
 
-// This is the end-to-end proof: the catalog the server embeds, compiled and
-// run by the host the server uses, answering on the routes it advertises. The
-// synthetic plugins elsewhere in this package check the machinery; this checks
-// that what actually ships works.
-func TestBackendPlaygroundRunsFromTheEmbeddedCatalog(t *testing.T) {
+// catalogPluginMain is a whole installable image's backend, written against the
+// public appplugin contract exactly as a distributed plugin package is. It is
+// deliberately not one of the images this repository ships: installable images
+// are separately distributed packages, so the seam that has to keep working is
+// "a catalog entry, whatever it is, compiles and serves" — not "this particular
+// plugin still exists".
+const catalogPluginMain = `package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"os"
+
+	"github.com/futrx-com/remote.futrx.com/pkg/appplugin"
+	"github.com/futrx-com/remote.futrx.com/pkg/appplugin/pluginrpc"
+)
+
+type backend struct {
+	mux      *appplugin.Mux
+	instance appplugin.Instance
+}
+
+func main() {
+	b := &backend{mux: appplugin.NewMux()}
+	b.mux.GET("health", "Liveness and process identity", b.health)
+	b.mux.GET("admin", "Admin-only route", b.admin)
+	b.mux.GET("boom", "Deliberate panic", b.boom)
+	b.mux.POST("echo", "Round-trip a value through the process", b.echo)
+	pluginrpc.Serve(b)
+}
+
+func (b *backend) Describe() (appplugin.Descriptor, error) {
+	return appplugin.Descriptor{Name: "catalog-fixture", Version: "1", APIVersion: appplugin.APIVersion, Routes: b.mux.Routes()}, nil
+}
+func (b *backend) Init(instance appplugin.Instance) error { b.instance = instance; return nil }
+func (b *backend) Handle(r appplugin.Request) (appplugin.Response, error) {
+	return b.mux.Serve(r), nil
+}
+
+func (b *backend) health(appplugin.Request) appplugin.Response {
+	return appplugin.JSON(http.StatusOK, map[string]any{"ok": true, "pid": os.Getpid(), "instance": b.instance.ID})
+}
+
+// The plugin authorizes its own callers; the host only decided that the caller
+// may reach the plugin at all.
+func (b *backend) admin(r appplugin.Request) appplugin.Response {
+	if !r.Caller.IsAdmin {
+		return appplugin.Errorf(http.StatusForbidden, "admins only")
+	}
+	return appplugin.JSON(http.StatusOK, map[string]any{"ok": true})
+}
+
+func (b *backend) boom(appplugin.Request) appplugin.Response { panic("deliberate") }
+
+func (b *backend) echo(r appplugin.Request) appplugin.Response {
+	var body struct {
+		Value string ` + "`json:\"value\"`" + `
+	}
+	if err := json.Unmarshal(r.Body, &body); err != nil {
+		return appplugin.Errorf(http.StatusBadRequest, "invalid body")
+	}
+	return appplugin.JSON(http.StatusOK, map[string]any{"value": body.Value})
+}
+`
+
+// This is the end-to-end proof: an image read through the real catalog loader,
+// compiled and run by the host the server uses, answering on the routes it
+// advertises. The synthetic catalogs elsewhere in this package hand the host a
+// plugin source directly; this one makes it go through the registry first.
+func TestPluginFromTheImageCatalogCompilesAndServes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compiles a plugin with the Go toolchain")
 	}
 	if _, err := findGoTool(testGoToolOverride()); err != nil {
 		t.Skipf("no Go toolchain available: %v", err)
 	}
-	registry, err := containerapplications.NewRegistry()
+	file := func(data string) *fstest.MapFile { return &fstest.MapFile{Data: []byte(data)} }
+	registry, err := containerapplications.NewRegistryFromFS(fstest.MapFS{
+		"images/catalog-fixture/image.json": file(`{
+			"name": "Catalog Fixture",
+			"version": "1.0.0",
+			"type": "backend",
+			"scopes": ["global", "project"],
+			"backend": {"access": "registered", "timeoutMs": 10000}
+		}`),
+		"images/catalog-fixture/plugin/main.go": file(catalogPluginMain),
+	})
 	if err != nil {
 		t.Fatalf("load catalog: %v", err)
 	}
-	image, ok := registry.Get("backend-playground")
+	image, ok := registry.Get("catalog-fixture")
 	if !ok || image.Backend == nil {
-		t.Fatal("backend-playground is missing from the catalog")
+		t.Fatal("the fixture image did not load with a backend")
 	}
 
 	host := New(sharedRoot(t), registry, Options{GoTool: testGoToolOverride()})
@@ -37,7 +113,7 @@ func TestBackendPlaygroundRunsFromTheEmbeddedCatalog(t *testing.T) {
 	spec := svc.BackendSpec{
 		ImageID: image.ID,
 		Instance: appplugin.Instance{
-			ID:      "playground-e2e",
+			ID:      "catalog-e2e",
 			ImageID: image.ID,
 			Scope:   string(svc.ScopeGlobal),
 		},
@@ -47,15 +123,14 @@ func TestBackendPlaygroundRunsFromTheEmbeddedCatalog(t *testing.T) {
 	defer cancel()
 	descriptor, err := host.Ensure(ctx, spec)
 	if err != nil {
-		t.Fatalf("start the playground plugin: %v", err)
+		t.Fatalf("start the catalog plugin: %v", err)
 	}
 	if descriptor.APIVersion != appplugin.APIVersion {
 		t.Fatalf("descriptor = %+v", descriptor)
 	}
-	// The panel and the self-test both render this table, so an empty one is a
-	// broken fixture rather than a cosmetic problem.
-	if len(descriptor.Routes) < 10 {
-		t.Errorf("only %d routes advertised: %+v", len(descriptor.Routes), descriptor.Routes)
+	// Routes are discovery, so the SPA can only find what the plugin declares.
+	if len(descriptor.Routes) != 4 {
+		t.Errorf("%d routes advertised: %+v", len(descriptor.Routes), descriptor.Routes)
 	}
 
 	admin := appplugin.Caller{Email: "admin@example.com", IsAdmin: true}
@@ -63,39 +138,26 @@ func TestBackendPlaygroundRunsFromTheEmbeddedCatalog(t *testing.T) {
 		t.Helper()
 		return decode(t, host, spec, appplugin.Request{Method: "GET", Path: path, Caller: admin})
 	}
-	post := func(path string, body any) map[string]any {
-		t.Helper()
-		raw, err := json.Marshal(body)
-		if err != nil {
-			t.Fatalf("encode body: %v", err)
-		}
-		return decode(t, host, spec, appplugin.Request{
-			Method: "POST", Path: path, Body: raw, Caller: admin,
-		})
-	}
 
 	health := get("health")
 	if health["ok"] != true || health["pid"] == nil {
 		t.Errorf("health = %v", health)
 	}
-
-	// State in the process, then state on disk: the two things a plugin can do
-	// that a browser extension cannot.
-	post("kv/e2e", map[string]string{"value": "kept"})
-	if read := get("kv/e2e"); read["value"] != "kept" {
-		t.Errorf("kv round-trip returned %v", read)
-	}
-	post("notes", map[string]string{"note": "from the end-to-end test"})
-	note := get("notes")
-	if note["note"] != "from the end-to-end test" || note["saved"] != true {
-		t.Errorf("note round-trip returned %v", note)
+	if health["instance"] != spec.Instance.ID {
+		t.Errorf("instance = %v, want the one Init was given", health["instance"])
 	}
 
-	if computed := post("compute", map[string]int{"n": 30}); computed["fibonacci"] != float64(832040) {
-		t.Errorf("compute returned %v", computed)
+	body, err := json.Marshal(map[string]string{"value": "kept"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if echoed := decode(t, host, spec, appplugin.Request{
+		Method: "POST", Path: "echo", Body: body, Caller: admin,
+	}); echoed["value"] != "kept" {
+		t.Errorf("round-trip returned %v", echoed)
 	}
 
-	// The two deliberate failures the fixture exists to demonstrate.
+	// A panicking route is reported as a failed call, not a dead host.
 	if _, err := host.Call(ctx, spec, appplugin.Request{
 		Method: "GET", Path: "boom", Caller: admin,
 	}); err == nil || !strings.Contains(err.Error(), "panic") {
