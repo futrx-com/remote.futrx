@@ -304,3 +304,15 @@ test("two extensions in one slot render in order regardless of load order", () =
     ["playground", "sandbox"]
   );
 });
+
+test("project settings contributions follow installation scope and disappear on removal", () => {
+  const registry = createRegistry();
+  registry.setActiveProject("p1");
+  registry.setVisibility("addon", { global: false, projectIds: ["p1"] });
+  registry.register("addon", EXTENSION_SLOTS.projectSettingsPanel, noop);
+  const slot = EXTENSION_SLOTS.projectSettingsPanel;
+  assert.equal(registry.contributions(slot, { slot, scope: "project", projectId: "p1" }).length, 1);
+  assert.equal(registry.contributions(slot, { slot, scope: "project", projectId: "p2" }).length, 0);
+  registry.removeImage("addon");
+  assert.equal(registry.contributions(slot, { slot, scope: "project", projectId: "p1" }).length, 0);
+});

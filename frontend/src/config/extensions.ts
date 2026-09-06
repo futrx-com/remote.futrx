@@ -15,6 +15,7 @@ export const EXTENSION_SLOTS = {
   composerActions: "chat.composer.actions",
   applicationCardActions: "applications.card.actions",
   applicationsPanel: "applications.panel",
+  projectSettingsPanel: "project.settings.panel",
 } as const satisfies ExtensionSlotCatalog;
 
 export const EXTENSION_SLOT_NAMES: ExtensionSlotName[] =
@@ -40,4 +41,5 @@ export const SLOT_ICON_APPEARANCE: Record<ExtensionSlotName, SlotIconAppearance>
   [EXTENSION_SLOTS.composerActions]: CHROME_ICON,
   [EXTENSION_SLOTS.applicationCardActions]: COMPACT_ICON,
   [EXTENSION_SLOTS.applicationsPanel]: CHROME_ICON,
+  [EXTENSION_SLOTS.projectSettingsPanel]: CHROME_ICON,
 };

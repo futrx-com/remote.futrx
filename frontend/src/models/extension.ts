@@ -14,6 +14,7 @@ export interface ExtensionSlotCatalog {
   composerActions: "chat.composer.actions";
   applicationCardActions: "applications.card.actions";
   applicationsPanel: "applications.panel";
+  projectSettingsPanel: "project.settings.panel";
 }
 
 export type ExtensionSlotName =
