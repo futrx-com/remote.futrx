@@ -14,6 +14,22 @@ import (
 	"strings"
 )
 
+// Limits on an image's container payload. They bound what the archive can make
+// the server read before any of it reaches a container, and the error text is
+// derived from them so a raised limit cannot leave a stale number behind.
+const (
+	// maxContainerPayload caps the compressed archive as it sits in the catalog.
+	maxContainerPayload = 8 << 20
+	// maxContainerPayloadExpanded caps everything it unpacks to, which is what
+	// a compression bomb would otherwise blow past.
+	maxContainerPayloadExpanded = 32 << 20
+)
+
+// containerPayloadRoot is the single directory a payload may carry. Confining
+// it to one known name is what keeps an archive from writing anywhere the
+// install script did not expect.
+const containerPayloadRoot = "container"
+
 // container.tar.gz carries an image's container-side files. In particular,
 // Go embed does not traverse nested Go modules, so their source is packed as
 // a reproducible asset. This accepts an fs.FS so uploaded catalogs can use the
@@ -27,8 +43,8 @@ func withContainerPayload(fsys fs.FS, root string, script []byte) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	if info.Size() > 8<<20 {
-		return nil, fmt.Errorf("container payload exceeds 8 MiB")
+	if info.Size() > maxContainerPayload {
+		return nil, fmt.Errorf("container payload exceeds %d MiB", maxContainerPayload>>20)
 	}
 	payload, err := fs.ReadFile(fsys, name)
 	if err != nil {
@@ -60,7 +76,7 @@ func validateContainerPayload(payload []byte) error {
 	}
 	defer compressed.Close()
 	// Limit both file contents and tar metadata to avoid oversized expansion.
-	limited := &io.LimitedReader{R: compressed, N: 32<<20 + 1}
+	limited := &io.LimitedReader{R: compressed, N: maxContainerPayloadExpanded + 1}
 	archive := tar.NewReader(limited)
 	seen := map[string]bool{}
 	for {
@@ -72,7 +88,7 @@ func validateContainerPayload(payload []byte) error {
 			return fmt.Errorf("container payload: %w", err)
 		}
 		name := strings.TrimSuffix(header.Name, "/")
-		if !fs.ValidPath(name) || path.Clean(name) != name || (name != "container" && !strings.HasPrefix(name, "container/")) || strings.Contains(name, "\\") {
+		if !isContainerPayloadPath(name) {
 			return fmt.Errorf("invalid container payload path %q", header.Name)
 		}
 		if seen[name] {
@@ -91,7 +107,19 @@ func validateContainerPayload(payload []byte) error {
 		return fmt.Errorf("container payload: %w", err)
 	}
 	if limited.N <= 0 {
-		return fmt.Errorf("container payload exceeds 32 MiB expanded")
+		return fmt.Errorf(
+			"container payload exceeds %d MiB expanded", maxContainerPayloadExpanded>>20)
 	}
 	return nil
+}
+
+// isContainerPayloadPath reports whether a tar member names a file the payload
+// is allowed to carry: a clean, relative path inside containerPayloadRoot and
+// nothing else. A backslash is refused outright rather than normalized, since
+// a member that needs one is not describing a path this ever extracts.
+func isContainerPayloadPath(name string) bool {
+	if !fs.ValidPath(name) || path.Clean(name) != name || strings.Contains(name, "\\") {
+		return false
+	}
+	return name == containerPayloadRoot || strings.HasPrefix(name, containerPayloadRoot+"/")
 }
