@@ -314,6 +314,7 @@ export function SettingsPage({
                 </SettingsNotice>
               ))}
 
+
             {activeTab === "info" && (
               <ServerInfoSettings
                 currentEmail={currentEmail}

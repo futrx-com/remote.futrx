@@ -33,6 +33,7 @@ export function ProjectContainersContainer({
   const applications = useProjectApplications(
     selectedProject,
     activeTab === "applications",
+    auth.isAdmin,
     extensionHost.sync,
   );
 

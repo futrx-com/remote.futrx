@@ -31,6 +31,7 @@ export function SettingsContainer({
   const security = useSecuritySettings(activeTab === "security");
   const applications = useGlobalApplications(
     activeTab === "applications" && auth.isAdmin,
+    auth.isAdmin,
     extensionHost.sync,
   );
   const usageDashboard = useUsageDashboard(activeTab === "usage");

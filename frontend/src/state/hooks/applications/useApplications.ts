@@ -6,6 +6,7 @@ import type {
   AppImage,
   AppInstallRequest,
   AppInstance,
+  AppPackage,
   AppScope,
 } from "../../../models/application";
 import type { ProjectMeta } from "../../../models/project";
@@ -20,6 +21,21 @@ export interface ApplicationsController {
   instances: AppInstance[];
   loading: boolean;
   error?: string;
+  /**
+   * Uploaded application packages. The catalog they extend is server-wide, so
+   * they are the same list wherever it is shown; only an administrator may add
+   * to or remove from it.
+   */
+  packages: AppPackage[];
+  managesPackages: boolean;
+  /** Adds a .zip to the catalog, or replaces the package with the same id. */
+  uploadPackage: (file: File) => Promise<AppPackage>;
+  /**
+   * Removes an uploaded app. `uninstallInstalled` uninstalls every copy first;
+   * without it a package that is still installed is refused, and the refusal
+   * names where it is installed.
+   */
+  removePackage: (packageId: string, uninstallInstalled?: boolean) => Promise<void>;
   reload: () => Promise<void>;
   install: (req: AppInstallRequest) => Promise<void>;
   start: (appId: string) => Promise<void>;
@@ -42,18 +58,35 @@ interface Bindings {
 
 type ApplicationsChanged = () => void;
 
-function useApplicationsCore(
-  scope: AppScope,
-  enabled: boolean,
-  bindings: Bindings | null,
-  onApplicationsChanged?: ApplicationsChanged,
-  projectId?: string,
-): ApplicationsController {
+interface CoreOptions {
+  scope: AppScope;
+  enabled: boolean;
+  /**
+   * Whether this caller may manage the uploaded-package catalog. It is an
+   * administrator check, not a scope check: the catalog is server-wide and
+   * uploading one adds code that runs with the server's privileges, so the
+   * answer is the same in a project as it is in Settings.
+   */
+  managesPackages: boolean;
+  bindings: Bindings | null;
+  onApplicationsChanged?: ApplicationsChanged;
+  projectId?: string;
+}
+
+function useApplicationsCore({
+  scope,
+  enabled,
+  managesPackages,
+  bindings,
+  onApplicationsChanged,
+  projectId,
+}: CoreOptions): ApplicationsController {
   const [catalog, setCatalog] = useState<AppImage[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [instances, setInstances] = useState<AppInstance[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [packages, setPackages] = useState<AppPackage[]>([]);
 
   const reload = useCallback(async () => {
     if (!enabled || !bindings) return;
@@ -82,17 +115,53 @@ function useApplicationsCore(
     }
   }, [enabled]);
 
+  const loadPackages = useCallback(async () => {
+    if (!enabled || !managesPackages) return;
+    try {
+      const data = await applicationsApi.packages();
+      setPackages(data ?? []);
+    } catch {
+      // A server built without a package store answers 503 here. That is not
+      // an error to show: it simply has no uploaded applications to list.
+      setPackages([]);
+    }
+  }, [enabled, managesPackages]);
+
   useEffect(() => {
     let cancelled = false;
     if (!enabled) return;
     void (async () => {
-      await Promise.all([loadCatalog(), reload()]);
+      await Promise.all([loadCatalog(), reload(), loadPackages()]);
       if (cancelled) return;
     })();
     return () => {
       cancelled = true;
     };
-  }, [enabled, loadCatalog, reload]);
+  }, [enabled, loadCatalog, reload, loadPackages]);
+
+  // Uploading and removing both change what the catalog holds, so both end by
+  // reloading it — the new card has to appear without a page refresh, and a
+  // removed one has to stop offering an install that would now fail.
+  const uploadPackage = useCallback(
+    async (file: File) => {
+      const uploaded = await applicationsApi.uploadPackage(file);
+      await Promise.all([loadCatalog(), loadPackages()]);
+      onApplicationsChanged?.();
+      return uploaded;
+    },
+    [loadCatalog, loadPackages, onApplicationsChanged],
+  );
+
+  const removePackage = useCallback(
+    async (packageId: string, uninstallInstalled = false) => {
+      await applicationsApi.removePackage(packageId, uninstallInstalled);
+      // A cascade uninstalls copies too, so the installed list is as stale as
+      // the catalog afterwards.
+      await Promise.all([loadCatalog(), loadPackages(), reload()]);
+      onApplicationsChanged?.();
+    },
+    [loadCatalog, loadPackages, reload, onApplicationsChanged],
+  );
 
   const upsert = useCallback((inst: AppInstance) => {
     setInstances((current) => {
@@ -166,6 +235,10 @@ function useApplicationsCore(
     instances,
     loading,
     error,
+    packages,
+    managesPackages,
+    uploadPackage,
+    removePackage,
     reload,
     install,
     start,
@@ -179,6 +252,7 @@ function useApplicationsCore(
 /** Global (server-wide) applications; admin-only. */
 export function useGlobalApplications(
   enabled: boolean,
+  isAdmin: boolean,
   onApplicationsChanged?: ApplicationsChanged,
 ): ApplicationsController {
   const bindings = useMemo<Bindings>(
@@ -193,18 +267,20 @@ export function useGlobalApplications(
     }),
     []
   );
-  return useApplicationsCore(
-    "global",
+  return useApplicationsCore({
+    scope: "global",
     enabled,
+    managesPackages: isAdmin,
     bindings,
     onApplicationsChanged,
-  );
+  });
 }
 
 /** Applications scoped to a single project. */
 export function useProjectApplications(
   project: ProjectMeta | null,
   enabled: boolean,
+  isAdmin: boolean,
   onApplicationsChanged?: ApplicationsChanged,
 ): ApplicationsController {
   const id = project?.id ?? null;
@@ -223,11 +299,12 @@ export function useProjectApplications(
         : null,
     [id]
   );
-  return useApplicationsCore(
-    "project",
-    enabled && !!id,
+  return useApplicationsCore({
+    scope: "project",
+    enabled: enabled && !!id,
+    managesPackages: isAdmin,
     bindings,
     onApplicationsChanged,
-    id ?? undefined,
-  );
+    projectId: id ?? undefined,
+  });
 }

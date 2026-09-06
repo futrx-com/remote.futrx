@@ -21,8 +21,10 @@ import {
 import { AppIcon } from "./AppIcon";
 import { ApplicationEmptyState } from "./ApplicationEmptyState";
 import {
-  extensionSummary,
+  instanceSummary,
   hasContainer,
+  hasPortBinding,
+  pendingUpgradeVersion,
   uninstallConsequence,
 } from "./applicationPresentation";
 
@@ -91,10 +93,13 @@ function InstalledRow({
     });
 
   const running = instance.status === "running";
-  // A UI or backend image has no container, port, or credentials — only an
-  // extension that is on or off. Showing it a port row would be showing it
-  // zeros.
+  // Two different questions. A UI or backend image put nothing in a container,
+  // which is what the uninstall wording turns on. A port row is narrower: only
+  // an image that binds a host port has one, so a tool — provisioned into the
+  // container but exposing nothing — shows a summary instead of zeros.
   const imageHasContainer = hasContainer(image);
+  const imageHasPort = hasPortBinding(image);
+  const pendingUpgrade = pendingUpgradeVersion(instance, image);
 
   const remove = async () => {
     // The dialog owns the request: a failure is shown inside it so the user can
@@ -102,7 +107,7 @@ function InstalledRow({
     await confirm({
       title: `Uninstall ${instance.name}?`,
       description: imageHasContainer ? "This cannot be undone." : undefined,
-      message: uninstallConsequence(instance, imageHasContainer),
+      message: uninstallConsequence(instance, image),
       confirmLabel: "Uninstall",
       pendingLabel: "Uninstalling…",
       tone: "danger",
@@ -122,6 +127,17 @@ function InstalledRow({
         <span class="text-[13px] font-medium text-ink-50 truncate">{instance.name}</span>
         <span class="text-[11px] text-ink-400 font-mono">{instance.imageId}</span>
         <StatusBadge status={instance.status} />
+        {/* A stopped copy is the one place the installed version and the
+            catalog's can drift: an upload upgrades what is running and leaves
+            stopped apps for their owner to bring back up. */}
+        {pendingUpgrade && (
+          <span
+            title={`Installed at ${instance.imageVersion || "an unknown version"}. Starting it re-runs the install script at ${pendingUpgrade}.`}
+            class="text-[10.5px] px-1.5 py-0.5 rounded border border-accent-yellow/30 text-accent-yellow whitespace-nowrap"
+          >
+            {pendingUpgrade} on start
+          </span>
+        )}
         <div class="ml-auto flex items-center gap-1">
           <ExtensionSlot
             name={EXTENSION_SLOTS.applicationCardActions}
@@ -157,7 +173,7 @@ function InstalledRow({
         </div>
       </div>
 
-      {imageHasContainer ? (
+      {imageHasPort ? (
         <div class="flex items-center gap-2 text-[12px] text-ink-300 flex-wrap">
           <span class="text-ink-400">host</span>
           {editingPort ? (
@@ -202,12 +218,18 @@ function InstalledRow({
             ))}
         </div>
       ) : (
-        <div class="text-[12px] text-ink-400">
-          {extensionSummary(image, running)}
+        <div class="text-[12px] text-ink-400 flex items-center gap-2 flex-wrap">
+          <span>{instanceSummary(image, running)}</span>
+          {instance.envPublic &&
+            Object.entries(instance.envPublic).map(([key, value]) => (
+              <span key={key} class="font-mono">
+                · {key}=<span class="text-ink-200">{value}</span>
+              </span>
+            ))}
         </div>
       )}
 
-      {imageHasContainer && (
+      {imageHasPort && (
         <ConnectionDetails instance={instance} controller={controller} />
       )}
 
