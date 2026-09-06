@@ -23,6 +23,7 @@ export const API_ROUTES = {
     read: (id: string) => `/api/chats/${encodeURIComponent(id)}/read`,
     unread: (id: string) => `/api/chats/${encodeURIComponent(id)}/unread`,
     fork: (id: string) => `/api/chats/${encodeURIComponent(id)}/fork`,
+    activity: (id: string) => `/api/chats/${encodeURIComponent(id)}/activity`,
     files: (id: string, path = "") =>
       `/api/chats/${encodeURIComponent(id)}/files${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     filesSearch: (id: string, query: string) =>

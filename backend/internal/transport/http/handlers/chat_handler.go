@@ -110,6 +110,14 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 {
 		switch parts[1] {
+		// Retained so existing clients' heartbeats do not 404. It carries
+		// nothing and now does nothing.
+		case "activity":
+			if r.Method != http.MethodPost {
+				httptransport.SendErr(w, 405, "method not allowed")
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
 		case "events":
 			h.handleEvents(w, r, id)
 		case "transcript":
