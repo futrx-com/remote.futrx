@@ -57,16 +57,6 @@ type catalogView struct {
 	// when needed.
 	scripts map[string][]byte
 	sorted  []svc.Image
-	// skipped records why an image was left out, keyed by id. Only a catalog
-	// loaded leniently — an uploaded one — ever fills it.
-	skipped map[string]string
-}
-
-func (v *catalogView) skip(id string, err error) {
-	if v.skipped == nil {
-		v.skipped = map[string]string{}
-	}
-	v.skipped[id] = err.Error()
 }
 
 func newCatalogView() catalogView {
@@ -117,7 +107,7 @@ func NewRegistryWithPackages(catalog fs.FS, packages *PackageStore) (*Registry, 
 // per-package failures are recorded and reported through Packages.
 func (r *Registry) Reload() error {
 	view := newCatalogView()
-	if err := loadCatalogInto(&view, r.base, svc.SourceBuiltin, nil); err != nil {
+	if _, err := loadCatalogInto(&view, r.base, svc.SourceBuiltin, nil); err != nil {
 		return err
 	}
 	failures := map[string]string{}
@@ -131,22 +121,22 @@ func (r *Registry) Reload() error {
 		// far larger claim than "add an application".
 		reserve := func(id string) error {
 			if builtin[id] {
-				return fmt.Errorf("%w: %q", svc.ErrPackageReserved, id)
+				return errPackageReserved(id)
 			}
 			return nil
 		}
-		if err := loadCatalogInto(&view, r.packages.FS(), svc.SourceUploaded, reserve); err != nil {
+		skipped, err := loadCatalogInto(&view, r.packages.FS(), svc.SourceUploaded, reserve)
+		if err != nil {
 			// loadCatalogInto only returns an error here if the packages
 			// directory itself is unreadable, which is a store problem rather
 			// than a package problem.
 			failures[""] = err.Error()
 		} else {
-			for id, reason := range view.skipped {
+			for id, reason := range skipped {
 				failures[id] = reason
 			}
 		}
 	}
-	view.skipped = nil
 	sortCatalog(&view)
 
 	r.mu.Lock()
@@ -156,15 +146,23 @@ func (r *Registry) Reload() error {
 	return nil
 }
 
-// loadCatalogInto reads every images/<id> in catalog and adds it to view.
+// loadCatalogInto reads every images/<id> in catalog and adds it to view. It
+// returns the reason each image was left out, keyed by id.
 //
 // reserve is nil for the built-in catalog and non-nil for uploaded packages:
 // when it is set, an image it rejects — or one that fails validation — is
-// skipped with its reason recorded instead of failing the whole load.
-func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ImageSource, reserve func(string) error) error {
+// skipped with its reason reported instead of failing the whole load.
+func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ImageSource, reserve func(string) error) (map[string]string, error) {
 	entries, err := fs.ReadDir(catalog, catalogRoot)
 	if err != nil {
-		return fmt.Errorf("read image catalog: %w", err)
+		return nil, fmt.Errorf("read image catalog: %w", err)
+	}
+	var skipped map[string]string
+	skip := func(id string, err error) {
+		if skipped == nil {
+			skipped = map[string]string{}
+		}
+		skipped[id] = err.Error()
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -176,7 +174,7 @@ func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ImageSource, r
 		}
 		if reserve != nil {
 			if err := reserve(id); err != nil {
-				view.skip(id, err)
+				skip(id, err)
 				continue
 			}
 		}
@@ -184,9 +182,9 @@ func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ImageSource, r
 		if err != nil {
 			err = fmt.Errorf("load image %q: %w", id, err)
 			if reserve == nil {
-				return err
+				return nil, err
 			}
-			view.skip(id, err)
+			skip(id, err)
 			continue
 		}
 		img.Source = source
@@ -195,7 +193,7 @@ func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ImageSource, r
 		view.scripts[id] = script
 		view.sorted = append(view.sorted, img)
 	}
-	return nil
+	return skipped, nil
 }
 
 func sortCatalog(view *catalogView) {

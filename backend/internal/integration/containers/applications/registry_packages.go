@@ -13,6 +13,14 @@ import (
 
 var _ svc.PackageCatalog = (*Registry)(nil)
 
+// errPackageReserved states the one rule that keeps an upload from redefining
+// a built-in application. Both the id check made before an archive is written
+// and the one made while reloading the catalog answer with this, so an
+// operator sees the same refusal wherever it is raised.
+func errPackageReserved(id string) error {
+	return fmt.Errorf("%w: %q", svc.ErrPackageReserved, id)
+}
+
 // Packages lists the stored packages, annotating each with the reason it is
 // not in the catalog when it failed to load.
 func (r *Registry) Packages() []svc.Package {
@@ -74,7 +82,7 @@ func (r *Registry) InstallPackage(upload svc.PackageUpload) (svc.Package, error)
 // a much larger claim than "add an application".
 func (r *Registry) acceptPackageID(id string) error {
 	if r.imageIsBuiltin(id) {
-		return fmt.Errorf("%w: %q", svc.ErrPackageReserved, id)
+		return errPackageReserved(id)
 	}
 	return nil
 }
@@ -85,7 +93,7 @@ func (r *Registry) RemovePackage(id string) error {
 		return svc.ErrPackagesUnavailable
 	}
 	if r.imageIsBuiltin(id) {
-		return fmt.Errorf("%w: %q", svc.ErrPackageReserved, id)
+		return errPackageReserved(id)
 	}
 	if err := r.packages.RemovePackage(id); err != nil {
 		return err
