@@ -1,5 +1,7 @@
+import type { ChatInteractionResponder } from "../../../types/chatApi";
 import type { AssistantMessagePart } from "../../../models/chatMessage";
 import { useState } from "preact/hooks";
+import { useDelegatedAgentControls } from "../../../state/hooks/chat/useDelegatedAgentControls";
 import { ChevronDown, ChevronRight } from "../../primitives/icons";
 import { Markdown } from "../markdown/Markdown";
 import { CodeBlock } from "../tool-calls/CodeBlock";
@@ -24,10 +26,12 @@ export function CollaborationCard({
   part,
   chatId,
   cwd,
+  onRespond,
 }: {
   part: CollaborationPart;
   chatId?: string;
   cwd?: string;
+  onRespond?: ChatInteractionResponder;
 }) {
   const states = isObject(part.data.agentsStates) ? part.data.agentsStates : {};
   const isSubagentThread = part.data.type === "subagentThread";
@@ -41,7 +45,8 @@ export function CollaborationCard({
     : tools.filter((tool) => tool.isError).length;
   const label = part.name || "Subagent orchestration";
   const status = part.status || "inProgress";
-  const [expanded, setExpanded] = useState(() => !isTerminalStatus(status));
+  const controls = useDelegatedAgentControls(part.data, status, onRespond);
+  const [expanded, setExpanded] = useState(() => !controls.terminal);
   return (
     <section class="my-2 overflow-hidden rounded-lg border border-line bg-surface">
       <header class="bg-tint">
@@ -73,6 +78,32 @@ export function CollaborationCard({
         {typeof part.data.prompt === "string" && (
           <p class="text-[12px] leading-relaxed text-ink-300">{part.data.prompt}</p>
         )}
+        {controls.canStop && (
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="rounded-control border border-line px-2 py-1 text-[11px] text-accent-red"
+              onClick={controls.stop}
+            >
+              Stop agent
+            </button>
+            {controls.canRunInBackground && (
+              <button
+                type="button"
+                class="rounded-control border border-line px-2 py-1 text-[11px] text-ink-200"
+                onClick={controls.runInBackground}
+              >
+                Run in background
+              </button>
+            )}
+          </div>
+        )}
+        {typeof part.data.reasoning === "string" && part.data.reasoning && (
+          <details class="text-[12px] text-ink-400">
+            <summary class="cursor-pointer">Agent reasoning</summary>
+            <Markdown chatId={chatId} cwd={cwd}>{part.data.reasoning}</Markdown>
+          </details>
+        )}
         {isSubagentThread && tools.length > 0 && (
           <SubagentTools
             tools={tools}
@@ -102,7 +133,7 @@ export function CollaborationCard({
               )}
               {isSubagentThread && !(typeof state.message === "string" && state.message) && (
                 <div class="mt-2 text-[11px] text-ink-400">
-                  {status === "inProgress" || status === "idle" ? "Working…" : "No final report was provided."}
+                  {status === "inProgress" || status === "running" || status === "waiting" || status === "idle" ? "Working…" : "No final report was provided."}
                 </div>
               )}
             </div>
@@ -279,10 +310,6 @@ function SubagentMessage({
 
 function statusLabel(status: string): string {
   return status === "turnEnded" ? "turn ended" : status;
-}
-
-function isTerminalStatus(status: string): boolean {
-  return ["completed", "failed", "interrupted", "cancelled", "canceled", "turnEnded"].includes(status);
 }
 
 function emptyStateMessage(status: string): string {

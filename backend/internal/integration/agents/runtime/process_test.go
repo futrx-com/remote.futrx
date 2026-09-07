@@ -25,3 +25,15 @@ func TestRunProcessReturnsCapturedStderr(t *testing.T) {
 		t.Fatalf("error type = %T, want ProcessError", err)
 	}
 }
+
+func TestRunProcessRetainsFinalDiagnosticAfterLongProgress(t *testing.T) {
+	cmd := exec.Command("sh", "-c", `printf '%s\n' "$1" >&2; printf '%s\n' 'error: provider returned 307' >&2; exit 1`, "sh", strings.Repeat("progress ", 9000))
+	err := RunProcess(context.Background(), cmd, noOpParser{}, nil, ProcessOptions{Name: "test"})
+	stderr := ErrorStderr(err)
+	if err == nil || !strings.HasSuffix(stderr, "error: provider returned 307\n") {
+		t.Fatalf("final diagnostic missing: error=%v, captured bytes=%d", err, len(stderr))
+	}
+	if len(stderr) > 64<<10 {
+		t.Fatalf("capture exceeded limit: %d bytes", len(stderr))
+	}
+}

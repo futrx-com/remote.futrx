@@ -95,15 +95,14 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **Provider Plan modes differ.** Remote forwards provider-native Default and
   Plan modes instead of adding workflow prompts. Claude Plan is read-only;
   Codex and MiniMax Plan use a Codex-harness collaboration-instruction preset
-  rather than an OS-level read-only sandbox. Default project runs bypass provider approvals,
-  and Remote has no human-confirmation gate for irreversible or external
-  actions.
-- **Provider-specific gaps.** Kimi has no fork primitive (forked Kimi chats
-  silently start fresh) and reports no usage data. Its discovered per-model
-  Thinking choice is displayed and saved but is not forwarded to the Kimi run,
-  and the currently pinned Kimi CLI rejects its advertised Plan flag with the
-  prompt mode Remote requires. Antigravity forks also
-  start fresh; print mode exposes plain streamed text rather than structured
+  rather than an OS-level read-only sandbox. Kimi uses native Plan mode and
+  interactive review. Approval behavior follows each provider and the selected
+  policy; choosing an automatic policy can allow actions without confirmation.
+- **Provider-specific gaps.** Kimi supports native fork, usage, Thinking, Plan,
+  approvals, delegation, and Browser MCP. Its native admin/TUI utilities remain
+  in the CLI, and cron changes made outside Remote need a native CronList refresh
+  to reconcile mirrored job IDs; see the [runtime coverage](dev/agents/kimi-runtime-review.md).
+  Antigravity forks start fresh; print mode exposes plain streamed text rather than structured
   tool/usage events, selected skills use explicit `SKILL.md` instruction paths
   rather than native triggers, and Browser MCP is unavailable. Model catalogs
   reflect the installed CLI, its configuration,

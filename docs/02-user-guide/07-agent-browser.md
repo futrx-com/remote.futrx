@@ -10,9 +10,9 @@ preview.
 ## Before you begin
 
 - Use a project chat. Agent Browser is scoped to a project, not to one chat.
-- For agent control, choose Claude, Codex, or MiniMax and add the `browser`
-  skill before sending the prompt. Kimi and Antigravity do not currently
-  receive equivalent Browser MCP access.
+- For agent control, choose Claude, Codex, MiniMax, or Kimi and add the `browser`
+  skill before sending the prompt. Antigravity does not currently receive
+  equivalent Browser MCP access.
 - Decide whether the selected agent may access the sites and account data in
   this browser profile. Login state is deliberately shared and persistent.
 - Follow the target site's terms. Human intervention is not permission to

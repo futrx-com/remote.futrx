@@ -98,6 +98,7 @@ function renderAssistantParts(
         <CollaborationCard
           key={part.id}
           part={part}
+          onRespond={context.onRespondInteraction}
           chatId={context.chatId}
           cwd={context.cwd}
         />

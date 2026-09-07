@@ -260,8 +260,12 @@ already exists.
 | Kimi | Synchronizes regular files under `.kimi-code/credentials`; container-only login is allowed, launch seeding is disabled, and host-empty state remains project-local. |
 | Antigravity | Declares no credential transfer because the CLI has no stable documented token subpath. Its project-local login/state survives through the persistent directory. |
 
-Claude, Codex, and Kimi attempt a bounded pull after a **successful** project
-run. The shared `config.AgentOptions.CredentialSyncTimeout` currently defaults
+Claude and Codex attempt a bounded pull after a **successful** project run.
+Kimi attempts this pull after native-server shutdown, including failed/cancelled
+runs that may have refreshed credentials. Its project profile also provisions
+`/root/.kimi-code/AGENTS.md`.
+
+The shared `config.AgentOptions.CredentialSyncTimeout` currently defaults
 to 30 seconds. `service.New` passes it through application-facing
 `module.BuildDependencies`; each module factory then projects the collector and
 timeout through provider-facing `module.Dependencies`. Providers that support

@@ -9,17 +9,17 @@ Two things this document is careful about, because getting them wrong makes the 
 
 ## What each provider actually reports
 
-The ledger can only record what a provider CLI prints. The five adapters differ substantially.
+The ledger can only record the usage a provider runtime reports. The five adapters differ substantially.
 
 | Provider | Tokens | Cost | Duration / turns | Model |
 | --- | --- | --- | --- | --- |
 | **Claude Code** | Exact — `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens` on the `result` message | **Exact** — `total_cost_usd` on the same message | Exact — `duration_ms`, `num_turns` | From the stream (`system`/`result` `model` field) |
 | **Codex** | Exact — `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens` on `turn.completed` | **Estimated** from the price table | Not reported | From the chat's selected model |
 | **MiniMax** | Exact — normalized from the Codex app-server token-usage stream | **Unknown by default**; estimated only after an administrator adds a matching `MiniMax-M3` price row | Not reported | `MiniMax-M3` |
-| **Kimi Code** | **Not reported.** `kimi -p --output-format stream-json` emits assistant, tool, and a trailing resume-hint line, with no usage object | **Unknown** — recorded as an unpriced run | Not reported | From the chat's selected model |
+| **Kimi Code** | Native per-step input, output, cache-read, and cache-creation tokens across the main agent and delegated agents; replayed steps and cumulative child summaries are deduplicated | **Estimated** when a matching price row exists; otherwise unpriced | Remote run duration and native main-agent turns | Effective native model |
 | **Antigravity** | **Not reported.** `agy` print mode streams plain text | **Unknown** — recorded as an unpriced run | Not reported | From the chat's selected model |
 
-Kimi and Antigravity runs therefore appear in the ledger with a provider, a model, and zero tokens. They still count toward **Runs**, and their share shows up in the "unpriced runs" note. MiniMax reports tokens, but its runs remain unpriced until a matching price row exists. The Kimi parser forwards a `usage` object opportunistically if a future CLI release starts emitting one, so no change beyond a CLI upgrade would be needed to start counting those tokens.
+Antigravity runs appear in the ledger with a provider, a model, and zero tokens. They still count toward **Runs** and the unpriced-run note. Kimi and MiniMax report tokens; cost estimates depend on a matching model price row. Historical Kimi runs made through the old print adapter retain their original missing-usage limitation.
 
 Normalization happens in the provider adapters ([`internal/agent/usage.go`](../../backend/internal/agent/usage.go)), so the `usage` blob persisted on each `complete` chat event already carries tokens, cost, duration, turns, and model in one shared vocabulary. The input, cache-read, and cache-write buckets are disjoint: the Codex app-server harness used by Codex and MiniMax reports cache tokens as subsets of `input_tokens`, so its parser subtracts those subsets before emitting the normalized event. Each normalized payload carries a schema version, allowing rebuilds to migrate older Codex events without adding provider conditions to the live ledger. That keeps aggregation and pricing provider-neutral and makes an offline rebuild possible.
 
@@ -162,7 +162,7 @@ The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebu
 ## Known gaps
 
 - **Failed runs are not billed.** Their tokens are consumed but never written to the chat event log, so the ledger cannot see or reproduce them. Spend on failed turns is invisible here.
-- **Kimi and Antigravity contribute no tokens or cost.** Their CLIs disclose nothing; only run counts are meaningful for them.
+- **Antigravity and historical Kimi print-mode runs have no token telemetry.** Only run counts are meaningful for those records; the native Kimi adapter reports tokens for new runs.
 - **Cache-write pricing is approximate for non-Claude providers,** which generally do not separate cache creation from ordinary input tokens.
 - **The ledger has no retention policy.** Monthly files grow without rotation limits, like the chat event logs described in [Known limitations](../known-limitations.md).
 - **Rebuilt records lose user attribution** unless a live record already covered the same run, as described above.

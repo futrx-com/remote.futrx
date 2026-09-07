@@ -2,10 +2,12 @@ package kimi
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
@@ -13,20 +15,19 @@ import (
 // kimi-code reads its OAuth credentials, config, and sessions.
 const containerKimiHome = "/root/.kimi-code"
 
-func (p *Provider) args(req agent.RunRequest) []string {
-	// kimi-code takes the prompt as a positional argument (NOT stdin). Print
-	// mode (`-p`) supplies the provider's normal non-interactive behavior.
-	args := []string{"-p", req.Prompt, "--output-format", "stream-json"}
-	if req.Mode == agent.RunModePlan {
-		args = append(args, "--plan")
-	}
-	if model := normalizeKimiModel(req.Model); model != "" {
-		args = append(args, "--model", model)
-	}
-	if req.ResumeID != "" {
-		args = append(args, "--session", req.ResumeID)
-	}
-	return args
+func bridgeArgs() []string {
+	settings, _ := json.Marshal(struct {
+		StartupTimeoutMs  int64 `json:"startupTimeoutMs"`
+		RequestTimeoutMs  int64 `json:"requestTimeoutMs"`
+		ShutdownTimeoutMs int64 `json:"shutdownTimeoutMs"`
+		StderrTailBytes   int   `json:"stderrTailBytes"`
+	}{
+		configconstants.KimiServerStartupTimeout.Milliseconds(),
+		configconstants.KimiServerRequestTimeout.Milliseconds(),
+		configconstants.KimiServerShutdownTimeout.Milliseconds(),
+		configconstants.KimiServerStderrTailBytes,
+	})
+	return []string{"--input-type=module", "-e", serverBridge + "\nstartKimiBridge(" + string(settings) + ");\n"}
 }
 
 func (p *Provider) buildCmd(
@@ -44,7 +45,7 @@ func (p *Provider) buildCmd(
 	}
 
 	if req.ProjectID == "" || p.projectPreparer == nil {
-		cmd := exec.CommandContext(ctx, "kimi", args...)
+		cmd := exec.CommandContext(context.WithoutCancel(ctx), "node", args...)
 		cmd.Dir = cwd
 		cmd.Env = append(os.Environ(), "KIMI_CODE_HOME="+hostKimiHome())
 		cmd.Env = agent.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
@@ -60,12 +61,12 @@ func (p *Provider) buildCmd(
 	if err != nil {
 		return nil, "", err
 	}
-	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
+	cmd := agentruntime.BuildContainerCommand(context.WithoutCancel(ctx), agentruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  []string{"HOME=/root", "KIMI_CODE_HOME=" + containerKimiHome},
 		Secrets:            project.Secrets,
 		RuntimeEnvironment: req.RuntimeEnv,
-		Binary:             p.profile.CLI.Binary,
+		Binary:             "node",
 		Arguments:          args,
 	})
 	return cmd, project.ContainerName, nil

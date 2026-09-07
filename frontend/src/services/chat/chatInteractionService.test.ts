@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { ChatInteractionIntent } from "../../models/chatInteraction";
 import { chatInteractionService } from "./chatInteractionService.ts";
 
 test("encodes question answers with the App Server answer envelope", () => {
@@ -127,4 +128,44 @@ test("preserves generic results and unsupported JSON-RPC errors", () => {
       },
     }
   );
+});
+
+test("preserves native review, dismissal, and delegated-task response payloads", () => {
+  const cases = [
+    ["kimi/approval", { decision: "accept", feedback: "", selected_label: undefined }],
+    ["kimi/approval", { decision: "acceptForSession", feedback: "Keep tests", selected_label: undefined }],
+    ["kimi/approval", { decision: "accept", feedback: "", selected_label: "Implement" }],
+    ["kimi/approval", { decision: "decline", feedback: "Change scope", selected_label: "Revise" }],
+    ["kimi/approval", { decision: "decline", feedback: "", selected_label: "Reject and Exit" }],
+    ["kimi/question", { dismiss: true }],
+    ["kimi/task", { action: "cancel" }],
+    ["kimi/task", { action: "detach" }],
+  ] as const;
+  const intents: ChatInteractionIntent[] = [
+    { kind: "review_approval", action: "allow_once", feedback: "" },
+    { kind: "review_approval", action: "allow_session", feedback: "Keep tests" },
+    { kind: "review_approval", action: "allow_once", feedback: "", optionLabel: "Implement" },
+    { kind: "review_approval", action: "revise_plan", feedback: "Change scope" },
+    { kind: "review_approval", action: "reject_plan", feedback: "" },
+    { kind: "dismiss_questions" },
+    { kind: "control_agent", action: "stop" },
+    { kind: "control_agent", action: "run_in_background" },
+  ];
+  cases.forEach(([method, result], index) => {
+    assert.deepEqual(chatInteractionService.encodeResponse(method, intents[index]), { result });
+  });
+  assert.deepEqual(chatInteractionService.encodeResponse("kimi/question", {
+    kind: "answer_questions", answers: { choice: ["option-id", "Other answer"], free: ["Text"] },
+  }), { result: { answers: { choice: { answers: ["option-id", "Other answer"] }, free: { answers: ["Text"] } } } });
+});
+
+
+test("delegated controls target only a live native task", () => {
+  assert.deepEqual(chatInteractionService.delegatedTaskTarget({ stopInteractionId: "task:session:id" }, "running"),
+    { id: "task:session:id", method: "kimi/task" });
+  for (const status of ["completed", "failed", "interrupted", "cancelled", "canceled", "turnEnded"]) {
+    assert.equal(chatInteractionService.delegatedTaskTarget({ stopInteractionId: "task:id" }, status), undefined);
+  }
+  assert.equal(chatInteractionService.delegatedTaskTarget({}, "running"), undefined);
+  assert.equal(chatInteractionService.delegatedTaskTarget({ stopInteractionId: 1 }, "running"), undefined);
 });

@@ -408,6 +408,7 @@ func (rnr *Service) runPromptAs(
 			Provider:       providerID,
 			ConversationID: string(id),
 			Prompt:         runPrompt,
+			UserPrompt:     prompt,
 			Cwd:            cwd,
 			Model:          meta.Model,
 			Mode:           agent.RunMode(meta.Mode),

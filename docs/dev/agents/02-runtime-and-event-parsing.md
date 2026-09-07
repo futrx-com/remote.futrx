@@ -148,8 +148,9 @@ secrets even when the runtime key is later discarded as invalid. The adapter
 still owns its binary, arguments, stdin or positional prompt, and execution
 protocol.
 
-After a successful run, Claude, Codex, and Kimi make a best-effort credential
-sync from the container. Its application-wide timeout currently defaults to
+After a successful run, Claude and Codex make a best-effort credential sync
+from the container. Kimi also syncs after failed/cancelled native-server runs,
+which may have refreshed credentials. The application-wide timeout defaults to
 30 seconds through `config.AgentOptions`; Antigravity has no credential sync
 contract.
 
@@ -160,7 +161,7 @@ Factories express only real policy differences:
 | Claude | Seed from its profile | Best effort | Best effort | Required when Browser is enabled |
 | Codex | Reject host API-key auth, then seed | Fatal | Best effort | Required when Browser is enabled |
 | MiniMax | Require the host-managed Token Plan subscription key before preparation | Fatal | Best effort | Required when Browser is enabled |
-| Kimi | Seed/synchronize its dynamic directory | Best effort | Best effort | Not used |
+| Kimi | Synchronize its dynamic directory; no launch seed | Best effort | Best effort | Required when Browser is enabled |
 | Antigravity | None | Best effort | Not used | Not used |
 
 Failures to list project secrets are currently ignored and the run continues
@@ -332,16 +333,19 @@ Do not use it as the reference when changing app-server event handling.
 
 ### Kimi
 
-[`kimi.Provider.Run`](../../../backend/internal/integration/agents/kimi/provider.go) runs
-`kimi -p <prompt> --output-format stream-json` through `RunProcess` and parses
-it with [`kimi.Parser`](../../../backend/internal/integration/agents/kimi/parser.go).
+[`kimi.Provider.Run`](../../../backend/internal/integration/agents/kimi/provider.go)
+starts an authenticated, private loopback `kimi web` server through its embedded
+Node stdio bridge. REST drives native session creation/resume/fork, preferences,
+prompts, approvals, questions and task controls. WebSocket subscriptions include
+all agents; reasoning, tools, child reports and disjoint per-step usage map to
+Remote events. Main completion alone does not end a run while background tasks,
+questions, goals or cron jobs remain active.
 
-Kimi's OpenAI-chat-shaped JSONL maps assistant content and tool calls, tool
-results, and the final `role=meta,type=session.resume_hint` record. That final
-record supplies a changed session ID and is also Kimi's de-facto
-`run.completed`; the CLI does not provide a separate completion, reasoning, or
-usage line. Because Kimi has no native fork primitive, `Run` clears `ResumeID`
-when `Fork` is true.
+Only an initial missing-session lookup returns `ErrSessionNotFound`. Failed
+turns and broken transports retain diagnostics and never trigger automatic
+prompt replay. Cancellation aborts native work and closes the process group.
+See the [Kimi runtime support review](kimi-runtime-review.md) for controls,
+compatibility tests and upstream boundaries.
 
 ### Antigravity
 
@@ -359,8 +363,8 @@ treated as ambiguous and no session is saved. See
 [`antigravity/session.go`](../../../backend/internal/integration/agents/antigravity/session.go).
 Its [`parser.go`](../../../backend/internal/integration/agents/antigravity/parser.go) is a
 line-oriented test/helper parser, not the production chunk-streaming path.
-Antigravity and Kimi both clear resume state for requested forks because their
-descriptors do not declare native fork support.
+Antigravity clears resume state for requested forks because its descriptor
+does not declare native fork support.
 
 ## Sessions, forks, and recovery
 

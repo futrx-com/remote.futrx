@@ -19,9 +19,10 @@ func NewFactory() (agentmodule.Factory, error) {
 		AuthInstructions:    "Starts `kimi login` on the host. Sign in with your Kimi Code subscription using the displayed device code.",
 		SatisfiesAccessGate: true,
 		Features: agentmodule.Features{
-			Sessions:       agentmodule.SessionSupport{Resume: true},
+			Sessions:       agentmodule.SessionSupport{Resume: true, Fork: true},
 			Skills:         agentmodule.SkillsInstructions,
 			ScheduledTools: true,
+			BrowserTools:   true,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		binding := agentauth.NewDeviceBinding(agent.ProviderKimi, NewAuth())
@@ -35,7 +36,8 @@ func NewFactory() (agentmodule.Factory, error) {
 			Auth: &binding,
 		}, nil
 	}, agentmodule.WithProjectPreparation(agentmodule.ProjectPreparationPolicy{
-		BrowserAssets: true,
+		BrowserAssets:     true,
+		BrowserMCPRuntime: true,
 	}))
 }
 

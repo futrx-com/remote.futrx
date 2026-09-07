@@ -72,6 +72,7 @@ type CapabilityFeatures struct {
 // Capabilities is the normalized catalog returned by every agent adapter.
 // Warning is intentionally concise and must not contain raw provider output.
 type Capabilities struct {
+	ApprovalPolicies  []CapabilityOption       `json:"approvalPolicies,omitempty"`
 	Provider          ProviderID               `json:"provider"`
 	Label             string                   `json:"label"`
 	Default           bool                     `json:"default,omitempty"`
@@ -98,6 +99,7 @@ type CapabilityRequest struct {
 // changing the source catalog.
 func (capabilities Capabilities) Clone() Capabilities {
 	cloned := capabilities
+	cloned.ApprovalPolicies = cloneCapabilityOptions(capabilities.ApprovalPolicies)
 	cloned.ExecutionScopes = append([]string(nil), capabilities.ExecutionScopes...)
 	cloned.Modes = cloneCapabilityOptions(capabilities.Modes)
 	cloned.Models = make([]ModelCapability, len(capabilities.Models))

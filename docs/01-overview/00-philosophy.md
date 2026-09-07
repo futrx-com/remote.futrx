@@ -244,7 +244,7 @@ The capability envelope should be complete enough that the agent can move from i
 | Processes | Foreground and background processes; background work may continue between prompts while the container stays running |
 | Network | Outbound networking and project app listeners; the current project instructions describe network access as open |
 | Web applications | Any non-loopback TCP listener on an allowed preview port from 1024 through 65535 can be discovered and exposed through an authenticated project URL |
-| Browser automation | A headless Playwright utility plus a shared headed Chromium. Claude, Codex, and MiniMax can receive per-run MCP/CDP preparation; Kimi and Antigravity do not yet have equivalent browser enablement |
+| Browser automation | A headless Playwright utility plus a shared headed Chromium. Claude, Codex, MiniMax, and Kimi can receive per-run MCP/CDP preparation; Antigravity does not yet have equivalent browser enablement |
 | Human-visible desktop | noVNC lets the user view and take over the same headed browser session |
 | Development surfaces | Terminal, browser IDE, files and media, uploads, Git history, app preview, element inspection, and scheduled tasks over the same workspace |
 | Project credentials | Agent runs receive project secrets as environment values; persistable single-line values also reach new container processes, and all values are mirrored to `/workspace/.env` for dotenv-aware tools |
@@ -323,7 +323,7 @@ shared instructions to be republished, and compatibility links to be
 converged. Selected-skill preparation follows each module's strategy: Claude
 slash commands, Codex and MiniMax dollar mentions, and canonical `SKILL.md`
 instruction paths for Kimi and Antigravity. Per-run browser MCP preparation
-currently applies to Claude, Codex, and MiniMax. Scheduled Tasks additionally
+currently applies to Claude, Codex, MiniMax, and Kimi. Scheduled Tasks additionally
 receives its provider-neutral scoped capability.
 
 ## Persistence and replaceability
@@ -469,7 +469,7 @@ The philosophy is also an acceptance test. The following current behaviors narro
 | The optional LXD disk limit covers only the replaceable root filesystem | Writable workspace and provider-home bind mounts have no default quota and can exhaust host storage |
 | Durable project mounts have no built-in snapshot or backup layer | Container replacement preserves state, but destructive in-project writes may be unrecoverable without external Git history or operator backups |
 | Same-project chats can execute concurrently against shared files, Git state, ports, and processes | Per-chat locking prevents duplicate runs in one chat but does not prevent cross-chat races or conflicting work |
-| Kimi lacks the selected-skill prompt triggers and per-run browser MCP preparation used by Claude, Codex, and MiniMax | Provider-neutral controls do not yet imply provider feature parity |
+| Kimi selected skills use canonical instruction paths, while native `/skill:<name>` activation and Browser MCP are also supported | Provider-specific settings and native utility interfaces still differ |
 | The durable event stream covers provider-emitted run events, not every terminal, IDE, background process, browser, network, or secret action | Remote does not yet provide a comprehensive project audit log |
 | Run ownership and cancellation state are in memory while provider children may survive a backend restart | The control plane may lose visibility and cancellation authority over a surviving process and accept a new concurrent run |
 | Upgrade busy detection does not currently match the argument order used by provider `lxc exec` commands | An active project may be recycled during an upgrade instead of being safely skipped |

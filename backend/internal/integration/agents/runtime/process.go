@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
@@ -74,18 +73,7 @@ func RunProcess(
 
 	stderrDone := make(chan string, 1)
 	go func() {
-		sc := bufio.NewScanner(stderr)
-		sc.Buffer(make([]byte, 0, 8192), maxBytes(opts.StderrMaxLineBytes, 1<<20))
-		var captured strings.Builder
-		for sc.Scan() {
-			line := sc.Text()
-			log.Printf("%s[%s] stderr: %s", name, logID, line)
-			if captured.Len() < 64<<10 {
-				captured.WriteString(line)
-				captured.WriteByte('\n')
-			}
-		}
-		stderrDone <- captured.String()
+		stderrDone <- captureStderr(stderr, name, logID, opts.StderrMaxLineBytes)
 	}()
 
 	sc := bufio.NewScanner(stdout)

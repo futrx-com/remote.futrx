@@ -257,3 +257,14 @@ test("every emitted mode correction is one the provider offers", () => {
     }
   }
 });
+
+test("Kimi exposes native approvals without offering an OS sandbox", () => {
+  const kimiCatalog: AgentCapabilitiesCatalog = { providers: [{
+    ...catalog.providers[0], provider: "kimi", label: "Kimi",
+    features: {sessions:{resume:true,fork:true},skills:"instructions",browserTools:true,scheduledTools:true,executionPolicies:false},
+    approvalPolicies: [{value:"untrusted",label:"Manual"},{value:"on-request",label:"Ask when needed"},{value:"never",label:"Never ask"}],
+  }] };
+  const state = agentCapabilityState.resolve(kimiCatalog, "kimi", "", false);
+  assert.equal(state.supportsExecutionPolicies, false);
+  assert.deepEqual(state.approvalPolicyOptions, kimiCatalog.providers[0].approvalPolicies);
+});

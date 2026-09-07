@@ -1,4 +1,5 @@
 import type {
+  ApprovalReviewAction,
   ChatInteractionIntent,
   ChatInteractionWireResponse,
 } from "../../models/chatInteraction";
@@ -8,6 +9,16 @@ class ChatInteractionService {
     "execCommandApproval",
     "applyPatchApproval",
   ]);
+
+  isTerminalAgentStatus(status: string): boolean {
+    return ["completed", "failed", "interrupted", "cancelled", "canceled", "turnEnded"].includes(status);
+  }
+
+  delegatedTaskTarget(data: { stopInteractionId?: unknown }, status: string) {
+    const id = data.stopInteractionId;
+    if (typeof id !== "string" || !id || this.isTerminalAgentStatus(status)) return undefined;
+    return { id, method: "kimi/task" };
+  }
 
   supportsApprovalCancellation(method: string): boolean {
     return !this.legacyApprovalMethods.has(method);
@@ -26,6 +37,12 @@ class ChatInteractionService {
             ),
           },
         };
+      case "dismiss_questions":
+        return { result: { dismiss: true } };
+      case "review_approval":
+        return { result: this.reviewResponse(intent.action, intent.feedback, intent.optionLabel) };
+      case "control_agent":
+        return { result: { action: intent.action === "stop" ? "cancel" : "detach" } };
       case "approve":
         return {
           result: {
@@ -67,6 +84,14 @@ class ChatInteractionService {
           },
         };
     }
+  }
+
+  private reviewResponse(action: ApprovalReviewAction, feedback: string, optionLabel?: string) {
+    return {
+      decision: action === "allow_once" ? "accept" : action === "allow_session" ? "acceptForSession" : "decline",
+      feedback,
+      selected_label: action === "revise_plan" ? "Revise" : action === "reject_plan" ? "Reject and Exit" : optionLabel,
+    };
   }
 
   private approvalDecision(method: string, scope: "once" | "session"): string {

@@ -32,10 +32,10 @@ This is the compact inventory of current Remote behavior. “Page” means the l
 | Provider | Choose **Codex**, **MiniMax**, **Claude**, **Kimi**, or **Antigravity** | MiniMax is project-only; cannot change while streaming |
 | Model | Open the provider/model picker and select a discovered model or Auto | Stored per chat; choices come from the current host/project CLI catalog |
 | Refresh models | Use the refresh action at the bottom of the provider/model picker | Force-probes the current scope; use after CLI, configuration, account, entitlement, or terminal-login changes |
-| Thinking | Select one of the efforts reported for the current provider/model | Hidden when no effort control is advertised; Kimi currently stores but does not forward the selection |
+| Thinking | Select one of the efforts reported for the current provider/model | Hidden when no effort control is advertised; Kimi applies the selected native effort |
 | Speed | Select a service tier reported for the current provider/model | Codex tiers and eligible Claude Fast are supported; account/provider may gate them |
 | Mode | Choose Default or provider-native Plan | Hidden when Plan is unavailable |
-| Approvals | Choose when the agent must ask before an action | Available for Codex and MiniMax; disabled while a turn is streaming |
+| Approvals | Choose when the agent must ask before an action | Available for Codex, MiniMax, and Kimi; disabled while a turn is streaming |
 | Sandbox | Choose Read only, Workspace write, or Full access | Available for Codex and MiniMax; controls filesystem/process isolation for the next turn |
 | Skill picker | Open **Skill set**, search, and select | Catalog depends on provider/project |
 | Skill chips | Review or remove selected skills | Cleared when provider changes |
@@ -84,14 +84,14 @@ are sent when the harness starts or resumes a thread and again for each turn.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Sign-in | Host authorization URL and pasted code | Host device flow | Host-managed write-only API-key form | Host device flow | Run `agy` in each project Terminal |
 | Model picker | Live `/model` list with attempted version resolution | Live paginated app-server list | Provider-owned `MiniMax-M3` catalog | Configured models from the provider catalog | Models/variants returned by signed-in `agy` |
-| Thinking control | Forwarded | Forwarded | Think-Off or Adaptive | Displayed/stored per model, not yet forwarded | Forwarded as Auto, Low, Medium, or High |
+| Thinking control | Forwarded | Forwarded | Think-Off or Adaptive | Forwarded through native session settings | Forwarded as Auto, Low, Medium, or High |
 | Speed/service tier | Fast for Auto and Opus | Yes | No | No | No |
-| Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
-| Approval and sandbox controls | No | Yes | Yes | No | No |
-| Usage telemetry | Yes | Yes | Yes | No | No |
-| Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | No; starts fresh | No; starts fresh |
-| Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |
-| Browser MCP | Yes | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
+| Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Native Plan mode and interactive review | Discovered native mode |
+| Approval and sandbox controls | No | Yes | Yes | Approvals only; no OS sandbox | No |
+| Usage telemetry | Yes | Yes | Yes | Main and delegated agent tokens | No |
+| Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | Yes, native session fork | No; starts fresh |
+| Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction; native `/skill:<name>` also supported | Canonical `SKILL.md` instruction |
+| Browser MCP | Yes | Yes | Yes | Yes | No equivalent plumbing |
 | Structured tool stream | Yes | Yes | Yes | Yes | No; plain streamed text |
 
 Antigravity's project-local `/root/.gemini/antigravity-cli` state survives

@@ -129,10 +129,20 @@ Runs execute under the current backend process and cannot be reattached after it
 
 ### Kimi behaves differently from Claude, Codex, or MiniMax
 
-Kimi currently has no usage telemetry, its fork starts fresh, and it does not
-receive the equivalent Browser MCP plumbing. Selected skills are injected as
-instructions to read their canonical `SKILL.md` paths rather than as native
-provider triggers.
+Kimi uses a private native server for usage, resume/fork, delegation, interactive
+approvals, Plan reviews, and Browser MCP. Selected skills are injected as
+canonical `SKILL.md` instructions; `/skill:<name>` activates native Kimi skills.
+Use `/kimi help` for side questions, goals, custom agents, and context controls.
+
+Kimi run errors preserve the native provider or transport diagnostic. For a
+missing model, follow the diagnostic's sign-in/configuration instructions.
+Missing sessions recover automatically using the visible chat history. Other
+errors are preserved without automatically replaying a partially executed task.
+
+An HTTP `307 Temporary Redirect` in a diagnostic is a response from an endpoint,
+not an operating-system exit code. The pinned CLI can follow a valid 307
+redirect. Capture the complete diagnostic and check the configured provider URL
+and proxy response before changing authentication or retry behavior.
 
 ### MiniMax says its Token Plan subscription key is not configured
 

@@ -1,3 +1,4 @@
+import { APPROVAL_POLICY_OPTIONS } from "../../../config/chat.ts";
 import type {
   AgentCapabilitiesCatalog,
   CapabilityPreferenceCorrection,
@@ -58,6 +59,7 @@ class AgentCapabilityState {
       reasoningEffortOptions: selectedModel?.reasoningEfforts ?? [],
       serviceTierOptions: selectedModel?.serviceTiers ?? [],
       modeOptions: providerCapabilities?.modes ?? [],
+      approvalPolicyOptions: providerCapabilities?.approvalPolicies ?? (providerCapabilities?.features?.executionPolicies ? [...APPROVAL_POLICY_OPTIONS] : []),
       supportsExecutionPolicies:
         providerCapabilities?.features?.executionPolicies === true,
     };

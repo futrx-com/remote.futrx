@@ -42,6 +42,7 @@ var kimiProfile = provisioning.Profile{
 		},
 		SeedOnLaunch: false,
 	},
+	Instructions: &provisioning.InstructionTarget{Path: containerKimiHome + "/AGENTS.md", HashPath: containerKimiHome + "/.agents-md.sha256"},
 	PersistentState: []provisioning.PersistentDirectory{{
 		Device:        "kimi-home",
 		HostDirectory: "kimi",

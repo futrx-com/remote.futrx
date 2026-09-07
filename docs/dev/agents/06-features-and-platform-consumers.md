@@ -49,7 +49,7 @@ does not change the catalog.
 | Claude | No | host, project | managed code | resume, fork | slash-style skill trigger | Yes | Yes | No |
 | Codex | Yes | host, project | managed device | resume, fork | dollar mention | Yes | Yes | Yes |
 | MiniMax | No | project | managed API key | resume, fork | dollar mention | Yes | Yes | Yes |
-| Kimi | No | host, project | managed device | resume | instructions | No | Yes | No |
+| Kimi | No | host, project | managed device | resume, fork | instructions | Yes | Yes | No (native approvals are separate) |
 | Antigravity | No | host, project | external | resume | instructions | No | Yes | No |
 
 All five current modules run local CLIs and attach provisioning profiles. MiniMax
