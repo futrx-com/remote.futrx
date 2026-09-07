@@ -325,37 +325,47 @@ func (c *Cache) FlushAll(ctx context.Context) error {
 	}
 	c.mu.Unlock()
 
+	errs := make(chan error, len(list))
+	c.flushEach(list, func(e *Entry) {
+		if err := e.Flush(ctx); err != nil {
+			errs <- err
+		}
+	})
+	close(errs)
+	return <-errs
+}
+
+// flushEach uploads entries concurrently, at most UploadWorkers at a time.
+// Write-back is round-trip bound, so doing it one at a time makes a build that
+// writes many files as slow as the sum of its uploads rather than the slowest
+// few. What a failure means differs between the callers, so each supplies it.
+func (c *Cache) flushEach(entries []*Entry, flush func(*Entry)) {
 	workers := c.opts.UploadWorkers
 	if workers < 1 {
 		workers = 1
 	}
-	if workers > len(list) {
-		workers = len(list)
+	if workers > len(entries) {
+		workers = len(entries)
 	}
 	if workers == 0 {
-		return nil
+		return
 	}
 	queue := make(chan *Entry)
-	errs := make(chan error, len(list))
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for e := range queue {
-				if err := e.Flush(ctx); err != nil {
-					errs <- err
-				}
+				flush(e)
 			}
 		}()
 	}
-	for _, e := range list {
+	for _, e := range entries {
 		queue <- e
 	}
 	close(queue)
 	wg.Wait()
-	close(errs)
-	return <-errs
 }
 
 // Bytes reports the local disk currently used by cached data. Unlike Stats it
@@ -461,40 +471,17 @@ func (c *Cache) flushLoop() {
 	}
 }
 
-// flushBatch uploads entries concurrently. Write-back is round-trip bound, so
-// doing it one at a time makes a build that writes many files as slow as the
-// sum of its uploads rather than the slowest few.
+// flushBatch write-backs what the flush loop found overdue. Nothing is waiting
+// on the result, so a failure is logged and the entry stays dirty for the next
+// pass; each upload gets its own deadline because the batch has none.
 func (c *Cache) flushBatch(due []*Entry) {
-	workers := c.opts.UploadWorkers
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > len(due) {
-		workers = len(due)
-	}
-	if workers == 0 {
-		return
-	}
-	queue := make(chan *Entry)
-	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for e := range queue {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				if err := e.Flush(ctx); err != nil {
-					c.opts.Log("cache: background flush of %s failed: %v", e.Key(), err)
-				}
-				cancel()
-			}
-		}()
-	}
-	for _, e := range due {
-		queue <- e
-	}
-	close(queue)
-	wg.Wait()
+	c.flushEach(due, func(e *Entry) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if err := e.Flush(ctx); err != nil {
+			c.opts.Log("cache: background flush of %s failed: %v", e.Key(), err)
+		}
+	})
 }
 
 // AsyncWriteback reports whether close(2) may return before the upload.
