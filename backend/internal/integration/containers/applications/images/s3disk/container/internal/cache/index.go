@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"s3disk/internal/humanize"
 )
 
 // indexFile is the on-disk form of the cache, written on unmount so a remount
@@ -134,7 +136,7 @@ func (c *Cache) loadIndex() error {
 		restored++
 	}
 	if restored > 0 {
-		c.opts.Log("cache: restored %d entries (%s) from %s", restored, humanBytes(c.bytes.Load()), c.dir)
+		c.opts.Log("cache: restored %d entries (%s) from %s", restored, humanize.Bytes(c.bytes.Load()), c.dir)
 	}
 	return nil
 }
@@ -160,17 +162,4 @@ func (c *Cache) Recover(ctx context.Context, log func(string, ...any)) (int, err
 		n++
 	}
 	return n, nil
-}
-
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for x := n / unit; x >= unit; x /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }

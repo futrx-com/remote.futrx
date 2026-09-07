@@ -13,6 +13,7 @@ import (
 
 	"s3disk/internal/config"
 	"s3disk/internal/ctl"
+	"s3disk/internal/humanize"
 	"s3disk/internal/s3fs"
 	"s3disk/internal/s3io"
 )
@@ -141,12 +142,12 @@ func runStatus(args []string) int {
 	}
 	fmt.Printf("\n\n")
 	fmt.Printf("cache        %s of %s in %d files, %d dirty\n",
-		humanBytes(st.Cache.Bytes), humanBytes(st.Cache.MaxBytes), st.Cache.Entries, st.Cache.Dirty)
+		humanize.Bytes(st.Cache.Bytes), humanize.Bytes(st.Cache.MaxBytes), st.Cache.Entries, st.Cache.Dirty)
 	fmt.Printf("             %d hits, %d misses, %d evictions, %d uploads\n",
 		st.Cache.Hits, st.Cache.Misses, st.Cache.Evictions, st.Cache.Uploads)
 	fmt.Printf("s3 requests  %d HEAD  %d LIST  %d GET  %d PUT  %d COPY  %d DELETE  %d errors\n",
 		st.S3.Heads, st.S3.Lists, st.S3.Gets, st.S3.Puts, st.S3.Copies, st.S3.Deletes, st.S3.Errors)
-	fmt.Printf("transferred  %s down, %s up\n", humanBytes(st.S3.BytesDown), humanBytes(st.S3.BytesUp))
+	fmt.Printf("transferred  %s down, %s up\n", humanize.Bytes(st.S3.BytesDown), humanize.Bytes(st.S3.BytesUp))
 	if len(st.DirtyFiles) > 0 {
 		fmt.Printf("\npending upload (%d):\n", len(st.DirtyFiles))
 		for i, k := range st.DirtyFiles {
@@ -346,17 +347,4 @@ func diagnoseAccess(ctx context.Context, cfg *config.Config) string {
 	}
 	return "check that the bucket exists at " + cfg.Endpoint + ", that the region is " +
 		"the one it lives in, and that the credentials are for that provider"
-}
-
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for x := n / unit; x >= unit; x /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
