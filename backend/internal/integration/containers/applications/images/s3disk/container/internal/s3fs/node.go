@@ -271,7 +271,7 @@ func (n *Node) Create(ctx context.Context, name string, flags uint32, mode uint3
 		Uid: uid, Gid: gid, Mtime: now, Atime: now, Ctime: now,
 	}
 	n.fsys.attrs.putSticky(p, a)
-	n.fsys.markPending(dir, name)
+	n.fsys.pending.add(dir, name)
 	n.fsys.dirs.add(dir, fuse.DirEntry{Name: name, Mode: syscall.S_IFREG})
 
 	a.Fill(&out.Attr)
@@ -478,7 +478,7 @@ func (n *Node) Unlink(ctx context.Context, name string) syscall.Errno {
 	if err := n.fsys.s3.Delete(ctx, key); err != nil && !errors.Is(err, s3io.ErrNotFound) {
 		return n.fsys.toErrno("unlink "+p, err)
 	}
-	n.fsys.clearPending(dir, name)
+	n.fsys.pending.remove(dir, name)
 	n.fsys.attrs.putNegative(p)
 	n.fsys.dirs.remove(dir, name)
 	return 0
@@ -615,7 +615,7 @@ func (f *FS) dirEmpty(ctx context.Context, p string) (bool, error) {
 		return false, nil
 	}
 	// Files created locally but not uploaded yet still count as children.
-	return len(f.pendingIn(p)) == 0, nil
+	return len(f.pending.names(p)) == 0, nil
 }
 
 // persistMetadata writes POSIX attributes back to S3.
@@ -683,7 +683,7 @@ func (f *FS) renameFile(ctx context.Context, oldPath, newPath string, a *Attr) e
 	f.attrs.invalidate(oldPath)
 	f.attrs.putNegative(oldPath)
 	f.attrs.put(newPath, &moved)
-	f.clearPending(parentOf(oldPath), baseOf(oldPath))
+	f.pending.remove(parentOf(oldPath), baseOf(oldPath))
 	f.dirs.remove(parentOf(oldPath), baseOf(oldPath))
 	f.dirs.add(parentOf(newPath), fuse.DirEntry{Name: baseOf(newPath), Mode: moved.Mode & syscall.S_IFMT})
 	return nil
@@ -757,7 +757,7 @@ func (f *FS) renameDir(ctx context.Context, oldPath, newPath string) error {
 	f.attrs.invalidatePrefix(newPath)
 	f.dirs.invalidatePrefix(oldPath)
 	f.dirs.invalidatePrefix(newPath)
-	f.clearPendingPrefix(oldPath)
+	f.pending.removePrefix(oldPath)
 	f.dirs.remove(parentOf(oldPath), baseOf(oldPath))
 	f.dirs.add(parentOf(newPath), fuse.DirEntry{Name: baseOf(newPath), Mode: syscall.S_IFDIR})
 	return nil

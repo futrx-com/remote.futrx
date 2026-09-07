@@ -30,10 +30,9 @@ type FS struct {
 	dirs  *dirCache
 	log   func(string, ...any)
 
-	// pending tracks names that exist only in the local cache because their
-	// object has not been uploaded yet; readdir merges them into listings.
-	pendingMu sync.Mutex
-	pending   map[string]map[string]bool // parent dir path -> name
+	// pending holds what has been created here but not uploaded yet; readdir
+	// merges those names into listings.
+	pending *pendingSet
 
 	started time.Time
 	ops     atomic.Int64
@@ -59,7 +58,7 @@ func New(ctx context.Context, cfg *config.Config, logf func(string, ...any)) (*F
 		attrs:   newAttrCache(cfg),
 		dirs:    newDirCache(cfg.ListTTL, cfg.Exclusive),
 		log:     logf,
-		pending: make(map[string]map[string]bool),
+		pending: newPendingSet(),
 		started: time.Now(),
 	}
 	f.cache, err = cache.New(cache.Options{
@@ -133,7 +132,7 @@ func (f *FS) onUploaded(key string, size int64, etag string, mtime time.Time, cr
 		f.attrs.unstick(p, &na)
 	}
 	dir := path.Dir(p)
-	f.clearPending(dir, path.Base(p))
+	f.pending.remove(dir, path.Base(p))
 	if created {
 		// A listing taken while this file was still local-only does not contain
 		// it, and the file has just stopped being local-only — so without this
@@ -149,54 +148,6 @@ func pick(t, fallback time.Time) time.Time {
 		return fallback
 	}
 	return t
-}
-
-// ---------------------------------------------------------------- pending set
-
-func (f *FS) markPending(dir, name string) {
-	f.pendingMu.Lock()
-	defer f.pendingMu.Unlock()
-	m, ok := f.pending[dir]
-	if !ok {
-		m = make(map[string]bool)
-		f.pending[dir] = m
-	}
-	m[name] = true
-}
-
-func (f *FS) clearPending(dir, name string) {
-	f.pendingMu.Lock()
-	defer f.pendingMu.Unlock()
-	if m, ok := f.pending[dir]; ok {
-		delete(m, name)
-		if len(m) == 0 {
-			delete(f.pending, dir)
-		}
-	}
-}
-
-func (f *FS) pendingIn(dir string) []string {
-	f.pendingMu.Lock()
-	defer f.pendingMu.Unlock()
-	m := f.pending[dir]
-	if len(m) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(m))
-	for n := range m {
-		out = append(out, n)
-	}
-	return out
-}
-
-func (f *FS) clearPendingPrefix(prefix string) {
-	f.pendingMu.Lock()
-	defer f.pendingMu.Unlock()
-	for dir := range f.pending {
-		if dir == prefix || strings.HasPrefix(dir, prefix+"/") {
-			delete(f.pending, dir)
-		}
-	}
 }
 
 // -------------------------------------------------------------------- stat
@@ -233,7 +184,7 @@ func (f *FS) knownAbsent(p string) bool {
 		}
 	}
 	// A file created here but not uploaded yet is not in the S3 listing.
-	for _, pending := range f.pendingIn(dir) {
+	for _, pending := range f.pending.names(dir) {
 		if pending == name {
 			return false
 		}
@@ -415,7 +366,7 @@ func (f *FS) prefetchAttrs(ctx context.Context, dir string, raw []s3io.ListEntry
 
 // mergeLocal adds not-yet-uploaded entries and refreshes sizes from the cache.
 func (f *FS) mergeLocal(dir string, ents []fuse.DirEntry) []fuse.DirEntry {
-	extra := f.pendingIn(dir)
+	extra := f.pending.names(dir)
 	if len(extra) == 0 {
 		return ents
 	}
