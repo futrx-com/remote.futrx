@@ -18,6 +18,15 @@ import (
 	"s3disk/internal/s3io"
 )
 
+// ask makes one request to a running mount's control socket. The context lives
+// exactly as long as the call: Get reads the whole reply before returning, so
+// there is nothing left to cancel afterwards.
+func ask(entry ctl.Entry, endpoint string, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return ctl.NewClient(entry.Socket).Get(ctx, endpoint)
+}
+
 // runUmount flushes pending writes and detaches the mount.
 func runUmount(args []string) int {
 	fs := flag.NewFlagSet("umount", flag.ContinueOnError)
@@ -37,9 +46,7 @@ func runUmount(args []string) int {
 
 	if !*noSync {
 		if entry, ok := ctl.Find(mp); ok {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-			if _, err := ctl.NewClient(entry.Socket).Get(ctx, "/sync"); err != nil {
+			if _, err := ask(entry, "/sync", 30*time.Minute); err != nil {
 				fmt.Fprintf(os.Stderr, "s3disk: warning: could not flush before unmount: %v\n", err)
 			}
 		}
@@ -115,9 +122,7 @@ func runStatus(args []string) int {
 		}
 		return fatalf("no s3disk mount at %s", fs.Arg(0))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	body, err := ctl.NewClient(entry.Socket).Get(ctx, "/status")
+	body, err := ask(entry, "/status", 30*time.Second)
 	if err != nil {
 		return fatalf("contacting mount: %v", err)
 	}
@@ -171,9 +176,7 @@ func runSync(args []string) int {
 	if !ok {
 		return fatalf("no s3disk mount found at %q", fs.Arg(0))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
-	defer cancel()
-	body, err := ctl.NewClient(entry.Socket).Get(ctx, "/sync")
+	body, err := ask(entry, "/sync", 60*time.Minute)
 	if err != nil {
 		return fatalf("contacting mount: %v", err)
 	}
@@ -196,9 +199,7 @@ func runRefresh(args []string) int {
 	if !ok {
 		return fatalf("no s3disk mount found at %q", fs.Arg(0))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	if _, err := ctl.NewClient(entry.Socket).Get(ctx, "/refresh"); err != nil {
+	if _, err := ask(entry, "/refresh", 5*time.Minute); err != nil {
 		return fatalf("contacting mount: %v", err)
 	}
 	fmt.Printf("refreshed %s; the next access re-reads from s3://%s/%s\n",
