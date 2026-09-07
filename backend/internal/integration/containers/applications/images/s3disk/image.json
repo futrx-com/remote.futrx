@@ -63,9 +63,6 @@
     "timeoutMs": 120000
   },
   "ui": {
-    "entry": "scripts/main.js",
-    "styles": [
-      "style/s3disk.css"
-    ]
+    "entry": "scripts/main.js"
   }
 }

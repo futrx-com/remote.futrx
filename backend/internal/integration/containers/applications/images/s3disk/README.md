@@ -55,7 +55,7 @@ images/s3disk/
   image.json
   install.sh
   plugin/              host-side Go API and tests, compiled by Remote
-  ui/                  mount controls and styles
+  ui/                  mount controls
   container/           container-side Go module (cmd/, internal/, go.mod, go.sum, VERSION)
   container.tar.gz     generated payload — see "Refreshing the payload"
   package.sh           reproducible builder for the payload and for a .zip
