@@ -301,7 +301,7 @@ func runDoctor(args []string) int {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		client, err := newDoctorClient(ctx, cfg)
+		client, err := s3io.New(ctx, cfg)
 		check("client created", err, "")
 		if err == nil {
 			accessErr := client.CheckAccess(ctx)
@@ -334,7 +334,7 @@ func diagnoseAccess(ctx context.Context, cfg *config.Config) string {
 		probe.PathStyle = true
 		pctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
-		if client, err := newDoctorClient(pctx, &probe); err == nil {
+		if client, err := s3io.New(pctx, &probe); err == nil {
 			if client.CheckAccess(pctx) == nil {
 				return "the bucket IS reachable with path-style addressing — " +
 					"add --path-style to the mount options (most non-AWS providers need it)"
@@ -346,11 +346,6 @@ func diagnoseAccess(ctx context.Context, cfg *config.Config) string {
 	}
 	return "check that the bucket exists at " + cfg.Endpoint + ", that the region is " +
 		"the one it lives in, and that the credentials are for that provider"
-}
-
-// newDoctorClient builds a client for the doctor's connectivity check.
-func newDoctorClient(ctx context.Context, cfg *config.Config) (*s3io.Client, error) {
-	return s3io.New(ctx, cfg)
 }
 
 func humanBytes(n int64) string {

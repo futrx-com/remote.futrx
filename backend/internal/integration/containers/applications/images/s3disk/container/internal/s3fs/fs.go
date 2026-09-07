@@ -91,12 +91,6 @@ func (f *FS) Root() *Node { return f.root }
 // Cache exposes the block cache (used by the control socket and shutdown).
 func (f *FS) Cache() *cache.Cache { return f.cache }
 
-// Config returns the mount configuration.
-func (f *FS) Config() *config.Config { return f.cfg }
-
-// S3 returns the underlying client.
-func (f *FS) S3() *s3io.Client { return f.s3 }
-
 // Recover re-uploads anything left dirty by a previous mount.
 func (f *FS) Recover(ctx context.Context) (int, error) {
 	return f.cache.Recover(ctx, f.log)
@@ -396,9 +390,8 @@ func (f *FS) prefetchAttrs(ctx context.Context, dir string, raw []s3io.ListEntry
 			for j := range jobs {
 				obj, err := f.s3.Head(ctx, j.key)
 				if err != nil {
-					if j.isDir {
-						continue // markerless directory: defaults are correct
-					}
+					// A markerless directory keeps the mount defaults, and a
+					// file that cannot be HEADed keeps what the listing gave.
 					continue
 				}
 				f.attrs.put(j.path, f.attrFromObject(obj, j.isDir))

@@ -83,12 +83,6 @@ func (b *bitmap) clearFrom(i int) int {
 	return n
 }
 
-func (b *bitmap) clearAll() {
-	for i := range b.words {
-		b.words[i] = 0
-	}
-}
-
 func (b *bitmap) count() int {
 	n := 0
 	for _, w := range b.words {

@@ -41,7 +41,6 @@ type Config struct {
 	SSE            string
 	KMSKeyID       string
 	ACL            string
-	RequesterPays  bool
 	MaxRetries     int
 	RequestTimeout time.Duration
 

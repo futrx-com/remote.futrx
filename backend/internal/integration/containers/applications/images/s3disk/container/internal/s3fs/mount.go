@@ -2,7 +2,6 @@ package s3fs
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -66,19 +65,4 @@ func Mount(f *FS) (*fuse.Server, error) {
 	}
 	f.SetServer(server)
 	return server, nil
-}
-
-// WaitReady blocks until the mount answers a stat, so callers can report a
-// mount as usable rather than merely started.
-func WaitReady(mountpoint string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		if mounted, err := IsMounted(mountpoint); err == nil && mounted {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("timed out waiting for %s to become ready", mountpoint)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
 }

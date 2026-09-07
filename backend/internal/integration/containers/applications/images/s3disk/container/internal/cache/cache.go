@@ -129,9 +129,6 @@ func New(opts Options) (*Cache, error) {
 	return c, nil
 }
 
-// BlockSize is the granularity of read faults.
-func (c *Cache) BlockSize() int64 { return c.bs }
-
 func (c *Cache) pathFor(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	h := hex.EncodeToString(sum[:])
@@ -301,21 +298,6 @@ func (c *Cache) dropLocked(e *Entry, key string) {
 	e.mu.Unlock()
 	if refs == 0 {
 		e.destroy()
-	}
-}
-
-// RemovePrefix drops every cached entry under a key prefix (recursive delete).
-func (c *Cache) RemovePrefix(prefix string) {
-	c.mu.Lock()
-	keys := make([]string, 0)
-	for k := range c.entries {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			keys = append(keys, k)
-		}
-	}
-	c.mu.Unlock()
-	for _, k := range keys {
-		c.Remove(k)
 	}
 }
 

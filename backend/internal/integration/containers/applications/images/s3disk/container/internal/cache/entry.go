@@ -66,13 +66,6 @@ func (e *Entry) Mtime() time.Time {
 	return e.mtime
 }
 
-// ETag returns the ETag of the object as last seen or written.
-func (e *Entry) ETag() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.etag
-}
-
 // Dirty reports whether the entry has data not yet in S3.
 func (e *Entry) Dirty() bool {
 	e.mu.Lock()
@@ -115,24 +108,6 @@ func (e *Entry) Unref() {
 		e.c.mu.Unlock()
 		e.destroy()
 	}
-}
-
-// SetClean records that the on-disk contents now match the given S3 object.
-func (e *Entry) SetClean(size int64, etag string, mtime time.Time) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.objSize = size
-	e.etag = etag
-	e.mtime = mtime
-	e.dirty = false
-	e.newFile = false
-}
-
-// SetMtime records a modification time (used by utimens).
-func (e *Entry) SetMtime(t time.Time) {
-	e.mu.Lock()
-	e.mtime = t
-	e.mu.Unlock()
 }
 
 // diskBytesLocked reports how much local disk this entry occupies: whole
