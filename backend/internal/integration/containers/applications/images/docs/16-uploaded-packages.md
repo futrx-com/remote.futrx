@@ -54,6 +54,12 @@ Both shapes are accepted: the files at the archive root, or inside a single
 folder — which is what "compress this folder" produces on a desktop. macOS
 bookkeeping (`__MACOSX/`, `.DS_Store`, `._*`) is ignored.
 
+So any zip tool will do — unless the image carries a `container.tar.gz`, which
+nothing here builds for you: the archive is extracted as it arrives, and an
+image whose container source is a nested Go module has to ship the payload
+already packed. [`s3disk/package.sh`](../s3disk/package.sh) is the worked
+example, and `--zip` writes the whole archive.
+
 `image.json` must set both `"id"` and `"version"`.
 
 `"id"` has to be explicit here. A built-in image may omit it and inherit its
