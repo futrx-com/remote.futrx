@@ -1,6 +1,5 @@
 import type {
   ExtensionEventCatalog,
-  ExtensionEventName,
   ExtensionSlotCatalog,
   ExtensionSlotName,
   ExtensionVisibility,
@@ -56,6 +55,3 @@ export const EXTENSION_EVENTS = {
   /** One chat attachment finished uploading and is on disk in the workspace. */
   uploadCompleted: "upload.completed",
 } as const satisfies ExtensionEventCatalog;
-
-export const EXTENSION_EVENT_NAMES: ExtensionEventName[] =
-  Object.values(EXTENSION_EVENTS);
