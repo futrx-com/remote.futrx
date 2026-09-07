@@ -1,5 +1,7 @@
 package cache
 
+import "math/bits"
+
 // bitmap tracks which fixed-size blocks of a file are present on local disk.
 type bitmap struct {
 	words []uint64
@@ -86,9 +88,7 @@ func (b *bitmap) clearFrom(i int) int {
 func (b *bitmap) count() int {
 	n := 0
 	for _, w := range b.words {
-		for ; w != 0; w &= w - 1 {
-			n++
-		}
+		n += bits.OnesCount64(w)
 	}
 	return n
 }

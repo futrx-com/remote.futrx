@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -131,14 +132,9 @@ func (c *Client) Get(ctx context.Context, endpoint string) ([]byte, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	buf := make([]byte, 0, 8192)
-	tmp := make([]byte, 8192)
-	for {
-		n, err := resp.Body.Read(tmp)
-		buf = append(buf, tmp[:n]...)
-		if err != nil {
-			break
-		}
-	}
-	return buf, nil
+	// Whatever arrived is returned, even after a read error: every caller
+	// either parses this as JSON or prints it, and both say more about a
+	// truncated reply than the read error would.
+	body, _ := io.ReadAll(resp.Body)
+	return body, nil
 }
