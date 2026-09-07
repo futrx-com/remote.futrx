@@ -46,6 +46,8 @@ remote.backend.fetch(path, options?)            → Promise<Response>
 remote.backend.describe(target?)                → Promise<descriptor>
 remote.backend.url(path, target?)               // string
 
+remote.events.on(name, handler)                 → dispose
+
 remote.log(...args)
 ```
 
@@ -311,6 +313,67 @@ and **withholds your cookies** from the plugin, so a plugin can authorize a
 caller but cannot act as them. See
 [13 — Security model](13-security-model.md#backend-plugins).
 
+## `remote.events.on(name, handler)`
+
+Subscribes to something the SPA finished doing, and returns a dispose
+function. Use it when your extension has to react to the app rather than to a
+click.
+
+```js
+remote.events.on("upload.completed", (event) => {
+  remote.log(`${event.fileName} landed in ${event.directory}`);
+});
+```
+
+| Event | Fires when | Payload |
+|---|---|---|
+| `upload.completed` | One chat attachment finished uploading and is on disk | `{ chatId, projectId?, fileName, directory, path, size, claim }` |
+
+`fileName` is the unique name the attachment was stored under, not the label
+shown in the composer, and `path` is the container path the prompt hands the
+agent.
+
+Three properties are worth being deliberate about:
+
+- **Nothing awaits your handler.** Its return value is discarded, so an
+  `async` handler runs on its own and cannot delay the flow that emitted the
+  event. A handler that throws is logged and the remaining handlers still run.
+  The one exception is `claim`, below.
+- **Events are browser-side.** `upload.completed` fires because *this tab*
+  uploaded something. An agent or a terminal writing the same file emits
+  nothing, and closing the tab mid-handler ends the work.
+- **Subscriptions are dropped when your image is uninstalled**, so you do not
+  have to dispose on the way out — though you may.
+
+### `claim(work)` — moving an attachment
+
+Call `event.claim(promise)` **synchronously from the handler** when you are
+moving the file somewhere else. Two things follow:
+
+- The composer will not send until every claim settles. The prompt names the
+  path it hands the agent, so it cannot be sent while that path is still
+  changing.
+- A claim resolving with a string replaces that path. Resolve with one only
+  once the file is actually readable there.
+
+```js
+remote.events.on("upload.completed", (event) => {
+  event.claim(moveToBucket(event).then((moved) => moved.path));
+});
+```
+
+Rejecting, or resolving with nothing, leaves the attachment exactly as it is —
+which is the outcome to prefer whenever the move did not fully succeed, because
+the path the composer already holds still resolves. If your claim has not
+settled within five minutes it is abandoned and the attachment is left alone,
+so a claim you cannot settle must not delete anything.
+
+`s3disk` uses this event to move attachments onto its mounted bucket and
+delete them from `.uploads`; see its `ui/scripts/uploadSync.js` for a worked
+example.
+
+---
+
 ## `remote.log(...args)`
 
 `console.info` tagged with the image id:
@@ -333,6 +396,7 @@ Every boundary is guarded, and every failure is local to one extension:
 | A cleanup function | Logged; the host element is emptied anyway |
 | A `when` predicate | That contribution is hidden; others are unaffected |
 | A click handler | Logged; other handlers keep working |
+| An event handler | Logged; other subscribers still receive the event |
 | `views.load` on an unknown name | The returned promise rejects |
 
 Nothing an extension does can take down the SPA — but note this is about
