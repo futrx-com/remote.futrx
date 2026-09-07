@@ -411,6 +411,21 @@ func parentOf(p string) string {
 	return p[:i]
 }
 
+func baseOf(p string) string {
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// openFlags controls whether the kernel may keep page cache across opens.
+func (f *FS) openFlags() uint32 {
+	if f.cfg.KernelTTL > 0 {
+		return fuse.FOPEN_KEEP_CACHE
+	}
+	return 0
+}
+
 // toErrno maps S3 and local errors onto errno values the kernel understands.
 func (f *FS) toErrno(op string, err error) syscall.Errno {
 	if err == nil {
