@@ -14,6 +14,7 @@ import type {
   ExtensionVisibility,
 } from "../../models/extension";
 import { createBackendApi } from "./extensionBackend";
+import { subscribeExtensionEvent } from "./extensionEvents";
 import { openExtensionPopup } from "./extensionPopup";
 
 const BUTTON_BASE =
@@ -77,6 +78,9 @@ export function createExtensionApi(
           { order: button.order, when: button.when },
         ),
       openPopup: openExtensionPopup,
+    },
+    events: {
+      on: (name, handler) => subscribeExtensionEvent(image.id, name, handler),
     },
     views: {
       url: viewUrl,

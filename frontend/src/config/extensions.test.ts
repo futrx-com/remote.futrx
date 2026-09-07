@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  EXTENSION_EVENT_NAMES,
   EXTENSION_SLOTS,
   EXTENSION_SLOT_NAMES,
   SLOT_ICON_APPEARANCE,
@@ -23,4 +24,11 @@ test("every slot declares an icon appearance", () => {
     assert.match(appearance.button, /\bh-\d/, `${slot} button has no height`);
     assert.match(appearance.icon, /\bh-\d/, `${slot} icon has no height`);
   }
+});
+
+test("event names are unique", () => {
+  assert.equal(
+    new Set(EXTENSION_EVENT_NAMES).size,
+    EXTENSION_EVENT_NAMES.length
+  );
 });

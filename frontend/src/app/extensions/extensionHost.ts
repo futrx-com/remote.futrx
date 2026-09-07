@@ -8,6 +8,7 @@ import type {
 } from "../../models/extension";
 import { extensionRegistry } from "../../state/stores/extensions/extensionStore";
 import { createExtensionApi } from "./extensionApi";
+import { removeExtensionEventSubscriptions } from "./extensionEvents";
 
 type EntryModule = {
   default?: (api: ExtensionApi) => unknown;
@@ -64,8 +65,7 @@ class ExtensionHost {
     );
     for (const imageId of this.loaded) {
       if (installed.has(imageId)) continue;
-      this.registry.removeImage(imageId);
-      this.loaded.delete(imageId);
+      this.forget(imageId);
     }
   }
 
@@ -99,9 +99,20 @@ class ExtensionHost {
       );
     } catch (error) {
       console.error(`[extensions] ${image.id} failed to load`, error);
-      this.registry.removeImage(image.id);
-      this.loaded.delete(image.id);
+      this.forget(image.id);
     }
+  }
+
+  /**
+   * Drops everything an image contributed. Its entry module stays in the
+   * page's module cache — nothing can evict that — so removing its slot
+   * renders without its event subscriptions would leave handlers firing for
+   * an app that is no longer installed.
+   */
+  private forget(imageId: string): void {
+    this.registry.removeImage(imageId);
+    removeExtensionEventSubscriptions(imageId);
+    this.loaded.delete(imageId);
   }
 
   private visibilityOf(extension: AppUIExtension): ExtensionVisibility {

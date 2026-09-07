@@ -30,6 +30,49 @@ export interface ExtensionSlotContext {
   cwd?: string;
 }
 
+export interface ExtensionEventCatalog {
+  uploadCompleted: "upload.completed";
+}
+
+export type ExtensionEventName =
+  ExtensionEventCatalog[keyof ExtensionEventCatalog];
+
+/**
+ * One finished chat attachment. The paths are the container's, because that is
+ * what an extension's plugin acts on and what the prompt hands the agent.
+ */
+export interface UploadCompletedEvent {
+  chatId: string;
+  /** Set for a project chat; absent for one that is not in a project. */
+  projectId?: string;
+  /** The unique name the upload was stored under, not the name shown on screen. */
+  fileName: string;
+  /** The directory holding it, e.g. `/workspace/.uploads`. */
+  directory: string;
+  /** `directory/fileName`, the path the prompt gives the agent. */
+  path: string;
+  size: number;
+  /**
+   * Take over the attachment. Call this synchronously from the handler with
+   * the work you are starting.
+   *
+   * The composer will not send until every claim settles, because the prompt
+   * cannot name a file that is still being moved. A claim resolving with a
+   * string replaces the path the prompt gives the agent — resolve with one
+   * only once the file is actually readable there. A claim that rejects, or
+   * resolves with nothing, leaves the attachment exactly as it is.
+   */
+  claim: (work: Promise<string | void>) => void;
+}
+
+export interface ExtensionEventMap {
+  "upload.completed": UploadCompletedEvent;
+}
+
+export type ExtensionEventHandler<Name extends ExtensionEventName> = (
+  payload: ExtensionEventMap[Name],
+) => void;
+
 export type ExtensionRender = (
   host: HTMLElement,
   context: ExtensionSlotContext,
@@ -176,6 +219,19 @@ export interface ExtensionApi {
     addButton: (slot: string, button: ExtensionButton) => () => void;
     addIconButton: (slot: string, button: ExtensionIconButton) => () => void;
     openPopup: (options?: ExtensionPopupOptions) => ExtensionPopupHandle;
+  };
+  /**
+   * Subscribe to something the SPA finished doing. `on` returns an
+   * unsubscribe; every subscription is also dropped when the image is
+   * uninstalled, so an extension that never unsubscribes still leaves nothing
+   * behind. A handler's return value is ignored and a handler that throws is
+   * logged, never propagated — the SPA does not wait for extensions.
+   */
+  events: {
+    on: <Name extends ExtensionEventName>(
+      name: Name,
+      handler: ExtensionEventHandler<Name>,
+    ) => () => void;
   };
   views: {
     load: (name: string) => Promise<string>;

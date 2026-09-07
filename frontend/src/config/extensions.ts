@@ -1,4 +1,6 @@
 import type {
+  ExtensionEventCatalog,
+  ExtensionEventName,
   ExtensionSlotCatalog,
   ExtensionSlotName,
   ExtensionVisibility,
@@ -43,3 +45,17 @@ export const SLOT_ICON_APPEARANCE: Record<ExtensionSlotName, SlotIconAppearance>
   [EXTENSION_SLOTS.applicationsPanel]: CHROME_ICON,
   [EXTENSION_SLOTS.projectSettingsPanel]: CHROME_ICON,
 };
+
+/**
+ * Events an extension may subscribe to through `remote.events.on`. They are
+ * the SPA telling extensions that something finished, not a request for them
+ * to do anything: an extension that handles none of them still works, and the
+ * SPA does not wait for the ones that do.
+ */
+export const EXTENSION_EVENTS = {
+  /** One chat attachment finished uploading and is on disk in the workspace. */
+  uploadCompleted: "upload.completed",
+} as const satisfies ExtensionEventCatalog;
+
+export const EXTENSION_EVENT_NAMES: ExtensionEventName[] =
+  Object.values(EXTENSION_EVENTS);
