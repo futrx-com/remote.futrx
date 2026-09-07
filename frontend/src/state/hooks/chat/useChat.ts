@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
-import { CHAT_TRANSCRIPT_TURN_PAGE_LIMIT } from "../../../config/api.ts";
+import {
+  CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
+  CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
+} from "../../../config/api.ts";
 import type {
   ChatInteractionResponder,
   ChatStream,
@@ -110,7 +113,7 @@ export function useChat(chatId: string): UseChatResult {
         const [m, page] = await Promise.all([
           chatApi.fetch(chatId),
           chatApi.fetchTranscript(chatId, {
-            limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
+            limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
           }),
         ]);
         if (cancelled) return;

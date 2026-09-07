@@ -91,6 +91,10 @@ type Service struct {
 	registry          *sessionRegistry
 	pendingLoginCodec signedPayload[pendingLogin]
 	pendingLoginTTL   time.Duration
+	// sharePasses signs the cookie a public preview link is exchanged for.
+	// It shares the session key but not the session: a share pass proves one
+	// slug and port were once granted, never who the caller is.
+	sharePasses *sharePassCodec
 }
 
 func NormalizeBaseURL(baseURL string) (string, error) {
@@ -173,8 +177,22 @@ func New(
 		registry:          newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
 		pendingLoginCodec: newPendingLoginPayload(sessionKey),
 		pendingLoginTTL:   options.PendingLoginTTL,
+		sharePasses:       newSharePassCodec(sessionKey),
 	}
 	return service, nil
+}
+
+// SignSharePass mints the value for ShareCookieName. Callers must already have
+// validated the underlying share token for this slug and port.
+func (s *Service) SignSharePass(pass SharePass) string {
+	return s.sharePasses.sign(pass)
+}
+
+// VerifySharePass authenticates a ShareCookieName value. A valid pass proves
+// only that a share link once granted this slug and port; whether that link is
+// still live is the share service's question.
+func (s *Service) VerifySharePass(cookieValue string) (*SharePass, error) {
+	return s.sharePasses.verify(cookieValue)
 }
 
 func (s *Service) BaseURL() string {

@@ -42,7 +42,8 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
 	if deps.Services.Auth != nil {
-		auth = httphandlers.NewAuthHandler(deps.Services.Auth, deps.Services.Access)
+		auth = httphandlers.NewAuthHandler(deps.Services.Auth, deps.Services.Access).
+			WithShares(deps.Services.Shares)
 		providerAuthPrefixes := make([]string, 0, len(agentAuthBindings)*2)
 		for _, binding := range agentAuthBindings {
 			provider := string(binding.ID())
@@ -109,7 +110,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.Services.Auth,
 			deps.PublicHostname,
 			applicationsHandler,
-		).WithUsage(usageHandler),
+		).WithUsage(usageHandler).WithShares(deps.Services.Shares),
 		Applications: applicationsHandler,
 		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(

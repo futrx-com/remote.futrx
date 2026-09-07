@@ -16,6 +16,24 @@ type Repository interface {
 	TruncateEventsBefore(ctx context.Context, id ID, beforeT int64) ([]Event, error)
 }
 
+// TranscriptEventSource exposes storage-order events without making the
+// repository responsible for transcript projection policy.
+type TranscriptEventSource interface {
+	ScanEvents(ctx context.Context, id ID, visit func(Event)) error
+}
+
+// TranscriptEventWindowSource can select the small, contiguous event window
+// needed to project one transcript page. Implementations may use a derived
+// index; the append-only event stream remains authoritative.
+type TranscriptEventWindowSource interface {
+	ReadTranscriptEventWindow(
+		ctx context.Context,
+		id ID,
+		beforeSeq int64,
+		turnLimit int,
+	) (TranscriptEventWindow, error)
+}
+
 // CopiedEventAppender persists historical events without treating them as new
 // user-visible activity. Fork uses this port while ordinary producers append
 // through Repository.

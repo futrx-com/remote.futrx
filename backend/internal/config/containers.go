@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	containerbaseimage "github.com/futrx-com/remote.futrx.com/internal/integration/containers/baseimage"
@@ -113,7 +114,7 @@ func NewContainerStack(
 		Provisioner: browserAdapter,
 		Runtime:     browserAdapter,
 		Tooling:     browserAdapter,
-	}, containerbrowser.VNCPort)
+	}, configconstants.ProjectPreviewAgentBrowserPort)
 	codeServer := containercodeserver.NewProvisioner(runner)
 	scheduleTools := containerscheduletools.NewAdapter(runner, publisher)
 	workspace := containerworkspace.NewProvisioner(

@@ -20,6 +20,7 @@ import (
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
@@ -42,7 +43,12 @@ import (
 )
 
 func main() {
-	// Prepare configuration
+	// This executable is the process composition root. The sections below
+	// follow dependency direction from configuration and outbound adapters to
+	// application policy, inbound transport, and process-owned runtime work.
+
+	// Configuration and composition inputs: load process settings, choose the
+	// executable mode, and validate values shared by the layers composed below.
 	ctx := context.Background()
 	cfg := config.Load()
 	if runCLICommand(ctx, cfg, os.Args) {
@@ -53,7 +59,8 @@ func main() {
 		log.Fatalf("configure public hostname: %v", err)
 	}
 
-	// Register agent modules
+	// Outbound integrations and container composition: bind compiled agent
+	// providers and LXD-backed capabilities behind application-facing contracts.
 	agentModules, err := config.NewAgentModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
@@ -85,7 +92,6 @@ func main() {
 	)
 	defer appBackends.Shutdown()
 
-	// Prepare container stack
 	containerStack := config.NewContainerStack(
 		lxc.New(),
 		agentModules.Profiles(),
@@ -96,11 +102,15 @@ func main() {
 		},
 	)
 
-	// Prepare stores
+	// Persistence adapters: open file-backed repositories and the disposable,
+	// durable indexes they own.
 	storeSet, err := stores.New(cfg.DataDir)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}
+
+	// Application services and startup reconciliation: compose policy from
+	// persistence contracts and outbound capabilities, then initialize it.
 	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
 	selfUpdateService := serviceselfupdate.New(
 		version.Version,
@@ -109,13 +119,13 @@ func main() {
 		updatecli.New(),
 	)
 
-	// Register application services
 	tmuxClient := tmuxcli.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
 		Projects:          storeSet.Projects,
 		ProjectSecrets:    storeSet.ProjectSecrets,
 		ProjectAccess:     storeSet.ProjectAccess,
+		ProjectShares:     storeSet.ProjectShares,
 		Schedules:         storeSet.Schedules,
 		Auth:              storeSet.Auth,
 		Users:             storeSet.Users,
@@ -176,7 +186,9 @@ func main() {
 		log.Printf("services: reconcile warning: %v", err)
 	}
 
-	// Prepare HTTP dependencies
+	// Inbound delivery and transport adapters: prepare embedded assets and
+	// delivery-facing collaborators, then bind application services to HTTP and
+	// WebSocket endpoints.
 	static, err := fs.Sub(remote.PublicFS, "public")
 	if err != nil {
 		log.Fatal(err)
@@ -186,7 +198,6 @@ func main() {
 		log.Fatalf("configure IDE URL: %v", err)
 	}
 
-	// Register HTTP transport
 	handler, err := transport.NewHTTPHandler(transport.Dependencies{
 		Services:       serviceSet,
 		TmuxClient:     tmuxClient,
@@ -208,9 +219,16 @@ func main() {
 		log.Fatalf("init http handler: %v", err)
 	}
 
-	// Start HTTP server
+	// Runtime lifecycle: launch process-owned background work and start the
+	// HTTP listener. Background scheduling stays at this composition boundary.
 	address := cfg.Addr()
 	server := transport.NewHTTPServer(address, handler)
+	startChatIndexWarmup(
+		ctx,
+		storeSet,
+		configconstants.StartupChatIndexWarmupChatLimit,
+		log.Default(),
+	)
 	log.Printf("remote.futrx listening on %s", address)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)

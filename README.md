@@ -21,7 +21,7 @@
   <a href="https://github.com/futrx-com/remote.futrx.com/issues"><strong>Roadmap</strong></a>
 </p>
 
-![Remote showing an AI conversation beside the application it built](docs/assets/readme/live-preview.webp)
+![Remote showing an AI conversation beside a live application preview](docs/assets/readme/feature-live-preview.webp)
 
 ## What is Remote?
 
@@ -36,50 +36,225 @@ Think of every project as its own server-side computer:
 
 Remote is not another AI model. It gives the models you already use a complete place to work.
 
-## A quick tour
+## A real project, end to end
+
+These screenshots come from a real Remote project. An agent created the Orbit
+Tasks demo, made two Git commits, started its server, and left the app running
+for Remote to discover and preview.
+
+### Create a project and let an agent work
 
 <table>
   <tr>
-    <td width="50%">
-      <img src="docs/assets/readme/create-project.webp" alt="Creating a new isolated project in Remote">
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-create-project.webp" alt="Creating a new isolated project in Remote">
       <br>
-      <strong>1. Create a project</strong><br>
-      Remote prepares a separate Linux workspace with its own files, processes, ports, and agent homes.
+      <strong>Isolated project computers</strong><br>
+      Name a project and Remote prepares its durable workspace, container, ports, and provider homes.
     </td>
-    <td width="50%">
-      <img src="docs/assets/readme/parallel-agents.webp" alt="Multiple AI agents working in parallel in Remote">
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-agent-chat.webp" alt="A completed Codex run in a Remote project chat">
       <br>
-      <strong>2. Run agents in parallel</strong><br>
-      Keep several chats moving while every agent works against the same project state.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/assets/readme/browser-ide.webp" alt="Remote project opened in its browser IDE">
-      <br>
-      <strong>3. Inspect the real workspace</strong><br>
-      Open the project in the browser IDE, terminal, file manager, or Git history.
-    </td>
-    <td width="50%">
-      <img src="docs/assets/readme/agent-browser.webp" alt="Remote agent browser with human takeover">
-      <br>
-      <strong>4. Share the browser</strong><br>
-      Watch the agent use a headed browser, then take control for sign-in or human judgment.
+      <strong>Durable agent conversations</strong><br>
+      Follow Markdown output plus provider-supported reasoning, grouped tool calls, questions, and usage. Queue or cancel work while it runs, then rewind or fork when you want another direction.
     </td>
   </tr>
 </table>
 
-See the continuous five-step product tour at [remote.futrx.com](https://remote.futrx.com/#product-tour).
+<p align="center">
+  <img src="docs/assets/readme/feature-project-navigation.webp" alt="Remote project sidebar with chat-management controls" width="900">
+</p>
+
+The sidebar searches projects and chats, remembers project order, and reports
+running or unread work. Expand a project to start another chat; hover a chat to
+mark it read or unread, fork its history, or delete it.
+
+### Choose the agent and shape each run
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-model-picker.webp" alt="Remote provider and model picker showing Codex, Claude, MiniMax, Kimi, and Antigravity">
+      <br>
+      <strong>Five agent integrations</strong><br>
+      Switch among Codex, MiniMax, Claude Code, Kimi, and Antigravity. Model choices come from the provider tooling installed in the current project.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-skills-and-controls.webp" alt="Remote skill picker and per-run controls">
+      <br>
+      <strong>Skills and per-run controls</strong><br>
+      Combine reusable project or host skills, then tune supported thinking, speed, mode, approval, and sandbox policies before the next prompt.
+    </td>
+  </tr>
+</table>
+
+### See the application and point the agent at details
+
+The live preview above is not a mockup: Remote found the demo server listening
+on port 4173 and opened its authenticated project URL beside the chat. Preview
+controls switch ports, resize or reload the pane, and open the app in a new tab.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-element-inspector.webp" alt="Remote element inspector adding selected UI context to a prompt">
+      <br>
+      <strong>Visual element inspector</strong><br>
+      Select an element in the preview and Remote inserts its selector, text, HTML, bounds, parents, and computed styles directly into the composer.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-agent-browser.webp" alt="A connected headed Chromium session in Remote Agent Browser">
+      <br>
+      <strong>One browser for agents and humans</strong><br>
+      Start a headed Chromium session with a durable profile, sign in yourself when needed, watch the agent work, and take over the same page at any moment.
+    </td>
+  </tr>
+</table>
+
+### Open the actual workspace
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-files.webp" alt="Remote workspace file browser showing the demo project files">
+      <br>
+      <strong>Files without leaving the chat</strong><br>
+      Browse a lazy-loaded tree, search by filename, download files or folders, preview supported media, and open source files in the IDE.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-ide.webp" alt="Orbit Tasks source code open in Remote's browser IDE">
+      <br>
+      <strong>A complete browser IDE</strong><br>
+      Every project includes code-server rooted at the same durable workspace the agents use.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-terminal.webp" alt="Remote container terminal verifying Git commits and a running service">
+      <br>
+      <strong>A live container terminal</strong><br>
+      Install dependencies, inspect processes, run tests, or take over manually in a resizable terminal attached to the project computer.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-git-history.webp" alt="Remote Git history showing commits and a structured source diff">
+      <br>
+      <strong>Repository-aware Git history</strong><br>
+      Discover repositories, review commits and structured file diffs, refresh state, and switch a clean worktree to an earlier commit.
+    </td>
+  </tr>
+</table>
+
+### Run work later
+
+<p align="center">
+  <img src="docs/assets/readme/feature-scheduled-tasks.webp" alt="Remote scheduled tasks drawer" width="900">
+</p>
+
+Select the Scheduled Tasks skill and ask in normal language for a one-time or
+recurring job. New schedules start paused for human review; the drawer can arm,
+edit, pause, resume, run, inspect, and delete them. Runs return to the same chat
+even when your browser is closed.
+
+### Operate and share each project
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-project-info.webp" alt="Remote project information showing container and operating system status">
+      <br>
+      <strong>Container observability</strong><br>
+      Inspect state, OS, CPU, memory, disks, network, mounts, agent versions, and provider-auth synchronization from the project page.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-project-controls.webp" alt="Remote project resource and lifecycle settings">
+      <br>
+      <strong>Resource and lifecycle controls</strong><br>
+      Administrators can set CPU, memory, and disk limits; start, stop, restart, or remove a project without entering its container.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-secrets.webp" alt="Remote project secrets editor with multiline value support">
+      <br>
+      <strong>Project-scoped secrets</strong><br>
+      Add, reveal, edit, and remove environment values, including multiline PEM keys and JSON, without committing them to the workspace.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-sharing.webp" alt="Remote project sharing settings">
+      <br>
+      <strong>Explicit project membership</strong><br>
+      Give registered users access to a project's chats, files, terminal, previews, secrets, and browser, then remove access from the same page.
+    </td>
+  </tr>
+</table>
+
+### Administer the whole Remote server
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-agent-providers.webp" alt="Remote agent-provider authentication settings">
+      <br>
+      <strong>Provider connections</strong><br>
+      Connect managed providers, review provider-specific setup instructions, and synchronize the appropriate host-managed state into projects.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-usage.webp" alt="Remote token usage and estimated cost dashboard">
+      <br>
+      <strong>Usage and estimated cost</strong><br>
+      Compare tokens, runs, active projects, and estimated cost by project, user, provider, model, or day.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-appearance.webp" alt="Remote system, dark, and light appearance preferences">
+      <br>
+      <strong>Per-device appearance</strong><br>
+      Follow the operating system or choose a dark or light theme.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-notifications.webp" alt="Remote per-device notification settings">
+      <br>
+      <strong>Push notifications</strong><br>
+      Opt in per device for agent questions, completed or failed runs, and scheduled-task results while you are away.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-users.webp" alt="Remote server user and Google sign-in settings">
+      <br>
+      <strong>Server user management</strong><br>
+      Configure Google sign-in, invite or remove users, and assign member or administrator roles.
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/assets/readme/feature-security.webp" alt="Remote two-factor authentication and session security settings">
+      <br>
+      <strong>Account security</strong><br>
+      Manage two-factor authentication, recovery codes, active-session policy, and sign-in history.
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/assets/readme/feature-updates.webp" alt="Remote built-in release checker and infrastructure updater" width="900">
+</p>
+
+Remote checks releases from the app. Patch updates rebuild the application;
+major and minor releases can converge host infrastructure, rebuild the project
+image, and recycle idle containers through a controlled administrator flow.
+
+See the continuous five-step product tour at [remote.futrx.com](https://remote.futrx.com/#product-tour), or use the [complete feature reference](docs/02-user-guide/13-feature-reference.md) for exact behavior and current limits.
 
 ## What you get
 
 - **One project computer per project** — an unprivileged LXC container with durable files and agent homes.
-- **Your choice of agent** — use Codex, MiniMax, Claude Code, Kimi, or Antigravity with provider-specific model and reasoning controls.
-- **A complete development surface** — chat, browser IDE, root terminal, files, uploads, Git history, and reusable skills.
+- **Your choice of agent** — use Codex, MiniMax, Claude Code, Kimi, or Antigravity with provider-specific models, thinking, speed, mode, approval, and sandbox controls where supported.
+- **Durable, inspectable conversations** — stream Markdown, reasoning, tools, questions, errors, and usage; queue, cancel, rewind, fork, mark unread, or continue later.
+- **A complete development surface** — chat, browser IDE, root terminal, files, uploads, Git history, structured diffs, and reusable skills.
 - **Live applications** — Remote finds listening ports, creates project URLs, adds HTTPS, and shows the app beside the conversation.
-- **A browser agents and humans can share** — let an agent browse visually, watch it work, or take over the same session.
-- **Scheduled work** — let a project chat run a one-time or recurring prompt later, even when your browser is closed.
-- **Controls outside the workspace** — manage access, secrets, CPU, memory, lifecycle, and recovery from the Remote host.
+- **A browser agents and humans can share** — reuse authenticated sessions, let an agent browse visually, watch it work, or take over.
+- **Scheduled work** — create reviewed one-time or recurring prompts that run later, even when your browser is closed.
+- **Controls outside the workspace** — manage access, secrets, CPU, memory, lifecycle, provider connections, usage, notifications, security, updates, and recovery from the Remote host.
 
 ## How it works
 

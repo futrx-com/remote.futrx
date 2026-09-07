@@ -13,6 +13,7 @@ import (
 type Service struct {
 	repo             Repository
 	transcriptEvents TranscriptEventSource
+	transcriptWindow TranscriptEventWindowSource
 	copiedEvents     CopiedEventAppender
 	projects         ProjectResolver
 	tmux             TmuxResolver

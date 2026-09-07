@@ -4,6 +4,7 @@ import { projectAppsApi } from "./project/projectAppsApi";
 import { projectApplicationsApi } from "./project/projectApplicationsApi";
 import { projectContainerApi } from "./project/projectContainerApi";
 import { projectSecretsApi } from "./project/projectSecretsApi";
+import { projectSharesApi } from "./project/projectSharesApi";
 import type { ProjectMeta } from "../models/project";
 import { API_ROUTES } from "../config/routes";
 
@@ -23,5 +24,6 @@ export const projectApi = {
   ...projectAppsApi,
   ...projectApplicationsApi,
   ...projectSecretsApi,
+  ...projectSharesApi,
   ...projectAccessApi,
 };

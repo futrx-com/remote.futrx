@@ -11,6 +11,7 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
@@ -20,6 +21,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectshares"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
@@ -38,6 +40,11 @@ type AuthStore interface {
 type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
+	servicechat.TranscriptEventWindowSource
+}
+
+type recentChatIndexWarmer interface {
+	WarmRecentChatIndexes(context.Context, int) error
 }
 
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities
@@ -50,6 +57,7 @@ type PushStore interface {
 
 type Stores struct {
 	Chats           ChatStore
+	chatIndexWarmer recentChatIndexWarmer
 	Projects        serviceproject.Repository
 	ProjectSecrets  serviceproject.SecretsRepository
 	ProjectAccess   serviceproject.AccessRepository
@@ -63,6 +71,16 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	ProjectShares   serviceshare.Repository
+}
+
+// WarmRecentChatIndexes populates disposable read indexes through the
+// startup-only capability retained by the composition bundle.
+func (stores Stores) WarmRecentChatIndexes(ctx context.Context, limit int) error {
+	if stores.chatIndexWarmer == nil {
+		return nil
+	}
+	return stores.chatIndexWarmer.WarmRecentChatIndexes(ctx, limit)
 }
 
 func New(dataDir string) (Stores, error) {
@@ -84,6 +102,11 @@ func New(dataDir string) (Stores, error) {
 	projectAccess, err := fileprojectaccess.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init project access store: %w", err)
+	}
+
+	projectShares, err := fileprojectshares.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init project shares store: %w", err)
 	}
 
 	schedules, err := fileschedule.New(dataDir)
@@ -128,6 +151,7 @@ func New(dataDir string) (Stores, error) {
 	authStore := fileauth.New(dataDir)
 	return Stores{
 		Chats:           chats,
+		chatIndexWarmer: chats,
 		Projects:        projects,
 		ProjectSecrets:  projectSecrets,
 		ProjectAccess:   projectAccess,
@@ -141,5 +165,6 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		ProjectShares:   projectShares,
 	}, nil
 }

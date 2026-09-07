@@ -84,7 +84,7 @@ From Settings → Security, any account (local admin or invited user) can indepe
 | **Sign-in history** | Every login (bounded, newest-first) is recorded and shown in the Security tab | Nothing — works with or without 2FA |
 | **Recovery-code alert** | A login completed with a recovery code (instead of a normal authenticator code) sets an alert shown on `/auth/me` until acknowledged | Two-factor authentication must already be on — recovery codes only exist once 2FA is enrolled |
 
-Enrollment issues a TOTP secret (shown as a QR code and as text for manual entry), confirms one code from the user's authenticator app, and returns ten one-time recovery codes shown exactly once. Confirming enrollment, or turning on single active session, re-issues the browser's *current* session as tracked in the same response, so the tab that just made the change is never immediately treated as "the other device."
+Enrollment issues a TOTP secret (shown as a QR code and as text for manual entry), confirms one code from the user's authenticator app, and returns ten one-time recovery codes shown exactly once. Because that is the only time they are shown, the panel offers them as a downloadable PDF or `.txt` file (built in the browser from the codes already on screen — they are never re-fetched, and no download endpoint exists). Confirming enrollment, or turning on single active session, re-issues the browser's *current* session as tracked in the same response, so the tab that just made the change is never immediately treated as "the other device."
 
 An account that leaves all four toggles off — the default for every account, including ones that predate this feature — sees byte-for-byte the same login flow, session cookie, and `/auth/me` response as before any of this existed.
 
@@ -187,7 +187,7 @@ Project access is enforced independently on project/chat HTTP resources, chat so
 
 ## Preview and IDE authentication
 
-Caddy calls `/auth/verify` before forwarding IDE or preview traffic. For a preview host, the backend extracts the project slug and checks membership. IDE hosts currently receive the registered-user check but not a per-project membership check. After verification, Caddy strips platform session cookies before the request enters project-controlled code.
+Caddy calls `/auth/verify` before forwarding IDE or preview traffic. For a preview host, the backend extracts the project slug and checks membership; failing that, it accepts a valid [public share link](../03-platform/06-previews-and-browser.md#public-share-links) for that exact slug and port, which is the one path that authorizes a caller with no platform account. IDE hosts currently receive the registered-user check but not a per-project membership check, and never accept share links. After verification, Caddy strips platform session and share cookies before the request enters project-controlled code.
 
 ```mermaid
 sequenceDiagram
