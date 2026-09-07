@@ -55,9 +55,18 @@ its browser `ui/` all belong to the same image folder, and a packaging script
 in the image refreshes the archive from that source. The archive is what allows
 a catalog to carry nested Go modules, which `go:embed` does not traverse.
 
+[`s3disk`](../s3disk/) is that image. Its `container/` is a Go module with its
+own `go.mod`, its `package.sh` rebuilds `container.tar.gz` reproducibly, and
+`install.sh` compiles the staged source inside the container. Copy that shape
+if your image needs one — including the part that is easy to miss: because
+`go:embed` skips a nested module in silence rather than failing, a stale or
+missing archive produces a green build and a broken install, so the freshness
+of the archive needs a test of its own.
+
 Payloads are limited to 8 MiB compressed and 32 MiB expanded. Paths outside
-`container/`, links, duplicate entries and special files are rejected. This
-staging support is separate from the future upload endpoint.
+`container/`, links, duplicate entries and special files are rejected. An
+uploaded package carries its payload the same way; see
+[16 — Uploaded packages](16-uploaded-packages.md).
 
 ## Skeleton
 

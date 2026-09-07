@@ -40,6 +40,15 @@ jobs:
         run: go test ./...
       - name: Go build
         run: go build ./...
+      # The s3disk image ships its mount as a nested Go module, which every
+      # ./... above skips silently — gofmt is the only step that reaches its
+      # source. Its payload staleness is covered by a Go test; its code is not
+      # covered by anything unless it is built here.
+      - name: Go vet/test s3disk container module
+        working-directory: backend/internal/integration/containers/applications/images/s3disk/container
+        run: |
+          go vet ./...
+          go test -race ./...
 
   frontend:
     name: frontend (npm test/build)
