@@ -64,6 +64,7 @@ export function ChatContainer({
     rewind,
     refreshMeta,
     attachmentBasePath,
+    projectId: displayMeta.projectId,
   });
   const slashCommandMenu = useSlashCommandMenu({
     provider: displayMeta.provider || "codex",
