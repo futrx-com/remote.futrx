@@ -141,6 +141,20 @@ Settings → Applications so it can be re-uploaded or removed.
 Refusing to boot over one administrator's file would turn a bad upload into an
 outage. Deleting it silently would destroy the only copy.
 
+**Superseded packages** are the one case that is not a breakage. A release may
+build in an application people had been uploading — s3disk was uploaded before
+it shipped in the binary. The upload is not refused, because it is already on
+disk; it is shadowed. The built-in image is what the catalog serves, what the
+installed copies run, and what a new install gets, while the stored files sit
+inert with that reason beside them.
+
+Removing them is then ordinary tidying: it is allowed even though the id is a
+built-in one, and it does **not** ask to uninstall the copies listed under that
+id, because those belong to the built-in image now and go on working once the
+files are gone. Whether they are re-provisioned from the built-in source is the
+usual `version` question — which is a reason for a release that builds an
+application in to give it a version above the one it was distributing.
+
 ## Trust
 
 **An uploaded package is server code.** Its `install.sh` runs as root inside a

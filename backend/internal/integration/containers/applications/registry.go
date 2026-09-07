@@ -119,9 +119,14 @@ func (r *Registry) Reload() error {
 		// A package may not shadow a built-in image. Letting it would mean an
 		// upload could redefine what "mysql" installs on a server, which is a
 		// far larger claim than "add an application".
+		//
+		// Reaching here means the files were stored before that id was built
+		// in — an upload cannot get past the check made when it is written —
+		// so what the operator needs told is what became of their package, not
+		// that something was refused.
 		reserve := func(id string) error {
 			if builtin[id] {
-				return errPackageReserved(id)
+				return errPackageSuperseded(id)
 			}
 			return nil
 		}

@@ -22,8 +22,14 @@ var (
 	ErrPackagesUnavailable = errors.New("applications: uploaded packages are not available on this server")
 	ErrPackageInvalid      = errors.New("applications: invalid application package")
 	ErrPackageReserved     = errors.New("applications: an application with this id is built into this server")
-	ErrPackageNotFound     = errors.New("applications: package not found")
-	ErrPackageInUse        = errors.New("applications: uninstall this application everywhere before removing its package")
+	// ErrPackageSuperseded is the same rule seen from the other side: not an
+	// upload refused, but files already stored when a later release built that
+	// application into the binary. The server serves the built-in one and the
+	// upload is inert, which is a thing to clean up rather than a failure.
+	ErrPackageSuperseded = errors.New(
+		"applications: this application is now built into the server, so the uploaded copy is unused and can be removed")
+	ErrPackageNotFound = errors.New("applications: package not found")
+	ErrPackageInUse    = errors.New("applications: uninstall this application everywhere before removing its package")
 )
 
 // Clock returns the current unix time; injectable for tests.

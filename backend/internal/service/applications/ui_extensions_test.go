@@ -7,7 +7,7 @@ import (
 )
 
 // fakeRegistry answers with UI-bearing images for the ids it was given.
-type fakeRegistry struct{ withUI, withBackend, withoutUI []string }
+type fakeRegistry struct{ withUI, withBackend, withoutUI, builtin []string }
 
 func (f *fakeRegistry) List() []Image { return nil }
 
@@ -29,6 +29,13 @@ func (f *fakeRegistry) Get(id string) (Image, bool) {
 	for _, candidate := range f.withoutUI {
 		if candidate == id {
 			return Image{ID: id, Name: id, Type: KindService}, true
+		}
+	}
+	// An image the binary was built with, which is what a package uploaded
+	// under the same id is up against.
+	for _, candidate := range f.builtin {
+		if candidate == id {
+			return Image{ID: id, Name: id, Type: KindTool, Source: SourceBuiltin}, true
 		}
 	}
 	return Image{}, false

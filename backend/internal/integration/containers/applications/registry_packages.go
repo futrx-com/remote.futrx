@@ -1,6 +1,7 @@
 package applications
 
 import (
+	"errors"
 	"fmt"
 
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
@@ -19,6 +20,14 @@ var _ svc.PackageCatalog = (*Registry)(nil)
 // operator sees the same refusal wherever it is raised.
 func errPackageReserved(id string) error {
 	return fmt.Errorf("%w: %q", svc.ErrPackageReserved, id)
+}
+
+// errPackageSuperseded is what a stored package is told when the id it was
+// uploaded under has since been built into the binary. Nothing was rejected —
+// the built-in image is being served and these files are not — so the reason
+// shown beside it in the package list says that, and says they can go.
+func errPackageSuperseded(id string) error {
+	return fmt.Errorf("%w: %q", svc.ErrPackageSuperseded, id)
 }
 
 // Packages lists the stored packages, annotating each with the reason it is
@@ -88,14 +97,20 @@ func (r *Registry) acceptPackageID(id string) error {
 }
 
 // RemovePackage deletes a stored package and reloads the catalog.
+//
+// The store is asked first, and a built-in id is refused only when nothing is
+// stored under it. The two are not the same question: a release that builds in
+// an application people had uploaded leaves their files on disk, shadowed and
+// inert, and refusing on the id alone would make those the one kind of package
+// that can never be removed.
 func (r *Registry) RemovePackage(id string) error {
 	if r.packages == nil {
 		return svc.ErrPackagesUnavailable
 	}
-	if r.imageIsBuiltin(id) {
-		return errPackageReserved(id)
-	}
 	if err := r.packages.RemovePackage(id); err != nil {
+		if errors.Is(err, svc.ErrPackageNotFound) && r.imageIsBuiltin(id) {
+			return errPackageReserved(id)
+		}
 		return err
 	}
 	return r.Reload()

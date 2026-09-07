@@ -105,9 +105,26 @@ func (s *Service) Packages(ctx context.Context) ([]Package, error) {
 		return nil, err
 	}
 	for i := range list {
+		// A superseded package has no copies of its own: the instances under
+		// its id are running the built-in image that replaced it. Listing them
+		// here would offer to tear down working applications as the price of
+		// deleting files nothing reads.
+		if s.supersededByBuiltin(list[i].ID) {
+			continue
+		}
 		list[i].Installs = installs[list[i].ID]
 	}
 	return list, nil
+}
+
+// supersededByBuiltin reports whether this package's id is served by an image
+// compiled into the binary. That can only be true of a package the catalog
+// refused to load, because an upload is checked against the built-in ids
+// before it is written — so it means the stored files are shadowed, and
+// whatever is installed under the id belongs to the built-in image now.
+func (s *Service) supersededByBuiltin(id string) bool {
+	img, ok := s.registry.Get(id)
+	return ok && img.Source == SourceBuiltin
 }
 
 // installsByImage groups every installed instance by the image it came from.
@@ -200,6 +217,13 @@ func (s *Service) RemovePackage(ctx context.Context, req RemovePackageRequest) (
 	installs, err := s.installsOf(ctx, req.ID)
 	if err != nil {
 		return nil, err
+	}
+	// Deleting a superseded package strands nothing: the copies under its id
+	// are already being served by the built-in image that shadowed it, and
+	// they go on being served after its files are gone. Uninstalling them —
+	// even when asked — would destroy applications to tidy a directory.
+	if s.supersededByBuiltin(req.ID) {
+		installs = nil
 	}
 	if len(installs) > 0 && !req.UninstallInstalled {
 		// Naming where it is installed is the difference between an error a

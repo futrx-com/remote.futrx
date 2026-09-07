@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
@@ -444,5 +445,64 @@ func TestPackageFilesAreNotWrittenExecutable(t *testing.T) {
 	}
 	if info.Mode().Perm()&0o111 != 0 {
 		t.Fatalf("mode = %v, want no execute bits", info.Mode().Perm())
+	}
+}
+
+// The other side of "a package may not shadow a built-in image": a package
+// stored before its id was built in. Its files are still on disk, the catalog
+// serves the built-in image instead, and deleting them is the only thing left
+// to do with them — so the refusal that stops a DELETE from reaching "mysql"
+// must not also apply to the one package that has to be removable.
+func TestPackageSupersededByABuiltInImageCanStillBeRemoved(t *testing.T) {
+	root := t.TempDir()
+	store := mustStore(t, root)
+
+	// Uploaded to a server whose binary defined no such image.
+	before, err := NewRegistryWithPackages(fixtureCatalog(), store)
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+	upload(t, before, uploadedPackage())
+
+	// The release that built that application in: the same files on disk, a
+	// catalog that now defines the same id.
+	catalog := fixtureCatalog()
+	catalog["images/uploaded-app/image.json"] = &fstest.MapFile{Data: []byte(`{
+		"name": "Uploaded App",
+		"version": "2.0.0",
+		"type": "ui",
+		"scopes": ["global", "project"]
+	}`)}
+	catalog["images/uploaded-app/ui/scripts/main.js"] = &fstest.MapFile{
+		Data: []byte("export default () => {}\n"),
+	}
+	after, err := NewRegistryWithPackages(catalog, store)
+	if err != nil {
+		t.Fatalf("new registry: %v", err)
+	}
+
+	img, ok := after.Get("uploaded-app")
+	if !ok || img.Source != svc.SourceBuiltin || img.Version != "2.0.0" {
+		t.Fatalf("the built-in image is not what the catalog serves: %+v", img)
+	}
+	stored := after.Packages()
+	if len(stored) != 1 || !strings.Contains(stored[0].Error, svc.ErrPackageSuperseded.Error()) {
+		t.Fatalf("the stored package is not reported as superseded: %+v", stored)
+	}
+
+	if err := after.RemovePackage("uploaded-app"); err != nil {
+		t.Fatalf("remove superseded package: %v", err)
+	}
+	if remaining := after.Packages(); len(remaining) != 0 {
+		t.Fatalf("the files survived the removal: %+v", remaining)
+	}
+	if img, ok := after.Get("uploaded-app"); !ok || img.Source != svc.SourceBuiltin {
+		t.Fatalf("removing the shadowed package took the built-in image with it: %+v", img)
+	}
+
+	// An id that is only built in, with nothing stored under it, is still
+	// refused rather than reported missing.
+	if err := after.RemovePackage(fixtureUI); !errors.Is(err, svc.ErrPackageReserved) {
+		t.Fatalf("RemovePackage(%q) err = %v, want %v", fixtureUI, err, svc.ErrPackageReserved)
 	}
 }

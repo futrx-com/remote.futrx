@@ -366,3 +366,46 @@ func TestPackagesReportWhereTheyAreInstalled(t *testing.T) {
 		t.Fatalf("the project copy is missing its project: %+v", list[0].Installs)
 	}
 }
+
+// A release that builds in an application people had been uploading leaves
+// their package on disk, shadowed by the image that replaced it. What is
+// installed under that id belongs to the built-in image from then on, so the
+// stored files are inert — and deleting inert files must not offer, let alone
+// agree, to take down the applications still running under that name.
+func TestRemovingASupersededPackageLeavesItsInstallsAlone(t *testing.T) {
+	catalog := &recordingCatalog{stored: []Package{{ID: "s3disk", Error: "superseded"}}}
+	store := &fakeStore{global: []Instance{instance("s3disk", "", StatusRunning)}}
+	service := New(
+		&fakeRegistry{builtin: []string{"s3disk"}}, store, nil, nil, nil,
+		WithPackageCatalog(catalog),
+	)
+	ctx := context.Background()
+
+	// The list is what the UI decides from: a row carrying installs is a row
+	// whose remove button turns into "uninstall and remove".
+	list, err := service.Packages(ctx)
+	if err != nil {
+		t.Fatalf("packages: %v", err)
+	}
+	if len(list) != 1 || len(list[0].Installs) != 0 {
+		t.Fatalf("superseded package claimed the built-in image's copies: %+v", list)
+	}
+
+	// Removing it is not refused, though a copy is installed under its id.
+	if _, err := service.RemovePackage(ctx, RemovePackageRequest{ID: "s3disk"}); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if len(catalog.removed) != 1 || catalog.removed[0] != "s3disk" {
+		t.Fatalf("removed = %v", catalog.removed)
+	}
+	// And asking for the cascade does not get one either. There is nothing
+	// here the cascade exists to protect against.
+	if _, err := service.RemovePackage(ctx, RemovePackageRequest{
+		ID: "s3disk", UninstallInstalled: true,
+	}); err != nil {
+		t.Fatalf("remove with cascade: %v", err)
+	}
+	if len(store.deleted) != 0 {
+		t.Fatalf("a working application was uninstalled to delete a dead package: %v", store.deleted)
+	}
+}
