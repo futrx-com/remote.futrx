@@ -9,19 +9,11 @@
 // attachment alone, which is the direction that cannot break a send: the file
 // is still where the composer already thinks it is.
 
-/**
- * How long to wait for claims before giving up on them.
- *
- * A claim backed by a plugin call is already bounded by the plugin host, so a
- * well-behaved one settles far inside this. The bound is for the one that
- * does not: an extension whose promise never settles would otherwise leave
- * send disabled for the rest of the session.
- */
-export const CLAIM_TIMEOUT_MS = 5 * 60_000;
+import { ATTACHMENT_CLAIM_TIMEOUT_MS } from "../../../config/chat.ts";
 
 export async function settleClaims(
   claims: Promise<string | void>[],
-  timeoutMs: number = CLAIM_TIMEOUT_MS,
+  timeoutMs: number = ATTACHMENT_CLAIM_TIMEOUT_MS,
 ): Promise<string | null> {
   if (claims.length === 0) return null;
 
