@@ -203,6 +203,22 @@ func ParseSize(text string) (int64, error) {
 	return int64(value * float64(mult)), nil
 }
 
+// FormatSize renders a byte count the way ParseSize reads one, using the
+// largest unit that divides it exactly: 8<<30 is "8G". It exists so a default
+// is written once, as a number, and the command line shows the same value
+// rather than a second copy of it spelled as a string.
+func FormatSize(n int64) string {
+	for _, unit := range []struct {
+		suffix string
+		scale  int64
+	}{{"T", 1 << 40}, {"G", 1 << 30}, {"M", 1 << 20}, {"K", 1 << 10}} {
+		if n >= unit.scale && n%unit.scale == 0 {
+			return strconv.FormatInt(n/unit.scale, 10) + unit.suffix
+		}
+	}
+	return strconv.FormatInt(n, 10)
+}
+
 // ParseMode parses an octal permission string such as "0755".
 func ParseMode(s string) (uint32, error) {
 	n, err := strconv.ParseUint(strings.TrimSpace(s), 8, 32)
@@ -211,6 +227,9 @@ func ParseMode(s string) (uint32, error) {
 	}
 	return uint32(n) & 07777, nil
 }
+
+// FormatMode renders permission bits the way ParseMode reads them.
+func FormatMode(mode uint32) string { return fmt.Sprintf("%04o", mode&07777) }
 
 // ParseOwner resolves a user or group name (or numeric id) to an id.
 func ParseOwner(s string, group bool) (uint32, error) {

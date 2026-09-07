@@ -46,15 +46,15 @@ func newMountFlags() *mountFlags {
 	f.DurationVar(&cfg.RequestTimeout, "request-timeout", cfg.RequestTimeout, "timeout for a single S3 request")
 
 	f.StringVar(&cfg.CacheDir, "cache-dir", os.Getenv("S3DISK_CACHE_DIR"), "local cache directory (default: ~/.cache/s3disk/BUCKET)")
-	f.StringVar(&m.cacheSize, "cache-size", "8G", "maximum disk used by cached file data")
-	f.StringVar(&m.blockSize, "block-size", "4M", "granularity of ranged reads")
-	f.StringVar(&m.readahead, "readahead", "16M", "how far ahead to prefetch for sequential readers")
-	f.BoolVar(&cfg.PersistCache, "persist-cache", true, "keep the cache across mounts and recover unsaved writes")
+	f.StringVar(&m.cacheSize, "cache-size", config.FormatSize(cfg.CacheSize), "maximum disk used by cached file data")
+	f.StringVar(&m.blockSize, "block-size", config.FormatSize(cfg.BlockSize), "granularity of ranged reads")
+	f.StringVar(&m.readahead, "readahead", config.FormatSize(cfg.Readahead), "how far ahead to prefetch for sequential readers")
+	f.BoolVar(&cfg.PersistCache, "persist-cache", cfg.PersistCache, "keep the cache across mounts and recover unsaved writes")
 
 	f.StringVar(&m.uid, "uid", "", "owner of files without stored ownership (default: current user)")
 	f.StringVar(&m.gid, "gid", "", "group of files without stored ownership (default: current group)")
-	f.StringVar(&m.fileMode, "file-mode", "0644", "mode for files without stored permissions")
-	f.StringVar(&m.dirMode, "dir-mode", "0755", "mode for directories without stored permissions")
+	f.StringVar(&m.fileMode, "file-mode", config.FormatMode(cfg.FileMode), "mode for files without stored permissions")
+	f.StringVar(&m.dirMode, "dir-mode", config.FormatMode(cfg.DirMode), "mode for directories without stored permissions")
 
 	f.DurationVar(&cfg.StatTTL, "stat-ttl", cfg.StatTTL, "how long attributes are cached")
 	f.DurationVar(&cfg.ListTTL, "list-ttl", cfg.ListTTL, "how long directory listings are cached")
@@ -63,14 +63,14 @@ func newMountFlags() *mountFlags {
 	f.StringVar(&cfg.AttrMode, "attr-mode", cfg.AttrMode,
 		"'full' reads POSIX modes and symlinks from object metadata; 'fast' skips the per-object HEAD")
 	f.IntVar(&cfg.AttrWorkers, "attr-workers", cfg.AttrWorkers, "parallel HEAD requests used to fill in a listing")
-	f.BoolVar(&cfg.SyncMetadata, "sync-metadata", true, "write chmod/chown/utimens back to S3")
+	f.BoolVar(&cfg.SyncMetadata, "sync-metadata", cfg.SyncMetadata, "write chmod/chown/utimens back to S3")
 	f.BoolVar(&cfg.Exclusive, "exclusive", envBool("S3DISK_EXCLUSIVE", false),
 		"this mount is the only writer for the bucket/prefix: cached metadata never expires, "+
 			"and a listed directory answers 'no such file' without asking S3")
 
 	f.DurationVar(&cfg.DirtyTimeout, "dirty-timeout", cfg.DirtyTimeout, "upload a file that has been dirty this long even if still open")
-	f.StringVar(&m.multipart, "multipart-threshold", "16M", "object size above which multipart upload is used")
-	f.StringVar(&m.partSize, "part-size", "16M", "multipart upload part size")
+	f.StringVar(&m.multipart, "multipart-threshold", config.FormatSize(cfg.MultipartThreshold), "object size above which multipart upload is used")
+	f.StringVar(&m.partSize, "part-size", config.FormatSize(cfg.PartSize), "multipart upload part size")
 	f.IntVar(&cfg.UploadConcurrency, "upload-concurrency", cfg.UploadConcurrency, "parallel part uploads for one object")
 	f.IntVar(&cfg.UploadWorkers, "upload-workers", cfg.UploadWorkers, "objects uploaded at once during write-back")
 	f.BoolVar(&cfg.AsyncWriteback, "async-writeback", false,
