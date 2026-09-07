@@ -354,7 +354,7 @@ func (c *Client) Put(ctx context.Context, in PutInput) (*Object, error) {
 	if in.ContentType != "" {
 		up.ContentType = aws.String(in.ContentType)
 	}
-	c.applyWriteOptions(up)
+	c.writeOptions().applyPut(up)
 	out, err := c.uploader.Upload(rctx, up, func(u *manager.Uploader) {
 		if in.Size >= 0 && in.Size < c.cfg.MultipartThreshold {
 			u.PartSize = c.cfg.PartSize
@@ -371,19 +371,39 @@ func (c *Client) Put(ctx context.Context, in PutInput) (*Object, error) {
 	return obj, nil
 }
 
-func (c *Client) applyWriteOptions(in *s3.PutObjectInput) {
-	if c.cfg.StorageClass != "" {
-		in.StorageClass = types.StorageClass(c.cfg.StorageClass)
-	}
-	if c.cfg.SSE != "" {
-		in.ServerSideEncryption = types.ServerSideEncryption(c.cfg.SSE)
+// writeOptions are the settings this mount puts on an object it creates.
+//
+// Three request types create objects — put, copy, and the multipart copy — and
+// the SDK gives them no common type, so the configuration is read once here
+// and each request applies what it carries. An unset option is the field's
+// zero value, which is what "leave it out of the request" already was.
+type writeOptions struct {
+	storageClass types.StorageClass
+	sse          types.ServerSideEncryption
+	kmsKeyID     *string
+	acl          types.ObjectCannedACL
+}
+
+func (c *Client) writeOptions() writeOptions {
+	o := writeOptions{
+		storageClass: types.StorageClass(c.cfg.StorageClass),
+		sse:          types.ServerSideEncryption(c.cfg.SSE),
+		acl:          types.ObjectCannedACL(c.cfg.ACL),
 	}
 	if c.cfg.KMSKeyID != "" {
-		in.SSEKMSKeyId = aws.String(c.cfg.KMSKeyID)
+		o.kmsKeyID = aws.String(c.cfg.KMSKeyID)
 	}
-	if c.cfg.ACL != "" {
-		in.ACL = types.ObjectCannedACL(c.cfg.ACL)
-	}
+	return o
+}
+
+func (o writeOptions) applyPut(in *s3.PutObjectInput) {
+	in.StorageClass, in.ServerSideEncryption = o.storageClass, o.sse
+	in.SSEKMSKeyId, in.ACL = o.kmsKeyID, o.acl
+}
+
+func (o writeOptions) applyCopy(in *s3.CopyObjectInput) {
+	in.StorageClass, in.ServerSideEncryption = o.storageClass, o.sse
+	in.SSEKMSKeyId, in.ACL = o.kmsKeyID, o.acl
 }
 
 // Copy server-side copies src to dst. When meta is non-nil the copy replaces
@@ -408,18 +428,7 @@ func (c *Client) Copy(ctx context.Context, src, dst string, size int64, meta map
 			in.ContentType = aws.String(contentType)
 		}
 	}
-	if c.cfg.StorageClass != "" {
-		in.StorageClass = types.StorageClass(c.cfg.StorageClass)
-	}
-	if c.cfg.SSE != "" {
-		in.ServerSideEncryption = types.ServerSideEncryption(c.cfg.SSE)
-	}
-	if c.cfg.KMSKeyID != "" {
-		in.SSEKMSKeyId = aws.String(c.cfg.KMSKeyID)
-	}
-	if c.cfg.ACL != "" {
-		in.ACL = types.ObjectCannedACL(c.cfg.ACL)
-	}
+	c.writeOptions().applyCopy(in)
 	if _, err := c.api.CopyObject(rctx, in); err != nil {
 		return c.mapError(err)
 	}
@@ -436,9 +445,10 @@ func (c *Client) copyMultipart(ctx context.Context, src, dst string, size int64,
 	if contentType != "" {
 		create.ContentType = aws.String(contentType)
 	}
-	if c.cfg.StorageClass != "" {
-		create.StorageClass = types.StorageClass(c.cfg.StorageClass)
-	}
+	// The storage class is all a multipart copy carries: SSE, the KMS key and
+	// the ACL reach a normal copy and not this one, which is a gap rather than
+	// a decision, and changing it is a change of behaviour.
+	create.StorageClass = c.writeOptions().storageClass
 	mu, err := c.api.CreateMultipartUpload(ctx, create)
 	if err != nil {
 		return c.mapError(err)
