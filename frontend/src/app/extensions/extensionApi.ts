@@ -13,8 +13,8 @@ import type {
   ExtensionSlotContext,
   ExtensionVisibility,
 } from "../../models/extension";
+import { extensionEventService } from "../../services/extensions/extensionEventService";
 import { createBackendApi } from "./extensionBackend";
-import { subscribeExtensionEvent } from "./extensionEvents";
 import { openExtensionPopup } from "./extensionPopup";
 
 const BUTTON_BASE =
@@ -80,7 +80,7 @@ export function createExtensionApi(
       openPopup: openExtensionPopup,
     },
     events: {
-      on: (name, handler) => subscribeExtensionEvent(image.id, name, handler),
+      on: (name, handler) => extensionEventService.on(image.id, name, handler),
     },
     views: {
       url: viewUrl,

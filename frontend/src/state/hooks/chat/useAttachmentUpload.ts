@@ -4,7 +4,7 @@ import { startChatUpload } from "../../../api/uploadApi";
 import type { UploadHandle } from "../../../types/uploadApi";
 import { idService } from "../../../services/platform/idService.ts";
 import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
-import { emitExtensionEvent } from "../../../app/extensions/extensionEvents.ts";
+import { extensionEventService } from "../../../services/extensions/extensionEventService.ts";
 import { EXTENSION_EVENTS } from "../../../config/extensions.ts";
 import { settleClaims } from "./attachmentClaimState.ts";
 
@@ -122,7 +122,7 @@ export function useAttachmentUpload(
               // nothing; one that claims the attachment is moving it, and the
               // upload is not finished until it says where it went.
               const claims: Promise<string | void>[] = [];
-              emitExtensionEvent(EXTENSION_EVENTS.uploadCompleted, {
+              extensionEventService.emit(EXTENSION_EVENTS.uploadCompleted, {
                 chatId,
                 projectId: projectIdRef.current,
                 fileName: uploadFile.name,

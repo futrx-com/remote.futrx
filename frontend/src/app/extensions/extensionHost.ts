@@ -6,9 +6,9 @@ import type {
   ExtensionRegistry,
   ExtensionVisibility,
 } from "../../models/extension";
+import { extensionEventService } from "../../services/extensions/extensionEventService";
 import { extensionRegistry } from "../../state/stores/extensions/extensionStore";
 import { createExtensionApi } from "./extensionApi";
-import { removeExtensionEventSubscriptions } from "./extensionEvents";
 
 type EntryModule = {
   default?: (api: ExtensionApi) => unknown;
@@ -111,7 +111,7 @@ class ExtensionHost {
    */
   private forget(imageId: string): void {
     this.registry.removeImage(imageId);
-    removeExtensionEventSubscriptions(imageId);
+    extensionEventService.removeImage(imageId);
     this.loaded.delete(imageId);
   }
 
