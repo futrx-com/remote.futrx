@@ -231,7 +231,7 @@ export -f log warn ok err
 # regex `\$` anchors) survive untouched.
 render_template() {
     local tmpl="$1" dest="$2"
-    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE $HOST_CLI_BIN_DIR' \
+    envsubst '$HOSTNAME $HOSTNAME_RE $INSTALL_DIR $SERVICE_PORT $LXD_BRIDGE_IP $LXD_BRIDGE $HOST_CLI_BIN_DIR $ACME_DNS_PROVIDER $ACME_DNS_TOKEN' \
         < "$tmpl" > "$dest"
 }
 export -f render_template
