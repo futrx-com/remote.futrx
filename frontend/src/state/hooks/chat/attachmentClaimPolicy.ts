@@ -1,4 +1,4 @@
-// Settlement policy for extensions that take over a finished attachment.
+// What an extension taking over a finished attachment costs the composer.
 //
 // An extension claims an attachment when it is moving the file somewhere else
 // — s3disk copies it onto its mounted bucket and deletes the copy Remote left
@@ -10,13 +10,36 @@
 // is still where the composer already thinks it is.
 
 import { ATTACHMENT_CLAIM_TIMEOUT_MS } from "../../../config/chat.ts";
+import { EXTENSION_EVENTS } from "../../../config/extensions.ts";
+import type { CompletedUpload } from "../../../models/extension.ts";
+import { extensionEventService } from "../../../services/extensions/extensionEventService.ts";
 
-export async function settleClaims(
-  claims: Promise<string | void>[],
+/**
+ * Announces an attachment that is on disk, and waits for whatever claimed it.
+ *
+ * Returns null when nothing did — the ordinary case, where the upload is
+ * finished the moment it is announced — and otherwise the settlement of every
+ * claim, resolving with the path the file ended up at or with null when it did
+ * not move. Only a claim made synchronously from a handler is waited for.
+ */
+export function announceUpload(
+  upload: CompletedUpload,
   timeoutMs: number = ATTACHMENT_CLAIM_TIMEOUT_MS,
-): Promise<string | null> {
-  if (claims.length === 0) return null;
+): Promise<string | null> | null {
+  const claims: Promise<string | void>[] = [];
+  extensionEventService.emit(EXTENSION_EVENTS.uploadCompleted, {
+    ...upload,
+    claim: (work) => {
+      claims.push(work);
+    },
+  });
+  return claims.length > 0 ? settleClaims(claims, timeoutMs) : null;
+}
 
+async function settleClaims(
+  claims: Promise<string | void>[],
+  timeoutMs: number,
+): Promise<string | null> {
   let expire: ReturnType<typeof setTimeout> | undefined;
   const settled = await Promise.race([
     Promise.allSettled(claims),

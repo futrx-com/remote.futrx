@@ -4,9 +4,7 @@ import { startChatUpload } from "../../../api/uploadApi";
 import type { UploadHandle } from "../../../types/uploadApi";
 import { idService } from "../../../services/platform/idService.ts";
 import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
-import { extensionEventService } from "../../../services/extensions/extensionEventService.ts";
-import { EXTENSION_EVENTS } from "../../../config/extensions.ts";
-import { settleClaims } from "./attachmentClaimState.ts";
+import { announceUpload } from "./attachmentClaimPolicy.ts";
 
 export function useAttachmentUpload(
   chatId: string,
@@ -16,9 +14,9 @@ export function useAttachmentUpload(
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  // Read when an upload finishes rather than captured: doUpload is keyed on
+  // chatId alone and outlives an edit to either of these.
   const attachmentBasePathRef = useRef(attachmentBasePath);
-  // Read at upload time rather than captured, for the same reason as the base
-  // path above: doUpload is keyed on chatId alone and outlives a project edit.
   const projectIdRef = useRef(projectId);
   // Outstanding tus handles, keyed by attachment id. Lets us abort on remove.
   const handlesRef = useRef<Map<string, UploadHandle>>(new Map());
@@ -48,11 +46,8 @@ export function useAttachmentUpload(
 
   useEffect(() => {
     attachmentBasePathRef.current = attachmentBasePath;
-  }, [attachmentBasePath]);
-
-  useEffect(() => {
     projectIdRef.current = projectId;
-  }, [projectId]);
+  }, [attachmentBasePath, projectId]);
 
   const doUpload = useCallback(
     async (files: File[]) => {
@@ -121,23 +116,19 @@ export function useAttachmentUpload(
               // prompt can reference it. A handler that only observes costs
               // nothing; one that claims the attachment is moving it, and the
               // upload is not finished until it says where it went.
-              const claims: Promise<string | void>[] = [];
-              extensionEventService.emit(EXTENSION_EVENTS.uploadCompleted, {
+              const claimed = announceUpload({
                 chatId,
                 projectId: projectIdRef.current,
                 fileName: uploadFile.name,
                 directory,
                 path: serverPath,
                 size: uploadFile.size,
-                claim: (work) => {
-                  claims.push(work);
-                },
               });
-              if (claims.length === 0) {
+              if (!claimed) {
                 resolve();
                 return;
               }
-              void settleClaims(claims).then((relocated) => {
+              void claimed.then((relocated) => {
                 if (relocated) {
                   setAttachments((prev) =>
                     prev.map((a) =>

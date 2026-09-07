@@ -34,8 +34,10 @@ export function useChatComposerController({
   rewind: (beforeT: number) => Promise<unknown>;
   refreshMeta: () => Promise<void>;
   attachmentBasePath: string;
-  /** Carried through to the upload hook so extensions can tell which
-   * project's plugin an attachment belongs to. */
+  /**
+   * Carried through to the upload hook so an extension can tell which
+   * project's plugin an attachment belongs to.
+   */
   projectId?: string;
 }) {
   const confirm = useConfirm();

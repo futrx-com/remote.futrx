@@ -41,7 +41,7 @@ export type ExtensionEventName =
  * One finished chat attachment. The paths are the container's, because that is
  * what an extension's plugin acts on and what the prompt hands the agent.
  */
-export interface UploadCompletedEvent {
+export interface CompletedUpload {
   chatId: string;
   /** Set for a project chat; absent for one that is not in a project. */
   projectId?: string;
@@ -52,6 +52,10 @@ export interface UploadCompletedEvent {
   /** `directory/fileName`, the path the prompt gives the agent. */
   path: string;
   size: number;
+}
+
+/** The upload a handler is given, and the way it takes the attachment over. */
+export interface UploadCompletedEvent extends CompletedUpload {
   /**
    * Take over the attachment. Call this synchronously from the handler with
    * the work you are starting.
