@@ -1,5 +1,7 @@
 import type { RefObject } from "preact";
 import type { AgentBrowserStatus } from "../../../models/project";
+import type { FlowNode } from "../../../models/flow";
+import { BrowserMapOverlay } from "./BrowserMapOverlay";
 
 // BrowserGuiView renders the Agent Browser pane: a status placeholder while the
 // in-container session starts, then the live noVNC view as an iframe. The view
@@ -13,6 +15,7 @@ export function BrowserGuiView({
   projectName,
   resizing,
   iframeRef,
+  activeNode,
 }: {
   status: AgentBrowserStatus;
   url: string;
@@ -21,10 +24,12 @@ export function BrowserGuiView({
   projectName: string;
   resizing: boolean;
   iframeRef: RefObject<HTMLIFrameElement>;
+  activeNode?: FlowNode;
 }) {
   if (status === "ready" && url) {
     return (
-      <div class="flex-1 min-h-0 bg-white">
+      <div class="relative flex-1 min-h-0 bg-white">
+        <BrowserMapOverlay activeNode={activeNode} />
         <iframe
           ref={iframeRef}
           key={`gui:${url}:${reloadKey}`}
