@@ -32,7 +32,7 @@ interface WorkspaceContextValue {
   showProjectContainers: (projectId: string | null) => void;
   openCreateProject: () => void;
   closeCreateProject: () => void;
-  createProject: (name: string) => Promise<ProjectMeta>;
+  createProject: (name: string, gitUrl?: string) => Promise<ProjectMeta>;
   createChat: (projectId?: string) => Promise<ChatMeta>;
   deleteChat: (chatId: string) => Promise<void>;
   forkChat: (chatId: string) => Promise<ChatMeta>;
@@ -77,8 +77,8 @@ export function WorkspaceProvider({
     return chat;
   }, [data.seedChat]);
 
-  const createProject = useCallback(async (name: string): Promise<ProjectMeta> => {
-    const project = await projectApi.create(name);
+  const createProject = useCallback(async (name: string, gitUrl?: string): Promise<ProjectMeta> => {
+    const project = await projectApi.create(name, gitUrl);
     return project;
   }, []);
 

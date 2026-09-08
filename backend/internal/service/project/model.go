@@ -40,12 +40,14 @@ type Meta struct {
 	ResourceLimits *ContainerLimits `json:"resourceLimits,omitempty"`
 	Order          int64            `json:"order,omitempty"`
 	ErrorMsg       string           `json:"errorMsg,omitempty"`
+	GitURL         string           `json:"gitUrl,omitempty"`
 	CreatedAt      int64            `json:"createdAt"`
 	UpdatedAt      int64            `json:"updatedAt"`
 }
 
 type CreateInput struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	GitURL string `json:"gitUrl,omitempty"`
 }
 
 type UpdateInput struct {

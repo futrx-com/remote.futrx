@@ -1,6 +1,12 @@
 import { PROJECT_MAX_SLUG_LEN } from "../../config/project.ts";
 import type { CreateProjectValidation, ProjectMeta } from "../../models/project";
 
+export interface GitUrlValidation {
+  ok: boolean;
+  // Error text when ok is false; empty otherwise.
+  message: string;
+}
+
 class CreateProjectFormLogic {
   // Mirrors backend Slugify (service/project/slug.go), except the empty
   // result stays empty here so validation can reject symbol-only names
@@ -61,6 +67,24 @@ class CreateProjectFormLogic {
       return { ok: false, slug: base, message: "Could not find an available project name." };
     }
     return { ok: true, slug, message: slug !== trimmed ? `Saved as ${slug}` : "" };
+  }
+
+  // Mirrors backend ValidGitURL (service/project/giturl.go): empty is valid
+  // (the field is optional), otherwise only a plain public https:// URL is
+  // accepted — no ssh://, git@host: shorthand, or local paths.
+  validateGitUrl(url: string): GitUrlValidation {
+    const trimmed = url.trim();
+    if (!trimmed) return { ok: true, message: "" };
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      return { ok: false, message: "Use a public https:// repository URL." };
+    }
+    if (parsed.protocol !== "https:" || !parsed.host) {
+      return { ok: false, message: "Use a public https:// repository URL." };
+    }
+    return { ok: true, message: "" };
   }
 
   // A project's cwd is "<root>/<slug>/workspace"; borrow an existing

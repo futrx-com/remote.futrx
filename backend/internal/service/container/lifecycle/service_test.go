@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
@@ -131,6 +132,16 @@ func (r recordingResources) SetLimits(_ context.Context, container, cpu, memory,
 	return nil
 }
 
+type recordingCloner struct {
+	events *[]string
+	err    error
+}
+
+func (c recordingCloner) Clone(_ context.Context, url, dest string) error {
+	*c.events = append(*c.events, "clone "+url+" "+dest)
+	return c.err
+}
+
 type recordingProvisioner struct{ events *[]string }
 
 func (p recordingProvisioner) Provision(_ context.Context, container, name string) {
@@ -158,6 +169,10 @@ func testProject(t *testing.T) serviceproject.Meta {
 }
 
 func newTestService(runtime *recordingRuntime, events *[]string) *Service {
+	return newTestServiceWithCloner(runtime, events, recordingCloner{events: events})
+}
+
+func newTestServiceWithCloner(runtime *recordingRuntime, events *[]string, cloner RepositoryCloner) *Service {
 	return NewService(
 		runtime,
 		"local:remote-base",
@@ -165,6 +180,7 @@ func newTestService(runtime *recordingRuntime, events *[]string) *Service {
 		recordingResources{events: events},
 		recordingProvisioner{events: events},
 		testProfileSource{},
+		cloner,
 	)
 }
 
@@ -370,5 +386,74 @@ func TestEnsureReportsProvisioningAndRollbackFailures(t *testing.T) {
 	err := newTestService(runtime, &events).Ensure(context.Background(), testProject(t))
 	if !errors.Is(err, attachErr) || !errors.Is(err, deleteErr) {
 		t.Fatalf("error = %v, want joined attachment and rollback failures", err)
+	}
+}
+
+func TestEnsureClonesGitURLIntoNewWorkspaceThenRechownsIt(t *testing.T) {
+	var events []string
+	runtime := &recordingRuntime{events: &events, available: true, state: serviceproject.ContainerStateMissing}
+	project := testProject(t)
+	project.GitURL = "https://example.com/octocat/hello-world.git"
+
+	if err := newTestServiceWithCloner(runtime, &events, recordingCloner{events: &events}).
+		Ensure(context.Background(), project); err != nil {
+		t.Fatal(err)
+	}
+
+	prepareAt := slices.Index(events, "prepare "+project.Cwd)
+	cloneAt := slices.Index(events, "clone "+project.GitURL+" "+project.Cwd)
+	rechownAt := slices.Index(events[cloneAt+1:], "prepare "+project.Cwd)
+	if prepareAt < 0 || cloneAt < prepareAt || rechownAt < 0 {
+		t.Fatalf("workspace was not prepared, cloned, then re-chowned: %q", events)
+	}
+}
+
+func TestEnsureDoesNotCloneWithoutAGitURL(t *testing.T) {
+	var events []string
+	runtime := &recordingRuntime{events: &events, available: true, state: serviceproject.ContainerStateMissing}
+
+	if err := newTestService(runtime, &events).Ensure(context.Background(), testProject(t)); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if strings.HasPrefix(event, "clone ") {
+			t.Fatalf("cloned without a git url: %q", events)
+		}
+	}
+}
+
+func TestEnsureDoesNotCloneAnAlreadyProvisionedContainer(t *testing.T) {
+	var events []string
+	project := testProject(t)
+	project.GitURL = "https://example.com/octocat/hello-world.git"
+	runtime := &recordingRuntime{
+		events: &events, available: true, state: serviceproject.ContainerStateRunning,
+		devices: expectedDisks(project),
+	}
+
+	if err := newTestService(runtime, &events).Ensure(context.Background(), project); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if strings.HasPrefix(event, "clone ") {
+			t.Fatalf("cloned into an already-running container: %q", events)
+		}
+	}
+}
+
+func TestEnsurePropagatesCloneFailureBeforeInitializingTheContainer(t *testing.T) {
+	var events []string
+	cloneErr := errors.New("clone failed")
+	runtime := &recordingRuntime{events: &events, available: true, state: serviceproject.ContainerStateMissing}
+	project := testProject(t)
+	project.GitURL = "https://example.com/octocat/hello-world.git"
+
+	err := newTestServiceWithCloner(runtime, &events, recordingCloner{events: &events, err: cloneErr}).
+		Ensure(context.Background(), project)
+	if !errors.Is(err, cloneErr) {
+		t.Fatalf("error = %v, want %v", err, cloneErr)
+	}
+	if slices.ContainsFunc(events, func(e string) bool { return strings.HasPrefix(e, "runtime init") }) {
+		t.Fatalf("container was initialized despite a clone failure: %q", events)
 	}
 }
