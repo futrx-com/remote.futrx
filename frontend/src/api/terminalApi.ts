@@ -4,6 +4,7 @@ import type {
   TerminalConnection,
   TerminalConnectionCallbacks,
 } from "../types/terminal";
+import type { ApplicationPath } from "../types/transport";
 import { WEB_SOCKET_ROUTES } from "../config/routes";
 import {
   TERMINAL_MESSAGE_TYPES,
@@ -20,16 +21,19 @@ type TerminalClientMessage =
 
 export const terminalApi = {
   connect(chatId: string, callbacks: TerminalConnectionCallbacks): TerminalConnection {
-    return new WebSocketTerminalConnection(chatId, callbacks);
+    return new WebSocketTerminalConnection(WEB_SOCKET_ROUTES.terminal(chatId), callbacks);
+  },
+  connectHost(callbacks: TerminalConnectionCallbacks): TerminalConnection {
+    return new WebSocketTerminalConnection(WEB_SOCKET_ROUTES.hostTerminal, callbacks);
   },
 };
 
 class WebSocketTerminalConnection implements TerminalConnection {
   readonly #connection: WebSocketConnection;
 
-  constructor(chatId: string, callbacks: TerminalConnectionCallbacks) {
+  constructor(route: ApplicationPath, callbacks: TerminalConnectionCallbacks) {
     this.#connection = new WebSocketConnection({
-      url: webSocketUrl(WEB_SOCKET_ROUTES.terminal(chatId)),
+      url: webSocketUrl(route),
       binaryType: TERMINAL_WEB_SOCKET_BINARY_TYPE,
       onOpen: callbacks.onOpen,
       onMessage(data) {

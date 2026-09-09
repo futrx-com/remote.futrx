@@ -55,6 +55,9 @@ type ContainerStack struct {
 type ContainerStackOptions struct {
 	AgentInstructions  []byte
 	ImageBuildProgress serviceimage.ProgressReporter
+	PublicHostname     string
+	GitUserName        string
+	GitUserEmail       string
 }
 
 // ProjectDependencies exposes only the capabilities consumed by project
@@ -105,13 +108,17 @@ func NewContainerStack(
 		Runtime:     browserAdapter,
 		Tooling:     browserAdapter,
 	}, configconstants.ProjectPreviewAgentBrowserPort)
-	codeServer := containercodeserver.NewProvisioner(runner)
+	codeServer := containercodeserver.NewProvisioner(runner, options.PublicHostname)
 	scheduleTools := containerscheduletools.NewAdapter(runner, publisher)
 	workspace := containerworkspace.NewProvisioner(
 		runner,
 		profiles,
 		publisher,
 		options.AgentInstructions,
+		containerworkspace.GitIdentity{
+			Name:  options.GitUserName,
+			Email: options.GitUserEmail,
+		},
 	)
 	runtimeAssets := containerruntimeassets.NewAdapter(runner, publisher)
 	images := serviceimage.NewBuilder(
@@ -128,7 +135,11 @@ func NewContainerStack(
 		codeServer,
 		scheduleTools,
 	)
-	resources := containerresources.NewManager(runner)
+	viteAllowedHost := ""
+	if options.PublicHostname != "" {
+		viteAllowedHost = ".dev." + options.PublicHostname
+	}
+	resources := containerresources.NewManager(runner, viteAllowedHost)
 	lifecycle := servicelifecycle.NewService(
 		containerlifecycle.NewClient(runner),
 		serviceimage.Alias,

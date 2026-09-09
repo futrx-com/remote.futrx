@@ -15,6 +15,7 @@ import {
   Menu,
   Monitor,
   ShieldCheck,
+  Terminal,
   Users,
 } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -25,6 +26,7 @@ import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
+import { HostTerminalSettings } from "./HostTerminalSettings";
 import { UsersPanel } from "../account/UsersPanel";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 
@@ -35,6 +37,7 @@ export type SettingsTab =
   | "users"
   | "security"
   | "updates"
+  | "terminal"
   | "info"
   | "usage";
 
@@ -85,6 +88,12 @@ const tabs: Array<{
     label: "Updates",
     description: "Check for new releases and install them.",
     Icon: Download,
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    description: "Open an administrator shell on the host server.",
+    Icon: Terminal,
   },
   {
     id: "info",
@@ -290,6 +299,15 @@ export function SettingsPage({
               ) : (
                 <SettingsNotice>
                   Application updates are managed by server administrators.
+                </SettingsNotice>
+              ))}
+
+            {activeTab === "terminal" &&
+              (isAdmin ? (
+                <HostTerminalSettings />
+              ) : (
+                <SettingsNotice>
+                  The global terminal is restricted to server administrators.
                 </SettingsNotice>
               ))}
 

@@ -47,6 +47,7 @@ If this is your first session:
 | Follow a complete end-to-end recipe | [Everyday workflows](11-everyday-workflows.md) |
 | Diagnose a problem | [Troubleshooting](12-troubleshooting.md) |
 | Check whether a feature exists and who may use it | [Complete feature reference](13-feature-reference.md) |
+| Understand memory limits, Git identity, preview routing, host terminal, or safe updates | [Host and workspace reliability](14-host-and-workspace-reliability.md) |
 
 ## The application surfaces
 

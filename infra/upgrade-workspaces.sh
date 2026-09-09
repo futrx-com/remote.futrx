@@ -30,6 +30,7 @@ set -euo pipefail
 INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 DATA_DIR="${FUTRX_DATA_DIR:-/opt/remote.futrx/data}"
 MAINTENANCE_FILE="${FUTRX_MAINTENANCE_FILE:-$DATA_DIR/self-update/maintenance.json}"
+SERVICE_UNIT="${FUTRX_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.service}"
 
 log()  { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
 warn() { printf "\033[1;33m!! %s\033[0m\n" "$*"; }
@@ -55,6 +56,15 @@ fi
 if ! command -v lxc >/dev/null; then
     err "lxc CLI not found"
     exit 1
+fi
+
+# The lifecycle command loads the same application config as the service and
+# therefore validates BASE_URL. Infrastructure updates run from an operator
+# shell, not under systemd, so recover the installed value when it was not
+# explicitly exported. Do not source config.env here: it may contain secrets.
+if [ -z "${BASE_URL:-}" ] && [ -f "$SERVICE_UNIT" ]; then
+    BASE_URL="$(sed -n 's/^Environment=BASE_URL=//p' "$SERVICE_UNIT" | head -1)"
+    export BASE_URL
 fi
 # ───────────────── 1. rebake ─────────────────
 if [ "$REBAKE" -eq 1 ]; then

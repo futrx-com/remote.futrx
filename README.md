@@ -243,6 +243,10 @@ Remote checks releases from the app. Patch updates rebuild the application;
 major and minor releases can converge host infrastructure, rebuild the project
 image, and recycle idle containers through a controlled administrator flow.
 
+For the operational guarantees behind project limits, previews, Git commits,
+the administrator host terminal, and workspace migration, read
+[Host and workspace reliability](docs/02-user-guide/14-host-and-workspace-reliability.md).
+
 See the continuous five-step product tour at [remote.futrx.com](https://remote.futrx.com/#product-tour), or use the [complete feature reference](docs/02-user-guide/13-feature-reference.md) for exact behavior and current limits.
 
 ## What you get

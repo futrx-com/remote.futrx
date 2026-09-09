@@ -13,6 +13,12 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const globalTerminalSession = "remote-global"
+
+type AdminAccessChecker interface {
+	CallerAndAdmin(ctx context.Context, r *http.Request) (string, bool, error)
+}
+
 type clientMsg struct {
 	Type string `json:"type"`
 	Data string `json:"data,omitempty"`
@@ -27,24 +33,47 @@ type TmuxSessionClient interface {
 
 type TmuxSocket struct {
 	client TmuxSessionClient
+	access AdminAccessChecker
 }
 
 func NewTmuxSocket(client TmuxSessionClient) *TmuxSocket {
 	return &TmuxSocket{client: client}
 }
 
+func (s *TmuxSocket) WithAccessChecker(access AdminAccessChecker) *TmuxSocket {
+	s.access = access
+	return s
+}
+
 func (s *TmuxSocket) Handle(upgrader websocket.Upgrader) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		s.handle(upgrader, w, r)
+		s.handle(upgrader, w, r, r.URL.Query().Get("session"))
+	}
+}
+
+func (s *TmuxSocket) HandleGlobal(upgrader websocket.Upgrader) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.handle(upgrader, w, r, globalTerminalSession)
 	}
 }
 
 func (s *TmuxSocket) RegisterRoutes(mux *http.ServeMux, upgrader websocket.Upgrader) {
 	mux.HandleFunc("/ws", s.Handle(upgrader))
+	mux.HandleFunc("/ws/host-terminal", s.HandleGlobal(upgrader))
 }
 
-func (s *TmuxSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, r *http.Request) {
-	name := r.URL.Query().Get("session")
+func (s *TmuxSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, r *http.Request, name string) {
+	if s.access != nil {
+		email, isAdmin, err := s.access.CallerAndAdmin(r.Context(), r)
+		if err != nil || email == "" {
+			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		if !isAdmin {
+			http.Error(w, "administrator access required", http.StatusForbidden)
+			return
+		}
+	}
 	if !tmuxcli.ValidName(name) {
 		http.Error(w, "invalid session name", http.StatusBadRequest)
 		return

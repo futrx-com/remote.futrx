@@ -68,6 +68,9 @@ func main() {
 		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			PublicHostname:    publicHostname,
+			GitUserName:       cfg.Git.UserName,
+			GitUserEmail:      cfg.Git.UserEmail,
 		},
 	)
 

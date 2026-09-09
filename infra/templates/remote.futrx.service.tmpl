@@ -12,6 +12,9 @@ Environment=PATH=${HOST_CLI_BIN_DIR}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/u
 Environment=DATA_DIR=${INSTALL_DIR}/data
 Environment=INSTALL_DIR=${INSTALL_DIR}
 Environment=BASE_URL=https://${HOSTNAME}
+# Optional persistent operator overrides, including REMOTE_GIT_USER_NAME and
+# REMOTE_GIT_USER_EMAIL. This file is host-local and is never part of Git.
+EnvironmentFile=-${INSTALL_DIR}/config.env
 # tmux server inherits this cgroup; KillMode=process keeps long-running
 # child processes (claude, codex, lxc exec) alive during a backend restart.
 KillMode=process

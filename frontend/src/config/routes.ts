@@ -137,6 +137,7 @@ export const API_ROUTES = {
 
 export const WEB_SOCKET_ROUTES = {
   workspace: applicationPath("/ws/workspace"),
+  hostTerminal: applicationPath("/ws/host-terminal"),
   agentAuthStatus: (provider: string): ApplicationPath =>
     applicationPath(`/ws/agent-auth/${encodeURIComponent(provider)}`),
   chat: (chatId: string, sinceSeq: number): ApplicationPath => {

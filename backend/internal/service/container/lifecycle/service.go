@@ -49,7 +49,7 @@ type ResourceEnsurer interface {
 }
 
 type LaunchProvisioner interface {
-	Provision(ctx context.Context, containerName, displayName string)
+	Provision(ctx context.Context, containerName, displayName, projectSlug string)
 }
 
 type ProfileSource interface {
@@ -261,9 +261,10 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 			return retryErr
 		}
 	}
-	if created || len(changes) > 0 {
-		s.provisioner.Provision(ctx, project.ContainerName, project.Name)
-	}
+	// Reconcile launch-time capabilities for existing containers too. This is
+	// what lets fleet-wide additions (such as preview URL configuration) reach
+	// old workspaces without deleting or recreating them.
+	s.provisioner.Provision(ctx, project.ContainerName, project.Name, project.Slug)
 	return nil
 }
 
