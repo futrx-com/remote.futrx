@@ -5,7 +5,7 @@ import type { ToolCallProps } from "../ToolCallTypes";
 import { ToolShell } from "../ToolShell";
 import { shortPath } from "../utils";
 
-export function EditCall({ input, output, status, isError }: Omit<ToolCallProps, "name">) {
+export function EditCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   const oldStr = (input?.old_string as string) ?? "";
   const newStr = (input?.new_string as string) ?? "";
@@ -45,7 +45,9 @@ export function EditCall({ input, output, status, isError }: Omit<ToolCallProps,
           </pre>
         ))}
       </div>
-      {output && isError ? <div class="p-3 text-accent-red font-mono text-xs">{output}</div> : null}
+      {output && (isError || outputExpanded) ? (
+        <div class={`p-3 font-mono text-xs ${isError ? "text-accent-red" : "text-ink-300"}`}>{output}</div>
+      ) : null}
     </ToolShell>
   );
 }

@@ -1,10 +1,13 @@
 package filechat
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"os"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -37,7 +40,8 @@ func (index *chatEventIndex) refreshAfterFallback(
 
 // syncChat validates the durable snapshot against the authoritative JSONL
 // file. Appends extend the committed rows; rewrites and truncations rebuild
-// them. No new state becomes visible until the whole observed range commits.
+// them. Large legacy files publish resumable checkpoints; transcript readers
+// only serve the projection after the observed file is fully indexed.
 func (index *chatEventIndex) syncChat(
 	ctx context.Context,
 	id servicechat.ID,
@@ -88,41 +92,82 @@ func (index *chatEventIndex) syncChatWithGrowth(
 		return state, nil
 	}
 
-	tx, err := index.db.BeginTx(ctx, nil)
-	if err != nil {
-		return chatIndexState{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
 	if rebuild {
-		if err := deleteChatIndexRows(ctx, tx, id); err != nil {
-			return chatIndexState{}, err
-		}
-		state = newChatIndexState()
-	}
-
-	turn, err := readLastIndexedTurn(ctx, tx, id)
-	if err != nil {
-		return chatIndexState{}, err
-	}
-	if fileSize > state.indexedBytes {
-		writer := newChatIndexWriter(ctx, tx, id, state, turn)
-		state, err = writer.indexTail(eventsPath, fileSize)
+		tx, err := index.db.BeginTx(ctx, nil)
 		if err != nil {
 			return chatIndexState{}, err
 		}
+		if err := deleteChatIndexRows(ctx, tx, id); err != nil {
+			_ = tx.Rollback()
+			return chatIndexState{}, err
+		}
+		state = newChatIndexState()
+		state.fileMtimeNS = fileMtimeNS
+		if err := writeChatIndexState(ctx, tx, id, state); err != nil {
+			_ = tx.Rollback()
+			return chatIndexState{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return chatIndexState{}, err
+		}
 	}
-	state.indexedBytes = fileSize
-	state.fileMtimeNS = fileMtimeNS
-	if err := writeChatIndexState(ctx, tx, id, state); err != nil {
-		return chatIndexState{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return chatIndexState{}, err
+
+	for state.indexedBytes < fileSize {
+		if err := ctx.Err(); err != nil {
+			return state, err
+		}
+		checkpoint, err := chatIndexCheckpoint(eventsPath, state.indexedBytes, fileSize)
+		if err != nil {
+			return state, err
+		}
+		tx, err := index.db.BeginTx(ctx, nil)
+		if err != nil {
+			return state, err
+		}
+		turn, err := readLastIndexedTurn(ctx, tx, id)
+		if err != nil {
+			_ = tx.Rollback()
+			return state, err
+		}
+		writer := newChatIndexWriter(ctx, tx, id, state, turn)
+		state, err = writer.indexTail(eventsPath, checkpoint)
+		if err != nil {
+			_ = tx.Rollback()
+			return state, err
+		}
+		state.fileMtimeNS = fileMtimeNS
+		if err := writeChatIndexState(ctx, tx, id, state); err != nil {
+			_ = tx.Rollback()
+			return state, err
+		}
+		if err := tx.Commit(); err != nil {
+			return state, err
+		}
 	}
 	if err := index.restrictFiles(); err != nil {
-		return chatIndexState{}, err
+		return state, err
 	}
 	return state, nil
+}
+
+func chatIndexCheckpoint(eventsPath string, indexedBytes, fileSize int64) (int64, error) {
+	target := indexedBytes + configconstants.ChatIndexCheckpointBytes
+	if target >= fileSize {
+		return fileSize, nil
+	}
+	file, err := os.Open(eventsPath)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	if _, err := file.Seek(target, io.SeekStart); err != nil {
+		return 0, err
+	}
+	raw, err := bufio.NewReader(file).ReadBytes('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return 0, err
+	}
+	return target + int64(len(raw)), nil
 }
 
 func (index *chatEventIndex) rebuildChat(

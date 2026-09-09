@@ -22,6 +22,7 @@ type chatIndexWriter struct {
 	eventOffsets *sql.Stmt
 	insertTurn   *sql.Stmt
 	updateTurn   *sql.Stmt
+	transcript   *transcriptProjectionWriter
 }
 
 func newChatIndexWriter(
@@ -32,11 +33,12 @@ func newChatIndexWriter(
 	turn indexedTurnState,
 ) *chatIndexWriter {
 	return &chatIndexWriter{
-		ctx:    ctx,
-		tx:     tx,
-		chatID: chatID,
-		state:  state,
-		turn:   turn,
+		ctx:        ctx,
+		tx:         tx,
+		chatID:     chatID,
+		state:      state,
+		turn:       turn,
+		transcript: newTranscriptProjectionWriter(ctx, tx, chatID),
 	}
 }
 
@@ -131,6 +133,9 @@ func (writer *chatIndexWriter) indexTail(
 	if offset != observedSize {
 		return chatIndexState{}, io.ErrUnexpectedEOF
 	}
+	if err := writer.transcript.flush(); err != nil {
+		return chatIndexState{}, err
+	}
 	writer.state.indexedBytes = offset
 	return writer.state, nil
 }
@@ -163,7 +168,12 @@ func (writer *chatIndexWriter) indexRecord(raw []byte, startOffset, endOffset in
 	); err != nil {
 		return err
 	}
-	return writer.indexTranscriptTurn(event, startOffset, endOffset)
+	if err := writer.indexTranscriptTurn(event, startOffset, endOffset); err != nil {
+		return err
+	}
+	return writer.transcript.indexItem(
+		event, writer.state.eventOrdinal, writer.turn.ordinal, startOffset, endOffset,
+	)
 }
 
 func (writer *chatIndexWriter) indexTranscriptTurn(

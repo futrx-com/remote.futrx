@@ -96,6 +96,8 @@ func writeChatIndexState(
 
 func deleteChatIndexRows(ctx context.Context, tx *sql.Tx, id servicechat.ID) error {
 	for _, table := range []string{
+		"chat_transcript_content_refs",
+		"chat_transcript_items",
 		"chat_event_offsets",
 		"chat_transcript_turns",
 		"chat_event_index_state",

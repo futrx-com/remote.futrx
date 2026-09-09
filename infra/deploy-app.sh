@@ -44,10 +44,6 @@ if [ -z "$TARGET_REF" ]; then
     echo "--ref=<release-tag> is required" >&2
     exit 2
 fi
-if [ "$EUID" -ne 0 ]; then
-    echo "this application deployer needs root; rerun with sudo" >&2
-    exit 1
-fi
 
 DEFAULT_INSTALL_DIR="${INSTALL_DIR:-/opt/remote.futrx}"
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
@@ -58,6 +54,15 @@ BINARY="$INSTALL_DIR/backend/remote"
 
 if [ ! -d "$INSTALL_DIR/.git" ]; then
     echo "$INSTALL_DIR is not an installed git checkout; run infra/install.sh first" >&2
+    exit 1
+fi
+# Root is required for real deployments (systemd units, /opt binaries), but
+# the test harness overrides FUTRX_INSTALL_DIR with faked systemctl/npm/go, so
+# demanding root there would make the script untestable in CI. The
+# missing-installation check above intentionally runs first so a bad path
+# reports the actionable error instead of a misleading root demand.
+if [ -z "${FUTRX_INSTALL_DIR:-}" ] && [ "$EUID" -ne 0 ]; then
+    echo "this application deployer needs root; rerun with sudo" >&2
     exit 1
 fi
 if ! systemctl cat "$SERVICE_NAME" >/dev/null 2>&1; then

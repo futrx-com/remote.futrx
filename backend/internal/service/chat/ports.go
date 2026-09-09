@@ -34,6 +34,19 @@ type TranscriptEventWindowSource interface {
 	) (TranscriptEventWindow, error)
 }
 
+// TranscriptProjectionSource serves the durable, compact read model directly.
+// The canonical JSONL stream remains the source of truth and fallback.
+type TranscriptProjectionSource interface {
+	ReadTranscriptPage(ctx context.Context, id ID, query TranscriptPageQuery) (TranscriptPage, error)
+	ReadTranscriptContent(
+		ctx context.Context,
+		id ID,
+		contentID string,
+		afterBytes int64,
+		limitBytes int,
+	) (TranscriptContentPage, error)
+}
+
 // CopiedEventAppender persists historical events without treating them as new
 // user-visible activity. Fork uses this port while ordinary producers append
 // through Repository.

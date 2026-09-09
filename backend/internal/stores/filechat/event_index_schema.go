@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	chatEventIndexSchemaVersion = 1
+	chatEventIndexSchemaVersion = 2
 
 	chatEventIndexStateTable      = "chat_event_index_state"
 	chatEventOffsetsTable         = "chat_event_offsets"
@@ -14,6 +14,9 @@ const (
 	chatEventOffsetsByOffsetIndex = "chat_event_offsets_by_offset"
 	chatTranscriptTurnsTable      = "chat_transcript_turns"
 	chatTranscriptTurnsBySeqIndex = "chat_transcript_turns_by_start_seq"
+	chatTranscriptItemsTable      = "chat_transcript_items"
+	chatTranscriptItemsBySeqIndex = "chat_transcript_items_by_start_seq"
+	chatTranscriptContentTable    = "chat_transcript_content_refs"
 )
 
 type chatEventIndexSchemaObject struct {
@@ -81,9 +84,47 @@ var chatEventIndexSchema = [...]chatEventIndexSchemaObject{
 		statement: `CREATE INDEX ` + chatTranscriptTurnsBySeqIndex + `
 			ON ` + chatTranscriptTurnsTable + ` (chat_id, start_seq)`,
 	},
+	{
+		kind: "table",
+		name: chatTranscriptItemsTable,
+		statement: `CREATE TABLE ` + chatTranscriptItemsTable + ` (
+			chat_id TEXT NOT NULL,
+			turn_ordinal INTEGER NOT NULL,
+			item_key TEXT NOT NULL,
+			start_seq INTEGER NOT NULL,
+			end_seq INTEGER NOT NULL,
+			payload_json BLOB NOT NULL,
+			payload_bytes INTEGER NOT NULL,
+			PRIMARY KEY (chat_id, turn_ordinal, item_key)
+		) WITHOUT ROWID`,
+	},
+	{
+		kind: "index",
+		name: chatTranscriptItemsBySeqIndex,
+		statement: `CREATE INDEX ` + chatTranscriptItemsBySeqIndex + `
+			ON ` + chatTranscriptItemsTable + ` (chat_id, start_seq)`,
+	},
+	{
+		kind: "table",
+		name: chatTranscriptContentTable,
+		statement: `CREATE TABLE ` + chatTranscriptContentTable + ` (
+			chat_id TEXT NOT NULL,
+			content_id TEXT NOT NULL,
+			turn_ordinal INTEGER NOT NULL,
+			item_key TEXT NOT NULL,
+			field_kind TEXT NOT NULL,
+			field_key TEXT NOT NULL,
+			source_offset INTEGER NOT NULL,
+			source_length INTEGER NOT NULL,
+			content_bytes INTEGER NOT NULL,
+			PRIMARY KEY (chat_id, content_id)
+		) WITHOUT ROWID`,
+	},
 }
 
 var chatEventIndexTableDropOrder = [...]string{
+	chatTranscriptContentTable,
+	chatTranscriptItemsTable,
 	chatEventOffsetsTable,
 	chatTranscriptTurnsTable,
 	chatEventIndexStateTable,

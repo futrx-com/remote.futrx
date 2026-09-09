@@ -47,6 +47,23 @@ set -euo pipefail
 # files on disk.
 INFRA_DIR_PROBE="$( cd "$( dirname "${BASH_SOURCE[0]:-}" 2>/dev/null || echo . )" >/dev/null 2>&1 && pwd || true )"
 if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
+    # Parse bootstrap-only values before touching either checkout. The full
+    # argument loop below parses them again after we re-exec from disk.
+    BOOTSTRAP_TOKEN="${GITHUB_TOKEN:-}"
+    BOOTSTRAP_REF=""
+    for a in "$@"; do
+        case "$a" in
+            --github-token=*) BOOTSTRAP_TOKEN="${a#*=}" ;;
+            --ref=*)          BOOTSTRAP_REF="${a#*=}" ;;
+        esac
+    done
+    # Validate the ref before demanding root so a malformed --ref reports the
+    # actionable error instead of a misleading root demand (and so the
+    # curl-piped contract in qa-scripts-test.sh holds for non-root runners).
+    if [ -n "$BOOTSTRAP_REF" ] && ! printf '%s' "$BOOTSTRAP_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
+        echo "--ref must be a full 40-character commit SHA" >&2
+        exit 1
+    fi
     if [ "$EUID" -ne 0 ]; then
         echo "this installer needs root; rerun with sudo" >&2
         exit 1
@@ -60,21 +77,6 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
     TARGET="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
     LEGACY_TARGET="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
     MAIN_REFSPEC="+refs/heads/main:refs/remotes/origin/main"
-
-    # Parse bootstrap-only values before touching either checkout. The full
-    # argument loop below parses them again after we re-exec from disk.
-    BOOTSTRAP_TOKEN="${GITHUB_TOKEN:-}"
-    BOOTSTRAP_REF=""
-    for a in "$@"; do
-        case "$a" in
-            --github-token=*) BOOTSTRAP_TOKEN="${a#*=}" ;;
-            --ref=*)          BOOTSTRAP_REF="${a#*=}" ;;
-        esac
-    done
-    if [ -n "$BOOTSTRAP_REF" ] && ! printf '%s' "$BOOTSTRAP_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
-        echo "--ref must be a full 40-character commit SHA" >&2
-        exit 1
-    fi
 
     # A pre-rename checkout can update itself in place, then the checked-out
     # installer below performs the guarded path migration with rollback.

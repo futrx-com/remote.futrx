@@ -25,6 +25,19 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend bundle for go:embed
+        # backend/static.go embeds backend/public, which only exists after the
+        # Vite build. Without it go vet/test/build fail with
+        # "pattern public: no matching files found".
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
       - name: Check gofmt
         run: |
           set -euo pipefail
@@ -83,6 +96,7 @@ jobs:
           bash infra/tests/health-check-test.sh
           bash infra/tests/go-toolchain-test.sh
           bash infra/tests/host-agent-install-test.sh
+          bash infra/tests/remote-cli-test.sh
           bash infra/tests/dns-resolve-test.sh
           bash infra/tests/container-forwarding-test.sh
           bash infra/tests/swap-provision-test.sh

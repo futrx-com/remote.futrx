@@ -41,6 +41,7 @@ type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
+	servicechat.TranscriptProjectionSource
 }
 
 type recentChatIndexWarmer interface {
