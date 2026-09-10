@@ -104,10 +104,16 @@ func (h *Host) Stop(_ context.Context, instanceID string) error {
 // Remove terminates an instance's plugin and discards its data. Uninstalling
 // is the only thing that deletes plugin state, which is what makes stop and
 // start safe to use freely.
-func (h *Host) Remove(ctx context.Context, instanceID string) error {
-	if err := h.Stop(ctx, instanceID); err != nil {
-		return err
-	}
+//
+// Killing and deleting happen under one hold of the launch lock. Taking it
+// twice would leave a window between them in which a request already inside
+// ensure could launch a replacement process against the instance being removed:
+// the uninstall would then delete the data directory of a live plugin and
+// return, leaving that plugin running with nothing left to address it by.
+func (h *Host) Remove(_ context.Context, instanceID string) error {
+	unlock := h.launches.lock(instanceID)
+	defer unlock()
+	h.kill(instanceID)
 	if err := os.RemoveAll(h.dataDir(instanceID)); err != nil {
 		return fmt.Errorf("remove plugin data for %s: %w", instanceID, err)
 	}
