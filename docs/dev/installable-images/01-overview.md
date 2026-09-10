@@ -57,6 +57,91 @@ The `type` field in `image.json` says which shape it is — see
 
 ## The moving parts
 
+```mermaid
+flowchart TB
+    subgraph Frontend["frontend/src"]
+        FE_Section["ui/applications/ApplicationsSection.tsx"]
+        FE_Catalog["ui/applications/ApplicationCatalog.tsx"]
+        FE_Installed["ui/applications/InstalledApplications.tsx"]
+        FE_Packages["ui/applications/ApplicationPackages.tsx"]
+        FE_Hook["state/hooks/applications/useApplications.ts"]
+        FE_Api["api/applicationsApi.ts<br/>api/project/projectApplicationsApi.ts"]
+        FE_ExtHost["app/extensions/extensionHost.ts"]
+        FE_ExtBackend["app/extensions/extensionBackend.ts"]
+    end
+
+    subgraph HTTP["transport/http/handlers — routes, authorization, JSON"]
+        H_Main["applications_handler.go"]
+        H_UI["applications_ui_handler.go"]
+        H_Backend["applications_backend_handler.go"]
+        H_Packages["applications_packages_handler.go"]
+    end
+
+    subgraph Service["service/applications — policy"]
+        S_Service["service.go / install.go<br/>lifecycle.go / upgrade.go"]
+        S_UIExt["ui_extensions.go"]
+        S_Backend["backend.go"]
+        S_Packages["packages.go"]
+    end
+
+    subgraph Integration["integration/containers/applications — the catalog and lxc"]
+        I_Registry["registry.go<br/>validates the catalog, serves ui/ assets and plugin/ source"]
+        I_RegParts["registry_ui.go / registry_plugin.go<br/>registry_packages.go / registry_skills.go"]
+        I_Payload["container_payload.go<br/>stages container.tar.gz into the install script"]
+        I_Installer["installer.go<br/>lxc launch, install.sh, systemd, proxy device"]
+        I_Allocator["allocator.go — a free host port"]
+        I_Packages["packages.go — uploaded .zip packages"]
+    end
+
+    subgraph Support["Supporting packages"]
+        P_PluginHost["integration/pluginhost<br/>compiles plugin/, runs it over go-plugin"]
+        P_FileApps["stores/fileapplications<br/>global.json, projects/{id}.json"]
+        P_HostTools["integration/hosttools<br/>checksum-pinned host binaries"]
+    end
+
+    subgraph Catalog["images/ — embedded by go:embed"]
+        C_Hello["hello-remote/<br/>the worked example: plugin/ + ui/"]
+    end
+
+    FE_Section --> FE_Catalog
+    FE_Section --> FE_Installed
+    FE_Section --> FE_Packages
+    FE_Catalog --> FE_Hook
+    FE_Installed --> FE_Hook
+    FE_Packages --> FE_Hook
+    FE_Hook --> FE_Api
+    FE_ExtHost --> FE_Api
+    FE_Api --> H_Main
+    FE_Api --> H_UI
+    FE_Api --> H_Packages
+    FE_ExtBackend --> H_Backend
+
+    H_Main --> S_Service
+    H_UI --> S_UIExt
+    H_Backend --> S_Backend
+    H_Packages --> S_Packages
+
+    S_Service --> I_Registry
+    S_Service --> I_Installer
+    S_Service --> I_Allocator
+    S_Service --> P_FileApps
+    S_UIExt --> I_Registry
+    S_Backend --> P_PluginHost
+    S_Packages --> I_Packages
+
+    I_Registry --> I_RegParts
+    I_Registry --> I_Payload
+    I_Registry -. go:embed .-> C_Hello
+    I_Installer --> P_HostTools
+    I_Packages -. uploaded packages join the catalog .-> I_Registry
+    P_PluginHost -. reads plugin/ source from .-> I_Registry
+```
+
+Every arrow out of the service layer crosses an interface it declares itself:
+`service/applications/ports.go` names `Registry`, `Installer`, `BackendHost`,
+`Store` and `PortAllocator`, and the packages on the right implement them. That
+is what keeps the domain testable without LXD, a Go toolchain, or a disk.
+
 ### Backend
 
 | Layer | File | Responsibility |
@@ -87,6 +172,60 @@ contract, so it depends on nothing but the standard library.
 | `config/extensions.ts` | the closed set of slot names and their icon sizing |
 | `app/extensions/extensionPopup.ts` | the modal an extension can open |
 | `ui/primitives/ExtensionSlot.tsx` | renders a slot's contributions into plain DOM nodes |
+
+## What installing does
+
+An install crosses every layer above, and what it actually provisions depends
+entirely on the image's type — which is the single most surprising thing about
+this subsystem, and the reason a `ui` or `backend` image works on a host with
+no container runtime at all.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as ApplicationCatalog.tsx
+    participant API as applications_handler.go
+    participant Svc as service/applications
+    participant Reg as applications.Registry
+    participant Store as stores/fileapplications
+    participant Host as pluginhost
+    participant Proj as project service
+    participant Inst as applications.Installer
+    participant LXD as LXD
+
+    User->>UI: Install
+    UI->>API: POST /api/applications<br/>or /api/projects/{id}/applications
+    API->>Svc: Install(request)
+    Svc->>Reg: the image, and its install script
+    Reg-->>Svc: Image + script bytes (payload already staged)
+    Svc->>Svc: resolve env — defaults, generated secrets, required fields
+
+    alt ui or backend image
+        Note over Svc,LXD: no container, no port, no proxy device
+        Svc->>Store: persist as running
+        Svc->>Host: Ensure — compile plugin/ if stale, start the process
+    else service or tool image
+        alt project scope
+            Svc->>Proj: container name, and ready it
+        else global scope
+            Svc->>Svc: name a dedicated container
+        end
+        opt type == service
+            Svc->>Svc: allocate a free host port, from defaultExternal up
+        end
+        Svc->>Store: persist as installing — a crash here stays recoverable
+        Inst->>LXD: launch the dedicated container (global scope only)
+        Inst->>LXD: run install.sh as root, then start the systemd unit
+        opt type == service
+            Inst->>LXD: add the proxy device that maps the host port
+        end
+        Svc->>Host: Ensure, when the image ships a plugin/ too
+        Svc->>Store: persist as running
+    end
+
+    Svc-->>API: the instance
+    API-->>UI: 200 — it appears under Installed
+```
 
 ## How an extension reaches the screen
 
