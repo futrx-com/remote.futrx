@@ -66,7 +66,13 @@ func Lookup(dataDir, name string) (string, error) {
 // New.
 type Installer struct {
 	dataDir string
-	mu      sync.Mutex
+	// installs serializes work per tool. Two projects installing the same image
+	// at once would otherwise race on the same target path — but a tool is a
+	// download that can take minutes, and two unrelated tools write to two
+	// unrelated paths, so a lock per tool is what keeps one slow download from
+	// holding up every other install on the server.
+	mu       sync.Mutex
+	installs map[string]*sync.Mutex
 	// fetch and verify are replaced in tests. Nothing else varies.
 	fetch  func(context.Context, string) (io.ReadCloser, error)
 	verify func(context.Context, string, []string) error
@@ -75,7 +81,27 @@ type Installer struct {
 
 // New returns an Installer writing beneath dataDir.
 func New(dataDir string) *Installer {
-	return &Installer{dataDir: dataDir, fetch: fetchHTTPS, verify: runVersion, arch: runtime.GOARCH}
+	return &Installer{
+		dataDir:  dataDir,
+		installs: map[string]*sync.Mutex{},
+		fetch:    fetchHTTPS,
+		verify:   runVersion,
+		arch:     runtime.GOARCH,
+	}
+}
+
+// lockTool acquires the lock for one tool and returns its release function.
+func (in *Installer) lockTool(name string) func() {
+	in.mu.Lock()
+	entry, ok := in.installs[name]
+	if !ok {
+		entry = &sync.Mutex{}
+		in.installs[name] = entry
+	}
+	in.mu.Unlock()
+
+	entry.Lock()
+	return entry.Unlock
 }
 
 // Ensure installs every tool that is not already present, and proves each one
@@ -85,10 +111,6 @@ func (in *Installer) Ensure(ctx context.Context, tools []svc.HostTool) error {
 	if len(tools) == 0 {
 		return nil
 	}
-	// Two projects installing the same image at once would otherwise race on
-	// the same target path.
-	in.mu.Lock()
-	defer in.mu.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 	for _, tool := range tools {
@@ -103,6 +125,8 @@ func (in *Installer) ensureOne(ctx context.Context, tool svc.HostTool) error {
 	if err := Validate(tool); err != nil {
 		return err
 	}
+	unlock := in.lockTool(tool.Name)
+	defer unlock()
 	target := filepath.Join(Dir(in.dataDir), tool.Name, tool.Version, tool.Name)
 	if _, err := os.Stat(target); err != nil {
 		download, ok := tool.Downloads[in.arch]
@@ -165,9 +189,18 @@ func (in *Installer) install(ctx context.Context, download svc.HostToolDownload,
 		return err
 	}
 	defer os.Remove(extracted.Name())
-	if _, err := io.Copy(extracted, &io.LimitedReader{R: binary, N: maxDownload}); err != nil {
+	// One byte of headroom over the limit turns "the artifact is too big" into
+	// an error instead of a silently truncated executable: io.Copy against a
+	// LimitedReader that runs out stops without one, and a chopped-off binary
+	// that fails to run later is the worst possible way to learn this.
+	room := &io.LimitedReader{R: binary, N: maxDownload + 1}
+	if _, err := io.Copy(extracted, room); err != nil {
 		extracted.Close()
 		return fmt.Errorf("decompress: %w", err)
+	}
+	if room.N <= 0 {
+		extracted.Close()
+		return fmt.Errorf("decompressed artifact exceeds %d bytes", maxDownload)
 	}
 	if err := extracted.Chmod(0o755); err != nil {
 		extracted.Close()
