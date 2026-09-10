@@ -14,6 +14,7 @@
 #   - $AUTH_NOTE — string for the install summary
 set -euo pipefail
 
+step_02_app() {
 cd "$INSTALL_DIR"
 
 # ───────────────── agent CLIs (host-side execution/auth) ─────────────────
@@ -68,3 +69,4 @@ else
     AUTH_NOTE="Local admin authentication enabled. Create the admin password on first visit."
 fi
 export AUTH_NOTE
+}

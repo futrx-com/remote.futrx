@@ -25,6 +25,7 @@ install_cli() (
         command install "${options[@]}" "$1" "$CLI_PATH"
     }
     . "$INFRA_DIR/steps/04-backend-svc.sh"
+    step_04_backend_svc
 )
 
 # Exercise first installation and reinstallation with different settings.

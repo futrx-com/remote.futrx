@@ -41,15 +41,23 @@
 # FUTRX_SERVICE_UNIT_PATH, and FUTRX_LEGACY_SERVICE_UNIT_PATH.
 set -euo pipefail
 
-INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
-LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
-UNIT="${FUTRX_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.service}"
-LEGACY_UNIT="${FUTRX_LEGACY_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.dev.service}"
-
 usage() {
     sed -n '2,/^set -euo pipefail$/ { /^set -euo pipefail$/d; s/^# \{0,1\}//p; }' "$0"
 }
+remote_load_configuration() {
+INSTALL_DIR="${FUTRX_INSTALL_DIR:-$FUTRX_DEFAULT_INSTALL_DIR}"
+LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-$FUTRX_DEFAULT_LEGACY_INSTALL_DIR}"
+UNIT="${FUTRX_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.service}"
+LEGACY_UNIT="${FUTRX_LEGACY_SERVICE_UNIT_PATH:-/etc/systemd/system/remote.futrx.dev.service}"
 
+SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck source=lib/common.sh
+. "$SCRIPT_INFRA_DIR/lib/common.sh"
+# shellcheck source=lib/../config/defaults.sh
+. "$SCRIPT_INFRA_DIR/config/defaults.sh"
+}
+
+remote_parse_update_arguments() {
 HOSTNAME=""
 INCLUDE_BUSY=0
 UPDATE_WORKSPACES=1
@@ -70,18 +78,15 @@ for a in "$@"; do
             ;;
     esac
 done
+}
 
-SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-# shellcheck source=lib/common.sh
-. "$SCRIPT_INFRA_DIR/lib/common.sh"
-
-require_root "this updater"
+remote_migrate_legacy_install() {
 # shellcheck source=lib/install-migration.sh
 . "$SCRIPT_INFRA_DIR/lib/install-migration.sh"
-# shellcheck source=lib/update-progress.sh
-. "$SCRIPT_INFRA_DIR/lib/update-progress.sh"
 migrate_legacy_install_dir "$INSTALL_DIR" "$LEGACY_INSTALL_DIR"
+}
 
+remote_refresh_checkout() {
 if [ ! -d "$INSTALL_DIR/.git" ]; then
     echo "$INSTALL_DIR is not an installed git checkout; run infra/install.sh first" >&2
     exit 1
@@ -100,7 +105,9 @@ if [ "${FUTRX_UPDATE_REEXECED:-0}" != "1" ]; then
     export FUTRX_UPDATE_REEXECED=1
     exec bash "$INSTALL_DIR/infra/update.sh" "$@"
 fi
+}
 
+remote_detect_hostname() {
 INFRA_DIR="$INSTALL_DIR/infra"
 if [ -z "$HOSTNAME" ]; then
     # The installer renders BASE_URL=https://<hostname> into the unit. During
@@ -116,7 +123,11 @@ fi
 # Keep install.sh's checkout step (steps/00-checkout.sh) on the same ref this
 # updater just checked out, instead of resetting back to origin/main.
 export FUTRX_CHECKOUT_REF="${TARGET_REF:-origin/main}"
+}
 
+remote_converge_update() {
+# shellcheck source=lib/update-progress.sh
+. "$SCRIPT_INFRA_DIR/lib/update-progress.sh"
 if [ "$UPDATE_WORKSPACES" -eq 1 ]; then
     write_update_progress "host-convergence" "Converging the host and rebuilding the workspace image"
     # Rebuild once in install.sh, after the new backend has been built. The
@@ -139,3 +150,22 @@ fi
 write_update_progress "finishing" "Finishing the infrastructure update"
 echo
 echo "✓ update complete"
+}
+
+main() {
+    remote_load_configuration
+    remote_parse_update_arguments "$@"
+    require_root "this updater"
+    remote_migrate_legacy_install
+    remote_refresh_checkout
+    remote_detect_hostname
+    remote_converge_update
+}
+
+# Sourced (e.g. by tests) - definitions only. Note the guard
+# defaults to *executing*: BASH_SOURCE is unset when bash reads
+# from stdin (`bash -s`), which must still run (curl|bash mode).
+if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+main "$@"

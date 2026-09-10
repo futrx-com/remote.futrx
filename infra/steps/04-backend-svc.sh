@@ -10,6 +10,7 @@
 #   - $INFRA_DIR, $INSTALL_DIR, $HOSTNAME, $SERVICE_PORT
 set -euo pipefail
 
+step_04_backend_svc() {
 SERVICE_NAME="remote.futrx.service"
 SERVICE_UNIT_PATH="/etc/systemd/system/$SERVICE_NAME"
 LEGACY_SERVICE_NAME="remote.futrx.dev.service"
@@ -98,3 +99,4 @@ if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active
     ufw allow 80/tcp  >/dev/null || true
     ufw allow 443/tcp >/dev/null || true
 fi
+}

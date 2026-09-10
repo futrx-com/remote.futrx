@@ -9,6 +9,7 @@
 #   - $FUTRX_CHECKOUT_REF (optional; defaults to origin/main)
 set -euo pipefail
 
+step_00_checkout() {
 if [ "${FUTRX_INSTALL_CHECKOUT_SELECTED:-0}" = "1" ]; then
     return 0
 fi
@@ -58,3 +59,4 @@ fi
 
 export FUTRX_INSTALL_CHECKOUT_SELECTED=1
 exec bash "$INSTALL_DIR/infra/install.sh" "$@"
+}

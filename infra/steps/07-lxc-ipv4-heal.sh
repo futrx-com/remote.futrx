@@ -17,6 +17,7 @@
 # Expects from caller: log / ok helpers.
 set -euo pipefail
 
+step_07_lxc_ipv4_heal() {
 log "Installing lxc-ipv4-heal (container IPv4 self-heal)"
 
 cat > /usr/local/sbin/lxc-ipv4-heal << "SCRIPT"
@@ -65,3 +66,4 @@ systemctl daemon-reload
 systemctl enable --now lxc-ipv4-heal.timer
 
 ok "lxc-ipv4-heal timer active"
+}

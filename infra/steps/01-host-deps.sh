@@ -12,6 +12,7 @@
 #   - $LXD_BRIDGE_IP (for the resolved drop-in)
 set -euo pipefail
 
+step_01_host_deps() {
 export DEBIAN_FRONTEND=noninteractive
 
 # ───────────────── base apt deps ─────────────────
@@ -243,3 +244,4 @@ if [ -n "${LXD_BRIDGE_IP:-}" ] && systemctl is-active --quiet systemd-resolved; 
                     /etc/systemd/resolved.conf.d/lxd.conf
     systemctl restart systemd-resolved
 fi
+}
