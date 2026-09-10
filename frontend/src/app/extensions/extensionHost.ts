@@ -1,26 +1,44 @@
-import { applicationsApi } from "../../api/applicationsApi";
-import { API_ROUTES } from "../../config/routes";
+import { applicationsApi } from "../../api/applicationsApi.ts";
+import { API_ROUTES } from "../../config/routes.ts";
 import type { AppImage, AppUIExtension } from "../../models/application";
 import type {
   ExtensionApi,
   ExtensionRegistry,
   ExtensionVisibility,
 } from "../../models/extension";
-import { extensionEventService } from "../../services/extensions/extensionEventService";
-import { extensionRegistry } from "../../state/stores/extensions/extensionStore";
-import { createExtensionApi } from "./extensionApi";
+import { extensionEventService } from "../../services/extensions/extensionEventService.ts";
+import { extensionRegistry } from "../../state/stores/extensions/extensionStore.ts";
+import { createExtensionApi } from "./extensionApi.ts";
 
 type EntryModule = {
   default?: (api: ExtensionApi) => unknown;
   activate?: (api: ExtensionApi) => unknown;
 };
 
-class ExtensionHost {
+/**
+ * Loads an image's entry module from the catalog endpoint. It is the one place
+ * the host reaches the network for code rather than data, so it is taken as a
+ * dependency instead of being hard-wired into the loader below.
+ */
+export type LoadEntryModule = (url: string) => Promise<EntryModule>;
+
+const importEntryModule: LoadEntryModule = (url) =>
+  import(/* @vite-ignore */ url) as Promise<EntryModule>;
+
+export class ExtensionHost {
+  private readonly registry: ExtensionRegistry;
+  private readonly loadEntryModule: LoadEntryModule;
   private readonly loaded = new Set<string>();
   private inFlight: Promise<void> | null = null;
   private resyncRequested = false;
 
-  constructor(private readonly registry: ExtensionRegistry) {}
+  constructor(
+    registry: ExtensionRegistry,
+    loadEntryModule: LoadEntryModule = importEntryModule,
+  ) {
+    this.registry = registry;
+    this.loadEntryModule = loadEntryModule;
+  }
 
   /**
    * Syncs now, and again whenever the tab comes back to the foreground, until
@@ -97,8 +115,8 @@ class ExtensionHost {
       }
       const entry = image.ui?.entry;
       if (!entry) return;
-      const module: EntryModule = await import(
-        /* @vite-ignore */ API_ROUTES.applications.uiAsset(image.id, entry)
+      const module = await this.loadEntryModule(
+        API_ROUTES.applications.uiAsset(image.id, entry),
       );
       const activate = module.default ?? module.activate;
       if (typeof activate !== "function") {

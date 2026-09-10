@@ -2,8 +2,8 @@ import {
   EXTENSION_API_VERSION,
   EXTENSION_SLOTS,
   SLOT_ICON_APPEARANCE,
-} from "../../config/extensions";
-import { API_ROUTES } from "../../config/routes";
+} from "../../config/extensions.ts";
+import { API_ROUTES } from "../../config/routes.ts";
 import type { AppBackendInstance, AppImage } from "../../models/application";
 import type {
   ExtensionApi,
@@ -13,9 +13,9 @@ import type {
   ExtensionSlotContext,
   ExtensionVisibility,
 } from "../../models/extension";
-import { extensionEventService } from "../../services/extensions/extensionEventService";
-import { createBackendApi } from "./extensionBackend";
-import { openExtensionPopup } from "./extensionPopup";
+import { extensionEventService } from "../../services/extensions/extensionEventService.ts";
+import { createBackendApi } from "./extensionBackend.ts";
+import { openExtensionPopup } from "./extensionPopup.ts";
 
 const BUTTON_BASE =
   "inline-flex items-center gap-1.5 rounded-control px-2 py-1 text-[12px] " +
