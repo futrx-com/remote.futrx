@@ -2,7 +2,6 @@ package applications
 
 import (
 	"io/fs"
-	"path"
 	"reflect"
 	"testing"
 	"testing/fstest"
@@ -97,18 +96,21 @@ func assertCatalogInvariants(t *testing.T, r *Registry, wantImages bool) {
 	}
 }
 
-// docs/ shares the catalog directory with the images. Every other directory
-// there is loaded as an image, so a reserved name that stopped being skipped
-// would take the whole catalog — and the server — down at startup.
+// Every directory beside the images is loaded as one, so a reserved name that
+// stopped being skipped would fail to validate and take the whole catalog —
+// and the server — down at startup. The shipped catalog carries no such
+// directory today, so the fixture supplies one: the guard has to hold for
+// whatever a catalog is later given, not for what happens to ship now.
 func TestRegistrySkipsReservedDirectories(t *testing.T) {
-	r, err := NewRegistry()
+	catalog := fixtureCatalog()
+	for _, name := range []string{"docs"} {
+		catalog["images/"+name+"/README.md"] = &fstest.MapFile{Data: []byte("# not an image\n")}
+	}
+	r, err := NewRegistryFromFS(catalog)
 	if err != nil {
 		t.Fatalf("load registry: %v", err)
 	}
 	for _, name := range []string{"docs"} {
-		if _, err := fs.Stat(catalogFS, path.Join("images", name)); err != nil {
-			continue // reserved but not present; nothing to skip
-		}
 		if _, ok := r.Get(name); ok {
 			t.Errorf("reserved directory %q was loaded as an image", name)
 		}

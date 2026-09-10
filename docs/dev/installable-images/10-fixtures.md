@@ -1,7 +1,7 @@
 # 10 — Fixtures
 
 > **These fixture images are not in this repository.** What ships here is one
-> worked example, [`hello-remote`](../hello-remote/README.md), which covers the
+> worked example, [`hello-remote`](../../../backend/internal/integration/containers/applications/images/hello-remote/README.md), which covers the
 > same ground more briefly: a slot contribution, a view, a plugin process, and
 > per-instance storage. The fixtures below are described as the fuller surface
 > a developer working on the extension API itself would want, and the document
@@ -13,9 +13,9 @@ a laptop.
 
 | Fixture | Icon | Type | Purpose |
 |---|---|---|---|
-| [`ui-playground`](../ui-playground/) | flask | `ui` | The full browser surface: every slot, every mechanism, plus an API self-test |
-| [`ui-sandbox`](../ui-sandbox/) | cube | `ui` | A second extension sharing the same slots, explaining *why* it is visible where it is |
-| [`backend-playground`](../backend-playground/) | server | `backend` | The full server surface: a Go plugin exercising every part of the backend contract, and the UI that calls it |
+| `ui-playground` | flask | `ui` | The full browser surface: every slot, every mechanism, plus an API self-test |
+| `ui-sandbox` | cube | `ui` | A second extension sharing the same slots, explaining *why* it is visible where it is |
+| `backend-playground` | server | `backend` | The full server surface: a Go plugin exercising every part of the backend contract, and the UI that calls it |
 
 They order themselves `-100`, `-99`, and `-98`, so the set always renders
 flask-then-cube-then-server in every shared slot regardless of load order.
@@ -76,7 +76,7 @@ broke the contract.
 ## Backend Playground
 
 The counterpart to UI Playground on the other side of the wire. It ships a Go
-plugin in [`plugin/main.go`](../backend-playground/plugin/main.go) and a `ui/`
+plugin in `plugin/main.go` and a `ui/`
 that calls it, and every route exists to demonstrate one property of the
 contract:
 

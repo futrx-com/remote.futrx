@@ -323,7 +323,7 @@ all.
 
 **Catalog backend plugins.** The other half of "everything is a plugin": an
 image may also ship a `plugin/` directory of Go source
-([`installable-images/docs/15-backend-plugins.md`](installable-images/docs/15-backend-plugins.md)).
+([`docs/dev/installable-images/15-backend-plugins.md`](docs/dev/installable-images/15-backend-plugins.md)).
 The server compiles it and runs it as a child process over
 **hashicorp/go-plugin**, one process per installed instance, and forwards HTTP
 calls to it at `/api/applications/<instance>/backend/<path>` — which the
@@ -430,6 +430,7 @@ These are the boundaries the [threat model](docs/threat-model.md) reasons about:
 - [`docs/01-overview/`](docs/01-overview/) — system overview and the code map
 - [`docs/02-workspaces/`](docs/02-workspaces/) — auth, projects/containers, chat/agents, workspace tools
 - [`docs/dev/agents/`](docs/dev/agents/) — agent module contracts and the complete extension guide
+- [`docs/dev/installable-images/`](docs/dev/installable-images/) — the installable-image format, extension slots, and backend plugins
 - [`docs/03-platform/`](docs/03-platform/) — previews & browser, data & frontend state, API & realtime
 - [`docs/04-operations/`](docs/04-operations/) — deployment and operations
 - [Threat model](docs/threat-model.md) · [Known limitations](docs/known-limitations.md)

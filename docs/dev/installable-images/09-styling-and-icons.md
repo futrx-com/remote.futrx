@@ -139,7 +139,7 @@ this a non-issue.
 
 Anything unrecognised falls back to a generic server mark. The mapping is
 `BUILT_IN` in
-[`frontend/src/ui/applications/AppIcon.tsx`](../../../../../../../frontend/src/ui/applications/AppIcon.tsx).
+[`frontend/src/ui/applications/AppIcon.tsx`](../../../frontend/src/ui/applications/AppIcon.tsx).
 
 ### Shipping your own
 

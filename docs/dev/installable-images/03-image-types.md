@@ -11,7 +11,7 @@ particular whether it touches a container at all.
 | `backend` | Nothing in any container — compiles and runs the image's Go plugin on the host | a `plugin/` directory |
 
 The Go type is `Kind` in
-[`service/applications/model.go`](../../../../../service/applications/model.go).
+[`service/applications/model.go`](../../../backend/internal/service/applications/model.go).
 Omitting `type` means `service`, so every image written before this field
 existed keeps working unchanged.
 

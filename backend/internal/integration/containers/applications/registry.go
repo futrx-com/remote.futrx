@@ -380,9 +380,12 @@ var _ svc.Registry = (*Registry)(nil)
 // catalogRoot is the directory every catalog filesystem holds its images in.
 const catalogRoot = "images"
 
-// isCatalogMetadataDirectory identifies directories embedded beside images
-// that describe the catalog itself. Every other directory is validated as an
-// image, so this list is intentionally closed and immutable.
+// isCatalogMetadataDirectory identifies directories that may sit beside images
+// without being one. Every other directory is validated as an image and fails
+// the catalog if it does not parse, so the list is intentionally closed: it is
+// the escape hatch for catalog-level material, not a place to put an image.
+// The name is also refused as an uploaded package id, so a package can never
+// shadow one.
 func isCatalogMetadataDirectory(name string) bool {
 	return name == "docs"
 }

@@ -5,7 +5,7 @@ validated at server startup by `registry.go:loadImage`; a malformed file fails
 the build and the tests rather than producing a broken catalog entry.
 
 The Go type behind it is `Image` in
-[`service/applications/model.go`](../../../../../service/applications/model.go).
+[`service/applications/model.go`](../../../backend/internal/service/applications/model.go).
 
 ## Complete example
 

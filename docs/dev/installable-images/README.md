@@ -66,16 +66,20 @@ behind it; an image that only adds a button ships no container side at all.
 
 ## Conventions in these documents
 
-Paths are given relative to the repository root unless stated otherwise. The
-catalog lives at:
+Paths are given relative to the repository root unless stated otherwise. These
+documents live in the repository's documentation tree, at
+`docs/dev/installable-images/`, while the thing they describe lives in the
+backend:
 
 ```
 backend/internal/integration/containers/applications/images/
 ```
 
-and is symlinked from the repository root as `installable-images/`, so
-`installable-images/<id>/image.json` and the long path above are the same
-file.
+That directory is symlinked from the repository root as `installable-images/`,
+so `installable-images/<id>/image.json` and the long path above are the same
+file. Keeping the two apart is deliberate: everything under `images/` is
+embedded into the server binary by `//go:embed`, and documentation has no
+business shipping inside a binary.
 
 Code references name the file and, where useful, the symbol —
 `registry_ui.go:loadImageUI`, `extensionContributionState.ts:visibleExtensionContributions`.

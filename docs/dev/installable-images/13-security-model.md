@@ -230,5 +230,5 @@ A checklist for reviewing a `ui/` directory:
 
 - [12 — HTTP API](12-http-api.md) — the authorization of each endpoint.
 - [08 — Scoping and visibility](08-scoping-and-visibility.md) — who sees what.
-- The platform-wide [threat model](../../../../../../../docs/threat-model.md) — the
+- The platform-wide [threat model](../../threat-model.md) — the
   boundaries this sits inside.

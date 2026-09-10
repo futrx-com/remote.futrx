@@ -21,7 +21,7 @@ images/
 ```
 
 The whole tree is compiled into the server binary with `//go:embed images` in
-[`registry.go`](../../registry.go). There is no runtime plugin directory, no
+[`registry.go`](../../../backend/internal/integration/containers/applications/registry.go). There is no runtime plugin directory, no
 upload endpoint, and no way to add an image to a running server: adding one
 means adding a directory and rebuilding. That single fact drives most of the
 design, and the whole of the [security model](13-security-model.md).

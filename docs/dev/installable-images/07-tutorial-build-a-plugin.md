@@ -221,7 +221,7 @@ git add installable-images/open-in-cursor
 git commit -s -m "feat(applications): add open-in-cursor UI plugin"
 ```
 
-Follow the repository's [CONTRIBUTING](../../../../../../../CONTRIBUTING.md)
+Follow the repository's [CONTRIBUTING](../../../CONTRIBUTING.md)
 conventions: Conventional Commits with an area scope, DCO sign-off.
 
 Remember that a `ui/` directory is frontend code running on the main origin

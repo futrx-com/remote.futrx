@@ -2,7 +2,7 @@
 
 The `remote` object is what an image's entry module receives. It is the public
 surface a plugin author writes against, defined in
-[`frontend/src/app/extensions/extensionApi.ts`](../../../../../../../frontend/src/app/extensions/extensionApi.ts).
+[`frontend/src/app/extensions/extensionApi.ts`](../../../frontend/src/app/extensions/extensionApi.ts).
 
 ## The entry module
 

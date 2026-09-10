@@ -81,7 +81,7 @@ slot list. [`installable-images/hello-remote/`](installable-images/hello-remote/
 is the worked example for both halves — a `ui/` and the `plugin/` it calls —
 and real apps live in their own repositories rather than here. The full plugin
 contract is
-[`installable-images/docs/15-backend-plugins.md`](installable-images/docs/15-backend-plugins.md).
+[`docs/dev/installable-images/15-backend-plugins.md`](docs/dev/installable-images/15-backend-plugins.md).
 
 ## Development setup
 

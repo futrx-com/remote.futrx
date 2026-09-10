@@ -5,7 +5,7 @@ session for a registered user is required before any of them are reached.
 Handlers then re-check authorization per route.
 
 Routes are registered in
-[`applications_handler.go`](../../../../../transport/http/handlers/applications_handler.go);
+[`applications_handler.go`](../../../backend/internal/transport/http/handlers/applications_handler.go);
 project-scoped routes are delegated there by `project_handler.go` after project
 membership has been verified.
 

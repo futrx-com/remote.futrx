@@ -164,7 +164,7 @@ Be aware of the gaps rather than assuming coverage:
 - **Rendering is not unit-tested.** `ExtensionSlot.tsx` has no test; the
   registry it reads from does. Rendering is verified in a browser.
 - **CI does not run `go test`.** Run it locally before pushing — see
-  [CONTRIBUTING](../../../../../../../CONTRIBUTING.md).
+  [CONTRIBUTING](../../../CONTRIBUTING.md).
 
 ## Before opening a pull request
 
@@ -174,5 +174,5 @@ cd frontend && npm run build && npm test
 ```
 
 Then, if you touched the extension surface or the plugin contract, install
-[`hello-remote`](../hello-remote/README.md) at both scopes and confirm its
+[`hello-remote`](../../../backend/internal/integration/containers/applications/images/hello-remote/README.md) at both scopes and confirm its
 panel still greets you and still counts across a server restart.

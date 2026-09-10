@@ -5,7 +5,7 @@ This is the catalog of one-click installable apps ("Applications" tab). It is
 surfaced at the repo root as `installable-images/` (a symlink) so it is
 discoverable from the project root. A running server serves these images plus
 any an administrator has uploaded as a `.zip` — same shape, same validator,
-stored outside the binary. See [Uploaded packages](docs/16-uploaded-packages.md).
+stored outside the binary. See [Uploaded packages](../../../../../../docs/dev/installable-images/16-uploaded-packages.md).
 
 **One image ships here: [`hello-remote/`](hello-remote/)**, the worked example
 — a Go plugin and the browser UI that calls it, installing nothing in any
@@ -21,7 +21,6 @@ server, or any combination:
 
 ```
 images/
-  docs/              ← full documentation (reserved name, not an image)
   postgresql/
     image.json       metadata: name, description, port, env, systemd service
     install.sh       idempotent installer, run as root inside the container
@@ -41,35 +40,37 @@ images/
     ui/              the extension that calls it
 ```
 
-## 📚 Full documentation: [`docs/`](docs/)
+## 📚 Full documentation: [`docs/dev/installable-images/`](../../../../../../docs/dev/installable-images/)
 
-Everything is documented in detail there. Start with
-[`docs/README.md`](docs/README.md).
+Everything is documented in detail there — it lives in the repository's
+documentation tree rather than in this directory, so the catalog holds images
+and nothing else. Start with
+[its README](../../../../../../docs/dev/installable-images/README.md).
 
 | I want to… | Read |
 |---|---|
-| Understand the system | [Overview](docs/01-overview.md) |
-| Add a database or service | [Image types](docs/03-image-types.md), [Install scripts](docs/04-install-scripts.md) |
-| Add a button or panel to the UI | [Tutorial](docs/07-tutorial-build-a-plugin.md) |
-| Look up an `image.json` field | [image.json reference](docs/02-image-json.md) |
-| Look up an extension API method | [Extension API](docs/06-extension-api.md) |
-| Add a server-side feature in Go | [Backend plugins](docs/15-backend-plugins.md) |
-| Know where I can render | [Slots](docs/05-slots.md) |
-| Know who sees my extension | [Scoping and visibility](docs/08-scoping-and-visibility.md) |
-| Match the app's look | [Styling and icons](docs/09-styling-and-icons.md) |
-| Test it | [Fixtures](docs/10-fixtures.md), [Testing](docs/11-testing.md) |
-| Call the endpoints | [HTTP API](docs/12-http-api.md) |
-| Understand the trust model | [Security model](docs/13-security-model.md) |
-| Fix something broken | [Troubleshooting](docs/14-troubleshooting.md) |
-| Add an app to a running server, without a release | [Uploaded packages](docs/16-uploaded-packages.md) |
-| Ship a new version to people who already installed it | [Versions and upgrades](docs/17-versions-and-upgrades.md) |
+| Understand the system | [Overview](../../../../../../docs/dev/installable-images/01-overview.md) |
+| Add a database or service | [Image types](../../../../../../docs/dev/installable-images/03-image-types.md), [Install scripts](../../../../../../docs/dev/installable-images/04-install-scripts.md) |
+| Add a button or panel to the UI | [Tutorial](../../../../../../docs/dev/installable-images/07-tutorial-build-a-plugin.md) |
+| Look up an `image.json` field | [image.json reference](../../../../../../docs/dev/installable-images/02-image-json.md) |
+| Look up an extension API method | [Extension API](../../../../../../docs/dev/installable-images/06-extension-api.md) |
+| Add a server-side feature in Go | [Backend plugins](../../../../../../docs/dev/installable-images/15-backend-plugins.md) |
+| Know where I can render | [Slots](../../../../../../docs/dev/installable-images/05-slots.md) |
+| Know who sees my extension | [Scoping and visibility](../../../../../../docs/dev/installable-images/08-scoping-and-visibility.md) |
+| Match the app's look | [Styling and icons](../../../../../../docs/dev/installable-images/09-styling-and-icons.md) |
+| Test it | [Fixtures](../../../../../../docs/dev/installable-images/10-fixtures.md), [Testing](../../../../../../docs/dev/installable-images/11-testing.md) |
+| Call the endpoints | [HTTP API](../../../../../../docs/dev/installable-images/12-http-api.md) |
+| Understand the trust model | [Security model](../../../../../../docs/dev/installable-images/13-security-model.md) |
+| Fix something broken | [Troubleshooting](../../../../../../docs/dev/installable-images/14-troubleshooting.md) |
+| Add an app to a running server, without a release | [Uploaded packages](../../../../../../docs/dev/installable-images/16-uploaded-packages.md) |
+| Ship a new version to people who already installed it | [Versions and upgrades](../../../../../../docs/dev/installable-images/17-versions-and-upgrades.md) |
 
 ## Adding an app, in short
 
 1. Create `images/<id>/image.json`. `id` must equal the directory name, and
    `version` is required — changing it is what re-runs `install.sh` on copies
    people already installed. See
-   [Versions and upgrades](docs/17-versions-and-upgrades.md).
+   [Versions and upgrades](../../../../../../docs/dev/installable-images/17-versions-and-upgrades.md).
 2. Pick a `type`:
    - `service` — runs software on a port. Add an `install.sh` and a
      `port.internal`. A **global** install gets its own LXD container; a
@@ -87,7 +88,7 @@ Everything is documented in detail there. Start with
 4. Optionally add `plugin/` for server-side work. `main.go` implements
    `appplugin.Backend`; the image's `ui/` reaches it through
    `remote.backend.call(...)`. See
-   [Backend plugins](docs/15-backend-plugins.md).
+   [Backend plugins](../../../../../../docs/dev/installable-images/15-backend-plugins.md).
 5. Rebuild the backend. `NewRegistry()` validates every entry at startup, so a
    malformed image fails the build and the tests rather than 404ing in a
    browser.
@@ -101,24 +102,24 @@ An administrator can upload the same directory as a `.zip` from **Settings →
 Applications**. It is stored in the server's state directory, loads through
 this exact validator, and becomes an ordinary catalog entry — and it survives
 updates, because updating replaces the binary and never touches that
-directory. See [Uploaded packages](docs/16-uploaded-packages.md).
+directory. See [Uploaded packages](../../../../../../docs/dev/installable-images/16-uploaded-packages.md).
 
 ## Three things that surprise people
 
 **Being in the catalog grants nothing.** An extension loads only after a user
 installs the image — globally, or in a project they belong to — and only while
 that instance is running. Stopping an app turns its UI off. See
-[Scoping and visibility](docs/08-scoping-and-visibility.md).
+[Scoping and visibility](../../../../../../docs/dev/installable-images/08-scoping-and-visibility.md).
 
 **Extension code is frontend code.** It runs on the main origin with the SPA's
 privileges; the trust boundary is the build, not the request. A new `ui/` in a
 pull request deserves the same review as any change under `frontend/src`. See
-[Security model](docs/13-security-model.md).
+[Security model](../../../../../../docs/dev/installable-images/13-security-model.md).
 
 **Plugin code is server code.** A `plugin/` directory is compiled and run as a
 child of the server process, with the server's privileges, and is handed the
 install's secrets. It deserves the same review as any change under
-`backend/internal/`. See [Security model](docs/13-security-model.md#backend-plugins).
+`backend/internal/`. See [Security model](../../../../../../docs/dev/installable-images/13-security-model.md#backend-plugins).
 
 ## The example app
 
@@ -132,6 +133,6 @@ Install it globally *and* in a project to watch one image run as two processes
 with two counters. Its [README](hello-remote/README.md) says what to look at
 and why.
 
-The larger developer fixtures described in [Fixtures](docs/10-fixtures.md) —
+The larger developer fixtures described in [Fixtures](../../../../../../docs/dev/installable-images/10-fixtures.md) —
 `ui-playground`, `ui-sandbox`, `backend-playground` — are not in this
 repository.

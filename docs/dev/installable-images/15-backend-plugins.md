@@ -86,7 +86,7 @@ That is the entire round trip.
 ## The contract
 
 The Go types are in
-[`pkg/appplugin/contract.go`](../../../../../../pkg/appplugin/contract.go). A
+[`pkg/appplugin/contract.go`](../../../backend/pkg/appplugin/contract.go). A
 plugin implements three methods.
 
 | Method | When | Notes |
@@ -325,7 +325,7 @@ the standard library — no protobuf, no code generation, no checked-in
 `.pb.go`.
 
 The whole transport is
-[`pkg/appplugin/pluginrpc`](../../../../../../pkg/appplugin/pluginrpc/pluginrpc.go).
+[`pkg/appplugin/pluginrpc`](../../../backend/pkg/appplugin/pluginrpc/pluginrpc.go).
 Moving to gRPC would be a change to that package and a recompile of the
 catalog; `appplugin` — the types a plugin author writes against — would not
 move.

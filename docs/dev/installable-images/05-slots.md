@@ -2,7 +2,7 @@
 
 A slot is a named place in the Remote interface where an extension may render.
 They are a **closed set**, defined in
-[`frontend/src/config/extensions.ts`](../../../../../../../frontend/src/config/extensions.ts).
+[`frontend/src/config/extensions.ts`](../../../frontend/src/config/extensions.ts).
 
 ## Why closed
 
