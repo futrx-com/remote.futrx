@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -90,5 +91,41 @@ func TestFingerprintCoversEveryInput(t *testing.T) {
 		[]sourceFile{{path: "m", data: []byte("ain.go")}}, sdk, "module a", "module b", "1.25.0")
 	if split == joined {
 		t.Error("fingerprint inputs are not length-prefixed")
+	}
+}
+
+// Pruning an image's old binaries must not reach into another image's. Image
+// ids may contain a dash, so "s3" and "s3-disk" both produce names starting
+// "s3-" — and deleting a live binary out from under a running image would take
+// it down until something rebuilt it.
+func TestPruneStaleLeavesAnotherImageAlone(t *testing.T) {
+	builder := NewBuilder(t.TempDir(), "")
+	if err := os.MkdirAll(builder.binaryDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{
+		"s3-aaaaaaaaaaaaaaaa",      // this image, current
+		"s3-bbbbbbbbbbbbbbbb",      // this image, stale
+		"s3-disk-cccccccccccccccc", // a different image entirely
+		"s3-disk-dddddddddddddddd.tmp",
+	}
+	for _, name := range names {
+		if err := os.WriteFile(filepath.Join(builder.binaryDir(), name), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	builder.pruneStale("s3", "s3-aaaaaaaaaaaaaaaa")
+
+	for name, want := range map[string]bool{
+		"s3-aaaaaaaaaaaaaaaa":          true,
+		"s3-bbbbbbbbbbbbbbbb":          false,
+		"s3-disk-cccccccccccccccc":     true,
+		"s3-disk-dddddddddddddddd.tmp": true,
+	} {
+		_, err := os.Stat(filepath.Join(builder.binaryDir(), name))
+		if got := err == nil; got != want {
+			t.Errorf("%s exists = %v, want %v", name, got, want)
+		}
 	}
 }

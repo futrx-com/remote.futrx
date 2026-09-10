@@ -2,13 +2,16 @@ package pluginhost
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/appplugin"
 )
@@ -25,10 +28,49 @@ type Builder struct {
 	goTool string
 	pins   modulePins
 	locks  keyedLocks
+	// shared holds the half of every fingerprint that no image can change.
+	// It is read and hashed once per process rather than once per build.
+	sharedOnce sync.Once
+	shared     sharedInputs
+	sharedErr  error
 	// calls counts entries into Build. Serving a request must not need the
 	// builder at all, and that is invisible from the outside; the counter is
 	// what lets a test pin it.
 	calls atomic.Int64
+}
+
+// buildTimeout bounds one compile, including any module download it makes.
+const buildTimeout = 10 * time.Minute
+
+// sharedInputs are the build inputs that are the same for every image: the SDK
+// source, the two generated go.mod files, and the Go version pinning them. None
+// of them can change while the server runs — the SDK is compiled into the
+// binary and the pins are read at startup — so they are collected once and
+// their contribution to the fingerprint is precomputed.
+type sharedInputs struct {
+	sdkFiles     []sourceFile
+	pluginModule string
+	sdkModule    string
+	fingerprint  string
+}
+
+func (b *Builder) sharedInputs() (sharedInputs, error) {
+	b.sharedOnce.Do(func() {
+		sdk, err := collect(appplugin.Source())
+		if err != nil {
+			b.sharedErr = fmt.Errorf("read plugin sdk: %w", err)
+			return
+		}
+		pluginModule := b.pluginModuleFile()
+		sdkModule := b.sdkModuleFile()
+		b.shared = sharedInputs{
+			sdkFiles:     sdk,
+			pluginModule: pluginModule,
+			sdkModule:    sdkModule,
+			fingerprint:  sharedFingerprintOf(sdk, pluginModule, sdkModule, b.pins.goVersion),
+		}
+	})
+	return b.shared, b.sharedErr
 }
 
 // NewBuilder returns a builder that keeps its cache, generated modules, and
@@ -52,27 +94,27 @@ func (b *Builder) buildDir() string  { return filepath.Join(b.root, "build") }
 // once; calls for different images build in parallel.
 func (b *Builder) Build(ctx context.Context, imageID string, source fs.FS) (string, error) {
 	b.calls.Add(1)
+	shared, err := b.sharedInputs()
+	if err != nil {
+		return "", err
+	}
+	// Only the image's own plugin/ directory is read here; the SDK behind it is
+	// the same tree for every image and was hashed once.
 	files, err := collect(source)
 	if err != nil {
 		return "", fmt.Errorf("read plugin source: %w", err)
 	}
-	sdk, err := collect(appplugin.Source())
-	if err != nil {
-		return "", fmt.Errorf("read plugin sdk: %w", err)
-	}
-	pluginModule := b.pluginModuleFile()
-	sdkModule := b.sdkModuleFile()
 
-	fingerprint := fingerprintOf(files, sdk, pluginModule, sdkModule, b.pins.goVersion)
+	fingerprint := fingerprintWith(files, shared.fingerprint)
 	binary := filepath.Join(b.binaryDir(), fmt.Sprintf("%s-%s", imageID, fingerprint))
 	plan := buildPlan{
 		imageID:      imageID,
 		fingerprint:  fingerprint,
 		binary:       binary,
 		pluginFiles:  files,
-		sdkFiles:     sdk,
-		pluginModule: pluginModule,
-		sdkModule:    sdkModule,
+		sdkFiles:     shared.sdkFiles,
+		pluginModule: shared.pluginModule,
+		sdkModule:    shared.sdkModule,
 	}
 
 	unlock := b.locks.lock(imageID)
@@ -111,6 +153,13 @@ func (b *Builder) compile(ctx context.Context, plan buildPlan) error {
 	if err != nil {
 		return err
 	}
+	// The image's lock is held for the whole compile, so an invocation that
+	// never returns — a module fetch against a proxy that accepts the
+	// connection and then goes quiet, say — would not just hang this launch but
+	// every later launch of the same image behind it. Bounding the toolchain
+	// bounds the lock.
+	ctx, cancel := context.WithTimeout(ctx, buildTimeout)
+	defer cancel()
 	work := filepath.Join(b.buildDir(), fmt.Sprintf("%s-%s", plan.imageID, plan.fingerprint))
 	if err := os.RemoveAll(work); err != nil {
 		return fmt.Errorf("clear build directory: %w", err)
@@ -150,6 +199,11 @@ func (b *Builder) compile(ctx context.Context, plan buildPlan) error {
 		// module cache that has been pruned.
 		output, err := runGo(ctx, goTool, source, goEnv(b.root, false), arguments)
 		if err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf(
+					"compile plugin %q: gave up after %s\n%s",
+					plan.imageID, buildTimeout, strings.TrimSpace(output))
+			}
 			return fmt.Errorf(
 				"compile plugin %q:\n%s\n(offline attempt: %s)",
 				plan.imageID, strings.TrimSpace(output), strings.TrimSpace(offlineOutput))
@@ -175,6 +229,11 @@ func runGo(ctx context.Context, goTool, dir string, env, arguments []string) (st
 
 // pruneStale removes binaries this image left behind under other
 // fingerprints, so editing a plugin does not accumulate copies of it.
+//
+// A binary is named "<imageID>-<fingerprint>", and an image id may itself
+// contain a dash: matching on the "<imageID>-" prefix alone would let image
+// "s3" delete "s3-disk"'s current binary. Only the last segment is the
+// fingerprint, so the name is split there and the head compared whole.
 func (b *Builder) pruneStale(imageID, keep string) {
 	entries, err := os.ReadDir(b.binaryDir())
 	if err != nil {
@@ -182,9 +241,21 @@ func (b *Builder) pruneStale(imageID, keep string) {
 	}
 	for _, entry := range entries {
 		name := entry.Name()
-		if name == keep || !strings.HasPrefix(name, imageID+"-") {
+		if name == keep || !isBinaryOf(name, imageID) {
 			continue
 		}
 		_ = os.Remove(filepath.Join(b.binaryDir(), name))
 	}
+}
+
+// isBinaryOf reports whether a file in the binary directory is a compiled copy
+// of imageID, under any fingerprint. It also matches the ".tmp" a failed
+// compile can leave behind, which belongs to the same image and is equally
+// stale.
+func isBinaryOf(name, imageID string) bool {
+	dash := strings.LastIndex(strings.TrimSuffix(name, ".tmp"), "-")
+	if dash < 0 {
+		return false
+	}
+	return name[:dash] == imageID
 }
