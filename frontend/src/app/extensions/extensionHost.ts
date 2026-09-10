@@ -22,6 +22,24 @@ class ExtensionHost {
 
   constructor(private readonly registry: ExtensionRegistry) {}
 
+  /**
+   * Syncs now, and again whenever the tab comes back to the foreground, until
+   * the returned disposer is called.
+   *
+   * Nothing pushes installs to a browser. An app uninstalled elsewhere would
+   * otherwise keep drawing here for the life of the tab, calling a plugin that
+   * is no longer running, so returning to the tab is one of the few moments
+   * this side can learn about it.
+   */
+  watch = (): (() => void) => {
+    void this.sync();
+    const resync = () => {
+      if (document.visibilityState === "visible") void this.sync();
+    };
+    document.addEventListener("visibilitychange", resync);
+    return () => document.removeEventListener("visibilitychange", resync);
+  };
+
   sync = (): Promise<void> => {
     if (this.inFlight) {
       this.resyncRequested = true;
