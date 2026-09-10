@@ -96,6 +96,7 @@ flowchart LR
     Claude["Claude"] --> Project
     Kimi["Kimi"] --> Project
     Antigravity["Antigravity"] --> Project
+    Devin["Devin"] --> Project
 
     Project -. "outlives" .-> ChatA["Chat A"]
     Project -. "outlives" .-> ChatB["Chat B"]
@@ -106,8 +107,8 @@ This gives Remote five foundational rules:
 
 1. **One project, one containment boundary.** Files, processes, tools, browser state, and project authority belong to that project.
 2. **The project, not the conversation, is durable.** A new chat or a different provider should enter the same world rather than reconstruct it.
-3. **The model is a replaceable worker.** Codex, Claude, Kimi, and
-   Antigravity can work against the same project without becoming its owner.
+3. **The model is a replaceable worker.** Codex, Claude, Kimi,
+   Antigravity, and Devin can work against the same project without becoming its owner.
 4. **Work is durable; machinery is replaceable.** Source, artifacts, skills, and provider homes persist while the runtime can be rebuilt.
 5. **Failure should be local and repairable.** A bad install, runaway process, or broken root filesystem should not require repairing another project. Recovery of agent-modified durable files still depends on Git, remotes, snapshots, or backups outside the current runtime.
 
@@ -182,6 +183,7 @@ flowchart LR
         ClaudeHost["agent-home/claude/"]
         KimiHost["agent-home/kimi/"]
         AntigravityHost["agent-home/antigravity/"]
+        DevinHost["agent-home/devin/"]
     end
 
     subgraph Container["Unprivileged LXD project container"]
@@ -191,6 +193,7 @@ flowchart LR
         Claude["/root/.claude"]
         Kimi["/root/.kimi-code"]
         Antigravity["/root/.gemini/antigravity-cli"]
+        Devin["/root/.local/share/devin"]
         RootFS["Replaceable Ubuntu root filesystem"]
     end
 
@@ -200,6 +203,7 @@ flowchart LR
     ClaudeHost -->|"read/write bind mount"| Claude
     KimiHost -->|"read/write bind mount"| Kimi
     AntigravityHost -->|"read/write bind mount"| Antigravity
+    DevinHost -->|"read/write bind mount"| Devin
 ```
 
 | Durable layer | Container path | Purpose |
@@ -210,14 +214,15 @@ flowchart LR
 | Claude home | `/root/.claude` | Claude provider configuration, authentication, sessions, and provider-owned state |
 | Kimi home | `/root/.kimi-code` | Kimi provider configuration, authentication, sessions, and provider-owned state |
 | Antigravity home | `/root/.gemini/antigravity-cli` | Project-local Antigravity authentication, conversations, and provider-owned state |
+| Devin home | `/root/.local/share/devin` | Devin provider credentials, sessions, and provider-owned state |
 | Host control-plane data | Application data directory | Project metadata, chats, event logs, scheduled tasks, access lists, settings, and the authoritative secret store |
 | Replaceable runtime | Container root filesystem outside the mounts | Base image, installed packages, temporary files, and operating-system state |
 
-The workspace is shared by all agents in the project. The five currently
+The workspace is shared by all agents in the project. The six currently
 mounted provider homes are separate because each CLI owns a different
 configuration and session format; they are **format-separated, not
 security-separated**.
-Container root can read and modify all five regardless of the selected
+Container root can read and modify all six regardless of the selected
 provider. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
 whole `.gemini` directory.
 Project skills have one canonical source at `/workspace/.agents/skills`;
@@ -239,7 +244,7 @@ The capability envelope should be complete enough that the agent can move from i
 | Filesystem | Read and write the complete project workspace and all provider homes mounted in that project container |
 | Package installation | `apt`, `npm`, `pip`, and project-local package managers may install what the work requires |
 | Core toolchain | Git, SSH client, `gh`, `jq`, build tools, Python, Node.js 22, npm, and npx |
-| Agent choice | Claude Code, Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity at pinned versions, behind one provider-neutral run model |
+| Agent choice | Claude Code, Codex, MiniMax through the Codex harness, Kimi Code, Antigravity, and Devin at pinned versions, behind one provider-neutral run model |
 | Skills | Project-authored procedures under `/workspace/.agents/skills`, including skills the agent creates for future work. Claude receives slash triggers, Codex and MiniMax receive dollar mentions, and Kimi/Antigravity receive explicit `SKILL.md` instruction paths; Scheduled Tasks additionally receives a scoped capability |
 | Processes | Foreground and background processes; background work may continue between prompts while the container stays running |
 | Network | Outbound networking and project app listeners; the current project instructions describe network access as open |
@@ -259,7 +264,7 @@ Broad agent authority is paired with a complete control envelope. The human shou
 | Control | Human or host capability |
 | --- | --- |
 | Identity | Claim the server, sign in, manage registered users, and separate administrators from members |
-| Provider identity | Administrators connect, refresh, or replace host-wide Claude, Codex, and Kimi identities; Antigravity has an instruction-only global card and its supported sign-in flow remains per project |
+| Provider identity | Administrators connect, refresh, or replace host-wide Claude, Codex, Kimi, and Devin identities; Antigravity has an instruction-only global card and its supported sign-in flow remains per project |
 | Project access | Current members can add or remove registered project members; the backend gates project API, chat, upload, terminal, and preview resources |
 | Project secrets | Current members can create, read, change, or delete the authoritative secret record; propagation to and removal from managed copies is currently best-effort |
 | Agent selection | Choose provider, model, reasoning effort, service tier or speed, mode, and selected skills |
@@ -334,7 +339,7 @@ Remote separates valuable state from replaceable machinery. This lets the runtim
 flowchart TB
     Intent["Human intent and conversation history"] --> ProjectState["Durable project state"]
     ProjectState --> Workspace["Workspace, skills, artifacts, browser profile"]
-    ProjectState --> AgentHomes["Codex, MiniMax, Claude, Kimi, and Antigravity homes"]
+    ProjectState --> AgentHomes["Codex, MiniMax, Claude, Kimi, Antigravity, and Devin homes"]
     ProjectState --> Scheduled["Scheduled task definitions and claims"]
     ProjectState --> Metadata["Metadata, access, secrets, event logs"]
 
@@ -389,7 +394,7 @@ Remote has four credential classes, each with a different scope:
 | Credential class | Scope | Current behavior |
 | --- | --- | --- |
 | Platform session | User and Remote control plane | Kept in secure HTTP-only cookies and stripped before requests enter project-controlled apps and IDEs |
-| Agent-provider identity | Host-wide for Claude, Codex, Kimi, and the MiniMax Token Plan subscription key; supported project runtime for Antigravity | Claude, Codex, and Kimi are connected by an administrator and synchronized bidirectionally with project state. The write-only MiniMax subscription key is stored by the control plane and injected only into MiniMax runs, while Codex-harness state stays in each project's mounted MiniMax home. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
+| Agent-provider identity | Host-wide for Claude, Codex, Kimi, Devin, and the MiniMax Token Plan subscription key; supported project runtime for Antigravity | Claude, Codex, Kimi, and Devin are connected by an administrator and synchronized bidirectionally with project state. The write-only MiniMax subscription key is stored by the control plane and injected only into MiniMax runs, while Codex-harness state stays in each project's mounted MiniMax home. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
 | Project secret | One project | Stored in a host file with mode `0600` but without application-level encryption; passed to agent runs, persisted as container environment when single-line, and mirrored into the managed `.env` file |
 | Browser-session identity | One project browser profile | Created through human login and persisted with the project so the agent can use the authenticated session |
 

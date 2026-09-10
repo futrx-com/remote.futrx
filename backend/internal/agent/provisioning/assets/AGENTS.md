@@ -9,18 +9,18 @@ crashed processes, and deleted files stay within this project.
 
 - `/workspace` - your project files. Persistent, survives container
   restarts and reprovisions.
-- `/root/.codex`, `/root/.minimax`, `/root/.claude`, `/root/.kimi-code`, and
-  `/root/.gemini/antigravity-cli` - persistent, project-specific provider
-  homes. The host mounts and manages these paths so provider configuration,
-  authentication, and session state survive container replacement. Only the
-  Antigravity subdirectory is mounted, not all of `/root/.gemini`. Keep project
-  artifacts in `/workspace`, not in these homes.
-- `/root/.claude/CLAUDE.md`, `/root/.codex/AGENTS.md`, AND
-  `/root/.minimax/AGENTS.md` - this file (identical content, three paths so
-  Claude, Codex, and MiniMax pick it up). The host re-pushes all three whenever
-  the template changes; don't edit
+- `/root/.codex`, `/root/.minimax`, `/root/.claude`, `/root/.kimi-code`,
+  `/root/.gemini/antigravity-cli`, and `/root/.local/share/devin` - persistent,
+  project-specific provider homes. The host mounts and manages these paths so
+  provider configuration, authentication, and session state survive container
+  replacement. Only the Antigravity subdirectory is mounted, not all of
+  `/root/.gemini`. Keep project artifacts in `/workspace`, not in these homes.
+- `/root/.claude/CLAUDE.md`, `/root/.codex/AGENTS.md`,
+  `/root/.minimax/AGENTS.md`, AND `/root/.config/devin/AGENTS.md` - this file
+  (identical content, four paths so Claude, Codex, MiniMax, and Devin pick it
+  up). The host re-pushes all four whenever the template changes; don't edit
   them expecting changes to stick.
-- Everything else outside the six durable mounts: replaceable.
+- Everything else outside the seven durable mounts: replaceable.
 
 ## Capabilities
 
@@ -42,14 +42,14 @@ crashed processes, and deleted files stay within this project.
 ## Pre-installed tools
 
 `git`, `gh`, `openssh-client`, `jq`, `build-essential`,
-`python3` + `pip`, `node 22` + `npm`, `claude`, `codex`, `kimi`, `agy`. Anything else:
+`python3` + `pip`, `node 22` + `npm`, `claude`, `codex`, `kimi`, `agy`, `devin`. Anything else:
 `apt-get install` or `npm i -g` freely.
 
 The MiniMax agent also uses the `codex` binary, with isolated state under
 `/root/.minimax`. Remote injects its host-managed Token Plan subscription key only into MiniMax
 runs; do not ask users to add it as a project secret.
 
-**Persistence rule.** `/workspace/**` and the five provider homes listed
+**Persistence rule.** `/workspace/**` and the six provider homes listed
 above are host bind-mounts and survive container replacement. Other paths
 (`/usr/local/`, unmounted paths under `/root/`, and packages you apt-install)
 are gone if the container is recreated. If you install a tool the project
