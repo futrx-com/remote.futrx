@@ -18,24 +18,30 @@ func TestRegistryLoadsCatalog(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		load func() (*Registry, error)
+		// wantImages is false for the shipped catalog: this repository holds
+		// the format, not the apps, so images/ may legitimately contain only
+		// docs/. What is still worth asserting there is that such a catalog
+		// loads at all rather than failing startup. The fixture catalog is the
+		// one that must be non-empty — it exists to carry the invariants.
+		wantImages bool
 	}{
-		{"shipped", NewRegistry},
-		{"fixture", func() (*Registry, error) { return NewRegistryFromFS(fixtureCatalog()) }},
+		{"shipped", NewRegistry, false},
+		{"fixture", func() (*Registry, error) { return NewRegistryFromFS(fixtureCatalog()) }, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, err := tc.load()
 			if err != nil {
 				t.Fatalf("load registry: %v", err)
 			}
-			assertCatalogInvariants(t, r)
+			assertCatalogInvariants(t, r, tc.wantImages)
 		})
 	}
 }
 
-func assertCatalogInvariants(t *testing.T, r *Registry) {
+func assertCatalogInvariants(t *testing.T, r *Registry, wantImages bool) {
 	t.Helper()
 	imgs := r.List()
-	if len(imgs) == 0 {
+	if wantImages && len(imgs) == 0 {
 		t.Fatal("expected at least one image in catalog")
 	}
 	for _, img := range imgs {

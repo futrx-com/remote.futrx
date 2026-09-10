@@ -7,6 +7,13 @@ discoverable from the project root. A running server serves these images plus
 any an administrator has uploaded as a `.zip` — same shape, same validator,
 stored outside the binary. See [Uploaded packages](docs/16-uploaded-packages.md).
 
+**No images ship in this repository yet.** This directory holds only this file
+and `docs/`: the apps themselves — MySQL, PostgreSQL, Redis, s3disk — live in
+their own repositories and reach a server as uploaded packages, so the catalog
+format can change here without a database image riding along in the same
+review. Everything below is the format they are written against, and dropping
+a directory in here is still all it takes to build one in.
+
 An image is one directory. It can install software into a container, contribute
 to the Remote interface from the browser, add a Go backend that runs on the
 server, or any combination:

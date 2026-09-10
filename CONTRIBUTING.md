@@ -77,9 +77,11 @@ Both halves are code, and neither is sandboxed:
 
 Read [`installable-images/README.md`](installable-images/README.md) for the
 `image.json` schema, the install-script contract, the extension API, and the
-slot list. `mysql/ui/` is the worked example for a UI extension, and
-`backend-playground/` for a Go backend and the UI that calls it; the full
-plugin contract is
+slot list. The catalog ships no images in this repository — each one lives in
+its own repository and is added to a server as an uploaded package — so the
+worked examples are the documents themselves:
+[`installable-images/docs/07-tutorial-build-a-plugin.md`](installable-images/docs/07-tutorial-build-a-plugin.md)
+for a UI extension, and the full plugin contract is
 [`installable-images/docs/15-backend-plugins.md`](installable-images/docs/15-backend-plugins.md).
 
 ## Development setup

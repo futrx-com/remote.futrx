@@ -57,8 +57,8 @@ bookkeeping (`__MACOSX/`, `.DS_Store`, `._*`) is ignored.
 So any zip tool will do — unless the image carries a `container.tar.gz`, which
 nothing here builds for you: the archive is extracted as it arrives, and an
 image whose container source is a nested Go module has to ship the payload
-already packed. [`s3disk/package.sh`](../s3disk/package.sh) is the worked
-example, and `--zip` writes the whole archive.
+already packed. The convention is a `package.sh` in the image directory that
+builds `container.tar.gz` and, with `--zip`, writes the whole archive.
 
 `image.json` must set both `"id"` and `"version"`.
 

@@ -74,7 +74,7 @@ backend/internal/integration/containers/applications/images/
 ```
 
 and is symlinked from the repository root as `installable-images/`, so
-`installable-images/mysql/image.json` and the long path above are the same
+`installable-images/<id>/image.json` and the long path above are the same
 file.
 
 Code references name the file and, where useful, the symbol —
