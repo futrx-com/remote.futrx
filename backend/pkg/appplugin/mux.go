@@ -14,19 +14,25 @@ type Handler func(Request) Response
 // also builds the Routes half of a Descriptor, so a plugin's advertised
 // surface cannot drift from the one it actually serves.
 //
-// Patterns are either exact ("health") or a prefix ending in "/*"
-// ("kv/*", which matches "kv/greeting" and "kv/"). Longer prefixes win over
-// shorter ones; an exact route always wins over a prefix. "*" as a method
-// matches any method.
+// Patterns are either exact ("health") or a prefix ending in "*" ("kv/*", which
+// matches "kv/greeting" and "kv/"; a bare "*" matches every path). Longer
+// prefixes win over shorter ones; an exact route always wins over a prefix. "*"
+// as a method matches any method.
 type Mux struct {
 	mu     sync.RWMutex
 	routes []muxRoute
 }
 
 type muxRoute struct {
-	method      string
-	pattern     string
-	prefix      string // set when pattern ends in "/*"
+	method  string
+	pattern string
+	// prefix is what a wildcard pattern matches on; wildcard says whether the
+	// pattern had one at all. The two are separate because a bare "*" is a
+	// wildcard whose prefix is empty — reading an empty prefix as "not a
+	// wildcard" would make the catch-all every plugin's fallback route the one
+	// pattern that matches nothing.
+	prefix      string
+	wildcard    bool
 	description string
 	handler     Handler
 }
@@ -47,6 +53,7 @@ func (m *Mux) Handle(method, pattern, description string, handler Handler) {
 	}
 	if strings.HasSuffix(pattern, "*") {
 		route.prefix = strings.TrimSuffix(pattern, "*")
+		route.wildcard = true
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -132,7 +139,7 @@ func (m *Mux) Serve(request Request) Response {
 // match scores a route against a path: an exact hit outranks every prefix, and
 // a longer prefix outranks a shorter one.
 func (r muxRoute) match(path string) (int, bool) {
-	if r.prefix == "" {
+	if !r.wildcard {
 		if r.pattern == path {
 			return 1 << 30, true
 		}

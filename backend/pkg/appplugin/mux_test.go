@@ -111,3 +111,29 @@ func TestRequestHelpers(t *testing.T) {
 		t.Error("DecodeJSON on an empty body should fail")
 	}
 }
+
+// A bare "*" is the catch-all a plugin registers as its fallback: it is a
+// prefix route whose prefix is empty, and reading an empty prefix as "no
+// prefix" turned it into a pattern that matched nothing at all.
+func TestMuxCatchAllPatternMatchesEveryPath(t *testing.T) {
+	mux := NewMux()
+	mux.GET("health", "", func(Request) Response { return Text(200, "health") })
+	mux.Handle("*", "*", "", func(request Request) Response {
+		return Text(200, "fallback:"+request.Path)
+	})
+
+	for path, want := range map[string]string{
+		"health":      "health",
+		"anything":    "fallback:anything",
+		"deep/path/x": "fallback:deep/path/x",
+		"":            "fallback:",
+	} {
+		response := mux.Serve(Request{Method: http.MethodGet, Path: path})
+		if response.Status != 200 {
+			t.Errorf("GET %q: status = %d, want 200", path, response.Status)
+		}
+		if string(response.Body) != want {
+			t.Errorf("GET %q: body = %q, want %q", path, response.Body, want)
+		}
+	}
+}
