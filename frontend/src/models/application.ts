@@ -215,8 +215,6 @@ export interface AppPackageInstall {
   scope: AppScope;
   projectId?: string;
   status: AppInstanceStatus;
-  /** Set when this copy could not be uninstalled during a removal. */
-  error?: string;
 }
 
 /**

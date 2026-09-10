@@ -325,8 +325,13 @@ func TestRemovePackageReportsACopyItCouldNotUninstall(t *testing.T) {
 	if !strings.Contains(err.Error(), "lxd unavailable") {
 		t.Fatalf("error %q does not carry the reason", err)
 	}
-	if len(uninstalled) != 1 || uninstalled[0].Error == "" {
-		t.Fatalf("the failing copy was not reported: %+v", uninstalled)
+	// The copy that stopped the removal is named by the error, not by a list of
+	// removals that did not happen.
+	if !strings.Contains(err.Error(), "globally") {
+		t.Fatalf("error %q does not say which copy failed", err)
+	}
+	if uninstalled != nil {
+		t.Fatalf("reported removals for a removal that failed: %+v", uninstalled)
 	}
 	if len(catalog.removed) != 0 {
 		t.Fatalf("the package was removed despite a failed uninstall: %v", catalog.removed)

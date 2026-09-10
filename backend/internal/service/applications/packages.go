@@ -61,9 +61,6 @@ type PackageInstall struct {
 	Scope      Scope          `json:"scope"`
 	ProjectID  string         `json:"projectId,omitempty"`
 	Status     InstanceStatus `json:"status"`
-	// Error is set when this copy could not be uninstalled during a removal
-	// that asked for it.
-	Error string `json:"error,omitempty"`
 }
 
 // PackageUpload is one archive submitted for installation into the catalog.
@@ -233,8 +230,10 @@ func (s *Service) RemovePackage(ctx context.Context, req RemovePackageRequest) (
 	}
 	for i := range installs {
 		if err := s.uninstallForPackageRemoval(ctx, installs[i]); err != nil {
-			installs[i].Error = err.Error()
-			return installs, fmt.Errorf(
+			// The list is what a caller reports on a removal that happened, so
+			// one that did not returns only the failure — which already names
+			// the copy that stopped it and why.
+			return nil, fmt.Errorf(
 				"%w: could not uninstall %s: %s", ErrPackageInUse, describeInstall(installs[i]), err)
 		}
 	}
@@ -297,21 +296,6 @@ func describeInstall(install PackageInstall) string {
 		return fmt.Sprintf("in project %s", install.ProjectID)
 	}
 	return "globally"
-}
-
-// imageInstalledAnywhere reports whether any instance, in any scope, was
-// created from the given image.
-func (s *Service) imageInstalledAnywhere(ctx context.Context, imageID string) (bool, error) {
-	instances, err := s.store.ListAll(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, inst := range instances {
-		if inst.ImageID == imageID {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // stopBackendsForImage terminates the plugin process of every instance created
