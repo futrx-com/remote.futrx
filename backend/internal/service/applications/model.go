@@ -3,9 +3,9 @@
 // globally (its own dedicated container, shared by the whole server) or
 // scoped to a single project (installed inside that project's container).
 //
-// The catalog of installable images lives under
-// integration/containers/applications/images and is loaded through the
-// Registry port. Each installed copy is an Instance, persisted through Store
+// The catalog of installable images lives in the repository's images/
+// directory, embedded into the binary, and is loaded through the Registry
+// port. Each installed copy is an Instance, persisted through Store
 // and realized in a container through Installer.
 package applications
 

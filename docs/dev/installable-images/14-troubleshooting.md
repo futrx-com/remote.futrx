@@ -190,10 +190,10 @@ fails the install.
 | `initialize plugin x: …` | your `Init` returned an error. |
 
 Compile once locally before installing — a `plugin/` is an ordinary package in
-this module:
+the catalog module at the repository root:
 
 ```bash
-cd backend && go build ./internal/integration/containers/applications/images/<id>/plugin/
+go build ./images/<id>/plugin/
 ```
 
 ## My plugin runs but calls fail

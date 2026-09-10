@@ -1,12 +1,11 @@
 // Package applications loads the installable image catalog and realizes app
-// instances inside LXD containers. The catalog under images/ is embedded into
-// the binary so a deployed server needs no extra files; a server configured
-// with a package store serves those images plus every package an
-// administrator has uploaded into its state directory.
+// instances inside LXD containers. The catalog under the repository's images/
+// directory is embedded into the binary so a deployed server needs no extra
+// files; a server configured with a package store serves those images plus
+// every package an administrator has uploaded into its state directory.
 package applications
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -15,12 +14,11 @@ import (
 	"strings"
 	"sync"
 
+	"futrx.local/catalog"
+
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hosttools"
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
-
-//go:embed images
-var catalogFS embed.FS
 
 // Registry is an in-memory, validated view of an image catalog.
 //
@@ -67,11 +65,14 @@ func newCatalogView() catalogView {
 	}
 }
 
-// EmbeddedCatalog is the image catalog compiled into the binary.
-func EmbeddedCatalog() fs.FS { return catalogFS }
+// EmbeddedCatalog is the image catalog compiled into the binary. It is embedded
+// by the module at the repository root rather than here, because go:embed
+// cannot reach outside its own directory and the catalog is kept at images/,
+// where an app author finds it.
+func EmbeddedCatalog() fs.FS { return catalog.FS }
 
 // NewRegistry loads and validates the catalog embedded in the binary.
-func NewRegistry() (*Registry, error) { return NewRegistryFromFS(catalogFS) }
+func NewRegistry() (*Registry, error) { return NewRegistryFromFS(catalog.FS) }
 
 // NewRegistryFromFS loads and validates every images/<id>/image.json in the
 // given filesystem. A malformed entry is a build/asset error, so loading fails

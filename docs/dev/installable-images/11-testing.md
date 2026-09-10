@@ -17,10 +17,11 @@ exist, an empty `ui/` directory, and a `plugin/` that is not a `package main`
 program or that carries its own `go.mod`.
 
 Plugin source is also compiled by the repository's own build, because a
-`plugin/` directory is an ordinary package inside this module:
+`plugin/` directory is an ordinary package inside the catalog module at the
+repository root:
 
 ```bash
-cd backend && go build ./... && go vet ./...
+go build ./... && go vet ./...
 ```
 
 A plugin that does not compile fails there, not on someone's server.
@@ -174,5 +175,5 @@ cd frontend && npm run build && npm test
 ```
 
 Then, if you touched the extension surface or the plugin contract, install
-[`hello-remote`](../../../backend/internal/integration/containers/applications/images/hello-remote/README.md) at both scopes and confirm its
+[`hello-remote`](../../../images/hello-remote/README.md) at both scopes and confirm its
 panel still greets you and still counts across a server restart.

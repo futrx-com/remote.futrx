@@ -1,7 +1,7 @@
 # 10 — Fixtures
 
 > **These fixture images are not in this repository.** What ships here is one
-> worked example, [`hello-remote`](../../../backend/internal/integration/containers/applications/images/hello-remote/README.md), which covers the
+> worked example, [`hello-remote`](../../../images/hello-remote/README.md), which covers the
 > same ground more briefly: a slot contribution, a view, a plugin process, and
 > per-instance storage. The fixtures below are described as the fuller surface
 > a developer working on the extension API itself would want, and the document

@@ -22,7 +22,7 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 | --- | --- |
 | `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, and compiled-in agent modules |
 | `frontend/` | Preact + Vite SPA. The production build is written to `backend/public/` and embedded into the Go binary via `go:embed` |
-| `installable-images/` | Catalog of one-click installable apps, symlinked from the backend; each directory is an `image.json`, an `install.sh`, and an optional `ui/` extension and `plugin/` Go backend |
+| `images/` | Catalog of one-click installable apps, embedded into the backend binary; each directory is an `image.json`, an `install.sh`, and an optional `ui/` extension and `plugin/` Go backend |
 | `infra/` | Installer, updater, systemd/Caddy templates, base-image tooling, and shell test suite |
 | `docs/` | Architecture and subsystem deep-dives — start with `docs/01-overview/01-system-overview.md` |
 
@@ -47,11 +47,9 @@ of truth for new integrations.
 ## Adding an installable app, UI plugin, or backend plugin
 
 Installable apps ("Applications") are data, not code: one directory under
-`installable-images/` (a symlink to
-`backend/internal/integration/containers/applications/images/`) with an
-`image.json`, an `install.sh`, and — optionally — a `ui/` directory. The
-catalog is embedded into the binary, so adding an app is a directory plus a
-rebuild; no registration step.
+`images/` at the repository root with an `image.json`, an `install.sh`, and —
+optionally — a `ui/` directory. The catalog is embedded into the binary, so
+adding an app is a directory plus a rebuild; no registration step.
 
 `ui/` is what makes an image a plugin rather than just a service: its
 `scripts/main.js` runs in every signed-in browser and can contribute buttons,
@@ -75,9 +73,9 @@ Both halves are code, and neither is sandboxed:
   privileges, and is handed the install's secrets, so a `plugin/` directory
   gets the same review as any change under `backend/internal/`.
 
-Read [`installable-images/README.md`](installable-images/README.md) for the
+Read [`images/README.md`](images/README.md) for the
 `image.json` schema, the install-script contract, the extension API, and the
-slot list. [`installable-images/hello-remote/`](installable-images/hello-remote/)
+slot list. [`images/hello-remote/`](images/hello-remote/)
 is the worked example for both halves — a `ui/` and the `plugin/` it calls —
 and real apps live in their own repositories rather than here. The full plugin
 contract is
@@ -97,6 +95,15 @@ contract is
 
 ```bash
 cd backend
+go build ./...
+go test ./...
+```
+
+The image catalog is a second Go module, rooted at the repository root, so
+`./...` in `backend/` does not reach an image's `plugin/` source. Build and test
+it from the repository root:
+
+```bash
 go build ./...
 go test ./...
 ```

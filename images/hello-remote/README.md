@@ -31,7 +31,7 @@ separate process with its own `DataDir` and its own counter.
 **A server that runs a `backend` image needs a Go toolchain**, because plugin
 source is compiled on the host. Without one, the install reports that on the
 instance instead of failing the server. See
-[14 — Troubleshooting](../../../../../../../docs/dev/installable-images/14-troubleshooting.md).
+[14 — Troubleshooting](../../docs/dev/installable-images/14-troubleshooting.md).
 
 ## What it does
 
@@ -58,13 +58,13 @@ server, open the panel, and the number is still there.
 |---|---|
 | `image.json` | The manifest: type, scopes, `env[]`, the `backend` block. The `ui` block is omitted, so the layout convention finds the entry, styles and views. |
 | `plugin/main.go` | `Describe` / `Init` / `Handle`, a `Mux`, and the one piece of storage a plugin owns. |
-| `plugin/main_test.go` | A plugin is ordinary Go in this module, so `go test ./...` covers it with no server involved. |
+| `plugin/main_test.go` | A plugin is ordinary Go in the catalog module, so `go test ./...` from the repository root covers it with no server involved. |
 | `ui/scripts/main.js` | The entry module: one card button, one panel, and a render function that cleans up after itself. |
 | `ui/views/panel.html`, `ui/style/hello.css` | The two conventions — views loaded by name, CSS written against the platform's theme tokens. |
 
-Full documentation is in [`docs/dev/installable-images/`](../../../../../../../docs/dev/installable-images/); the tutorial that builds an
+Full documentation is in [`docs/dev/installable-images/`](../../docs/dev/installable-images/); the tutorial that builds an
 image from nothing is
-[07 — Tutorial](../../../../../../../docs/dev/installable-images/07-tutorial-build-a-plugin.md).
+[07 — Tutorial](../../docs/dev/installable-images/07-tutorial-build-a-plugin.md).
 
 ## Editing it
 

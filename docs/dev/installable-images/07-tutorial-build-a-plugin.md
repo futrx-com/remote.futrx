@@ -12,7 +12,7 @@ entry module, a view, styling, an icon, and the install-and-test loop.
 From the repository root:
 
 ```bash
-mkdir -p installable-images/open-in-cursor/ui/{scripts,style,views,assets}
+mkdir -p images/open-in-cursor/ui/{scripts,style,views,assets}
 ```
 
 The directory name is the image id. Use lowercase letters, digits, and dashes.
@@ -20,7 +20,7 @@ The directory name is the image id. Use lowercase letters, digits, and dashes.
 ## 2. Write `image.json`
 
 ```bash
-cat > installable-images/open-in-cursor/image.json <<'JSON'
+cat > images/open-in-cursor/image.json <<'JSON'
 {
   "id": "open-in-cursor",
   "name": "Open in Cursor",
@@ -46,7 +46,7 @@ Notes:
 ## 3. Add the icon
 
 ```bash
-cat > installable-images/open-in-cursor/ui/assets/logo.svg <<'SVG'
+cat > images/open-in-cursor/ui/assets/logo.svg <<'SVG'
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
      stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
      stroke-linejoin="round">
@@ -62,7 +62,7 @@ SVG
 ## 4. Write the entry module
 
 ```bash
-cat > installable-images/open-in-cursor/ui/scripts/main.js <<'JS'
+cat > images/open-in-cursor/ui/scripts/main.js <<'JS'
 // Adds a chat-header action that opens the chat's workspace in Cursor.
 
 const CURSOR_ICON =
@@ -99,7 +99,7 @@ Opening a `cursor://` link silently fails if Cursor is not installed, so show
 what we tried. Add a view:
 
 ```bash
-cat > installable-images/open-in-cursor/ui/views/opened.html <<'HTML'
+cat > images/open-in-cursor/ui/views/opened.html <<'HTML'
 <div class="cursor-ext">
   <p class="cursor-ext__lead">Asked your browser to hand this workspace to Cursor:</p>
   <pre class="cursor-ext__url" data-field="url">…</pre>
@@ -115,7 +115,7 @@ and its stylesheet — remember Tailwind is **not** available here, so style wit
 the platform's CSS custom properties:
 
 ```bash
-cat > installable-images/open-in-cursor/ui/style/cursor.css <<'CSS'
+cat > images/open-in-cursor/ui/style/cursor.css <<'CSS'
 .cursor-ext__lead,
 .cursor-ext__hint {
   margin: 0;
@@ -217,7 +217,7 @@ If that is not what you see, [14 — Troubleshooting](14-troubleshooting.md).
 ## 10. Ship it
 
 ```bash
-git add installable-images/open-in-cursor
+git add images/open-in-cursor
 git commit -s -m "feat(applications): add open-in-cursor UI plugin"
 ```
 
