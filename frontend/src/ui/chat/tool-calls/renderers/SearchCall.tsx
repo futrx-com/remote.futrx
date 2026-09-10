@@ -20,6 +20,7 @@ export function SearchCall({ name, input, output, outputExpanded, status, isErro
       }
       status={status}
       isError={isError}
+      revealSignal={outputExpanded}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>

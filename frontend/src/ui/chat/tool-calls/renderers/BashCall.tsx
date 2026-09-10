@@ -15,6 +15,7 @@ export function BashCall({ input, output, outputExpanded, status, isError }: Omi
       badge={description ? truncate(description, 30) : undefined}
       status={status}
       isError={isError}
+      revealSignal={outputExpanded}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>

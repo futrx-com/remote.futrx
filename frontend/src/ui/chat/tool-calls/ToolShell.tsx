@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { AlertCircle, ChevronDown, ChevronRight, Loader } from "../../primitives/icons";
 
 export function ToolShell({
@@ -9,6 +9,7 @@ export function ToolShell({
   status,
   isError,
   defaultOpen,
+  revealSignal,
   children,
 }: {
   icon: ComponentChildren;
@@ -17,9 +18,19 @@ export function ToolShell({
   status: "running" | "done";
   isError?: boolean;
   defaultOpen?: boolean;
+  /**
+   * When this flips to true, the shell opens so newly revealed content
+   * (e.g. a "Load full response" expansion) is actually visible instead of
+   * staying hidden inside a collapsed shell. Afterwards the user can still
+   * collapse it manually.
+   */
+  revealSignal?: boolean;
   children?: ComponentChildren;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  useEffect(() => {
+    if (revealSignal) setOpen(true);
+  }, [revealSignal]);
   return (
     <div class={`codex-tool-shell my-2 overflow-hidden rounded-card border text-sm
                 ${isError ? "border-accent-red/30 bg-accent-red/[0.05]" : "border-line bg-surface"}`}>

@@ -13,6 +13,7 @@ export function ReadCall({ input, output, outputExpanded, status, isError }: Omi
       label={<><span class="text-ink-300">Read</span> <span class="font-mono">{shortPath(path)}</span></>}
       status={status}
       isError={isError}
+      revealSignal={outputExpanded}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, READ_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>
