@@ -195,14 +195,17 @@ Terminal. Use a project chat for the supported Antigravity sign-in flow.
 
 ## OpenCode sign-in and behavior
 
-OpenCode appears in the administrator's **Settings → Agents** list as a
-managed-CLI integration. Sign in by running `opencode auth login` on the host
+OpenCode appears in the administrator's **Settings → Agents** list as an
+external-CLI integration. Sign in by running `opencode auth login` on the host
 and choosing the provider to connect; credentials are stored in
 `~/.local/share/opencode/auth.json`. Model selection uses OpenCode's
 `provider/model` identifiers as reported by `opencode models`, and a run may
 resume or fork its OpenCode session across prompts. OpenCode supports the
 shared skills instruction trigger, scheduled tools, and browser asset
-migration; project-container execution follows the Kimi pattern.
+migration; project-container execution follows the Kimi pattern. In
+project-container execution (isolated), `--auto` is passed so non-interactive
+tool runs are not auto-rejected by permission prompts. In plan mode, OpenCode
+uses its built-in read-only `--agent plan`.
 
 ## Running-state rules
 

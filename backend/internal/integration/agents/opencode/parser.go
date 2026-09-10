@@ -18,11 +18,13 @@ import (
 //	 "reason":"stop","tokens":{"input":…,"output":…,"reasoning":…,
 //	 "cache":{"read":…,"write":…}},"cost":0}}
 //
-// The CLI does not always emit a final step_finish after the last text part,
-// so Provider.Run emits the terminal run.completed if the stream ended without
-// one (see Completed). Token buckets are disjoint (input excludes cache
-// activity), so no inclusive-input normalization is applied. The model is not
-// reported on the wire; the requested model is used for attribution instead.
+// Text parts are only emitted once part.time.end is set by the CLI, so there is
+// no token-level streaming. While OpenCode v1.18.29 reliably emits a terminating
+// step_finish (unlike earlier 1.15.x releases), Provider.Run retains a fallback
+// terminal run.completed if the stream terminates unexpectedly without one (see
+// Completed). Token buckets are disjoint (input excludes cache activity), so no
+// inclusive-input normalization is applied. The model is not reported on the
+// wire; the requested model is used for attribution instead.
 type Parser struct {
 	req          agent.RunRequest
 	sawSessionID string
@@ -38,8 +40,9 @@ func NewParser(req agent.RunRequest) *Parser {
 }
 
 type wireEvent struct {
-	Type      string `json:"type"`
-	SessionID string `json:"sessionID"`
+	Type      string          `json:"type"`
+	SessionID string          `json:"sessionID"`
+	Error     json.RawMessage `json:"error"`
 	Part      struct {
 		ID        string          `json:"id"`
 		MessageID string          `json:"messageID"`
@@ -55,10 +58,18 @@ type wireEvent struct {
 	} `json:"part"`
 }
 
+type wireErrorPayload struct {
+	Name string `json:"name"`
+	Data struct {
+		Message string `json:"message"`
+	} `json:"data"`
+}
+
 type wireToolState struct {
 	Status string          `json:"status"`
 	Input  json.RawMessage `json:"input"`
 	Output string          `json:"output"`
+	Error  string          `json:"error"`
 }
 
 type wireTokens struct {
@@ -103,8 +114,11 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		}
 
 	case "error":
-		message := event.Part.Text
+		message := extractErrorMessage(event.Error)
 		if message == "" {
+			message = event.Part.Text
+		}
+		if message == "" && len(event.Part.Error) > 0 {
 			message = string(event.Part.Error)
 		}
 		if message == "" {
@@ -150,12 +164,42 @@ func (p *Parser) parseToolUse(now int64, event wireEvent, raw json.RawMessage) [
 			ev.Output = state.Output
 		})}
 	}
+	if state.Status == "error" {
+		return []agent.Event{p.event(now, agent.EventToolCompleted, raw, func(ev *agent.Event) {
+			ev.ItemKind = agent.ItemToolCall
+			ev.ItemID = callID
+			ev.ToolName = toolName
+			ev.Input = state.Input
+			ev.Output = state.Error
+			ev.IsError = true
+		})}
+	}
 	return []agent.Event{p.event(now, agent.EventToolStarted, raw, func(ev *agent.Event) {
 		ev.ItemKind = agent.ItemToolCall
 		ev.ItemID = callID
 		ev.ToolName = toolName
 		ev.Input = state.Input
 	})}
+}
+
+func extractErrorMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var errPayload wireErrorPayload
+	if err := json.Unmarshal(raw, &errPayload); err == nil {
+		if errPayload.Data.Message != "" {
+			return errPayload.Data.Message
+		}
+		if errPayload.Name != "" {
+			return errPayload.Name
+		}
+	}
+	var strErr string
+	if err := json.Unmarshal(raw, &strErr); err == nil && strErr != "" {
+		return strErr
+	}
+	return ""
 }
 
 func (p *Parser) recordUsage(event wireEvent) {

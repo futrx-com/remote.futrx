@@ -20,7 +20,7 @@ func TestParseModelsOutputReadsBareModelLines(t *testing.T) {
 	if caps.Models[1].ID != "anthropic/claude-sonnet-4-5" || caps.Models[3].ID != "openai/gpt-5" {
 		t.Fatalf("model order = %#v", caps.Models)
 	}
-	if len(caps.Models) == 0 || caps.Models[0].ID != "" || caps.Models[0].Label != "Auto" {
+	if caps.Models[0].ID != "" || caps.Models[0].Label != "Auto" {
 		t.Fatalf("auto model option missing: %#v", caps.Models)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
@@ -11,10 +12,14 @@ import (
 )
 
 func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+	env := []string{"HOME=/root", "XDG_DATA_HOME=/root/.local/share"}
+	if req.ContainerName == "" {
+		env = []string{"XDG_DATA_HOME=" + filepath.Dir(hostOpenCodeData())}
+	}
 	modelsCmd := agentruntime.NewCapabilityCommand(
 		ctx,
 		req,
-		[]string{"HOME=/root", "XDG_DATA_HOME=/root/.local/share"},
+		env,
 		"opencode",
 		"models",
 	)

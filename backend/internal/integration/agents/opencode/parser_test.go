@@ -18,7 +18,7 @@ const (
 	fixtureStepStart  = `{"type":"step_start","timestamp":1788169427440,"sessionID":"ses_abc","part":{"id":"prt_1","messageID":"msg_1","sessionID":"ses_abc","type":"step-start"}}`
 	fixtureText       = `{"type":"text","timestamp":1788169431703,"sessionID":"ses_abc","part":{"id":"prt_2","messageID":"msg_2","sessionID":"ses_abc","type":"text","text":"The command ran successfully."}}`
 	fixtureToolUse    = `{"type":"tool_use","timestamp":1788169428348,"sessionID":"ses_abc","part":{"type":"tool","tool":"bash","callID":"call_1","state":{"status":"completed","input":{"command":"echo probe123"},"output":"probe123\n"}}}`
-	fixtureToolStart  = `{"type":"tool_use","timestamp":1788169428348,"sessionID":"ses_abc","part":{"type":"tool","tool":"bash","callID":"call_2","state":{"status":"pending","input":{"command":"ls"}}}}`
+	fixtureToolError  = `{"type":"tool_use","timestamp":1788169428348,"sessionID":"ses_abc","part":{"type":"tool","tool":"bash","callID":"call_2","state":{"status":"error","input":{"command":"cat nonexistent"},"error":"exit status 1: No such file or directory"}}}`
 	fixtureToolFinish = `{"type":"step_finish","timestamp":1788169428348,"sessionID":"ses_abc","part":{"id":"prt_3","reason":"tool-calls","messageID":"msg_1","sessionID":"ses_abc","type":"step-finish","tokens":{"total":60404,"input":3019,"output":29,"reasoning":12,"cache":{"write":0,"read":57344}},"cost":0}}`
 	fixtureStopFinish = `{"type":"step_finish","timestamp":1788169428999,"sessionID":"ses_abc","part":{"id":"prt_4","reason":"stop","messageID":"msg_2","sessionID":"ses_abc","type":"step-finish","tokens":{"total":10,"input":5,"output":4,"reasoning":1,"cache":{"write":0,"read":0}},"cost":0.25}}`
 )
@@ -137,15 +137,40 @@ func TestParserMapsTextAndToolEvents(t *testing.T) {
 	}
 }
 
-func TestParserEmitsToolStartedForPendingState(t *testing.T) {
+func TestParserMapsToolErrorState(t *testing.T) {
 	parser := NewParser(agent.RunRequest{ConversationID: "conv-1"})
-	events := parseLines(t, parser, fixtureStepStart, fixtureToolStart)
+	events := parseLines(t, parser, fixtureStepStart, fixtureToolError)
 
-	started := slices.ContainsFunc(events, func(event agent.Event) bool {
-		return event.Type == agent.EventToolStarted && event.ItemID == "call_2"
+	errorTool := slices.IndexFunc(events, func(event agent.Event) bool {
+		return event.Type == agent.EventToolCompleted && event.ItemID == "call_2"
 	})
-	if !started {
-		t.Fatalf("pending tool_use did not emit tool.started: %#v", events)
+	if errorTool < 0 {
+		t.Fatalf("error tool_use did not emit tool.completed: %#v", events)
+	}
+	ev := events[errorTool]
+	if !ev.IsError || ev.Output != "exit status 1: No such file or directory" || ev.ToolName != "bash" {
+		t.Fatalf("unexpected tool error event: %#v", ev)
+	}
+}
+
+func TestParserMapsTopLevelErrorEvent(t *testing.T) {
+	parser := NewParser(agent.RunRequest{ConversationID: "conv-1"})
+	messageErr := `{"type":"error","timestamp":1788169427440,"sessionID":"ses_abc","error":{"name":"ProviderAuthError","data":{"message":"Invalid API key provided"}}}`
+	events := parseLines(t, parser, messageErr)
+	if len(events) != 2 || events[1].Type != agent.EventError || events[1].Message != "Invalid API key provided" {
+		t.Fatalf("error event = %#v, want Invalid API key provided", events)
+	}
+
+	nameOnlyErr := `{"type":"error","timestamp":1788169427440,"sessionID":"ses_abc","error":{"name":"RateLimitError"}}`
+	events = parseLines(t, parser, nameOnlyErr)
+	if len(events) != 1 || events[0].Type != agent.EventError || events[0].Message != "RateLimitError" {
+		t.Fatalf("fallback to name = %#v, want RateLimitError", events)
+	}
+
+	rawFallbackErr := `{"type":"error","timestamp":1788169427440,"sessionID":"ses_abc"}`
+	events = parseLines(t, parser, rawFallbackErr)
+	if len(events) != 1 || events[0].Type != agent.EventError || events[0].Message != rawFallbackErr {
+		t.Fatalf("raw fallback error = %#v, want raw line", events)
 	}
 }
 

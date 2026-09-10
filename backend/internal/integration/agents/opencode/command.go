@@ -10,15 +10,20 @@ import (
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req agent.RunRequest, isContainer bool) []string {
 	// `opencode run --format json` streams one JSON event per line on stdout.
-	// The prompt is a positional argument (NOT stdin).
+	// The prompt is passed via stdin (NOT as a positional argument) so opencode
+	// does not mangle whitespace, escape quotes, or interpret leading flags.
 	args := []string{"run", "--format", "json"}
 	if req.Mode == agent.RunModePlan {
 		// OpenCode ships a built-in read-only `plan` agent.
 		args = append(args, "--agent", "plan")
+	} else if isContainer {
+		// In project containers, auto-approve permissions so tool execution
+		// is not rejected in non-interactive headless mode.
+		args = append(args, "--auto")
 	}
-	if model := normalizeModel(req.Model); model != "" {
+	if model := strings.TrimSpace(req.Model); model != "" {
 		args = append(args, "--model", model)
 	}
 	if req.ResumeID != "" {
@@ -28,7 +33,7 @@ func (p *Provider) args(req agent.RunRequest) []string {
 			args = append(args, "--fork")
 		}
 	}
-	return append(args, req.Prompt)
+	return args
 }
 
 func (p *Provider) buildCmd(
@@ -48,7 +53,8 @@ func (p *Provider) buildCmd(
 	if req.ProjectID == "" || p.projectPreparer == nil {
 		cmd := exec.CommandContext(ctx, "opencode", args...)
 		cmd.Dir = cwd
-		cmd.Env = agent.WithRuntimeEnvironment(os.Environ(), req.RuntimeEnv)
+		cmd.Stdin = strings.NewReader(req.Prompt)
+		cmd.Env = agent.WithRuntimeEnvironment(opencodeEnv(os.Environ()), req.RuntimeEnv)
 		return cmd, "", nil
 	}
 
@@ -69,15 +75,6 @@ func (p *Provider) buildCmd(
 		Binary:             p.profile.CLI.Binary,
 		Arguments:          args,
 	})
+	cmd.Stdin = strings.NewReader(req.Prompt)
 	return cmd, project.ContainerName, nil
-}
-
-// normalizeModel trims an explicit model id. OpenCode expects
-// provider/model form, which is what the capability catalog hands out.
-func normalizeModel(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	return value
 }

@@ -16,15 +16,15 @@ func NewFactory() (agentmodule.Factory, error) {
 		ID:               agent.ProviderOpenCode,
 		Label:            "OpenCode",
 		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
-		Auth:             agentmodule.AuthManagedDevice,
-		AuthInstructions: "Starts `opencode auth login` on the host. Pick your provider, sign in, and the credentials are stored under ~/.local/share/opencode/auth.json.",
+		Auth:             agentmodule.AuthExternal,
+		AuthInstructions: "Run `opencode auth login` on the host and complete its sign-in flow.",
 		Features: agentmodule.Features{
 			Sessions:       agentmodule.SessionSupport{Resume: true},
 			Skills:         agentmodule.SkillsInstructions,
 			ScheduledTools: true,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewDeviceBinding(agent.ProviderOpenCode, NewAuth())
+		binding := agentauth.NewExternalBinding(agent.ProviderOpenCode)
 		return agentmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,

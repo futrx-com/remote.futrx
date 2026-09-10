@@ -1,6 +1,9 @@
 package opencode
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
@@ -10,7 +13,6 @@ import (
 const (
 	containerOpenCodeData  = "/root/.local/share/opencode"
 	containerOpenCodeAuth  = containerOpenCodeData + "/auth.json"
-	missingAuthJSONFormat  = "opencode not authenticated — run `opencode auth login` on the host or in container %s"
 	opencodeDataDeviceName = "opencode-data"
 )
 
@@ -57,4 +59,30 @@ var opencodeProfile = provisioning.Profile{
 // the provider's definition.
 func Profile() provisioning.Profile {
 	return opencodeProfile.Clone()
+}
+
+// hostOpenCodeData resolves the OpenCode data directory (XDG_DATA_HOME aware).
+func hostOpenCodeData() string {
+	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
+		return filepath.Join(v, "opencode")
+	}
+	if home := os.Getenv("HOME"); home != "" {
+		return filepath.Join(home, ".local", "share", "opencode")
+	}
+	return "/root/.local/share/opencode"
+}
+
+func hostOpenCodeAuth() string {
+	return filepath.Join(hostOpenCodeData(), "auth.json")
+}
+
+func opencodeEnv(base []string) []string {
+	// OpenCode resolves its data directory from XDG_DATA_HOME; forward it so
+	// the integration writes and reads consistently.
+	for _, env := range base {
+		if strings.HasPrefix(env, "XDG_DATA_HOME=") {
+			return base
+		}
+	}
+	return append(base, "XDG_DATA_HOME="+filepath.Dir(hostOpenCodeData()))
 }

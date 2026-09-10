@@ -49,7 +49,8 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	// OpenCode forks natively via `--session <id> --fork`; no reset needed.
 
 	parser := NewParser(req)
-	cmd, containerName, err := p.buildCmd(ctx, req, p.args(req), emit)
+	isContainer := req.ProjectID != "" && p.projectPreparer != nil
+	cmd, containerName, err := p.buildCmd(ctx, req, p.args(req, isContainer), emit)
 	if err != nil {
 		return err
 	}
@@ -60,8 +61,8 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 		ConversationID: req.ConversationID,
 	})
 	if err == nil && !parser.Completed() {
-		// The CLI does not reliably emit a terminating step_finish after the
-		// last text part; close the run out when the process exits cleanly.
+		// OpenCode v1.18.29 emits step_finish reliably, but the fallback ensures
+		// the run closes out cleanly if the stream terminates unexpectedly.
 		emit(parser.CompletionEventFallback())
 	}
 	if err == nil && containerName != "" && p.credentialCollector != nil {

@@ -27,6 +27,9 @@ func TestFactoryDeclaresHostAndProjectScopes(t *testing.T) {
 	if descriptor.Features.Skills != agentmodule.SkillsInstructions {
 		t.Fatalf("skills strategy = %q", descriptor.Features.Skills)
 	}
+	if descriptor.Auth != agentmodule.AuthExternal {
+		t.Fatalf("auth flow = %v, want external", descriptor.Auth)
+	}
 	if !descriptor.Features.ScheduledTools {
 		t.Fatal("opencode must declare scheduled tools support")
 	}
@@ -57,7 +60,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHost(t *testing.T) {
 	cmd, containerName, err := provider.buildCmd(
 		context.Background(),
 		request,
-		provider.args(request),
+		provider.args(request, false),
 		func(agent.Event) {},
 	)
 	if err != nil {

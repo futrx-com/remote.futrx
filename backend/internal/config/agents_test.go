@@ -62,13 +62,20 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity", "opencode"}) {
 		t.Fatalf("host profile order = %v", hostIDs)
 	}
-	opencodeCLI := hostProfiles[len(hostProfiles)-1].CLI
-	if opencodeCLI.Binary != "opencode" || opencodeCLI.PackageName != "opencode-ai" || opencodeCLI.InstallMode != provisioning.InstallWithNPM {
-		t.Fatalf("OpenCode host CLI policy = %#v", opencodeCLI)
+	var agyProfile, opencodeProfile *provisioning.Profile
+	for i := range hostProfiles {
+		if hostProfiles[i].ID == "antigravity" {
+			agyProfile = &hostProfiles[i]
+		}
+		if hostProfiles[i].ID == "opencode" {
+			opencodeProfile = &hostProfiles[i]
+		}
 	}
-	hostProfiles = hostProfiles[:len(hostProfiles)-1]
-	if hostProfiles[len(hostProfiles)-1].CLI.Binary != "agy" || hostProfiles[len(hostProfiles)-1].CLI.InstallMode != provisioning.InstallWithScript || hostProfiles[len(hostProfiles)-1].CLI.InstallScript == "" {
-		t.Fatalf("Antigravity host CLI policy = %#v", hostProfiles[len(hostProfiles)-1].CLI)
+	if opencodeProfile == nil || opencodeProfile.CLI.Binary != "opencode" || opencodeProfile.CLI.PackageName != "opencode-ai" || opencodeProfile.CLI.InstallMode != provisioning.InstallWithNPM {
+		t.Fatalf("OpenCode host CLI policy = %#v", opencodeProfile)
+	}
+	if agyProfile == nil || agyProfile.CLI.Binary != "agy" || agyProfile.CLI.InstallMode != provisioning.InstallWithScript || agyProfile.CLI.InstallScript == "" {
+		t.Fatalf("Antigravity host CLI policy = %#v", agyProfile)
 	}
 
 	runtime, err := catalog.Build(agentmodule.BuildDependencies{})
