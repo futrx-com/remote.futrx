@@ -115,6 +115,14 @@ export interface AppImage {
   /** Decided by the server, never by the package: see {@link AppImageSource}. */
   source?: AppImageSource;
   type: AppKind;
+  /**
+   * What this entry's kind means for the UI, decided by the server. `service`
+   * needs both, `tool` a container but no port, `ui` and `backend` neither —
+   * but that mapping belongs to the server that owns the kinds, so the SPA
+   * reads these instead of restating it.
+   */
+  needsContainer?: boolean;
+  needsPort?: boolean;
   scopes: AppScope[];
   port: AppPort;
   env?: AppEnvVar[];

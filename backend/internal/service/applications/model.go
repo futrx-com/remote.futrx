@@ -9,6 +9,8 @@
 // and realized in a container through Installer.
 package applications
 
+import "encoding/json"
+
 // Scope selects where an application runs.
 type Scope string
 
@@ -236,6 +238,25 @@ type Image struct {
 	// skill, published into the project workspace when the image is installed
 	// and taken back when it is uninstalled.
 	Skills []string `json:"skills,omitempty"`
+}
+
+// MarshalJSON writes an image with the two consequences of its kind spelled
+// out. Whether an install reaches a container and whether it binds a host port
+// decide what the UI may show for an app — a port row, a connection panel, what
+// uninstalling it will remove — and those are answers this package already has.
+// Sending them means the browser reads the rule instead of keeping a second
+// copy of it that a new kind would silently fall through.
+func (im Image) MarshalJSON() ([]byte, error) {
+	type wire Image // sheds this method, so encoding does not recurse
+	return json.Marshal(struct {
+		wire
+		NeedsContainer bool `json:"needsContainer"`
+		NeedsPort      bool `json:"needsPort"`
+	}{
+		wire:           wire(im),
+		NeedsContainer: im.Type.NeedsContainer(),
+		NeedsPort:      im.Type.NeedsPort(),
+	})
 }
 
 // SupportsScope reports whether the image may be installed at the given scope.

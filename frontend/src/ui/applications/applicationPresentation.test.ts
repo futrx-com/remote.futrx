@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import type {
   AppImage,
   AppInstance,
+  AppKind,
   AppPackage,
 } from "../../models/application.ts";
 import {
@@ -18,8 +19,27 @@ import {
   whereToInstall,
 } from "./applicationPresentation.ts";
 
-function image(type: AppImage["type"]): AppImage {
-  return { id: "x", name: "X", type, scopes: ["project"] } as AppImage;
+// The server derives needsContainer/needsPort from the kind and ships them with
+// every catalog entry, so a fixture image is one of those payloads rather than
+// a kind the SPA re-interprets.
+const KIND_FLAGS: Record<
+  AppKind,
+  { needsContainer: boolean; needsPort: boolean }
+> = {
+  service: { needsContainer: true, needsPort: true },
+  tool: { needsContainer: true, needsPort: false },
+  ui: { needsContainer: false, needsPort: false },
+  backend: { needsContainer: false, needsPort: false },
+};
+
+function image(type: AppKind): AppImage {
+  return {
+    id: "x",
+    name: "X",
+    type,
+    scopes: ["project"],
+    ...KIND_FLAGS[type],
+  } as AppImage;
 }
 
 function instance(overrides: Partial<AppInstance> = {}): AppInstance {

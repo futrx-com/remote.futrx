@@ -34,17 +34,19 @@ export function catalogInstallationState(
 // image did not. This drives the uninstall wording, which has to say what is
 // actually removed.
 //
-// An unknown catalog entry keeps the historical service presentation until the
-// catalog finishes loading.
+// The answer comes from the server, which owns the list of kinds: a kind added
+// there would otherwise land here as whatever a local rule happened to say
+// about a value it had never heard of. An image not in the catalog yet keeps
+// the historical service presentation until the catalog finishes loading.
 export function hasContainer(image: AppImage | undefined): boolean {
-  return image?.type !== "ui" && image?.type !== "backend";
+  return image?.needsContainer ?? true;
 }
 
 // Whether this image binds a host port, which is what the port row and the
 // credentials panel are about. A tool runs in a container but exposes nothing,
 // so showing it a port row would be showing it zeros.
 export function hasPortBinding(image: AppImage | undefined): boolean {
-  return hasContainer(image) && image?.type !== "tool";
+  return image?.needsPort ?? true;
 }
 
 // The line shown in place of the port row for an image that has no port.
