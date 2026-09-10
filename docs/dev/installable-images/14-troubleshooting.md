@@ -144,9 +144,13 @@ both; measure `getBoundingClientRect().width > 0` to count visible ones.
 
 They should be removed on the next sync. If they are not:
 
-- The sync only runs on lifecycle actions and at load. Changing the store
-  behind the app's back (editing JSON under `DATA_DIR`) will not trigger it —
-  reload the page.
+- The sync runs on this tab's own lifecycle actions, when the tab is brought
+  back to the foreground, when an Applications surface loads, and at page load.
+  An uninstall performed in another tab, by another administrator, or through
+  the API reaches this tab only at one of those points, so a foreground tab
+  that is sitting still keeps drawing the extension until then.
+- Changing the store behind the app's back (editing JSON under `DATA_DIR`)
+  triggers nothing at all — reload the page.
 - Note that the **stylesheet stays** in the document by design; only the
   contributions are removed. Namespace your CSS so this is harmless.
 

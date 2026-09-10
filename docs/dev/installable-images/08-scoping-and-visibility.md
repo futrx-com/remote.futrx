@@ -22,9 +22,15 @@ returns the list it is allowed to load; the catalog endpoint is not enough and
 is not used for this purpose.
 
 Because status matters, **Stop** is a real off switch: stopping an app removes
-its UI, and starting it brings it back. Uninstalling drops it entirely. All
-three take effect without a page reload — the host re-syncs after every
-lifecycle action.
+its UI, and starting it brings it back. Uninstalling drops it entirely. In the
+browser that performed the action all three take effect without a page reload —
+the host re-syncs after every lifecycle action.
+
+Nothing is pushed to the other browsers. A tab that did not perform the action
+re-syncs when it is brought back to the foreground, when an Applications
+surface loads in it, and on its next page load — so a tab left open elsewhere
+can go on drawing an app that has already been uninstalled, until one of those
+happens.
 
 ## Install scope is render scope
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { applicationsApi } from "../../../api/applicationsApi";
 import { projectApi } from "../../../api/projectApi";
 import type {
@@ -56,7 +56,14 @@ interface Bindings {
   credentials: (appId: string) => Promise<AppCredentials>;
 }
 
-type ApplicationsChanged = () => void;
+/**
+ * Notified once this controller has established what is installed — after a
+ * load as well as after an install, uninstall, or package change. The consumer
+ * that matters is the extension host: it holds derived state, the `ui/`
+ * modules it has loaded, and a change made anywhere else reaches it through no
+ * other signal.
+ */
+type ApplicationsSettled = () => void;
 
 interface CoreOptions {
   scope: AppScope;
@@ -69,7 +76,7 @@ interface CoreOptions {
    */
   managesPackages: boolean;
   bindings: Bindings | null;
-  onApplicationsChanged?: ApplicationsChanged;
+  onApplicationsSettled?: ApplicationsSettled;
   projectId?: string;
 }
 
@@ -78,7 +85,7 @@ function useApplicationsCore({
   enabled,
   managesPackages,
   bindings,
-  onApplicationsChanged,
+  onApplicationsSettled,
   projectId,
 }: CoreOptions): ApplicationsController {
   const [catalog, setCatalog] = useState<AppImage[]>([]);
@@ -87,6 +94,12 @@ function useApplicationsCore({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [packages, setPackages] = useState<AppPackage[]>([]);
+  // Held in a ref so every operation below keeps one stable identity: the load
+  // effect calls this too, and a caller passing a fresh closure per render
+  // would otherwise turn that effect into a loop.
+  const settledRef = useRef(onApplicationsSettled);
+  settledRef.current = onApplicationsSettled;
+  const notifySettled = useCallback(() => settledRef.current?.(), []);
 
   const reload = useCallback(async () => {
     if (!enabled || !bindings) return;
@@ -133,11 +146,17 @@ function useApplicationsCore({
     void (async () => {
       await Promise.all([loadCatalog(), reload(), loadPackages()]);
       if (cancelled) return;
+      // Opening a surface reconciles the extension host, not just changing
+      // something on it. A change made anywhere else — another tab, another
+      // administrator, a server that restarted without the image — reaches
+      // this tab through no other path, and without this the surface can list
+      // no installed apps while still rendering an uninstalled one's panel.
+      notifySettled();
     })();
     return () => {
       cancelled = true;
     };
-  }, [enabled, loadCatalog, reload, loadPackages]);
+  }, [enabled, loadCatalog, reload, loadPackages, notifySettled]);
 
   // Uploading and removing both change what the catalog holds, so both end by
   // reloading it — the new card has to appear without a page refresh, and a
@@ -146,10 +165,10 @@ function useApplicationsCore({
     async (file: File) => {
       const uploaded = await applicationsApi.uploadPackage(file);
       await Promise.all([loadCatalog(), loadPackages()]);
-      onApplicationsChanged?.();
+      notifySettled();
       return uploaded;
     },
-    [loadCatalog, loadPackages, onApplicationsChanged],
+    [loadCatalog, loadPackages, notifySettled],
   );
 
   const removePackage = useCallback(
@@ -158,9 +177,9 @@ function useApplicationsCore({
       // A cascade uninstalls copies too, so the installed list is as stale as
       // the catalog afterwards.
       await Promise.all([loadCatalog(), loadPackages(), reload()]);
-      onApplicationsChanged?.();
+      notifySettled();
     },
-    [loadCatalog, loadPackages, reload, onApplicationsChanged],
+    [loadCatalog, loadPackages, reload, notifySettled],
   );
 
   const upsert = useCallback((inst: AppInstance) => {
@@ -178,27 +197,27 @@ function useApplicationsCore({
       if (!bindings) return;
       const inst = await bindings.install(req);
       upsert(inst);
-      onApplicationsChanged?.();
+      notifySettled();
     },
-    [bindings, upsert, onApplicationsChanged],
+    [bindings, upsert, notifySettled],
   );
 
   const start = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.start(appId));
-      onApplicationsChanged?.();
+      notifySettled();
     },
-    [bindings, upsert, onApplicationsChanged],
+    [bindings, upsert, notifySettled],
   );
 
   const stop = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.stop(appId));
-      onApplicationsChanged?.();
+      notifySettled();
     },
-    [bindings, upsert, onApplicationsChanged],
+    [bindings, upsert, notifySettled],
   );
 
   const setPort = useCallback(
@@ -214,9 +233,9 @@ function useApplicationsCore({
       if (!bindings) return;
       await bindings.uninstall(appId);
       setInstances((current) => current.filter((x) => x.id !== appId));
-      onApplicationsChanged?.();
+      notifySettled();
     },
-    [bindings, onApplicationsChanged],
+    [bindings, notifySettled],
   );
 
   const credentials = useCallback(
@@ -253,7 +272,7 @@ function useApplicationsCore({
 export function useGlobalApplications(
   enabled: boolean,
   isAdmin: boolean,
-  onApplicationsChanged?: ApplicationsChanged,
+  onApplicationsSettled?: ApplicationsSettled,
 ): ApplicationsController {
   const bindings = useMemo<Bindings>(
     () => ({
@@ -272,7 +291,7 @@ export function useGlobalApplications(
     enabled,
     managesPackages: isAdmin,
     bindings,
-    onApplicationsChanged,
+    onApplicationsSettled,
   });
 }
 
@@ -281,7 +300,7 @@ export function useProjectApplications(
   project: ProjectMeta | null,
   enabled: boolean,
   isAdmin: boolean,
-  onApplicationsChanged?: ApplicationsChanged,
+  onApplicationsSettled?: ApplicationsSettled,
 ): ApplicationsController {
   const id = project?.id ?? null;
   const bindings = useMemo<Bindings | null>(
@@ -304,7 +323,7 @@ export function useProjectApplications(
     enabled: enabled && !!id,
     managesPackages: isAdmin,
     bindings,
-    onApplicationsChanged,
+    onApplicationsSettled,
     projectId: id ?? undefined,
   });
 }
