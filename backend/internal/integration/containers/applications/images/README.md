@@ -7,12 +7,13 @@ discoverable from the project root. A running server serves these images plus
 any an administrator has uploaded as a `.zip` — same shape, same validator,
 stored outside the binary. See [Uploaded packages](docs/16-uploaded-packages.md).
 
-**No images ship in this repository yet.** This directory holds only this file
-and `docs/`: the apps themselves — MySQL, PostgreSQL, Redis, s3disk — live in
-their own repositories and reach a server as uploaded packages, so the catalog
-format can change here without a database image riding along in the same
-review. Everything below is the format they are written against, and dropping
-a directory in here is still all it takes to build one in.
+**One image ships here: [`hello-remote/`](hello-remote/)**, the worked example
+— a Go plugin and the browser UI that calls it, installing nothing in any
+container. Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
+repositories and reach a server as uploaded packages, so the catalog format can
+change here without a database image riding along in the same review.
+Everything below is the format they are all written against, and dropping a
+directory in here is still all it takes to build one in.
 
 An image is one directory. It can install software into a container, contribute
 to the Remote interface from the browser, add a Go backend that runs on the
@@ -119,17 +120,18 @@ child of the server process, with the server's privileges, and is handed the
 install's secrets. It deserves the same review as any change under
 `backend/internal/`. See [Security model](docs/13-security-model.md#backend-plugins).
 
-## Fixtures
+## The example app
 
-Three images exist to exercise this surface, and install anywhere because none
-of them needs a container:
+[`hello-remote/`](hello-remote/) is the one image this repository ships, and it
+is here to be installed: it is `type: "backend"`, so it needs no LXD, no port
+and no proxy device, and it works on a laptop. Installing it exercises the
+catalog, the install dialog's `env[]` field, both extension slots it draws in,
+and a real plugin process — so if it works, the feature works.
 
-- **`ui-playground`** — contributes to every slot with every mechanism, and
-  ships an in-app API self-test.
-- **`ui-sandbox`** — a second extension sharing those slots, which explains why
-  it is visible where it is.
-- **`backend-playground`** — a Go plugin exercising every part of the backend
-  contract, with a console that calls each route and its own self-test.
+Install it globally *and* in a project to watch one image run as two processes
+with two counters. Its [README](hello-remote/README.md) says what to look at
+and why.
 
-Install them at different scopes to see the whole feature in one pass. See
-[Fixtures](docs/10-fixtures.md).
+The larger developer fixtures described in [Fixtures](docs/10-fixtures.md) —
+`ui-playground`, `ui-sandbox`, `backend-playground` — are not in this
+repository.

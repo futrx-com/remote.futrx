@@ -1,0 +1,64 @@
+/*
+ * Styles for the panel this image contributes. Extension CSS is served from the
+ * catalog rather than built with the SPA, so Tailwind classes do not exist
+ * here — the platform's CSS custom properties do, and they flip with the
+ * light/dark theme, so styling with them themes for free.
+ */
+
+.hello-remote {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(var(--bg-surface-rgb));
+  padding: 12px 14px;
+}
+
+.hello-remote__title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(var(--fg-bright));
+}
+
+.hello-remote__message,
+.hello-remote__reply {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgb(var(--fg));
+}
+
+.hello-remote__note {
+  margin: 0;
+  font-size: 11px;
+  color: rgb(var(--fg-muted));
+}
+
+.hello-remote__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hello-remote__button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(var(--accent-blue) / 0.14);
+  color: rgb(var(--fg-bright));
+  font-size: 11.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.hello-remote__button:hover:not(:disabled) {
+  background: rgb(var(--accent-blue) / 0.22);
+}
+
+.hello-remote__button:disabled {
+  color: rgb(var(--fg-faint));
+  cursor: default;
+}
+
+.hello-remote__count {
+  font-size: 11.5px;
+  color: rgb(var(--fg-subtle));
+}

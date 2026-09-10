@@ -1,5 +1,12 @@
 # 10 — Fixtures
 
+> **These fixture images are not in this repository.** What ships here is one
+> worked example, [`hello-remote`](../hello-remote/README.md), which covers the
+> same ground more briefly: a slot contribution, a view, a plugin process, and
+> per-instance storage. The fixtures below are described as the fuller surface
+> a developer working on the extension API itself would want, and the document
+> stands as the specification for them.
+
 Three images exist purely to exercise the extension surface. None of them
 needs LXD or creates a container, so you can run the whole extension system on
 a laptop.

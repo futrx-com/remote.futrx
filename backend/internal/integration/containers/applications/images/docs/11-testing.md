@@ -173,6 +173,6 @@ cd backend  && gofmt -l ./internal ./cmd && go vet ./... && go test ./...
 cd frontend && npm run build && npm test
 ```
 
-Then, if you touched the extension surface, install `ui-playground` and run its
-self-test; if you touched the plugin contract, install `backend-playground` and
-run its backend self-test.
+Then, if you touched the extension surface or the plugin contract, install
+[`hello-remote`](../hello-remote/README.md) at both scopes and confirm its
+panel still greets you and still counts across a server restart.

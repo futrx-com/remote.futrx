@@ -1,0 +1,17 @@
+<!--
+  Panel rendered under the applications list. Loaded by scripts/main.js through
+  remote.views.load("panel"); every .html directly under views/ is discoverable
+  by its filename, so nothing has to be declared in image.json.
+-->
+<section class="hello-remote">
+  <h4 class="hello-remote__title">Hello Remote</h4>
+  <p class="hello-remote__message" data-hello-message>Calling the plugin…</p>
+  <div class="hello-remote__row">
+    <button class="hello-remote__button" type="button" data-hello-greet>
+      Greet again
+    </button>
+    <span class="hello-remote__count">
+      greetings served: <strong data-hello-count>0</strong>
+    </span>
+  </div>
+</section>
