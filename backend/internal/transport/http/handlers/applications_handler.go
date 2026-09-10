@@ -399,7 +399,12 @@ func sendAppError(w http.ResponseWriter, err error) {
 		errors.Is(err, serviceapplications.ErrPackageInUse),
 		errors.Is(err, serviceapplications.ErrPackageReserved):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
-	case errors.Is(err, serviceapplications.ErrPackageInvalid):
+	case errors.Is(err, serviceapplications.ErrNotSupported),
+		errors.Is(err, serviceapplications.ErrPackageInvalid):
+		// The request is well formed and the caller is allowed to make it; the
+		// image simply has nothing to apply it to — setting a port on an app
+		// that binds none, say. That is the caller's mistake to see, not a
+		// server fault.
 		httptransport.SendErr(w, http.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, serviceapplications.ErrPackagesUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
