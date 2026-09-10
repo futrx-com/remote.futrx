@@ -28,6 +28,17 @@ const (
 	execTimeout    = 8 * time.Minute
 	controlTimeout = 30 * time.Second
 	launchTimeout  = 90 * time.Second
+
+	// healthTimeout bounds one run of an image's readiness probe, and healthWait
+	// bounds how long the probe is retried before the install is called failed.
+	// The install script is expected to wait for its own service, so this is the
+	// margin around it rather than the wait itself.
+	healthTimeout = 15 * time.Second
+	healthWait    = 60 * time.Second
+
+	// internalPortPlaceholder is what an image writes in its healthcheck
+	// command to mean "the port this instance listens on inside its container".
+	internalPortPlaceholder = "{{internalPort}}"
 )
 
 // Installer realizes svc.Installer against the LXD CLI. It owns everything
@@ -53,19 +64,16 @@ var _ svc.Installer = (*Installer)(nil)
 // Install (re)runs the image's install script inside the target container and
 // (re)creates the proxy device that exposes it on the host.
 func (in *Installer) Install(ctx context.Context, spec svc.InstallSpec) error {
-	if len(spec.Image.HostTools) > 0 {
-		if in.hostTools == nil {
-			return fmt.Errorf("host tool installer unavailable")
-		}
-		if err := in.hostTools.Ensure(ctx, spec.Image.HostTools); err != nil {
-			return fmt.Errorf("install host dependencies: %w", err)
-		}
+	if err := in.ensureHostTools(ctx, spec); err != nil {
+		return err
 	}
-
 	if err := in.ensureContainer(ctx, spec); err != nil {
 		return err
 	}
 	if err := in.runInstallScript(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.awaitHealthy(ctx, spec); err != nil {
 		return err
 	}
 	if err := in.publishSkills(ctx, spec); err != nil {
@@ -74,10 +82,95 @@ func (in *Installer) Install(ctx context.Context, spec svc.InstallSpec) error {
 	return in.ensureProxy(ctx, spec.Instance)
 }
 
-// Start brings a previously-installed app back up: it re-runs the (idempotent)
-// install script so the current port takes effect, and re-adds the proxy.
+// Start brings a previously-installed app back up. It repairs everything an
+// install put outside the container's own filesystem — the host tools it
+// depends on, the skills it publishes into the workspace, the proxy device that
+// exposes it — and starts its service.
+//
+// It deliberately does not re-run the install script. That script provisions
+// the app: on an Ubuntu container it is an apt-get, and paying for one every
+// time an app is switched on turns a start into a minutes-long operation that
+// can also fail for reasons that have nothing to do with starting. Bringing an
+// out-of-date instance up to its image's version is a separate decision the
+// service already makes, and it routes that case to Install.
 func (in *Installer) Start(ctx context.Context, spec svc.InstallSpec) error {
-	return in.Install(ctx, spec)
+	if err := in.ensureHostTools(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.ensureContainer(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.publishSkills(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.startService(ctx, spec); err != nil {
+		return err
+	}
+	if err := in.awaitHealthy(ctx, spec); err != nil {
+		return err
+	}
+	return in.ensureProxy(ctx, spec.Instance)
+}
+
+// ensureHostTools installs what the image needs on the Remote host itself. It
+// runs before anything touches the container: a guest install script that calls
+// a host tool must not run until that tool is there.
+func (in *Installer) ensureHostTools(ctx context.Context, spec svc.InstallSpec) error {
+	if len(spec.Image.HostTools) == 0 {
+		return nil
+	}
+	if in.hostTools == nil {
+		return fmt.Errorf("host tool installer unavailable")
+	}
+	if err := in.hostTools.Ensure(ctx, spec.Image.HostTools); err != nil {
+		return fmt.Errorf("install host dependencies: %w", err)
+	}
+	return nil
+}
+
+// startService starts the image's systemd unit. A global app's own container
+// was just started and brings its enabled units up with it; a project app
+// shares a container that stays up, so its unit is exactly what Stop stopped.
+// Either way systemctl start on a running unit is a no-op.
+func (in *Installer) startService(ctx context.Context, spec svc.InstallSpec) error {
+	name := spec.Image.Service
+	if name == "" {
+		return nil
+	}
+	out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "start", name)
+	if err != nil {
+		return fmt.Errorf("start %s in %s: %w; output: %s", name, spec.Instance.ContainerName, err, tail(out))
+	}
+	return nil
+}
+
+// awaitHealthy runs the image's readiness probe inside the container until it
+// passes. An image that declares none is ready as soon as its install script
+// returns, which is the common case; one that does is saying that its service
+// keeps starting after the script exits, and reporting an app as running before
+// its own probe agrees would hand the user a port that answers nothing.
+func (in *Installer) awaitHealthy(ctx context.Context, spec svc.InstallSpec) error {
+	command := strings.TrimSpace(spec.Image.Healthcheck.Command)
+	if command == "" {
+		return nil
+	}
+	command = strings.ReplaceAll(command, internalPortPlaceholder, strconv.Itoa(spec.Instance.InternalPort))
+	deadline := time.Now().Add(healthWait)
+	for {
+		out, err := in.exec(ctx, spec.Instance.ContainerName, in.scriptEnv(spec), healthTimeout, "sh", "-c", command)
+		if err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("%s did not become ready within %s: %w; output: %s",
+				spec.Image.ID, healthWait, err, tail(out))
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
 }
 
 // Stop stops the app and releases its host port. Global apps stop their whole
@@ -201,16 +294,24 @@ func (in *Installer) runInstallScript(ctx context.Context, spec svc.InstallSpec)
 	if !ok {
 		return fmt.Errorf("no install script for image %q", spec.Image.ID)
 	}
-	env := map[string]string{"APP_INTERNAL_PORT": strconv.Itoa(spec.Instance.InternalPort)}
-	for k, v := range spec.Instance.Env {
-		env[k] = v
-	}
-	out, err := in.execStdin(ctx, spec.Instance.ContainerName, env, execTimeout,
+	out, err := in.execStdin(ctx, spec.Instance.ContainerName, in.scriptEnv(spec), execTimeout,
 		strings.NewReader(string(script)), "bash", "-s")
 	if err != nil {
 		return fmt.Errorf("install %s: %w; output: %s", spec.Image.ID, err, tail(out))
 	}
 	return nil
+}
+
+// scriptEnv is the environment an image's own commands run in: its resolved
+// install-time variables, plus the internal port the instance was given. The
+// healthcheck gets the same one as the install script, since a probe that has
+// to authenticate needs the password that script generated.
+func (in *Installer) scriptEnv(spec svc.InstallSpec) map[string]string {
+	env := map[string]string{"APP_INTERNAL_PORT": strconv.Itoa(spec.Instance.InternalPort)}
+	for k, v := range spec.Instance.Env {
+		env[k] = v
+	}
+	return env
 }
 
 // ensureProxy (re)creates the host proxy device for an instance. It removes any

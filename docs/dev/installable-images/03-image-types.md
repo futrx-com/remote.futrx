@@ -63,12 +63,20 @@ The scope split carries through the whole lifecycle, not just install:
 | Action | Global scope | Project scope |
 |---|---|---|
 | Install | launch the dedicated container, run the script, add the proxy | run the script in the project container, add the proxy |
-| Start | same as install (the script is idempotent) | same as install |
+| Start | start the container, `systemctl start <service>`, re-add the proxy | `systemctl start <service>`, re-add the proxy |
 | Stop | remove the proxy, `lxc stop --force` the container | remove the proxy, `systemctl stop <service>` only |
 | Uninstall | `lxc delete --force` the container | remove the proxy, `systemctl disable --now <service>`; packages and data stay |
 
 Stopping a project app must never stop the container someone is working in, and
 uninstalling one must never delete their project. Both are pinned by tests.
+
+Start is not an install. It repairs what the app needs outside its container's
+filesystem — its host tools, its skills, its proxy device — and starts its
+service, but it does not re-run the install script: provisioning an app is
+minutes of `apt-get` that switching it on has no reason to pay for. The one
+exception is a copy whose image has moved on, which the service routes to
+Install instead; see
+[17 — Versions and upgrades](17-versions-and-upgrades.md).
 
 ### Reaching a service
 
@@ -112,7 +120,7 @@ Identical to a project-scope service, minus the proxy device:
 | Action | Effect |
 |---|---|
 | Install | Run the install script in the project's container. No port is allocated. |
-| Start | Re-run the script, which is idempotent — the same path as install. |
+| Start | `systemctl start <service>`. The install script is not re-run. |
 | Stop | `systemctl stop <service>`. The project container keeps running. |
 | Uninstall | `systemctl disable --now <service>`. Installed packages and data stay. |
 | Set port | Rejected with `ErrNotSupported` — there is no port. |

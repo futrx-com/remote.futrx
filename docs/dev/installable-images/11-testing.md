@@ -146,8 +146,8 @@ Install scripts only run against a real container, so they need a host with
 working LXD. Nothing in CI executes them.
 
 The loop: install at project scope → read the error and script output on the
-installed row if it fails → fix → hit **Start**, which re-runs the script and
-therefore also proves idempotency. See
+installed row if it fails → fix → hit **Retry**, which installs again and
+therefore also proves idempotency. (**Start** does not re-run the script.) See
 [04 — Install scripts](04-install-scripts.md).
 
 ## What is not covered by tests

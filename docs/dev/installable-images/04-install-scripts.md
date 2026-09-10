@@ -185,8 +185,14 @@ container. `{{internalPort}}` is substituted:
 "healthcheck": { "command": "mysqladmin ping -h 127.0.0.1 -P {{internalPort}} --silent" }
 ```
 
+It runs after the install script on an install, and after the service is started
+on a start, with the same environment the install script gets. It is retried
+every two seconds for up to a minute; an app whose probe never passes is
+reported as failed rather than as running.
+
 It is a separate, cheap check — the install script should still wait for its
-own service to come up before exiting, as in the skeleton above.
+own service to come up before exiting, as in the skeleton above. The probe is
+the margin around that wait, not a replacement for it.
 
 ## Testing a script
 
@@ -200,8 +206,9 @@ The fastest loop:
    container is running.
 2. On failure, the error and the tail of the script output appear on the
    installed row.
-3. `lxc exec <container> -- bash` to inspect state, then hit **Start** to re-run
-   the script — which also proves idempotency.
+3. `lxc exec <container> -- bash` to inspect state, then hit **Retry** on the
+   failed row to install again — which also proves idempotency. **Start** does
+   not re-run the script.
 
 ## What not to put in an install script
 

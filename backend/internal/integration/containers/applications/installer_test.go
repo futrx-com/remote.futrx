@@ -315,3 +315,65 @@ func TestUninstallGlobalScopeDeletesTheDedicatedContainer(t *testing.T) {
 			strings.Join(runner.commands(), "\n"))
 	}
 }
+
+// Starting an app is not installing it again. The install script provisions
+// software — on Ubuntu that is an apt-get — and paying for it every time
+// someone switches an app on makes a start take minutes and gives it a whole
+// class of failures that have nothing to do with starting.
+func TestStartStartsTheServiceWithoutReRunningTheInstallScript(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	installer := testInstaller(t, runner)
+
+	if err := installer.Start(context.Background(), serviceSpec(svc.ScopeProject, "my-project")); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	if runner.contains("bash -s") {
+		t.Errorf("start re-ran the install script:\n%s", strings.Join(runner.commands(), "\n"))
+	}
+	if !runner.contains("systemctl start fixture") {
+		t.Errorf("start did not start the image's service:\n%s", strings.Join(runner.commands(), "\n"))
+	}
+	// The proxy is still re-added: the host port is what the user reaches, and
+	// stopping released it.
+	if !runner.hasPrefix("config device add my-project app-abc123 proxy") {
+		t.Errorf("start did not re-add the proxy device:\n%s", strings.Join(runner.commands(), "\n"))
+	}
+}
+
+// A declared healthcheck is a promise the platform keeps: the app is reported
+// running only once its own probe says it is ready. The internal port is
+// substituted, so an image writes the probe without knowing which port its
+// instance was given.
+func TestInstallRunsTheDeclaredHealthcheck(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	installer := testInstaller(t, runner)
+	spec := serviceSpec(svc.ScopeProject, "my-project")
+	spec.Image.Healthcheck.Command = "fixture-ping -P {{internalPort}}"
+
+	if err := installer.Install(context.Background(), spec); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	if !runner.contains("fixture-ping -P 3306") {
+		t.Errorf("the healthcheck did not run with the instance's port:\n%s",
+			strings.Join(runner.commands(), "\n"))
+	}
+}
+
+// An image that declares no probe must not be probed: "ready" for it is the
+// install script returning, and inventing a check would be inventing a way for
+// a healthy install to fail.
+func TestInstallSkipsTheHealthcheckWhenNoneIsDeclared(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	installer := testInstaller(t, runner)
+
+	if err := installer.Install(context.Background(), serviceSpec(svc.ScopeProject, "my-project")); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	if runner.contains("sh -c") {
+		t.Errorf("probed an image that declares no healthcheck:\n%s",
+			strings.Join(runner.commands(), "\n"))
+	}
+}
