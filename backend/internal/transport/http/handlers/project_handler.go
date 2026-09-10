@@ -33,22 +33,15 @@ type ProjectHandler struct {
 	codeHostPattern    *regexp.Regexp
 }
 
+// NewProjectHandler builds the handler. apps may be nil, which leaves the
+// per-project application routes reporting the feature unavailable.
 func NewProjectHandler(
 	projects *serviceproject.Service,
 	users *serviceuser.Service,
 	auth *serviceauth.Service,
-	args ...any,
+	publicHostname string,
+	apps *ApplicationsHandler,
 ) *ProjectHandler {
-	var apps *ApplicationsHandler
-	var publicHostname string
-	for _, arg := range args {
-		switch value := arg.(type) {
-		case string:
-			publicHostname = value
-		case *ApplicationsHandler:
-			apps = value
-		}
-	}
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
 	escapedHostname := regexp.QuoteMeta(publicHostname)
 	return &ProjectHandler{
