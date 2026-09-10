@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/listeners"
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
 
@@ -54,25 +54,13 @@ func hostListeningPorts(ctx context.Context) map[int]bool {
 		fields := strings.Fields(line)
 		// ss columns: Netid State Recv-Q Send-Q Local-Address:Port Peer... ;
 		// the local address is the 5th field for -t, 4th for some layouts —
-		// scan every field for a host:port token instead of guessing.
+		// scan every field for a host:port token instead of guessing. The
+		// listener scanner already knows how that token is written.
 		for _, f := range fields {
-			if p, ok := portFromAddr(f); ok {
+			if _, p, ok := listeners.SplitListenerAddr(f); ok {
 				out[p] = true
 			}
 		}
 	}
 	return out
-}
-
-// portFromAddr extracts the port from a "host:port" or "*:port" token.
-func portFromAddr(tok string) (int, bool) {
-	i := strings.LastIndex(tok, ":")
-	if i < 0 || i == len(tok)-1 {
-		return 0, false
-	}
-	p, err := strconv.Atoi(tok[i+1:])
-	if err != nil || p <= 0 || p > 65535 {
-		return 0, false
-	}
-	return p, true
 }
