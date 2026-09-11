@@ -1,0 +1,21 @@
+{
+  "id": "hello-remote",
+  "name": "Hello Remote",
+  "description": "Example app: a Go plugin on the server, and a panel in the browser that calls it.",
+  "category": "development",
+  "version": "1",
+  "icon": "ui/assets/logo.svg",
+  "type": "backend",
+  "scopes": ["global", "project"],
+  "env": [
+    {
+      "key": "HELLO_GREETING",
+      "label": "Greeting",
+      "default": "Hello"
+    }
+  ],
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 10000
+  }
+}

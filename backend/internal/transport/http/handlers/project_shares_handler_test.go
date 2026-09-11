@@ -111,7 +111,7 @@ func TestProjectSharesReportUnavailableWithoutStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewProjectHandler(projects, nil, nil, sharesPublicHostname)
+	handler := NewProjectHandler(projects, nil, nil, sharesPublicHostname, nil)
 
 	sharesRequest(
 		t, handler, http.MethodGet,
@@ -180,7 +180,7 @@ func newSharesProjectHandler(t *testing.T) (*ProjectHandler, serviceproject.Meta
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewProjectHandler(projects, nil, nil, sharesPublicHostname).
+	handler := NewProjectHandler(projects, nil, nil, sharesPublicHostname, nil).
 		WithShares(serviceshare.New(shareStore, projects))
 	return handler, project
 }

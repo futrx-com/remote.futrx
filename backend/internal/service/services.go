@@ -12,6 +12,7 @@ import (
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
@@ -81,6 +82,21 @@ type Dependencies struct {
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
 	PromptStartGate   prompt.StartGate
+
+	// Application (installable image) capabilities. When AppStore and
+	// AppRegistry are set the Applications service is enabled.
+	AppStore     serviceapplications.Store
+	AppRegistry  serviceapplications.Registry
+	AppInstaller serviceapplications.Installer
+	AppPorts     serviceapplications.PortAllocator
+	// AppBackends runs the Go plugins images ship in their plugin/ directory.
+	// Leaving it nil keeps every other application capability working and
+	// reports backend calls as unavailable.
+	AppBackends serviceapplications.BackendHost
+	// AppPackages is the writable half of the application catalog: the store
+	// of packages an administrator uploaded. Nil leaves the catalog to whatever
+	// the binary was built with.
+	AppPackages serviceapplications.PackageCatalog
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -130,6 +146,7 @@ type Services struct {
 	Skills            *serviceskills.Catalog
 	Tmux              *servicetmux.Service
 	Access            *serviceauth.AccessVerifier
+	Applications      *serviceapplications.Service
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
@@ -301,6 +318,19 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		tmuxService = servicetmux.NewSessions(deps.TmuxClient)
 	}
 
+	var applicationsService *serviceapplications.Service
+	if deps.AppStore != nil && deps.AppRegistry != nil {
+		applicationsService = serviceapplications.New(
+			deps.AppRegistry,
+			deps.AppStore,
+			deps.AppInstaller,
+			projectContainersAdapter{projects: projectService},
+			deps.AppPorts,
+			serviceapplications.WithBackendHost(deps.AppBackends),
+			serviceapplications.WithPackageCatalog(deps.AppPackages),
+		)
+	}
+
 	pushNotifier.push = pushService
 	pushNotifier.audience.projects = projectService
 	pushNotifier.audience.users = userService
@@ -323,10 +353,30 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Skills:            skillCatalog,
 		Tmux:              tmuxService,
 		Access:            accessVerifier,
+		Applications:      applicationsService,
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
 	}, nil
+}
+
+// projectContainersAdapter lets the applications service resolve and ready a
+// project's container without importing the project service's concrete types.
+type projectContainersAdapter struct {
+	projects *serviceproject.Service
+}
+
+func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID string) (string, error) {
+	meta, err := a.projects.Get(ctx, serviceproject.ID(projectID))
+	if err != nil {
+		return "", err
+	}
+	return meta.Slug, nil
+}
+
+func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
+	_, err := a.projects.Start(ctx, serviceproject.ID(projectID))
+	return err
 }
 
 // newPush builds the Web Push service. A deployment without a usable VAPID key

@@ -4,6 +4,16 @@ function applicationPath(path: ApplicationPath): ApplicationPath {
   return path;
 }
 
+/**
+ * Encodes a plugin route for a URL while leaving its separators alone, so a
+ * plugin sees the path it declared ("kv/greeting") rather than an escaped one.
+ */
+function backendSuffix(path: string): string {
+  const trimmed = path.replace(/^\/+/, "");
+  if (!trimmed) return "";
+  return `/${trimmed.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export const API_ROUTES = {
   authSession: "/auth/me",
   googleOAuth: "/api/admin/auth/google",
@@ -88,6 +98,36 @@ export const API_ROUTES = {
     access: (id: string) => `/api/projects/${encodeURIComponent(id)}/access`,
     accessMember: (id: string, email: string) =>
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,
+    applications: (id: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications`,
+    application: (id: string, appId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}`,
+    applicationAction: (id: string, appId: string, action: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/${action}`,
+    applicationBackend: (id: string, appId: string, path = "") =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
+  },
+  applications: {
+    catalog: "/api/applications/catalog",
+    ui: "/api/applications/ui",
+    uiAsset: (imageId: string, assetPath: string) =>
+      `/api/applications/catalog/${encodeURIComponent(imageId)}/ui/${assetPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`,
+    /** Uploaded application packages: the writable half of the catalog. */
+    packages: "/api/applications/packages",
+    package: (packageId: string, uninstallInstalled = false) =>
+      `/api/applications/packages/${encodeURIComponent(packageId)}${
+        uninstallInstalled ? "?uninstall=true" : ""
+      }`,
+    collection: "/api/applications",
+    item: (appId: string) => `/api/applications/${encodeURIComponent(appId)}`,
+    action: (appId: string, action: string) =>
+      `/api/applications/${encodeURIComponent(appId)}/${action}`,
+    /** An instance's Go plugin: the bare prefix describes it, deeper paths call it. */
+    backend: (appId: string, path = "") =>
+      `/api/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
   },
   settings: "/api/me/settings",
   security: {
