@@ -63,7 +63,7 @@ func parseSS(raw string) []serviceproject.ContainerApp {
 		if len(fields) < 4 {
 			continue
 		}
-		host, port, ok := splitListenerAddr(fields[3])
+		host, port, ok := SplitListenerAddr(fields[3])
 		if !ok {
 			continue
 		}
@@ -98,11 +98,16 @@ func parseSS(raw string) []serviceproject.ContainerApp {
 	return out
 }
 
-// splitListenerAddr parses the Local-Address column.
+// SplitListenerAddr parses an `ss` Local-Address column.
 // Accepts "0.0.0.0:3000", "127.0.0.1:53", "127.0.0.53%lo:53", "[::]:22",
 // "[::1]:53", "*:3000". Returns the bare host (no brackets, no %iface)
 // and the integer port.
-func splitListenerAddr(addr string) (string, int, bool) {
+//
+// It is exported because it is the one piece of `ss` output shape anything
+// outside this package needs: the host port allocator reads the same column
+// from the same tool, and a second parser of it would be a second thing to fix
+// when a layout surprises us.
+func SplitListenerAddr(addr string) (string, int, bool) {
 	colon := strings.LastIndex(addr, ":")
 	if colon < 0 {
 		return "", 0, false
@@ -110,7 +115,7 @@ func splitListenerAddr(addr string) (string, int, bool) {
 	host := addr[:colon]
 	portStr := addr[colon+1:]
 	port, err := strconv.Atoi(portStr)
-	if err != nil {
+	if err != nil || port < 1 || port > 65535 {
 		return "", 0, false
 	}
 	host = strings.TrimPrefix(host, "[")

@@ -15,15 +15,18 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/pluginhost"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/tmuxcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
@@ -62,12 +65,27 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
+	appRegistry, err := containerapplications.NewRegistry()
+	if err != nil {
+		log.Fatalf("load application catalog: %v", err)
+	}
+	// Backend plugins are compiled from the catalog's embedded Go source and
+	// run as child processes. Their binaries and per-instance data live beside
+	// the rest of the server's state so an uninstall leaves nothing behind.
+	appBackends := pluginhost.New(
+		filepath.Join(cfg.DataDir, "plugins"),
+		appRegistry,
+		pluginhost.Options{GoTool: cfg.Plugins.GoTool},
+	)
+	defer appBackends.Shutdown()
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
 		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:       appRegistry,
+			DataDir:           cfg.DataDir,
 		},
 	)
 
@@ -129,6 +147,11 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
+		AppStore:        storeSet.Applications,
+		AppRegistry:     appRegistry,
+		AppInstaller:    containerStack.AppInstaller,
+		AppPorts:        containerStack.AppPorts,
+		AppBackends:     appBackends,
 		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {
