@@ -3,6 +3,7 @@ module github.com/futrx-com/remote.futrx.com
 go 1.25.13
 
 require (
+	futrx.local/catalog v0.0.0
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/creack/pty v1.1.24
 	github.com/gorilla/websocket v1.5.3
@@ -26,3 +27,5 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+replace futrx.local/catalog => ../

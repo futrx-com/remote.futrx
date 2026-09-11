@@ -26,17 +26,21 @@ type ProjectHandler struct {
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
 	usage              *UsageHandler
+	apps               *ApplicationsHandler
 	shares             *serviceshare.Service
 	publicHostname     string
 	projectHostPattern *regexp.Regexp
 	codeHostPattern    *regexp.Regexp
 }
 
+// NewProjectHandler builds the handler. apps may be nil, which leaves the
+// per-project application routes reporting the feature unavailable.
 func NewProjectHandler(
 	projects *serviceproject.Service,
 	users *serviceuser.Service,
 	auth *serviceauth.Service,
 	publicHostname string,
+	apps *ApplicationsHandler,
 ) *ProjectHandler {
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
 	escapedHostname := regexp.QuoteMeta(publicHostname)
@@ -44,6 +48,7 @@ func NewProjectHandler(
 		projects:       projects,
 		users:          users,
 		auth:           auth,
+		apps:           apps,
 		publicHostname: publicHostname,
 		projectHostPattern: regexp.MustCompile(
 			`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.` + escapedHostname + `$`,
@@ -213,6 +218,15 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 	}
 	if len(parts) >= 2 && parts[1] == "shares" {
 		h.handleShares(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "applications" {
+		if h.apps == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "applications unavailable")
+			return
+		}
+		h.apps.HandleProject(w, r, string(id), parts)
 		return
 	}
 
