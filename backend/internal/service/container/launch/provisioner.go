@@ -26,6 +26,10 @@ type ScheduleToolsProvisioner interface {
 	Ensure(ctx context.Context, containerName string) error
 }
 
+type UserSetupProvisioner interface {
+	Ensure(ctx context.Context, containerName string) error
+}
+
 // Provisioner applies launch-time capabilities in their stable order. Every
 // step is deliberately best-effort so one unavailable capability cannot block
 // the remaining migrations or the newly launched container.
@@ -35,6 +39,7 @@ type Provisioner struct {
 	browser       BrowserProvisioner
 	codeServer    CodeServerProvisioner
 	scheduleTools ScheduleToolsProvisioner
+	userSetup     UserSetupProvisioner
 }
 
 func NewProvisioner(
@@ -42,6 +47,7 @@ func NewProvisioner(
 	workspace WorkspaceProvisioner,
 	browser BrowserProvisioner,
 	codeServer CodeServerProvisioner,
+	userSetup UserSetupProvisioner,
 	scheduleTools ...ScheduleToolsProvisioner,
 ) *Provisioner {
 	var scheduled ScheduleToolsProvisioner
@@ -54,6 +60,7 @@ func NewProvisioner(
 		browser:       browser,
 		codeServer:    codeServer,
 		scheduleTools: scheduled,
+		userSetup:     userSetup,
 	}
 }
 
@@ -68,4 +75,7 @@ func (p *Provisioner) Provision(ctx context.Context, containerName, displayName 
 		_ = p.scheduleTools.Ensure(ctx, containerName)
 	}
 	_ = p.codeServer.Ensure(ctx, containerName, displayName)
+	// User setup runs last: the platform is fully converged, so project
+	// restores (apt installs, dotfiles, tool configs) land on a ready box.
+	_ = p.userSetup.Ensure(ctx, containerName)
 }

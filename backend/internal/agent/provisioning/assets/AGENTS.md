@@ -53,8 +53,9 @@ runs; do not ask users to add it as a project secret.
 above are host bind-mounts and survive container replacement. Other paths
 (`/usr/local/`, unmounted paths under `/root/`, and packages you apt-install)
 are gone if the container is recreated. If you install a tool the project
-needs again later, append the install line to `/workspace/setup.sh` so a fresh
-container can rebootstrap with `bash /workspace/setup.sh`.
+needs again later, append the install line to `/workspace/setup.sh` — the
+platform replays it automatically (as root) after every reprovision, so keep
+it idempotent. Make the script executable (`chmod +x`) to opt in.
 
 ## Secrets
 
