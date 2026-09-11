@@ -22,6 +22,7 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 | --- | --- |
 | `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, and compiled-in agent modules |
 | `frontend/` | Preact + Vite SPA. The production build is written to `backend/public/` and embedded into the Go binary via `go:embed` |
+| `images/` | Catalog of one-click installable apps, embedded into the backend binary; each directory is an `image.json`, an `install.sh`, and an optional `ui/` extension and `plugin/` Go backend |
 | `infra/` | Installer, updater, systemd/Caddy templates, base-image tooling, and shell test suite |
 | `docs/` | Architecture and subsystem deep-dives — start with `docs/01-overview/01-system-overview.md` |
 
@@ -43,11 +44,50 @@ event-parsing, provisioning, frontend, testing, and release flow. Its
 [adding-an-agent checklist](docs/dev/agents/07-adding-an-agent.md) is the source
 of truth for new integrations.
 
+## Adding an installable app, UI plugin, or backend plugin
+
+Installable apps ("Applications") are data, not code: one directory under
+`images/` at the repository root with an `image.json`, an `install.sh`, and —
+optionally — a `ui/` directory. The catalog is embedded into the binary, so
+adding an app is a directory plus a rebuild; no registration step.
+
+`ui/` is what makes an image a plugin rather than just a service: its
+`scripts/main.js` runs in every signed-in browser and can contribute buttons,
+panels, and popups to defined slots in the SPA. That is the path for a feature
+that needs both something installed in the container and something added to the
+interface — say, an alternative editor with a launcher button.
+
+`plugin/` is the third half, and the one that makes "everything is a plugin"
+achievable: a directory of Go source that the server compiles and runs as a
+child process over [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin),
+reachable from the image's own `ui/` through `remote.backend.call(...)`. An
+image can therefore add a server-side feature — not only a button that calls an
+endpoint someone else had to write.
+
+Both halves are code, and neither is sandboxed:
+
+- Extension code runs on the main origin with the SPA's privileges and reaches
+  the API as the signed-in user, so a `ui/` directory gets the same review as
+  any other frontend change here.
+- Plugin code runs as a child of the server process, with the server's
+  privileges, and is handed the install's secrets, so a `plugin/` directory
+  gets the same review as any change under `backend/internal/`.
+
+Read [`images/README.md`](images/README.md) for the
+`image.json` schema, the install-script contract, the extension API, and the
+slot list. [`images/hello-remote/`](images/hello-remote/)
+is the worked example for both halves — a `ui/` and the `plugin/` it calls —
+and real apps live in their own repositories rather than here. The full plugin
+contract is
+[`docs/dev/installable-images/15-backend-plugins.md`](docs/dev/installable-images/15-backend-plugins.md).
+
 ## Development setup
 
 ### Prerequisites
 
-- **Go** 1.25+ (see `backend/go.mod`)
+- **Go** 1.25+ (see `backend/go.mod`). Also required *at runtime* on any server
+  that installs an image shipping a `plugin/` directory, because plugin source
+  is compiled on the host.
 - **Node.js** 22.14+ (matches CI)
 - **Linux with LXD** — only for running the full stack. Project workspaces are LXD containers, so the complete application only runs on a Linux host with LXD installed. Backend and frontend unit tests, builds, and most development run fine on macOS or any platform without LXD.
 
@@ -55,6 +95,15 @@ of truth for new integrations.
 
 ```bash
 cd backend
+go build ./...
+go test ./...
+```
+
+The image catalog is a second Go module, rooted at the repository root, so
+`./...` in `backend/` does not reach an image's `plugin/` source. Build and test
+it from the repository root:
+
+```bash
 go build ./...
 go test ./...
 ```
