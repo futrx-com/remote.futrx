@@ -5,6 +5,8 @@ import type {
 } from "../../state/hooks/workspace/useWorkspaceSearch";
 import { useDismissKeyDown } from "../../state/hooks/shared/useDismissKeyDown.ts";
 import { useDismissOnOutside } from "../primitives/popover";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import { ActiveFilterChips } from "./ActiveFilterChips";
 import { FilterPanel } from "./FilterPanel";
 import { Search, SlidersHorizontal, X } from "../primitives/icons";
@@ -58,6 +60,7 @@ export function SearchBar({
             dir="auto"
             aria-label="Search chats and projects"
           />
+          <ExtensionSlot name={EXTENSION_SLOTS.sidebarSearchActions} />
           {showClear && (
             <button
               type="button"

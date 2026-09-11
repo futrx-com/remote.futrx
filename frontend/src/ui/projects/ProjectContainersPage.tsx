@@ -1,3 +1,5 @@
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ComponentChildren, ComponentType } from "preact";
 import { useCallback, useState } from "preact/hooks";
 import { projectShareService } from "../../services/projects/projectShareService";
@@ -27,6 +29,8 @@ import type {
   SharesRecord,
 } from "../../models/project";
 import type { UsageSummary } from "../../models/usage";
+import { ApplicationsSection } from "../applications/ApplicationsSection";
+import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
 import {
   ChevronLeft,
   ExternalLink,
@@ -35,12 +39,13 @@ import {
   Loader,
   Menu,
   RotateCcw,
+  Server,
   Settings,
   Users,
 } from "../primitives/icons";
 import { useConfirm } from "../../state/context/ConfirmContext";
 
-export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
+export type ProjectSettingsTab = "info" | "settings" | "secrets" | "applications" | "sharing";
 
 const tabs: Array<{
   id: ProjectSettingsTab;
@@ -65,6 +70,12 @@ const tabs: Array<{
     label: "Secrets",
     description: "Configure environment secrets passed to agents in this project.",
     Icon: Key,
+  },
+  {
+    id: "applications",
+    label: "Applications",
+    description: "Install databases and other services into this project's container.",
+    Icon: Server,
   },
   {
     id: "sharing",
@@ -95,6 +106,7 @@ export function ProjectContainersPage({
   onTabChange,
   onSaveSecret,
   onDeleteSecret,
+  applications,
   onAddMember,
   onRemoveMember,
   onCreateShare,
@@ -125,6 +137,7 @@ export function ProjectContainersPage({
   onTabChange: (tab: ProjectSettingsTab) => void;
   onSaveSecret: (key: string, value: string) => Promise<void>;
   onDeleteSecret: (key: string) => Promise<void>;
+  applications: ApplicationsController;
   onAddMember: (email: string) => Promise<void>;
   onRemoveMember: (email: string) => Promise<void>;
   onCreateShare: (port: number, ttlHours: number, label?: string) => Promise<CreatedProjectShare>;
@@ -254,6 +267,7 @@ export function ProjectContainersPage({
 
                 {activeTab === "settings" && (
                   <div class="space-y-4">
+                    <ExtensionSlot name={EXTENSION_SLOTS.projectSettingsPanel} scope="project" projectId={project.id} />
                     <ProjectResourceLimits
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
@@ -294,6 +308,16 @@ export function ProjectContainersPage({
                       onSave={onSaveSecret}
                       onDelete={onDeleteSecret}
                     />
+                  </ProjectSettingsPanel>
+                )}
+
+                {activeTab === "applications" && (
+                  <ProjectSettingsPanel
+                    title="Applications"
+                    description="Install and manage databases and services in this project's container."
+                    Icon={Server}
+                  >
+                    <ApplicationsSection controller={applications} />
                   </ProjectSettingsPanel>
                 )}
 

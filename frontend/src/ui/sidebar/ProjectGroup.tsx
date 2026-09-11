@@ -3,6 +3,8 @@ import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
 import type { DropPosition } from "../../models/workspace";
 import { ChevronDown, ChevronRight, Loader, Plus, Settings } from "../primitives/icons";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import { ChatRow } from "./ChatRow";
 
 const projectActionClass =
@@ -123,6 +125,11 @@ export function ProjectGroup({
 
         {/* Project-level actions stay out of the way until the header is touched. */}
         <div class="flex flex-none items-center gap-0.5 md:opacity-0 md:transition-opacity md:group-hover/head:opacity-100 md:group-focus-within/head:opacity-100">
+          <ExtensionSlot
+            name={EXTENSION_SLOTS.projectRowActions}
+            projectId={project.id}
+            projectName={project.name}
+          />
           <button
             type="button"
             onClick={(event) => {

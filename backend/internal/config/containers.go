@@ -3,6 +3,7 @@ package config
 import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	containerbaseimage "github.com/futrx-com/remote.futrx.com/internal/integration/containers/baseimage"
 	containerbrowser "github.com/futrx-com/remote.futrx.com/internal/integration/containers/browser"
@@ -48,6 +49,8 @@ type ContainerStack struct {
 	Workspace     *containerworkspace.Provisioner
 	RuntimeAssets *containerruntimeassets.Adapter
 	Images        *serviceimage.Builder
+	AppInstaller  *containerapplications.Installer
+	AppPorts      *containerapplications.HostPortAllocator
 }
 
 // ContainerStackOptions supplies presentation and installation-specific
@@ -55,6 +58,13 @@ type ContainerStack struct {
 type ContainerStackOptions struct {
 	AgentInstructions  []byte
 	ImageBuildProgress serviceimage.ProgressReporter
+	// AppRegistry is the installable-image catalog. When non-nil the stack
+	// builds the application installer/port-allocator over the same lxc runner.
+	AppRegistry *containerapplications.Registry
+	// DataDir is the server's state directory. An image that needs a host-side
+	// executable has it installed beneath this directory, never into the host's
+	// own package set.
+	DataDir string
 }
 
 // ProjectDependencies exposes only the capabilities consumed by project
@@ -151,6 +161,13 @@ func NewContainerStack(
 		Credentials:   inspectionAdapter,
 	})
 
+	var appInstaller *containerapplications.Installer
+	var appPorts *containerapplications.HostPortAllocator
+	if options.AppRegistry != nil {
+		appInstaller = containerapplications.NewInstaller(runner, options.AppRegistry, options.DataDir)
+		appPorts = containerapplications.NewHostPortAllocator()
+	}
+
 	return ContainerStack{
 		Lifecycle:     lifecycle,
 		Inspection:    inspection,
@@ -164,5 +181,7 @@ func NewContainerStack(
 		Workspace:     workspace,
 		RuntimeAssets: runtimeAssets,
 		Images:        images,
+		AppInstaller:  appInstaller,
+		AppPorts:      appPorts,
 	}
 }

@@ -11,6 +11,7 @@ import { FileManagerDrawer } from "../../ui/chat/files/FileManagerDrawer";
 import { ScheduleDrawer } from "../../ui/chat/schedules/ScheduleDrawer";
 import { chatAttachmentService } from "../../services/chat/chatAttachmentService.ts";
 import { useChat } from "../../state/hooks/chat/useChat";
+import { useChatWorkspaceActivity } from "../../state/hooks/chat/useChatWorkspaceActivity";
 import { useChatBrowserController } from "../../state/hooks/chat/useChatBrowserController";
 import { useChatComposerController } from "../../state/hooks/chat/useChatComposerController";
 import { useChatDrawerController } from "../../state/hooks/chat/useChatDrawerController";
@@ -48,6 +49,7 @@ export function ChatContainer({
     loadOlder,
     refreshMeta,
   } = useChat(chat.id);
+  useChatWorkspaceActivity(chat.id, Boolean(chat.projectId));
   const preferences = useChatPreferences({ chat, loadedMeta: meta, refreshMeta });
   const { displayMeta, displayMode, selectedSkills } = preferences;
   const attachmentBasePath = chatAttachmentService.basePath(displayMeta, projects);
@@ -63,6 +65,7 @@ export function ChatContainer({
     rewind,
     refreshMeta,
     attachmentBasePath,
+    projectId: displayMeta.projectId,
   });
   const browser = useChatBrowserController({
     chat: displayMeta,
@@ -95,6 +98,8 @@ export function ChatContainer({
   const { hasRepos } = useWorkspaceGitRepos({ chatId: chat.id, status });
   const workspaceActions = {
     cwd: displayMeta.cwd || "~",
+    chatId: chat.id,
+    projectId: displayMeta.projectId,
     onToggleTerminal: drawers.terminalOpen ? drawers.closeTerminal : drawers.openTerminal,
     onToggleBrowser: browser.browserOpen ? browser.closeBrowserDrawer : drawers.openBrowser,
     onToggleHistory: drawers.historyOpen ? drawers.closeHistory : drawers.openHistory,

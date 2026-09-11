@@ -300,7 +300,10 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
-	unlock := s.runState.lock(id)
+	unlock, lockErr := s.lockProject(ctx, id)
+	if lockErr != nil {
+		return lockErr
+	}
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -330,7 +333,10 @@ func (s *Service) Start(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.runState.lock(id)
+	unlock, lockErr := s.lockProject(ctx, id)
+	if lockErr != nil {
+		return Meta{}, lockErr
+	}
 	defer unlock()
 	return s.startLocked(ctx, id)
 }
@@ -360,6 +366,8 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")
 }
 
+var ErrWorkspaceArchived = errors.New("workspace is archived; open it before upgrading")
+
 var ErrProjectBusy = errors.New("project has an active agent process")
 
 // Upgrade replaces one project container through the same convergence path
@@ -368,7 +376,10 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.runState.lock(id)
+	unlock, lockErr := s.lockProject(ctx, id)
+	if lockErr != nil {
+		return Meta{}, lockErr
+	}
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -427,7 +438,10 @@ func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.runState.lock(id)
+	unlock, lockErr := s.lockProject(ctx, id)
+	if lockErr != nil {
+		return Meta{}, lockErr
+	}
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -450,7 +464,10 @@ func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
-	unlock := s.runState.lock(id)
+	unlock, lockErr := s.lockProject(ctx, id)
+	if lockErr != nil {
+		return Meta{}, lockErr
+	}
 	defer unlock()
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -697,4 +714,9 @@ func statusForContainerState(state ContainerState) Status {
 	default:
 		return StatusUnknown
 	}
+}
+
+// lockProject serializes run-state transitions for one project.
+func (s *Service) lockProject(_ context.Context, id ID) (func(), error) {
+	return s.runState.lock(id), nil
 }
