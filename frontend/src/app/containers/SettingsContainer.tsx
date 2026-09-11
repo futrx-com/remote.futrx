@@ -12,6 +12,7 @@ import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
 import { useUsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { usageApi } from "../../api/usageApi";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
 
 export function SettingsContainer({
   onBack,
@@ -27,6 +28,7 @@ export function SettingsContainer({
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
   const security = useSecuritySettings(activeTab === "security");
+  const applications = useGlobalApplications(activeTab === "applications" && auth.isAdmin);
   const usageDashboard = useUsageDashboard(activeTab === "usage");
   const [usageRebuilding, setUsageRebuilding] = useState(false);
   const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
@@ -84,6 +86,7 @@ export function SettingsContainer({
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
+      applications={applications}
     />
   );
 }
