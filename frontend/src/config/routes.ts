@@ -115,6 +115,12 @@ export const API_ROUTES = {
         .split("/")
         .map(encodeURIComponent)
         .join("/")}`,
+    /** Uploaded application packages: the writable half of the catalog. */
+    packages: "/api/applications/packages",
+    package: (packageId: string, uninstallInstalled = false) =>
+      `/api/applications/packages/${encodeURIComponent(packageId)}${
+        uninstallInstalled ? "?uninstall=true" : ""
+      }`,
     collection: "/api/applications",
     item: (appId: string) => `/api/applications/${encodeURIComponent(appId)}`,
     action: (appId: string, action: string) =>

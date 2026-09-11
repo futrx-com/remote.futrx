@@ -1,4 +1,10 @@
-import type { AppImage, AppInstance } from "../../models/application";
+import type {
+  AppImage,
+  AppInstance,
+  AppPackage,
+  AppScope,
+  AppUpgradeOutcome,
+} from "../../models/application";
 
 export interface CatalogInstallationState {
   installedImageIds: Set<string>;
@@ -97,4 +103,81 @@ export function uninstallConsequence(
     return `“${instance.name}” runs in its own container, which is deleted along with its data. The host port ${instance.bindAddress}:${instance.externalPort} is released.`;
   }
   return `“${instance.name}” is stopped and disabled, and the host port ${instance.bindAddress}:${instance.externalPort} is released. Installed packages and data stay in the project container.`;
+}
+
+/**
+ * Where this app can actually be installed. It is the first thing to say about
+ * a package listed on a page about global applications: a project-only app is
+ * in this catalog but cannot be installed here, and a row that omitted that
+ * would be claiming otherwise by silence.
+ */
+export function packageScopes(pkg: AppPackage, viewing: AppScope): string {
+  const scopes = pkg.scopes ?? [];
+  const global = scopes.includes("global");
+  const project = scopes.includes("project");
+  if (!global && !project) return "Declares no scope, so it cannot be installed.";
+  const here = scopes.includes(viewing);
+  if (global && project) {
+    return here
+      ? "Installs here, and in every other project — it offers both scopes."
+      : "Installs globally, or inside a project.";
+  }
+  if (global) {
+    return viewing === "global"
+      ? "Installs globally only — from this page."
+      : "Installs globally only — not in a project. Use Settings → Applications.";
+  }
+  return viewing === "project"
+    ? "Installs inside a project — including this one, from the list below."
+    : "Installs inside a project only — from that project's Containers → Applications.";
+}
+
+/**
+ * Where to go next after an upload that installed nothing yet. Saying "install
+ * it below" for a project-only app would point at a grid that deliberately
+ * does not list it.
+ */
+export function whereToInstall(pkg: AppPackage, viewing: AppScope): string {
+  const scopes = pkg.scopes ?? [];
+  // An app declaring nothing installs nowhere, so it is answered before either
+  // "somewhere else" branch — otherwise it would be sent to a page that cannot
+  // install it either.
+  if (scopes.length === 0) return "It declares no scope, so nothing can install it.";
+  if (scopes.includes(viewing)) return "Install it below.";
+  return viewing === "project"
+    ? "It installs globally only — open Settings → Applications."
+    : "It installs inside a project — open that project's Containers → Applications.";
+}
+
+/** Where this package is installed right now, in the operator's words. */
+export function describeInstalls(pkg: AppPackage): string {
+  const installs = pkg.installs ?? [];
+  const where = installs.map((install) =>
+    install.scope === "project" ? `project ${install.projectId}` : "globally",
+  );
+  return `Installed ${where.join(", ")}.`;
+}
+
+/** One upgraded copy, named the way the operator would look for it. */
+export function describeOutcome(outcome: AppUpgradeOutcome): string {
+  return outcome.scope === "project"
+    ? `${outcome.name} in project ${outcome.projectId}`
+    : outcome.name;
+}
+
+/** Enough provenance to tell two uploads of the same app apart. */
+export function packageSummary(pkg: AppPackage): string {
+  const parts: string[] = [];
+  if (pkg.uploadedAt) {
+    parts.push(`uploaded ${new Date(pkg.uploadedAt * 1000).toLocaleString()}`);
+  }
+  if (pkg.uploadedBy) parts.push(`by ${pkg.uploadedBy}`);
+  if (pkg.size) parts.push(formatBytes(pkg.size));
+  return parts.join(" · ");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

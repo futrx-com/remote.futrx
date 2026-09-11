@@ -3,6 +3,7 @@ import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
 import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { AlertCircle } from "../primitives/icons";
+import { ApplicationPackages } from "./ApplicationPackages";
 import { CatalogGrid } from "./ApplicationCatalog";
 import { InstalledList } from "./InstalledApplications";
 import { catalogInstallationState } from "./applicationPresentation";
@@ -38,6 +39,12 @@ export function ApplicationsSection({
       )}
 
       <InstalledList controller={controller} />
+
+      {/* Uploading extends the server-wide catalog, so it sits above the grid
+          it feeds rather than inside it. It is shown wherever an admin manages
+          applications — Settings and every project — because the catalog they
+          are looking at is the same one either way. */}
+      {controller.managesPackages && <ApplicationPackages controller={controller} />}
 
       <div class="space-y-2.5">
         <h3 class="text-[13px] font-medium text-ink-100">Available applications</h3>

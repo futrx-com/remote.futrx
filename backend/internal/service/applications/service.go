@@ -17,6 +17,19 @@ var (
 	ErrPortRange        = errors.New("applications: external port out of range")
 	ErrAlreadyInstalled = errors.New("applications: this image is already installed in this scope")
 	ErrNotSupported     = errors.New("applications: not supported for this image type")
+
+	// Uploaded-package errors.
+	ErrPackagesUnavailable = errors.New("applications: uploaded packages are not available on this server")
+	ErrPackageInvalid      = errors.New("applications: invalid application package")
+	ErrPackageReserved     = errors.New("applications: an application with this id is built into this server")
+	// ErrPackageSuperseded is the same rule seen from the other side: not an
+	// upload refused, but files already stored when a later release built that
+	// application into the binary. The server serves the built-in one and the
+	// upload is inert, which is a thing to clean up rather than a failure.
+	ErrPackageSuperseded = errors.New(
+		"applications: this application is now built into the server, so the uploaded copy is unused and can be removed")
+	ErrPackageNotFound = errors.New("applications: package not found")
+	ErrPackageInUse    = errors.New("applications: uninstall this application everywhere before removing its package")
 )
 
 // Clock returns the current unix time; injectable for tests.
@@ -30,6 +43,7 @@ type Service struct {
 	projects  ProjectContainers
 	ports     PortAllocator
 	backends  BackendHost
+	packages  PackageCatalog
 	now       Clock
 }
 
@@ -45,6 +59,18 @@ func WithBackendHost(host BackendHost) Option {
 	return func(s *Service) {
 		if host != nil {
 			s.backends = host
+		}
+	}
+}
+
+// WithPackageCatalog enables uploading application packages. Without it the
+// catalog is exactly what the binary was built with, and the package routes
+// report the feature unavailable — which is the right answer for a server
+// whose state directory is not writable.
+func WithPackageCatalog(packages PackageCatalog) Option {
+	return func(s *Service) {
+		if packages != nil {
+			s.packages = packages
 		}
 	}
 }

@@ -65,7 +65,20 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
-	appRegistry, err := containerapplications.NewRegistry()
+	// Uploaded application packages live in the server's state directory, not
+	// in the binary and not in the checkout. That is what makes them survive an
+	// update: updating replaces the program and its built-in catalog, and never
+	// touches this directory or the instances installed from it.
+	appPackages, err := containerapplications.NewPackageStore(
+		filepath.Join(cfg.DataDir, "app-packages"),
+	)
+	if err != nil {
+		log.Fatalf("open uploaded application packages: %v", err)
+	}
+	appRegistry, err := containerapplications.NewRegistryWithPackages(
+		containerapplications.EmbeddedCatalog(),
+		appPackages,
+	)
 	if err != nil {
 		log.Fatalf("load application catalog: %v", err)
 	}
@@ -152,6 +165,7 @@ func main() {
 		AppInstaller:    containerStack.AppInstaller,
 		AppPorts:        containerStack.AppPorts,
 		AppBackends:     appBackends,
+		AppPackages:     appRegistry,
 		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {

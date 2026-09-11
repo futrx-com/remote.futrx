@@ -86,6 +86,14 @@ func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// /api/applications/packages[/<id>] manages uploaded application packages.
+	// It is checked before the instance parser below so "packages" can never be
+	// read as an instance id.
+	if rest == "packages" || strings.HasPrefix(rest, "packages/") {
+		h.handlePackages(w, r, rest)
+		return
+	}
+
 	// /api/applications/catalog/<imageID>/ui/<path> serves the browser-side
 	// extension an image ships. Same audience as the catalog it belongs to.
 	if strings.HasPrefix(rest, "catalog/") {
@@ -142,10 +150,6 @@ func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Requ
 	}
 	// Global instances only: reject ids that belong to a project.
 	if !h.ensureGlobal(w, r, id) {
-		return
-	}
-	if path, ok := isBackendPath(action); ok {
-		h.serveBackend(w, r, id, path)
 		return
 	}
 	h.instanceAction(w, r, id, action)
@@ -386,17 +390,24 @@ func sendAppError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrNoBackend):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, serviceapplications.ErrPackageNotFound):
+		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrBackendAccess):
 		httptransport.SendErr(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, serviceapplications.ErrAlreadyInstalled),
-		errors.Is(err, serviceapplications.ErrNotRunning):
+		errors.Is(err, serviceapplications.ErrNotRunning),
+		errors.Is(err, serviceapplications.ErrPackageInUse),
+		errors.Is(err, serviceapplications.ErrPackageReserved):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
-	case errors.Is(err, serviceapplications.ErrNotSupported):
+	case errors.Is(err, serviceapplications.ErrNotSupported),
+		errors.Is(err, serviceapplications.ErrPackageInvalid):
 		// The request is well formed and the caller is allowed to make it; the
 		// image simply has nothing to apply it to — setting a port on an app
 		// that binds none, say. That is the caller's mistake to see, not a
 		// server fault.
 		httptransport.SendErr(w, http.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, serviceapplications.ErrPackagesUnavailable):
+		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnknownImage),
 		errors.Is(err, serviceapplications.ErrScope),
 		errors.Is(err, serviceapplications.ErrProjectneeded),

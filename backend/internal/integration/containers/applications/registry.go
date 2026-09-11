@@ -30,9 +30,16 @@ type Registry struct {
 	// base is the catalog compiled into the binary. It always loads, and a
 	// failure to load it is a build error rather than an operational one.
 	base fs.FS
+	// packages holds uploaded packages, or nil on a server that does not
+	// accept uploads.
+	packages *PackageStore
 
 	mu   sync.RWMutex
 	view catalogView
+	// packageErrors records, per package id, why a stored package is not in
+	// the catalog. It is reported rather than logged and forgotten, because
+	// the files are still on disk and only an operator can act on them.
+	packageErrors map[string]string
 }
 
 // catalogView is one immutable snapshot of a loaded catalog. Swapping the
@@ -76,25 +83,71 @@ func NewRegistry() (*Registry, error) { return NewRegistryFromFS(catalog.FS) }
 // anything else — a test fixture, a catalog assembled from uploaded packages —
 // goes through exactly the same validation.
 func NewRegistryFromFS(catalog fs.FS) (*Registry, error) {
-	r := &Registry{base: catalog}
+	return NewRegistryWithPackages(catalog, nil)
+}
+
+// NewRegistryWithPackages loads the built-in catalog and, when packages is
+// non-nil, every uploaded package stored beside it.
+//
+// The two halves are held to different standards on purpose. A built-in image
+// that does not load is a broken build and fails startup. An uploaded package
+// that does not load is one administrator's file, possibly written against a
+// different version of Remote: it is skipped with its reason recorded, because
+// refusing to boot the whole server over it would turn one bad upload into an
+// outage.
+func NewRegistryWithPackages(catalog fs.FS, packages *PackageStore) (*Registry, error) {
+	r := &Registry{base: catalog, packages: packages}
 	if err := r.Reload(); err != nil {
 		return nil, err
 	}
 	return r, nil
 }
 
-// Reload rebuilds the catalog from the built-in images. It returns an error
-// when the catalog is unloadable, which on a built-in catalog is a broken
-// build rather than an operational problem.
+// Reload rebuilds the catalog from the built-in images and the package store.
+// It returns an error only when the built-in catalog itself is unloadable;
+// per-package failures are recorded and reported through Packages.
 func (r *Registry) Reload() error {
 	view := newCatalogView()
 	if _, err := loadCatalogInto(&view, r.base, svc.SourceBuiltin, nil); err != nil {
 		return err
 	}
+	failures := map[string]string{}
+	if r.packages != nil {
+		builtin := make(map[string]bool, len(view.byID))
+		for id := range view.byID {
+			builtin[id] = true
+		}
+		// A package may not shadow a built-in image. Letting it would mean an
+		// upload could redefine what "mysql" installs on a server, which is a
+		// far larger claim than "add an application".
+		//
+		// Reaching here means the files were stored before that id was built
+		// in — an upload cannot get past the check made when it is written —
+		// so what the operator needs told is what became of their package, not
+		// that something was refused.
+		reserve := func(id string) error {
+			if builtin[id] {
+				return errPackageSuperseded(id)
+			}
+			return nil
+		}
+		skipped, err := loadCatalogInto(&view, r.packages.FS(), svc.SourceUploaded, reserve)
+		if err != nil {
+			// loadCatalogInto only returns an error here if the packages
+			// directory itself is unreadable, which is a store problem rather
+			// than a package problem.
+			failures[""] = err.Error()
+		} else {
+			for id, reason := range skipped {
+				failures[id] = reason
+			}
+		}
+	}
 	sortCatalog(&view)
 
 	r.mu.Lock()
 	r.view = view
+	r.packageErrors = failures
 	r.mu.Unlock()
 	return nil
 }

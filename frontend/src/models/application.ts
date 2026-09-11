@@ -190,3 +190,73 @@ export interface AppInstallRequest {
   externalPort?: number;
   bindAddress?: string;
 }
+
+/**
+ * What happened to one installed copy when its app's `version` moved. Re-running
+ * an install script touches a container someone is using, so the result is
+ * reported back rather than left to a log.
+ */
+export interface AppUpgradeOutcome {
+  instanceId: string;
+  name: string;
+  scope: AppScope;
+  projectId?: string;
+  /** Version the copy had recorded; absent if it predates version tracking. */
+  fromVersion?: string;
+  toVersion: string;
+  /** Set when the re-install failed; the copy keeps its old version. */
+  error?: string;
+}
+
+/** One installed copy of an uploaded package. */
+export interface AppPackageInstall {
+  instanceId: string;
+  name: string;
+  scope: AppScope;
+  projectId?: string;
+  status: AppInstanceStatus;
+}
+
+/**
+ * One uploaded application package: a ZIP holding what an `images/<id>/`
+ * directory holds. It is stored in the server's state directory rather than in
+ * its binary, so updating the server keeps every uploaded application, its
+ * installed instances and their settings.
+ */
+export interface AppPackage {
+  id: string;
+  name: string;
+  version?: string;
+  type?: AppKind;
+  /**
+   * Scopes the packaged app declares. Uploading adds it to a server-wide
+   * catalog, which is not the same as making it installable everywhere — a
+   * project-only app is listed for every admin and installable only inside a
+   * project.
+   */
+  scopes?: AppScope[];
+  /**
+   * Copies of this app currently installed, in every scope. Removing a package
+   * has to deal with them, so the list is what turns "uninstall it everywhere
+   * first" into a decision instead of a dead end.
+   */
+  installs?: AppPackageInstall[];
+  /** Name of the archive it was uploaded from, kept for recognition. */
+  filename?: string;
+  size: number;
+  sha256: string;
+  uploadedAt: number;
+  uploadedBy?: string;
+  /**
+   * Installed copies this upload re-provisioned because its `version` differed
+   * from theirs. Empty when the version was unchanged, when nothing is
+   * installed, or when the app reaches no container.
+   */
+  upgraded?: AppUpgradeOutcome[];
+  /**
+   * Why this package is not in the catalog. Set when the files are still on
+   * disk but no longer load — an upload made against a different server
+   * version, say — so it can be re-uploaded or removed rather than vanishing.
+   */
+  error?: string;
+}

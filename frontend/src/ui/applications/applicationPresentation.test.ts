@@ -1,12 +1,22 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import type { AppImage, AppInstance, AppKind } from "../../models/application.ts";
+import type {
+  AppImage,
+  AppInstance,
+  AppKind,
+  AppPackage,
+} from "../../models/application.ts";
 import {
+  describeInstalls,
+  describeOutcome,
   hasContainer,
   hasPortBinding,
   instanceSummary,
+  packageScopes,
+  packageSummary,
   uninstallConsequence,
+  whereToInstall,
 } from "./applicationPresentation.ts";
 
 // The server derives needsContainer/needsPort from the kind and ships them with
@@ -94,4 +104,84 @@ describe("application presentation", () => {
     assert.match(message, /Nothing is removed from any container/);
   });
 
+});
+
+// The uploader is shown wherever an admin manages applications — Settings and
+// every project — but one catalog serves both, and a package installs only
+// where it says it does. These two lines are what stop the page a package is
+// listed on from implying an answer the app never gave.
+describe("uploaded package scope", () => {
+  function pkg(scopes: AppPackage["scopes"]): AppPackage {
+    return { id: "p", name: "P", scopes, size: 0, sha256: "", uploadedAt: 0 };
+  }
+
+  it("tells a project reader that a global-only app cannot be installed there", () => {
+    const line = packageScopes(pkg(["global"]), "project");
+    assert.match(line, /globally only/);
+    assert.match(line, /not in a project/);
+    assert.match(whereToInstall(pkg(["global"]), "project"), /Settings/);
+  });
+
+  it("tells a global reader that a project-only app cannot be installed there", () => {
+    const line = packageScopes(pkg(["project"]), "global");
+    assert.match(line, /inside a project only/);
+    assert.match(whereToInstall(pkg(["project"]), "global"), /that project's/);
+  });
+
+  it("points at the list below when the app installs where you are looking", () => {
+    for (const viewing of ["global", "project"] as const) {
+      assert.equal(whereToInstall(pkg([viewing]), viewing), "Install it below.");
+      assert.equal(whereToInstall(pkg(["global", "project"]), viewing), "Install it below.");
+    }
+    assert.match(packageScopes(pkg(["project"]), "project"), /including this one/);
+    assert.match(packageScopes(pkg(["global"]), "global"), /from this page/);
+  });
+
+  it("says an app declaring no scope cannot be installed at all", () => {
+    for (const viewing of ["global", "project"] as const) {
+      assert.match(packageScopes(pkg([]), viewing), /cannot be installed/);
+      assert.match(whereToInstall(pkg(undefined), viewing), /no scope/);
+    }
+  });
+});
+
+describe("uploaded package provenance", () => {
+  function stored(overrides: Partial<AppPackage> = {}): AppPackage {
+    return { id: "p", name: "P", size: 0, sha256: "", uploadedAt: 0, ...overrides };
+  }
+
+  it("names every place a package is installed, project copies by project", () => {
+    const line = describeInstalls(
+      stored({
+        installs: [
+          { instanceId: "a", name: "A", scope: "project", projectId: "proj-1", status: "running" },
+          { instanceId: "b", name: "B", scope: "global", status: "running" },
+        ],
+      }),
+    );
+    assert.equal(line, "Installed project proj-1, globally.");
+  });
+
+  it("describes an upgraded copy by its project, and a global one by name alone", () => {
+    assert.equal(
+      describeOutcome({ instanceId: "a", name: "A", scope: "project", projectId: "p1", toVersion: "2" }),
+      "A in project p1",
+    );
+    assert.equal(
+      describeOutcome({ instanceId: "b", name: "B", scope: "global", toVersion: "2" }),
+      "B",
+    );
+  });
+
+  it("omits provenance it does not have rather than printing empty parts", () => {
+    assert.equal(packageSummary(stored()), "");
+    assert.equal(packageSummary(stored({ uploadedBy: "me@example.com" })), "by me@example.com");
+  });
+
+  it("scales the archive size by unit, and keeps a zero size out of the summary", () => {
+    assert.equal(packageSummary(stored({ size: 512 })), "512 B");
+    assert.equal(packageSummary(stored({ size: 2048 })), "2 KB");
+    assert.equal(packageSummary(stored({ size: 3 * 1024 * 1024 })), "3.0 MB");
+    assert.equal(packageSummary(stored({ size: 0 })), "");
+  });
 });
