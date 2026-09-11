@@ -174,11 +174,28 @@ func loadImage(catalog fs.FS, id string) (svc.Image, []byte, error) {
 	if err := validate(img); err != nil {
 		return svc.Image{}, nil, err
 	}
+	backend, err := loadImagePlugin(catalog, path.Join(catalogRoot, id, pluginDir), img.Backend)
+	if err != nil {
+		return svc.Image{}, nil, fmt.Errorf("backend: %w", err)
+	}
+	img.Backend = backend
+
 	skills, err := loadImageSkills(catalog, path.Join(catalogRoot, id, skillsDir))
 	if err != nil {
 		return svc.Image{}, nil, fmt.Errorf("skills: %w", err)
 	}
 	img.Skills = skills
+
+	// A backend image installs nothing in a container, so it has no install
+	// script to read: its plugin/ directory is the whole payload, and it must
+	// actually carry it. A tool does reach a container, so it falls through and
+	// its script is loaded.
+	if !img.Type.NeedsContainer() {
+		if img.Type == svc.KindBackend && img.Backend == nil {
+			return svc.Image{}, nil, fmt.Errorf("type %q requires a %s/ directory", img.Type, pluginDir)
+		}
+		return img, nil, nil
+	}
 
 	if img.Install == "" {
 		img.Install = "install.sh"
@@ -232,6 +249,12 @@ func validate(img svc.Image) error {
 	if !img.Type.NeedsPort() {
 		if img.Port.Internal != 0 || img.Healthcheck.Command != "" {
 			return fmt.Errorf("type %q must not declare port or healthcheck", img.Type)
+		}
+		// A systemd unit is only meaningful where there is a container to run
+		// it in: it is what stop and uninstall act on. A tool has one; a
+		// backend image has no container at all.
+		if !img.Type.NeedsContainer() && img.Service != "" {
+			return fmt.Errorf("type %q must not declare service", img.Type)
 		}
 		if img.Type == svc.KindTool {
 			for _, sc := range img.Scopes {

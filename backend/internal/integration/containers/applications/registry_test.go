@@ -52,7 +52,7 @@ func assertCatalogInvariants(t *testing.T, r *Registry, wantImages bool) {
 			t.Errorf("image %s has invalid type %q", img.ID, img.Type)
 		}
 		// Install scripts belong to images that provision something into a
-		// container.
+		// container; a backend image is its plugin/ directory, and nothing else.
 		if img.Type.NeedsContainer() {
 			if _, ok := r.Script(img.ID); !ok {
 				t.Errorf("image %s missing install script", img.ID)
@@ -74,6 +74,15 @@ func assertCatalogInvariants(t *testing.T, r *Registry, wantImages bool) {
 				if sc == svc.ScopeGlobal {
 					t.Errorf("tool image %s claims global scope", img.ID)
 				}
+			}
+			continue
+		}
+		if img.Type == svc.KindBackend {
+			if img.Backend == nil {
+				t.Errorf("backend image %s ships no plugin/ directory", img.ID)
+			}
+			if _, ok := r.PluginSource(img.ID); !ok {
+				t.Errorf("backend image %s exposes no plugin source", img.ID)
 			}
 		}
 	}
@@ -110,6 +119,7 @@ func TestRegistryImageKinds(t *testing.T) {
 	for id, want := range map[string]svc.Kind{
 		fixtureService: svc.KindService,
 		fixtureTool:    svc.KindTool,
+		fixtureBackend: svc.KindBackend,
 	} {
 		img, ok := r.Get(id)
 		if !ok {
@@ -140,6 +150,12 @@ func TestValidateRejectsBadImages(t *testing.T) {
 		{"blank version", func(i *svc.Image) { i.Version = "   " }},
 		{"unknown type", func(i *svc.Image) { i.Type = "daemon" }},
 		{"service without a port", func(i *svc.Image) { i.Port.Internal = 0 }},
+		{"backend image declaring a port", func(i *svc.Image) { i.Type = svc.KindBackend }},
+		{"backend image declaring a service", func(i *svc.Image) {
+			i.Type = svc.KindBackend
+			i.Port.Internal = 0
+			i.Service = "unit"
+		}},
 		{"tool image declaring a port", func(i *svc.Image) {
 			i.Type = svc.KindTool
 			i.Scopes = []svc.Scope{svc.ScopeProject}

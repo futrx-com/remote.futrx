@@ -29,7 +29,24 @@ type Service struct {
 	installer Installer
 	projects  ProjectContainers
 	ports     PortAllocator
+	backends  BackendHost
 	now       Clock
+}
+
+// Option configures optional service dependencies. Backend plugin hosting is
+// optional because a server without a Go toolchain, or a build that ships no
+// plugin images, must still install and run everything else.
+type Option func(*Service)
+
+// WithBackendHost enables images that ship a plugin/ directory. Without it,
+// their catalog entries still load and every backend call reports the feature
+// unavailable.
+func WithBackendHost(host BackendHost) Option {
+	return func(s *Service) {
+		if host != nil {
+			s.backends = host
+		}
+	}
 }
 
 // New builds the applications service. installer/projects may be nil-backed on
@@ -40,6 +57,7 @@ func New(
 	installer Installer,
 	projects ProjectContainers,
 	ports PortAllocator,
+	options ...Option,
 ) *Service {
 	service := &Service{
 		registry:  registry,
@@ -48,6 +66,9 @@ func New(
 		projects:  projects,
 		ports:     ports,
 		now:       func() int64 { return time.Now().Unix() },
+	}
+	for _, option := range options {
+		option(service)
 	}
 	return service
 }

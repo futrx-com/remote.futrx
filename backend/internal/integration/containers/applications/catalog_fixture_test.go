@@ -6,12 +6,14 @@ import (
 )
 
 // The catalog these tests load is written here rather than borrowed from the
-// images the server happens to ship. Every kind has a fixture — so the catalog loader stays covered no matter which installable
+// images the server happens to ship. Every kind, and every optional block,
+// has a fixture — so the catalog loader stays covered no matter which installable
 // images exist, and removing an image from the shipped catalog (or moving one
 // out into a separately distributed package) cannot quietly delete a test.
 const (
 	fixtureService = "fixture-service"
 	fixtureTool    = "fixture-tool"
+	fixtureBackend = "fixture-backend"
 )
 
 func fixtureCatalog() fstest.MapFS {
@@ -51,6 +53,15 @@ func fixtureCatalog() fstest.MapFS {
 			}]
 		}`),
 		"images/" + fixtureTool + "/install.sh": file("#!/usr/bin/env bash\necho tool\n"),
+
+		"images/" + fixtureBackend + "/image.json": file(`{
+			"name": "Fixture Backend",
+			"version": "3.0.0",
+			"type": "backend",
+			"scopes": ["project"],
+			"backend": {"access": "registered", "timeoutMs": 10000}
+		}`),
+		"images/" + fixtureBackend + "/plugin/main.go": file("package main\n\nfunc main() {}\n"),
 	}
 }
 

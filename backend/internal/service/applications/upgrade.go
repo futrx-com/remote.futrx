@@ -16,9 +16,9 @@ package applications
 // needsUpgrade reports whether an instance's container side was provisioned by
 // a different version of the image than the catalog now holds.
 //
-// Only kinds that reach a container can be stale, which is every kind there is
-// today; the check is kept explicit because the answer stops being "always"
-// as soon as a kind installs nothing.
+// Only kinds that reach a container can be stale. A backend image installs
+// nothing to re-install, so bumping its version is a catalog change and
+// nothing more: its new code is picked up by restarting the plugin.
 func needsUpgrade(inst Instance, img Image) bool {
 	return img.Type.NeedsContainer() && inst.ImageVersion != img.Version
 }

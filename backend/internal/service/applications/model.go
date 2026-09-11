@@ -36,6 +36,12 @@ const (
 	// project-scope one installs into that project's container. This is the
 	// default when an image does not say.
 	KindService Kind = "service"
+	// KindBackend installs nothing in any container: the image's payload is
+	// the Go source under its plugin/ directory, which the server compiles and
+	// runs as a child process. It is what lets an image add a server-side
+	// feature — an endpoint a caller reaches over HTTP — instead of only
+	// provisioning software.
+	KindBackend Kind = "backend"
 	// KindTool installs software into a container exactly as a service does,
 	// but exposes nothing: no port, no proxy device, nothing to connect to. It
 	// is how a workspace tool is provisioned into the project someone is
@@ -49,7 +55,7 @@ const (
 
 // Valid reports whether k is a known kind.
 func (k Kind) Valid() bool {
-	return k == KindService || k == KindTool
+	return k == KindService || k == KindBackend || k == KindTool
 }
 
 // NeedsContainer reports whether installing this kind has to reach a container.
@@ -191,6 +197,9 @@ type Image struct {
 	// Service is the systemd unit name inside the container used for
 	// start/stop/status.
 	Service string `json:"service,omitempty"`
+	// Backend is set when the image ships a plugin/ directory. Nil means the
+	// image has no Go plugin and nothing is compiled or run for it.
+	Backend *ImageBackend `json:"backend,omitempty"`
 	// Install is the install-script filename relative to the image directory.
 	Install     string      `json:"install"`
 	Healthcheck Healthcheck `json:"healthcheck,omitempty"`

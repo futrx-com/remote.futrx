@@ -17,6 +17,7 @@ import (
 func TestSendAppErrorMapsServiceErrorsToStatuses(t *testing.T) {
 	cases := map[error]int{
 		serviceapplications.ErrNotFound:         http.StatusNotFound,
+		serviceapplications.ErrBackendAccess:    http.StatusForbidden,
 		serviceapplications.ErrAlreadyInstalled: http.StatusConflict,
 		serviceapplications.ErrNotSupported:     http.StatusUnprocessableEntity,
 		serviceapplications.ErrScope:            http.StatusBadRequest,

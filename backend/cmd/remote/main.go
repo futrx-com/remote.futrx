@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
@@ -25,6 +26,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/pluginhost"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/tmuxcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
@@ -67,6 +69,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("load application catalog: %v", err)
 	}
+	// Backend plugins are compiled from the catalog's embedded Go source and
+	// run as child processes. Their binaries and per-instance data live beside
+	// the rest of the server's state so an uninstall leaves nothing behind.
+	appBackends := pluginhost.New(
+		filepath.Join(cfg.DataDir, "plugins"),
+		appRegistry,
+		pluginhost.Options{GoTool: cfg.Plugins.GoTool},
+	)
+	defer appBackends.Shutdown()
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
@@ -140,6 +151,7 @@ func main() {
 		AppRegistry:     appRegistry,
 		AppInstaller:    containerStack.AppInstaller,
 		AppPorts:        containerStack.AppPorts,
+		AppBackends:     appBackends,
 		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {

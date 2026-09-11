@@ -61,17 +61,19 @@ func (s *Service) Uninstall(ctx context.Context, id string) error {
 	return s.store.Delete(ctx, id)
 }
 
-// teardown removes an instance's container footprint. Uninstalling and
-// retrying a failed install share it, so both leave exactly the same state
-// behind.
+// teardown removes an instance's footprint: its container side, and its plugin
+// process and data. Uninstalling and retrying a failed install share it, so
+// both leave exactly the same state behind.
 func (s *Service) teardown(ctx context.Context, img Image, inst Instance) error {
-	if !img.Type.NeedsContainer() {
-		return nil
+	if img.Type.NeedsContainer() {
+		if s.installer == nil {
+			return ErrUnavailable
+		}
+		if err := s.installer.Uninstall(ctx, InstallSpec{Image: img, Instance: inst}); err != nil {
+			return err
+		}
 	}
-	if s.installer == nil {
-		return ErrUnavailable
-	}
-	return s.installer.Uninstall(ctx, InstallSpec{Image: img, Instance: inst})
+	return s.removeBackend(ctx, img, inst)
 }
 
 // transition runs a lifecycle action and records the resulting status.
@@ -79,6 +81,18 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 	inst, img, err := s.load(ctx, id)
 	if err != nil {
 		return View{}, err
+	}
+	// A backend image has one real effect — its plugin process — so the record
+	// and the process move together.
+	if !img.Type.NeedsContainer() {
+		if err := s.moveBackend(ctx, img, inst, target); err != nil {
+			_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
+			return View{}, err
+		}
+		if err := s.saveStatus(ctx, &inst, target, ""); err != nil {
+			return View{}, err
+		}
+		return s.view(inst), nil
 	}
 	if s.installer == nil {
 		return View{}, ErrUnavailable
@@ -99,6 +113,10 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 	if upgrading {
 		inst.ImageVersion = img.Version
 	}
+	if err := s.moveBackend(ctx, img, inst, target); err != nil {
+		_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
+		return View{}, err
+	}
 	if err := s.saveStatus(ctx, &inst, target, ""); err != nil {
 		return View{}, err
 	}
@@ -106,8 +124,8 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 }
 
 // moveContainer applies the requested lifecycle state to the container half
-// of an image. The transition workflow deliberately runs this before recording
-// the final status.
+// of an image. The transition workflow deliberately runs this before moving a
+// plugin and recording the final status.
 //
 // Starting an instance whose image has moved on installs rather than starts.
 // An upload upgrades the copies that are running and leaves stopped ones
