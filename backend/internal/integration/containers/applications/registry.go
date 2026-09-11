@@ -174,6 +174,12 @@ func loadImage(catalog fs.FS, id string) (svc.Image, []byte, error) {
 	if err := validate(img); err != nil {
 		return svc.Image{}, nil, err
 	}
+	ui, err := loadImageUI(catalog, path.Join(catalogRoot, id, "ui"), img.UI)
+	if err != nil {
+		return svc.Image{}, nil, fmt.Errorf("ui: %w", err)
+	}
+	img.UI = ui
+
 	backend, err := loadImagePlugin(catalog, path.Join(catalogRoot, id, pluginDir), img.Backend)
 	if err != nil {
 		return svc.Image{}, nil, fmt.Errorf("backend: %w", err)
@@ -186,13 +192,20 @@ func loadImage(catalog fs.FS, id string) (svc.Image, []byte, error) {
 	}
 	img.Skills = skills
 
-	// A backend image installs nothing in a container, so it has no install
-	// script to read: its plugin/ directory is the whole payload, and it must
-	// actually carry it. A tool does reach a container, so it falls through and
-	// its script is loaded.
+	// A UI or backend image installs nothing in a container, so it has no
+	// install script to read: its ui/ or plugin/ directory is the whole
+	// payload. Each kind must actually carry the half it is named for. A tool
+	// does reach a container, so it falls through and its script is loaded.
 	if !img.Type.NeedsContainer() {
-		if img.Type == svc.KindBackend && img.Backend == nil {
-			return svc.Image{}, nil, fmt.Errorf("type %q requires a %s/ directory", img.Type, pluginDir)
+		switch img.Type {
+		case svc.KindUI:
+			if img.UI == nil {
+				return svc.Image{}, nil, fmt.Errorf("type %q requires a ui/ directory", img.Type)
+			}
+		case svc.KindBackend:
+			if img.Backend == nil {
+				return svc.Image{}, nil, fmt.Errorf("type %q requires a %s/ directory", img.Type, pluginDir)
+			}
 		}
 		return img, nil, nil
 	}
@@ -251,7 +264,7 @@ func validate(img svc.Image) error {
 			return fmt.Errorf("type %q must not declare port or healthcheck", img.Type)
 		}
 		// A systemd unit is only meaningful where there is a container to run
-		// it in: it is what stop and uninstall act on. A tool has one; a
+		// it in: it is what stop and uninstall act on. A tool has one; a UI or
 		// backend image has no container at all.
 		if !img.Type.NeedsContainer() && img.Service != "" {
 			return fmt.Errorf("type %q must not declare service", img.Type)

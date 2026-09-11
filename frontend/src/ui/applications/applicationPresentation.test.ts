@@ -18,6 +18,8 @@ const KIND_FLAGS: Record<
 > = {
   service: { needsContainer: true, needsPort: true },
   tool: { needsContainer: true, needsPort: false },
+  ui: { needsContainer: false, needsPort: false },
+  backend: { needsContainer: false, needsPort: false },
 };
 
 function image(type: AppKind): AppImage {
@@ -57,14 +59,23 @@ describe("application presentation", () => {
     assert.equal(hasPortBinding(image("service")), true);
   });
 
+  it("keeps extension images off both", () => {
+    for (const kind of ["ui", "backend"] as const) {
+      assert.equal(hasContainer(image(kind)), false);
+      assert.equal(hasPortBinding(image(kind)), false);
+    }
+  });
+
   it("falls back to the service presentation while the catalog is loading", () => {
     assert.equal(hasContainer(undefined), true);
     assert.equal(hasPortBinding(undefined), true);
   });
 
-  it("summarises a tool by where it runs, not by a port it does not bind", () => {
+  it("summarises a tool by where it runs, not by a UI it does not have", () => {
     assert.match(instanceSummary(image("tool"), true), /Workspace tool/);
     assert.match(instanceSummary(image("tool"), false), /Start it/);
+    assert.match(instanceSummary(image("backend"), true), /Go plugin/);
+    assert.match(instanceSummary(image("ui"), true), /Interface extension/);
   });
 
   it("never promises to release a host port a tool never held", () => {
@@ -76,6 +87,11 @@ describe("application presentation", () => {
   it("still reports the released port for a service", () => {
     const message = uninstallConsequence(instance(), image("service"));
     assert.match(message, /127\.0\.0\.1:5433/);
+  });
+
+  it("says nothing is removed from a container for an extension", () => {
+    const message = uninstallConsequence(instance(), image("ui"));
+    assert.match(message, /Nothing is removed from any container/);
   });
 
 });

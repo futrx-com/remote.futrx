@@ -53,10 +53,10 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 	}
 	inst.Env = env
 
-	// A backend image has no container side at all: installing one only records
-	// that the user turned it on, which is what makes its plugin run.
-	// Everything below this branch — container, port, proxy device, install
-	// script — exists only for images that provision software.
+	// A UI or backend image has no container side at all: installing one only
+	// records that the user turned it on, which is what makes its ui/ load and
+	// its plugin run. Everything below this branch — container, port, proxy
+	// device, install script — exists only for images that provision software.
 	if !img.Type.NeedsContainer() {
 		inst.Status = StatusRunning
 		if err := s.store.Put(ctx, inst); err != nil {
@@ -71,7 +71,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 
 	// Only the container half needs a container runtime, which is why the
 	// check is here rather than at the top: a server with no LXD can still
-	// install a backend image.
+	// install a UI or backend image.
 	if s.installer == nil {
 		return View{}, ErrUnavailable
 	}
@@ -104,7 +104,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 		return View{}, err
 	}
 	// A service image may ship a plugin too — the container half provisions
-	// the software, the plugin half is what callers talk to.
+	// the software, the plugin half is what its UI talks to.
 	if err := s.startBackend(ctx, img, inst); err != nil {
 		_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
 		return View{}, err

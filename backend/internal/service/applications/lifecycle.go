@@ -82,7 +82,9 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 	if err != nil {
 		return View{}, err
 	}
-	// A backend image has one real effect — its plugin process — so the record
+	// Start/stop on a UI image is purely a record: "stopped" means the SPA
+	// stops loading its extension, which is the whole effect it can have. A
+	// backend image has one real effect — its plugin process — so the record
 	// and the process move together.
 	if !img.Type.NeedsContainer() {
 		if err := s.moveBackend(ctx, img, inst, target); err != nil {

@@ -13,6 +13,7 @@ import (
 const (
 	fixtureService = "fixture-service"
 	fixtureTool    = "fixture-tool"
+	fixtureUI      = "fixture-ui"
 	fixtureBackend = "fixture-backend"
 )
 
@@ -27,7 +28,10 @@ func fixtureCatalog() fstest.MapFS {
 			"service": "fixture",
 			"connection": {"user": "root", "passwordEnv": "FIXTURE_PASSWORD"}
 		}`),
-		"images/" + fixtureService + "/install.sh": file("#!/usr/bin/env bash\necho service\n"),
+		"images/" + fixtureService + "/install.sh":          file("#!/usr/bin/env bash\necho service\n"),
+		"images/" + fixtureService + "/ui/scripts/main.js":  file("export default () => {}\n"),
+		"images/" + fixtureService + "/ui/style/panel.css":  file(".panel{}\n"),
+		"images/" + fixtureService + "/ui/views/popup.html": file("<p></p>\n"),
 
 		// A tool reaches a container without exposing anything, needs a host
 		// binary it supplies itself.
@@ -53,6 +57,26 @@ func fixtureCatalog() fstest.MapFS {
 			}]
 		}`),
 		"images/" + fixtureTool + "/install.sh": file("#!/usr/bin/env bash\necho tool\n"),
+
+		// A UI image declares its block explicitly rather than relying on the
+		// layout convention, so both paths are exercised for real.
+		"images/" + fixtureUI + "/image.json": file(`{
+			"name": "Fixture UI",
+			"version": "0.4.0",
+			"type": "ui",
+			"scopes": ["project"],
+			"ui": {
+				"entry": "scripts/main.js",
+				"styles": ["style/panel.css"],
+				"views": {"panel": "views/panel.html", "context": "views/context.html"}
+			}
+		}`),
+		"images/" + fixtureUI + "/ui/scripts/main.js":     file("import './selftest.js'\nexport default () => {}\n"),
+		"images/" + fixtureUI + "/ui/scripts/selftest.js": file("export const ok = true\n"),
+		"images/" + fixtureUI + "/ui/style/panel.css":     file(".panel{}\n"),
+		"images/" + fixtureUI + "/ui/views/panel.html":    file("<p></p>\n"),
+		"images/" + fixtureUI + "/ui/views/context.html":  file("<p></p>\n"),
+		"images/" + fixtureUI + "/ui/assets/logo.svg":     file("<svg/>\n"),
 
 		"images/" + fixtureBackend + "/image.json": file(`{
 			"name": "Fixture Backend",

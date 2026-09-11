@@ -11,6 +11,10 @@ import (
 type Registry interface {
 	List() []Image
 	Get(id string) (Image, bool)
+	// UIAsset returns one file from an image's ui/ directory. assetPath is
+	// relative to that directory ("scripts/main.js"); anything escaping it, or
+	// belonging to an image without a ui/, reports not found.
+	UIAsset(imageID, assetPath string) ([]byte, bool)
 }
 
 // InstallSpec is everything Installer needs to realize an instance in a

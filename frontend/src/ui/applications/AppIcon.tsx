@@ -9,6 +9,7 @@
 // anything to the SPA's icon set; it is served through the same authenticated
 // asset route as the rest of the extension.
 
+import { API_ROUTES } from "../../config/routes";
 import type { AppImage } from "../../models/application";
 import {
   Activity,
@@ -60,6 +61,12 @@ const BUILT_IN: Record<string, IconComponent> = {
   users: Users,
 };
 
+/** An icon value pointing at a file the image ships, rather than a key. */
+function assetPath(icon: string): string | null {
+  const trimmed = icon.trim();
+  return trimmed.startsWith("ui/") ? trimmed.slice("ui/".length) : null;
+}
+
 export function AppIcon({
   image,
   class: className = "w-4 h-4",
@@ -68,6 +75,18 @@ export function AppIcon({
   class?: string;
 }) {
   const icon = image.icon?.trim() ?? "";
+  const asset = icon ? assetPath(icon) : null;
+
+  if (asset) {
+    return (
+      <img
+        src={API_ROUTES.applications.uiAsset(image.id, asset)}
+        alt=""
+        aria-hidden="true"
+        class={`${className} object-contain`}
+      />
+    );
+  }
 
   const Icon = BUILT_IN[icon.toLowerCase()] ?? Server;
   return <Icon class={className} />;

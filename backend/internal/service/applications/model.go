@@ -36,11 +36,15 @@ const (
 	// project-scope one installs into that project's container. This is the
 	// default when an image does not say.
 	KindService Kind = "service"
-	// KindBackend installs nothing in any container: the image's payload is
-	// the Go source under its plugin/ directory, which the server compiles and
-	// runs as a child process. It is what lets an image add a server-side
-	// feature — an endpoint a caller reaches over HTTP — instead of only
-	// provisioning software.
+	// KindUI installs nothing in any container: the image is a browser-side
+	// extension and its whole payload is its ui/ directory. No container, no
+	// port, no proxy device, no install script.
+	KindUI Kind = "ui"
+	// KindBackend installs nothing in any container either: the image's
+	// payload is the Go source under its plugin/ directory, which the server
+	// compiles and runs as a child process. It is what lets an image add a
+	// server-side feature — an endpoint its ui/ calls — instead of only
+	// drawing buttons or provisioning software.
 	KindBackend Kind = "backend"
 	// KindTool installs software into a container exactly as a service does,
 	// but exposes nothing: no port, no proxy device, nothing to connect to. It
@@ -55,7 +59,7 @@ const (
 
 // Valid reports whether k is a known kind.
 func (k Kind) Valid() bool {
-	return k == KindService || k == KindBackend || k == KindTool
+	return k == KindService || k == KindUI || k == KindBackend || k == KindTool
 }
 
 // NeedsContainer reports whether installing this kind has to reach a container.
@@ -157,6 +161,23 @@ type HostToolDownload struct {
 	Compression string `json:"compression,omitempty"`
 }
 
+// ImageUI describes the browser-side extension an image ships in its ui/
+// directory. It is what lets an image contribute to the Remote UI itself —
+// a button, a panel, a popup — instead of only installing software in a
+// container. Every path is relative to images/<id>/ui/ and is validated at
+// catalog load time, so a broken reference fails loudly rather than 404ing
+// in the browser.
+type ImageUI struct {
+	// Entry is the ES module whose default export is called with the
+	// extension API when the SPA loads the image's UI.
+	Entry string `json:"entry,omitempty"`
+	// Styles are stylesheets injected into the document, in order.
+	Styles []string `json:"styles,omitempty"`
+	// Views are HTML fragments the entry module fetches by name, keyed by the
+	// name it asks for (e.g. "popup" -> "views/popup.html").
+	Views map[string]string `json:"views,omitempty"`
+}
+
 // ImageSource says where a catalog entry came from. It is decided by the
 // registry that loaded the entry and overwrites anything image.json declares,
 // so a package cannot describe itself as built in.
@@ -197,9 +218,6 @@ type Image struct {
 	// Service is the systemd unit name inside the container used for
 	// start/stop/status.
 	Service string `json:"service,omitempty"`
-	// Backend is set when the image ships a plugin/ directory. Nil means the
-	// image has no Go plugin and nothing is compiled or run for it.
-	Backend *ImageBackend `json:"backend,omitempty"`
 	// Install is the install-script filename relative to the image directory.
 	Install     string      `json:"install"`
 	Healthcheck Healthcheck `json:"healthcheck,omitempty"`
@@ -208,8 +226,14 @@ type Image struct {
 	// Base is the LXD image alias used when this app runs as a dedicated
 	// (global) container. Empty defaults to the platform default.
 	Base string `json:"base,omitempty"`
-	// Skills names the agent skills this image ships. It is filled in by the
-	// registry from the image's own skills/ directory rather than being
+	// UI is set when the image ships a ui/ directory. Nil means the image has
+	// no browser-side extension and the SPA loads nothing for it.
+	UI *ImageUI `json:"ui,omitempty"`
+	// Backend is set when the image ships a plugin/ directory. Nil means the
+	// image has no Go plugin and nothing is compiled or run for it.
+	Backend *ImageBackend `json:"backend,omitempty"`
+	// Skills names the agent skills this image ships. Like UI, it is filled in
+	// by the registry from the image's own skills/ directory rather than
 	// declared in image.json: each subdirectory holding a SKILL.md is one
 	// skill, published into the project workspace when the image is installed
 	// and taken back when it is uninstalled.

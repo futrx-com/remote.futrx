@@ -5,6 +5,7 @@ import type {
   AppImage,
   AppInstance,
   AppInstallRequest,
+  AppUIExtension,
 } from "../models/application";
 
 // Global (server-wide) application management. Catalog is shared by the
@@ -12,6 +13,10 @@ import type {
 export const applicationsApi = {
   catalog: () =>
     requestJson<AppImage[]>("GET", API_ROUTES.applications.catalog),
+
+  /** Extensions this user should load — installed, running, with their scope. */
+  uiExtensions: () =>
+    requestJson<AppUIExtension[]>("GET", API_ROUTES.applications.ui),
 
   listGlobal: () =>
     requestJson<AppInstance[]>("GET", API_ROUTES.applications.collection),

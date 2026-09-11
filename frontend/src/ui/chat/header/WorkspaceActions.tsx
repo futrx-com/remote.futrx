@@ -1,6 +1,8 @@
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
+import { ExtensionSlot } from "../../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
 
 // Two states only, and they never fight over the same property: Tailwind emits
@@ -14,6 +16,8 @@ const actionExpanded = `${actionBase} bg-accent-blue/[0.14] text-accent-blue hov
 
 export function WorkspaceActions({
   cwd,
+  chatId,
+  projectId,
   onToggleTerminal,
   onToggleBrowser,
   onToggleHistory,
@@ -29,6 +33,8 @@ export function WorkspaceActions({
   orientation,
 }: {
   cwd: string;
+  chatId?: string;
+  projectId?: string;
   onToggleTerminal: () => void;
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
@@ -49,6 +55,12 @@ export function WorkspaceActions({
 
   return (
     <div class={`flex items-center gap-0.5 ${orientation === "horizontal" ? "flex-row" : "flex-col"}`}>
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.chatHeaderActions}
+        chatId={chatId}
+        projectId={projectId}
+        cwd={workspacePath}
+      />
       <WorkspaceAction
         Icon={Code}
         href={ideUrl}

@@ -23,8 +23,10 @@ export function catalogInstallationState(
   return { installedImageIds, failedImageIds };
 }
 
-// Whether installing this image put anything in a container. This drives the
-// uninstall wording, which has to say what is actually removed.
+// Whether installing this image put anything in a container. A tool did — it
+// provisions software into the project's container — while a UI or backend
+// image did not. This drives the uninstall wording, which has to say what is
+// actually removed.
 //
 // The answer comes from the server, which owns the list of kinds: a kind added
 // there would otherwise land here as whatever a local rule happened to say
@@ -51,9 +53,14 @@ export function instanceSummary(
       ? "Workspace tool — installed in this project's container. Nothing is exposed."
       : "Workspace tool — stopped. Start it to run it in the project's container.";
   }
+  if (image?.type === "backend") {
+    return running
+      ? "Backend extension — a Go plugin runs on the server, not in a container."
+      : "Backend extension — stopped. Start it to run its Go plugin.";
+  }
   return running
-    ? "Running in a container."
-    : "Stopped. Start it to run it again.";
+    ? "Interface extension — nothing runs in a container. Its UI is loaded."
+    : "Interface extension — nothing runs in a container. Start it to load its UI.";
 }
 
 /**
@@ -62,7 +69,8 @@ export function instanceSummary(
  * this is the one state where the version an instance holds and the version
  * the catalog offers can drift — and starting it is what closes the gap.
  *
- * Only apps that reach a container can be stale.
+ * Only apps that reach a container can be stale: a UI or backend extension
+ * provisions nothing, so a version bump changes nothing to re-run.
  */
 export function pendingUpgradeVersion(
   instance: AppInstance,
@@ -77,6 +85,9 @@ export function uninstallConsequence(
   instance: AppInstance,
   image: AppImage | undefined,
 ): string {
+  if (!hasContainer(image)) {
+    return `“${instance.name}” stops contributing to the interface, and any plugin it runs is stopped and its data deleted. Nothing is removed from any container.`;
+  }
   // A tool holds no host port, so there is none to release; saying otherwise
   // would promise the user something the uninstall does not do.
   if (image?.type === "tool") {

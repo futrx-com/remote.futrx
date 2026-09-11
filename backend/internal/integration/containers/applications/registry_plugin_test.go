@@ -151,7 +151,7 @@ func TestRegistryPluginSource(t *testing.T) {
 	if _, err := fs.Stat(source, "main.go"); err != nil {
 		t.Errorf("plugin source is not rooted at plugin/: %v", err)
 	}
-	for _, id := range []string{fixtureService, fixtureTool, "no-such-image"} {
+	for _, id := range []string{fixtureService, fixtureUI, "no-such-image"} {
 		if _, ok := r.PluginSource(id); ok {
 			t.Errorf("%s reports plugin source it does not have", id)
 		}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { applicationsApi } from "../../../api/applicationsApi";
 import { projectApi } from "../../../api/projectApi";
 import type {
@@ -40,10 +40,19 @@ interface Bindings {
   credentials: (appId: string) => Promise<AppCredentials>;
 }
 
+/**
+ * Notified once this controller has established what is installed — after a
+ * load as well as after an install or uninstall. The consumer that matters is
+ * the extension host: it holds derived state, the `ui/` modules it has loaded,
+ * and a change made anywhere else reaches it through no other signal.
+ */
+type ApplicationsSettled = () => void;
+
 interface CoreOptions {
   scope: AppScope;
   enabled: boolean;
   bindings: Bindings | null;
+  onApplicationsSettled?: ApplicationsSettled;
   projectId?: string;
 }
 
@@ -51,6 +60,7 @@ function useApplicationsCore({
   scope,
   enabled,
   bindings,
+  onApplicationsSettled,
   projectId,
 }: CoreOptions): ApplicationsController {
   const [catalog, setCatalog] = useState<AppImage[]>([]);
@@ -58,6 +68,12 @@ function useApplicationsCore({
   const [instances, setInstances] = useState<AppInstance[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  // Held in a ref so every operation below keeps one stable identity: the load
+  // effect calls this too, and a caller passing a fresh closure per render
+  // would otherwise turn that effect into a loop.
+  const settledRef = useRef(onApplicationsSettled);
+  settledRef.current = onApplicationsSettled;
+  const notifySettled = useCallback(() => settledRef.current?.(), []);
 
   const reload = useCallback(async () => {
     if (!enabled || !bindings) return;
@@ -87,9 +103,22 @@ function useApplicationsCore({
   }, [enabled]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!enabled) return;
-    void Promise.all([loadCatalog(), reload()]);
-  }, [enabled, loadCatalog, reload]);
+    void (async () => {
+      await Promise.all([loadCatalog(), reload()]);
+      if (cancelled) return;
+      // Opening a surface reconciles the extension host, not just changing
+      // something on it. A change made anywhere else — another tab, another
+      // administrator, a server that restarted without the image — reaches
+      // this tab through no other path, and without this the surface can list
+      // no installed apps while still rendering an uninstalled one's panel.
+      notifySettled();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, loadCatalog, reload, notifySettled]);
 
   const upsert = useCallback((inst: AppInstance) => {
     setInstances((current) => {
@@ -104,25 +133,29 @@ function useApplicationsCore({
   const install = useCallback(
     async (req: AppInstallRequest) => {
       if (!bindings) return;
-      upsert(await bindings.install(req));
+      const inst = await bindings.install(req);
+      upsert(inst);
+      notifySettled();
     },
-    [bindings, upsert],
+    [bindings, upsert, notifySettled],
   );
 
   const start = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.start(appId));
+      notifySettled();
     },
-    [bindings, upsert],
+    [bindings, upsert, notifySettled],
   );
 
   const stop = useCallback(
     async (appId: string) => {
       if (!bindings) return;
       upsert(await bindings.stop(appId));
+      notifySettled();
     },
-    [bindings, upsert],
+    [bindings, upsert, notifySettled],
   );
 
   const setPort = useCallback(
@@ -138,8 +171,9 @@ function useApplicationsCore({
       if (!bindings) return;
       await bindings.uninstall(appId);
       setInstances((current) => current.filter((x) => x.id !== appId));
+      notifySettled();
     },
-    [bindings],
+    [bindings, notifySettled],
   );
 
   const credentials = useCallback(
@@ -169,7 +203,10 @@ function useApplicationsCore({
 }
 
 /** Global (server-wide) applications; admin-only. */
-export function useGlobalApplications(enabled: boolean): ApplicationsController {
+export function useGlobalApplications(
+  enabled: boolean,
+  onApplicationsSettled?: ApplicationsSettled,
+): ApplicationsController {
   const bindings = useMemo<Bindings>(
     () => ({
       list: applicationsApi.listGlobal,
@@ -182,13 +219,19 @@ export function useGlobalApplications(enabled: boolean): ApplicationsController 
     }),
     []
   );
-  return useApplicationsCore({ scope: "global", enabled, bindings });
+  return useApplicationsCore({
+    scope: "global",
+    enabled,
+    bindings,
+    onApplicationsSettled,
+  });
 }
 
 /** Applications scoped to a single project. */
 export function useProjectApplications(
   project: ProjectMeta | null,
   enabled: boolean,
+  onApplicationsSettled?: ApplicationsSettled,
 ): ApplicationsController {
   const id = project?.id ?? null;
   const bindings = useMemo<Bindings | null>(
@@ -210,6 +253,7 @@ export function useProjectApplications(
     scope: "project",
     enabled: enabled && !!id,
     bindings,
+    onApplicationsSettled,
     projectId: id ?? undefined,
   });
 }

@@ -6,6 +6,7 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 | --- | --- |
 | `auth/` | Which agent providers are logged in, and the recovery-code file a user saves |
 | `chat/` | Where an attachment is stored and what it is called, and where find-in-chat's matches are shown |
+| `extensions/` | What the SPA has finished, and which image asked to hear it |
 | `files/` | What a filename means: its kind, its icon, what a click does |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
@@ -89,6 +90,15 @@ The two exceptions are `platform/diffService` and
 here because they are general capabilities with private internals — a Myers
 diff and a pair of time formatters — rather than rules about one screen, and a
 second caller would not move them.
+
+`extensions/extensionEventService` is the one service that keeps something: a
+set of subscriptions, keyed by the image that registered them. That is not the
+state this layer stays out of — nothing renders from it and no screen reads it
+— but the same category as the timers and listeners `state/README.md` leaves
+with their owner. It is here because its owners sit in two layers:
+`app/extensions/` subscribes an image and drops it on uninstall, while
+`state/hooks/chat/` emits when an upload lands. A leaf is the only place both
+can reach without one of them importing the other.
 
 ## Naming
 

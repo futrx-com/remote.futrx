@@ -1,5 +1,7 @@
 import { useMemo } from "preact/hooks";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { AlertCircle } from "../primitives/icons";
 import { CatalogGrid } from "./ApplicationCatalog";
 import { InstalledList } from "./InstalledApplications";
@@ -46,6 +48,13 @@ export function ApplicationsSection({
           controller={controller}
         />
       </div>
+
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.applicationsPanel}
+        scope={scope}
+        projectId={controller.projectId}
+        class="block"
+      />
 
       <p class="text-[11.5px] text-ink-400 leading-relaxed">
         {scope === "global"

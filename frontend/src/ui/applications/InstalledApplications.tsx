@@ -6,8 +6,10 @@ import type {
   AppInstance,
   AppInstanceStatus,
 } from "../../models/application";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import { useConfirm } from "../../state/context/ConfirmContext";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import {
   Check,
   Eye,
@@ -137,6 +139,12 @@ function InstalledRow({
           </span>
         )}
         <div class="ml-auto flex items-center gap-1">
+          <ExtensionSlot
+            name={EXTENSION_SLOTS.applicationCardActions}
+            scope={controller.scope}
+            projectId={instance.projectId}
+            instance={instance}
+          />
           {running ? (
             <IconButton
               title="Stop"

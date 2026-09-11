@@ -104,6 +104,14 @@ func TestRegistryRejectsIncompleteImageDeclarations(t *testing.T) {
 				Downloads: map[string]svc.HostToolDownload{"amd64": {URL: "https://example.invalid/tool"}},
 			}}},
 		},
+		{
+			name: "a host tool on an image that provisions nothing",
+			image: svc.Image{Name: "Test", Type: svc.KindUI, Scopes: []svc.Scope{svc.ScopeProject}, UI: &svc.ImageUI{}, HostTools: []svc.HostTool{{
+				Name:      "tool",
+				Version:   "1",
+				Downloads: map[string]svc.HostToolDownload{"amd64": {URL: "https://example.invalid/tool", SHA256: "00"}},
+			}}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := validate(tc.image); err == nil {

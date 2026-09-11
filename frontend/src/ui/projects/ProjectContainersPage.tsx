@@ -1,3 +1,5 @@
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ComponentChildren, ComponentType } from "preact";
 import { useCallback, useState } from "preact/hooks";
 import { projectShareService } from "../../services/projects/projectShareService";
@@ -265,6 +267,7 @@ export function ProjectContainersPage({
 
                 {activeTab === "settings" && (
                   <div class="space-y-4">
+                    <ExtensionSlot name={EXTENSION_SLOTS.projectSettingsPanel} scope="project" projectId={project.id} />
                     <ProjectResourceLimits
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}

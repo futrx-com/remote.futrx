@@ -15,6 +15,8 @@ func (r *singleImageRegistry) Get(id string) (Image, bool) {
 	return r.image, true
 }
 
+func (r *singleImageRegistry) UIAsset(string, string) ([]byte, bool) { return nil, false }
+
 // fakeStore is the shared in-memory store for application service tests. It
 // records writes and deletions while keeping reads consistent with them.
 type fakeStore struct {
