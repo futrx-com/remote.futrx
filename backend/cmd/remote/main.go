@@ -29,6 +29,7 @@ import (
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
+	"github.com/futrx-com/remote.futrx.com/internal/service/runchanges"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
@@ -103,6 +104,7 @@ func main() {
 		SessionRegistry:   storeSet.SessionRegistry,
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
+		RunChanges:        runchanges.NewTracker(cfg.DataDir, gitcli.NewHistoryClient()),
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),

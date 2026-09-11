@@ -18,6 +18,7 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
+	"github.com/futrx-com/remote.futrx.com/internal/service/runchanges"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
@@ -81,6 +82,7 @@ type Dependencies struct {
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
 	PromptStartGate   prompt.StartGate
+	RunChanges        *runchanges.Tracker
 }
 
 // ScheduleLimits mirrors the deployment's scheduled-task guardrails without
@@ -249,6 +251,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.Usage != nil {
 		usageService = serviceusage.New(deps.Usage, projectService, chats)
 		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
+	}
+	if deps.RunChanges != nil {
+		promptOptions = append(promptOptions, prompt.WithRunChangeTracker(deps.RunChanges))
 	}
 	promptService := prompt.New(
 		chats,

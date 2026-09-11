@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -119,6 +121,69 @@ func (c *HistoryClient) CommitDiff(ctx context.Context, repositoryPath, sha stri
 
 func (c *HistoryClient) ResolveCommit(ctx context.Context, repositoryPath, sha string) (string, error) {
 	return c.run(ctx, repositoryPath, 5*time.Second, "rev-parse", "--verify", sha+"^{commit}")
+}
+
+// DiffSummary tallies worktree changes (tracked modifications plus untracked
+// files) against a base commit. Renames surface as delete+add pairs; binary
+// files count as changed paths without line counts.
+type DiffSummary struct {
+	Files      []string
+	Insertions int64
+	Deletions  int64
+}
+
+// maxUntrackedReadBytes bounds line counting for newly created files.
+const maxUntrackedReadBytes = 10 << 20
+
+func (c *HistoryClient) DiffSummary(ctx context.Context, repositoryPath, base string) (DiffSummary, error) {
+	var summary DiffSummary
+	seen := map[string]bool{}
+	numstat, err := c.run(ctx, repositoryPath, 20*time.Second, "diff", "--numstat", base, "--", ".")
+	if err != nil {
+		return summary, err
+	}
+	for _, line := range strings.Split(numstat, "\n") {
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) != 3 || fields[2] == "" {
+			continue
+		}
+		path := fields[2]
+		if !seen[path] {
+			seen[path] = true
+			summary.Files = append(summary.Files, path)
+		}
+		// Binary entries report "-" counts: the path still changed.
+		if added, aerr := strconv.ParseInt(fields[0], 10, 64); aerr == nil {
+			summary.Insertions += added
+		}
+		if deleted, derr := strconv.ParseInt(fields[1], 10, 64); derr == nil {
+			summary.Deletions += deleted
+		}
+	}
+	status, err := c.run(ctx, repositoryPath, 20*time.Second, "status", "--porcelain=v1", "-uall", "--", ".")
+	if err != nil {
+		return summary, err
+	}
+	for _, line := range strings.Split(status, "\n") {
+		if !strings.HasPrefix(line, "?? ") || len(line) < 4 {
+			continue
+		}
+		path := line[3:]
+		content, rerr := os.ReadFile(filepath.Join(repositoryPath, filepath.FromSlash(path)))
+		if rerr != nil {
+			continue
+		}
+		if len(content) > maxUntrackedReadBytes {
+			continue
+		}
+		if !seen[path] {
+			seen[path] = true
+			summary.Files = append(summary.Files, path)
+		}
+		summary.Insertions += int64(strings.Count(string(content), "\n"))
+	}
+	sort.Strings(summary.Files)
+	return summary, nil
 }
 
 func (c *HistoryClient) StageAll(ctx context.Context, repositoryPath string) error {

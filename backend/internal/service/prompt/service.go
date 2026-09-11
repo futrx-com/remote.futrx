@@ -12,6 +12,7 @@ import (
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/service/runchanges"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 )
@@ -115,6 +116,14 @@ func WithUsageRecorder(recorder UsageRecorder) Option {
 	}
 }
 
+// WithRunChangeTracker enables per-run workspace changeset recording. A nil
+// tracker disables it; every hook below is nil-safe either way.
+func WithRunChangeTracker(tracker *runchanges.Tracker) Option {
+	return func(service *Service) {
+		service.changes = tracker
+	}
+}
+
 type AgentPolicy interface {
 	Descriptor(provider string) (agentmodule.Descriptor, bool)
 	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
@@ -140,6 +149,7 @@ type Service struct {
 	scheduleTools ScheduleToolIssuer
 	usage         UsageRecorder
 	startGate     StartGate
+	changes       *runchanges.Tracker
 	interactions  interactionResponseRouter
 }
 
@@ -432,6 +442,11 @@ func (rnr *Service) runPromptAs(
 		})
 	}
 
+	// Baseline the workspace before the agent runs so the changeset can be
+	// attributed to this run when it finishes. meta.Cwd is the host path in
+	// every scope (container runs see it bind-mounted at /workspace).
+	changeScope := rnr.beginRunChange(ctx, id, ledgerRunID, string(providerID), meta.Model, meta.Cwd)
+
 	err = run(effectivePrompt, resumeID)
 	if errors.Is(err, agent.ErrSessionNotFound) && resumeID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
@@ -454,6 +469,14 @@ func (rnr *Service) runPromptAs(
 	if err != nil && !errors.Is(err, agent.ErrRunFailed) {
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: string(providerID) + " exit: " + err.Error()})
 	}
+	// WithoutCancel: the run context may already be canceled (user interrupt),
+	// but the changeset read is short, local, and must not be lost with it.
+	changeScope.Finish(
+		context.WithoutCancel(ctx),
+		runchanges.OutcomeFor(ctx.Err(), err, func(runErr error) bool {
+			return errors.Is(runErr, agent.ErrRunFailed)
+		}),
+	)
 	return err
 }
 
@@ -462,6 +485,20 @@ func withTurnID(turnID string, emit func(ChatEvent)) func(ChatEvent) {
 		event.TurnID = turnID
 		emit(event)
 	}
+}
+
+// beginRunChange captures the workspace baseline for later changeset
+// attribution. It returns nil when tracking is disabled or there is nothing
+// trackable; the returned scope is always safe to Finish.
+func (rnr *Service) beginRunChange(
+	ctx context.Context,
+	id servicechat.ID,
+	runID, provider, model, repoPath string,
+) *runchanges.Scope {
+	if rnr.changes == nil {
+		return nil
+	}
+	return rnr.changes.BeginRun(ctx, id, runID, provider, model, repoPath)
 }
 
 func clearSessionIDForProvider(meta *ChatMeta, provider agent.ProviderID) {
