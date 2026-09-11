@@ -15,6 +15,11 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 # ───────────────── base apt deps ─────────────────
+# Only what Remote itself needs. Tools that exist for one optional installable
+# application — restic, for instance — are not listed here: the application
+# declares its own host tool and Remote downloads it, checksum-pinned, when
+# someone installs that application. A host that installs none of them keeps
+# exactly the packages below.
 log "apt update + base packages"
 apt-get update -qq
 apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base

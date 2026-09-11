@@ -158,7 +158,7 @@ done
 
 stage_dir="$(mktemp -d /tmp/remote-futrx-local-build.XXXXXX)"
 tar --extract --gzip --file "$archive_path" --directory "$stage_dir"
-for required_path in frontend/package.json backend/go.mod backend/cmd/remote; do
+for required_path in frontend/package.json backend/go.mod backend/cmd/remote go.mod images; do
     [ -e "$stage_dir/$required_path" ] || {
         echo "local source archive is missing: $required_path" >&2
         exit 1

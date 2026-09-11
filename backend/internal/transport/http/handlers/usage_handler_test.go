@@ -216,7 +216,7 @@ func TestUsageRoutesRegisterAlongsideProjectRoutes(t *testing.T) {
 	stub := &stubUsageService{}
 	usage := newTestUsageHandler(stub)
 	usage.RegisterRoutes(mux)
-	NewProjectHandler(nil, nil, nil, "example.com").WithUsage(usage).RegisterRoutes(mux)
+	NewProjectHandler(nil, nil, nil, "example.com", nil).WithUsage(usage).RegisterRoutes(mux)
 
 	for _, route := range []struct {
 		method string

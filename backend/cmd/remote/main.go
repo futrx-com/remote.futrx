@@ -20,6 +20,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
@@ -62,12 +63,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
+	appRegistry, err := containerapplications.NewRegistry()
+	if err != nil {
+		log.Fatalf("load application catalog: %v", err)
+	}
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
 		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:       appRegistry,
+			DataDir:           cfg.DataDir,
 		},
 	)
 
@@ -129,6 +136,10 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
+		AppStore:        storeSet.Applications,
+		AppRegistry:     appRegistry,
+		AppInstaller:    containerStack.AppInstaller,
+		AppPorts:        containerStack.AppPorts,
 		PromptStartGate: maintenanceGuard,
 	})
 	if err != nil {
