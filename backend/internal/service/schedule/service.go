@@ -82,6 +82,13 @@ func WithMaxTasksPerProject(limit int) Option {
 	}
 }
 
+// WithRunObserver installs an observer of scheduled run outcomes.
+func WithRunObserver(observer RunObserver) Option {
+	return func(s *Service) {
+		s.observer = observer
+	}
+}
+
 type Service struct {
 	repo       Repository
 	chats      ChatLookup
@@ -89,6 +96,7 @@ type Service struct {
 	identities IdentityDirectory
 	executor   Executor
 	cron       CronParser
+	observer   RunObserver
 	now        func() time.Time
 	busyRetry  time.Duration
 
@@ -770,10 +778,12 @@ func (s *Service) executionContext() context.Context {
 
 func (s *Service) finish(ctx context.Context, claimed Task, result RunResult) error {
 	nowMS := s.now().UnixMilli()
-	_, err := s.repo.Update(ctx, claimed.ID, func(task *Task) error {
+	settled := false
+	updated, err := s.repo.Update(ctx, claimed.ID, func(task *Task) error {
 		if task.ActiveRunID != claimed.ActiveRunID {
 			return nil
 		}
+		settled = true
 		task.ActiveRunID = ""
 		task.ActiveRunStarted = 0
 		task.ActiveRunForced = false
@@ -838,6 +848,9 @@ func (s *Service) finish(ctx context.Context, claimed Task, result RunResult) er
 	})
 	if err == nil {
 		s.notify()
+		if settled && s.observer != nil {
+			s.observer.ScheduledRunFinished(ctx, updated, result)
+		}
 	}
 	return err
 }

@@ -101,6 +101,7 @@ func main() {
 		UserSettings:      storeSet.UserSettings,
 		TwoFactor:         storeSet.TwoFactor,
 		SessionRegistry:   storeSet.SessionRegistry,
+		Notifications:     storeSet.Notifications,
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
 		AuthBaseURL:       cfg.BaseURL,
