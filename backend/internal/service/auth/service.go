@@ -113,6 +113,7 @@ func New(
 	sessionKey []byte,
 	twoFactorStore TwoFactorStore,
 	sessionRegistryStore SessionRegistryStore,
+	lifecyclePublisher UpdateLifecyclePublisher,
 	options Options,
 ) (*Service, error) {
 	if store == nil {
@@ -126,6 +127,9 @@ func New(
 	}
 	if sessionRegistryStore == nil {
 		return nil, errors.New("session registry store is required")
+	}
+	if lifecyclePublisher == nil {
+		return nil, errors.New("update lifecycle publisher is required")
 	}
 	if err := options.validate(); err != nil {
 		return nil, fmt.Errorf("auth options: %w", err)
@@ -173,6 +177,7 @@ func New(
 			sessionKey,
 			options.EnrollmentTTL,
 			options.RecoveryCodeCount,
+			lifecyclePublisher,
 		),
 		registry:          newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
 		pendingLoginCodec: newPendingLoginPayload(sessionKey),

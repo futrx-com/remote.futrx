@@ -75,6 +75,7 @@ func newAuth(
 	baseURL string,
 	twoFactor serviceauth.TwoFactorStore,
 	sessionRegistry serviceauth.SessionRegistryStore,
+	updateLifecycle serviceauth.UpdateLifecyclePublisher,
 	options AuthOptions,
 ) (*serviceauth.Service, error) {
 	if store == nil {
@@ -104,6 +105,7 @@ func newAuth(
 		sessionKey,
 		twoFactor,
 		sessionRegistry,
+		updateLifecycle,
 		serviceauth.Options{
 			PendingLoginTTL:     options.PendingLoginTTL,
 			EnrollmentTTL:       options.EnrollmentTTL,

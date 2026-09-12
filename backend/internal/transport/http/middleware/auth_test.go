@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/integration/lifecycle/publishers"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
@@ -47,6 +48,7 @@ func TestProviderLoginGate(t *testing.T) {
 		[]byte("test-session-key"),
 		twoFactorStore,
 		sessionRegistryStore,
+		publishers.New(),
 		serviceauth.Options{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

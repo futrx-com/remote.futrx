@@ -23,6 +23,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/lifecycle/publishers"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/tmuxcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
@@ -89,6 +90,11 @@ func main() {
 	)
 
 	tmuxClient := tmuxcli.New()
+	// One process-wide update-lifecycle publisher, shared with every producer
+	// and observer that is explicitly given it. No production observer is
+	// registered yet; the empty publisher preserves current behavior while
+	// making the hook available.
+	updateLifecycle := publishers.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
 		Projects:          storeSet.Projects,
@@ -101,6 +107,7 @@ func main() {
 		UserSettings:      storeSet.UserSettings,
 		TwoFactor:         storeSet.TwoFactor,
 		SessionRegistry:   storeSet.SessionRegistry,
+		UpdateLifecycle:   updateLifecycle,
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
 		AuthBaseURL:       cfg.BaseURL,

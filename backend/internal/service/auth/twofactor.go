@@ -17,6 +17,19 @@ var (
 	ErrEnrollmentTokenMismatch = errors.New("enrollment token does not match the current session")
 )
 
+// Update-lifecycle identity for 2FA's durable mutations. These are
+// implementation-only semantic identifiers, not runtime configuration, so
+// they stay private constants beside the 2FA implementation rather than
+// exported alongside the publisher's generic contract.
+const (
+	twoFactorLifecycleSource = "two-factor"
+
+	twoFactorLifecycleConfirmEnrollment       = "confirm-enrollment"
+	twoFactorLifecycleVerifyChallenge         = "verify-challenge"
+	twoFactorLifecycleDisable                 = "disable"
+	twoFactorLifecycleRegenerateRecoveryCodes = "regenerate-recovery-codes"
+)
+
 // pendingEnrollment is the signed, stateless payload carried by an
 // enrollment token between BeginEnrollment and ConfirmEnrollment - nothing
 // is persisted server-side until the user proves possession of the
@@ -44,6 +57,7 @@ type twoFactorAuthenticator struct {
 	codec             signedPayload[pendingEnrollment]
 	enrollmentTTL     time.Duration
 	recoveryCodeCount int
+	publisher         UpdateLifecyclePublisher
 
 	// account serializes each account's read-modify-write of its record;
 	// mu only guards the cache map itself.
@@ -59,6 +73,7 @@ func newTwoFactorAuthenticator(
 	key []byte,
 	enrollmentTTL time.Duration,
 	recoveryCodeCount int,
+	publisher UpdateLifecyclePublisher,
 ) *twoFactorAuthenticator {
 	return &twoFactorAuthenticator{
 		store:             store,
@@ -66,8 +81,26 @@ func newTwoFactorAuthenticator(
 		codec:             newPendingEnrollmentPayload(key),
 		enrollmentTTL:     enrollmentTTL,
 		recoveryCodeCount: recoveryCodeCount,
+		publisher:         publisher,
 		cache:             map[string]*TwoFactorRecord{},
 	}
+}
+
+// runLifecycleMutation wraps a durable 2FA mutation with exactly one Started
+// event and one terminal event: Completed when fn returns nil, Failed with
+// fn's exact error otherwise. fn's own return value is returned unchanged.
+// Operations whose result includes more than an error capture their extra
+// outputs via closure over the caller's named return values, so every
+// operation's return type stays concrete - no any, reflection, or shared
+// result bag.
+func (a *twoFactorAuthenticator) runLifecycleMutation(ctx context.Context, operation, subject string, fn func() error) error {
+	a.publisher.PublishUpdateStarted(ctx, twoFactorLifecycleSource, operation, subject)
+	if err := fn(); err != nil {
+		a.publisher.PublishUpdateFailed(ctx, twoFactorLifecycleSource, operation, subject, err)
+		return err
+	}
+	a.publisher.PublishUpdateCompleted(ctx, twoFactorLifecycleSource, operation, subject)
+	return nil
 }
 
 func (a *twoFactorAuthenticator) load(ctx context.Context, email string) (*TwoFactorRecord, error) {
@@ -131,6 +164,16 @@ func (a *twoFactorAuthenticator) BeginEnrollment(ctx context.Context, email stri
 // before anything is written, so presenting another account's enrollment
 // token cannot enroll a secret onto that account.
 func (a *twoFactorAuthenticator) ConfirmEnrollment(ctx context.Context, expectedEmail, enrollmentToken, code string) (recoveryCodes []string, email string, err error) {
+	subject := normalizeEmail(expectedEmail)
+	err = a.runLifecycleMutation(ctx, twoFactorLifecycleConfirmEnrollment, subject, func() error {
+		var mutationErr error
+		recoveryCodes, email, mutationErr = a.confirmEnrollment(ctx, expectedEmail, enrollmentToken, code)
+		return mutationErr
+	})
+	return recoveryCodes, email, err
+}
+
+func (a *twoFactorAuthenticator) confirmEnrollment(ctx context.Context, expectedEmail, enrollmentToken, code string) (recoveryCodes []string, email string, err error) {
 	pending, verifyErr := a.codec.verify(enrollmentToken)
 	if verifyErr != nil {
 		return nil, "", ErrInvalidEnrollmentToken
@@ -162,6 +205,16 @@ func (a *twoFactorAuthenticator) ConfirmEnrollment(ctx context.Context, expected
 // recovery-code consumption. usedRecoveryCode distinguishes the two so the
 // caller can record the precise SignInMethod.
 func (a *twoFactorAuthenticator) VerifyChallenge(ctx context.Context, email, code string) (usedRecoveryCode bool, err error) {
+	subject := normalizeEmail(email)
+	err = a.runLifecycleMutation(ctx, twoFactorLifecycleVerifyChallenge, subject, func() error {
+		var mutationErr error
+		usedRecoveryCode, mutationErr = a.verifyChallenge(ctx, email, code)
+		return mutationErr
+	})
+	return usedRecoveryCode, err
+}
+
+func (a *twoFactorAuthenticator) verifyChallenge(ctx context.Context, email, code string) (usedRecoveryCode bool, err error) {
 	email = normalizeEmail(email)
 	// Held across load/verify/save so a recovery code cannot be redeemed
 	// twice by two concurrent challenges.
@@ -203,6 +256,13 @@ func (a *twoFactorAuthenticator) VerifyChallenge(ctx context.Context, email, cod
 // Disable requires proof of possession (a current TOTP code or an unused
 // recovery code) before removing the account's TwoFactorRecord entirely.
 func (a *twoFactorAuthenticator) Disable(ctx context.Context, email, code string) error {
+	subject := normalizeEmail(email)
+	return a.runLifecycleMutation(ctx, twoFactorLifecycleDisable, subject, func() error {
+		return a.disable(ctx, email, code)
+	})
+}
+
+func (a *twoFactorAuthenticator) disable(ctx context.Context, email, code string) error {
 	email = normalizeEmail(email)
 	defer a.account.lock(email)()
 	record, err := a.load(ctx, email)
@@ -226,7 +286,17 @@ func (a *twoFactorAuthenticator) Disable(ctx context.Context, email, code string
 
 // RegenerateRecoveryCodes replaces email's recovery codes with a fresh set,
 // after verifying a current TOTP code.
-func (a *twoFactorAuthenticator) RegenerateRecoveryCodes(ctx context.Context, email, code string) ([]string, error) {
+func (a *twoFactorAuthenticator) RegenerateRecoveryCodes(ctx context.Context, email, code string) (codes []string, err error) {
+	subject := normalizeEmail(email)
+	err = a.runLifecycleMutation(ctx, twoFactorLifecycleRegenerateRecoveryCodes, subject, func() error {
+		var mutationErr error
+		codes, mutationErr = a.regenerateRecoveryCodes(ctx, email, code)
+		return mutationErr
+	})
+	return codes, err
+}
+
+func (a *twoFactorAuthenticator) regenerateRecoveryCodes(ctx context.Context, email, code string) ([]string, error) {
 	email = normalizeEmail(email)
 	defer a.account.lock(email)()
 	record, err := a.load(ctx, email)

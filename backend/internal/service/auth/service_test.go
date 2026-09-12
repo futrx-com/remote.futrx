@@ -84,8 +84,23 @@ func (s *authTestStore) SaveSetupToken(_ context.Context, record SetupTokenRecor
 }
 func (s *authTestStore) SessionKey(context.Context) ([]byte, error) { return s.key, nil }
 
+// authTestTwoFactorStore is the shared TwoFactorStore fake for this package's
+// tests. saveErr/deleteErr inject a failure on the next call without
+// disturbing recorded state; beforeSave/beforeDelete let a test observe
+// authenticator state (e.g. the cache) at the instant the store call happens,
+// which is how the ordering characterization tests in twofactor_test.go pin
+// "store before cache" without reaching into private timing.
 type authTestTwoFactorStore struct {
 	records map[string]TwoFactorRecord
+
+	saveErr   error
+	deleteErr error
+
+	saveCalls   int
+	deleteCalls int
+
+	beforeSave   func(email string, record TwoFactorRecord)
+	beforeDelete func(email string)
 }
 
 func newAuthTestTwoFactorStore() *authTestTwoFactorStore {
@@ -101,12 +116,37 @@ func (s *authTestTwoFactorStore) Get(_ context.Context, email string) (*TwoFacto
 	return &copy, nil
 }
 func (s *authTestTwoFactorStore) Save(_ context.Context, email string, record TwoFactorRecord) error {
+	s.saveCalls++
+	if s.beforeSave != nil {
+		s.beforeSave(email, record)
+	}
+	if s.saveErr != nil {
+		return s.saveErr
+	}
 	s.records[normalizeEmail(email)] = record
 	return nil
 }
 func (s *authTestTwoFactorStore) Delete(_ context.Context, email string) error {
+	s.deleteCalls++
+	if s.beforeDelete != nil {
+		s.beforeDelete(email)
+	}
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
 	delete(s.records, normalizeEmail(email))
 	return nil
+}
+
+// noopLifecyclePublisher satisfies UpdateLifecyclePublisher for tests that
+// exercise auth/2FA behavior unrelated to lifecycle dispatch itself.
+type noopLifecyclePublisher struct{}
+
+func newNoopLifecyclePublisher() noopLifecyclePublisher { return noopLifecyclePublisher{} }
+
+func (noopLifecyclePublisher) PublishUpdateStarted(context.Context, string, string, string)   {}
+func (noopLifecyclePublisher) PublishUpdateCompleted(context.Context, string, string, string) {}
+func (noopLifecyclePublisher) PublishUpdateFailed(context.Context, string, string, string, error) {
 }
 
 type authTestSessionRegistryStore struct {
@@ -214,6 +254,7 @@ func newAuthTestServiceWithOptions(
 		[]byte("test-session-key"),
 		newAuthTestTwoFactorStore(),
 		newAuthTestSessionRegistryStore(),
+		newNoopLifecyclePublisher(),
 		options,
 	)
 	if err != nil {
@@ -253,6 +294,7 @@ func TestNewRejectsNonPositiveSetupTokenTTL(t *testing.T) {
 			[]byte("test-session-key"),
 			newAuthTestTwoFactorStore(),
 			newAuthTestSessionRegistryStore(),
+			newNoopLifecyclePublisher(),
 			options,
 		)
 		if err == nil {
