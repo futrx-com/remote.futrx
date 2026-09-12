@@ -146,6 +146,9 @@ code.${HOSTNAME} {
             # the gate is unaffected; this stops any code running inside a
             # dev server from harvesting the admin session token (which would
             # otherwise be replayable against code.${HOSTNAME} for host root).
+            # remote_share is the public-preview grant: host-scoped to this
+            # one <slug>--<port> origin, so this is the only block that can
+            # ever see it, and the app inside must not be able to read it.
             # The app's own cookies pass through untouched.
             header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
         }

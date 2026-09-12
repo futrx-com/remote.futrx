@@ -23,7 +23,7 @@ type setupTokenAnnouncer interface {
 // before the token gate existed the server booted fine without ever doing so;
 // making that read fatal would turn a damaged or unreadable users.json into an
 // outage on the next restart. The operator gets told what actually broke and
-// can reissue with `remote setup-token` once it is fixed.
+// can reissue with `sudo remote setup-token` once it is fixed.
 func announceSetupToken(ctx context.Context, auth setupTokenAnnouncer, baseURL string, out io.Writer) {
 	token, err := auth.EnsureSetupToken(ctx)
 	if err != nil {
@@ -39,7 +39,7 @@ func announceSetupToken(ctx context.Context, auth setupTokenAnnouncer, baseURL s
 // announceSetupTokenLink formats the one line an operator acts on.
 func announceSetupTokenLink(out io.Writer, baseURL, token string, ttl time.Duration) {
 	fmt.Fprintf(out,
-		"first-time setup required\n  visit:   %s/?token=%s\n  expires: %s from now (reissue with: remote setup-token)\n",
+		"first-time setup required\n  visit:   %s/?token=%s\n  expires: %s from now (reissue with: sudo remote setup-token)\n",
 		strings.TrimRight(baseURL, "/"), token, ttl,
 	)
 }

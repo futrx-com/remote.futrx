@@ -120,7 +120,14 @@ export function UpdatesSettings({
         </section>
       )}
 
-      {run && <UpdateRunCard run={run} restarting={restarting} />}
+      {run && (
+        <UpdateRunCard
+          run={run}
+          restarting={restarting}
+          applying={applying}
+          onRetry={onApply}
+        />
+      )}
     </div>
   );
 }

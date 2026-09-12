@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -254,5 +255,116 @@ func TestApplyValidatesTag(t *testing.T) {
 	host.tags = []string{"nightly"}
 	if _, err := svc.Apply(context.Background(), "a@b.c", ""); !errors.Is(err, ErrNoReleaseTag) {
 		t.Fatalf("Apply(no releases) err = %v, want ErrNoReleaseTag", err)
+	}
+}
+
+// TestApplyRetryPreservesInfrastructureKind simulates a failed infrastructure
+// update where the backend binary has already been replaced by the new
+// release. Re-applying toward the same target must keep the host convergence
+// path that actually failed, even though classifying against the running
+// version would otherwise collapse the run to an application-only deploy.
+func TestApplyRetryPreservesInfrastructureKind(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.11.0", "0.12.0"}, pid: 4242}
+	svc := New("0.11.0", "/opt/x", t.TempDir(), host)
+
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.12.0"); err != nil {
+		t.Fatalf("first Apply: %v", err)
+	}
+	if got := host.kinds[len(host.kinds)-1]; got != string(UpdateKindInfrastructure) {
+		t.Fatalf("first run kind = %s, want infrastructure", got)
+	}
+
+	// Mark the in-flight run as failed by clearing liveness and dropping a
+	// done marker. The Service is restarted to mimic the backend restart
+	// that the failing updater triggered before the partial install settled.
+	host.alive = false
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 1, FinishedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONFile(svc.runs.runPath(), runRecord{
+		Target: "0.12.0", UpdateKind: UpdateKindInfrastructure,
+		StartedAt: 1, StartedBy: "admin@example.com", PID: 4242,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// New binary is now reporting 0.12.0 because the previous infrastructure
+	// step rebuilt it before failing. A naive classification would now
+	// return application; the retry must instead re-use the failed kind.
+	svc2 := New("0.12.0", "/opt/x", filepath.Dir(svc.runs.dir), host)
+	host.alive = true
+	if _, err := svc2.Apply(context.Background(), "admin@example.com", "0.12.0"); err != nil {
+		t.Fatalf("retry Apply: %v", err)
+	}
+	if got := host.kinds[len(host.kinds)-1]; got != string(UpdateKindInfrastructure) {
+		t.Fatalf("retry kind = %s, want infrastructure (preserved from failed run)", got)
+	}
+}
+
+// TestApplyRetryReclassifiesWhenTargetChanges confirms that re-applying toward
+// a different tag is free to pick up a fresh classification. Only a retry
+// against the exact same target reuses the failed run's kind.
+func TestApplyRetryReclassifiesWhenTargetChanges(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.11.0", "0.12.0"}, pid: 4242}
+	svc := New("0.11.0", "/opt/x", t.TempDir(), host)
+
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.12.0"); err != nil {
+		t.Fatal(err)
+	}
+	host.alive = false
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 1, FinishedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeJSONFile(svc.runs.runPath(), runRecord{
+		Target: "0.12.0", UpdateKind: UpdateKindInfrastructure,
+		StartedAt: 1, StartedBy: "admin@example.com", PID: 4242,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host.alive = true
+
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.11.0"); err != nil {
+		t.Fatal(err)
+	}
+	if got := host.kinds[len(host.kinds)-1]; got != string(UpdateKindApplication) {
+		t.Fatalf("downgrade kind = %s, want application (no preservation across targets)", got)
+	}
+}
+
+// TestApplyStartUpdaterFailureClearsStaleRecord pins down the contract that
+// reset() + removeRecord() together guarantee: a launch that never made it
+// past StartUpdater must not leave a half-written run.json behind for
+// Status() to resurrect as a phantom failed run. Without this, an admin
+// could see the previous target's stale record with an empty log and no
+// progress, and assume the new attempt had failed.
+func TestApplyStartUpdaterFailureClearsStaleRecord(t *testing.T) {
+	host := &fakeHost{tags: []string{"0.11.0", "0.12.0"}, pid: 4242}
+	svc := New("0.11.0", "/opt/x", t.TempDir(), host)
+
+	// Land a prior failed infrastructure run on disk so the retry starts
+	// from the realistic partial-install state.
+	if _, err := svc.Apply(context.Background(), "admin@example.com", "0.12.0"); err != nil {
+		t.Fatal(err)
+	}
+	host.alive = false
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 1, FinishedAt: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now retry. StartUpdater fails; Apply must clear the previous run.json.
+	host.startErr = errors.New("synthetic launch failure")
+	host.alive = true
+	status, err := svc.Apply(context.Background(), "admin@example.com", "0.12.0")
+	if err == nil {
+		t.Fatalf("Apply err = nil, want synthetic launch failure")
+	}
+	if status.Run != nil {
+		t.Fatalf("status.Run = %+v, want nil so the UI does not show a phantom failed run", status.Run)
+	}
+	if _, err := os.Stat(svc.runs.runPath()); !os.IsNotExist(err) {
+		t.Fatalf("run.json still present after StartUpdater failure: err=%v", err)
+	}
+	if _, err := os.Stat(svc.runs.progressPath()); !os.IsNotExist(err) {
+		t.Fatalf("progress.json still present after StartUpdater failure: err=%v", err)
 	}
 }

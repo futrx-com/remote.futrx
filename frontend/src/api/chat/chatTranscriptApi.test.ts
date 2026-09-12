@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchTranscript } from "./chatTranscriptApi.ts";
+import { fetchFullTranscriptContent, fetchTranscript } from "./chatTranscriptApi.ts";
 
 test("fetches and flattens transcript turns without changing cursor metadata", async (t) => {
   const page = {
@@ -46,4 +46,36 @@ test("fetches and flattens transcript turns without changing cursor metadata", a
     lastSeq: 6,
     hasMore: true,
   });
+});
+
+test("loads oversized transcript content through complete cursor pages", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const requests: string[] = [];
+  globalThis.fetch = async (input) => {
+    requests.push(String(input));
+    if (requests.length === 1) {
+      return Response.json({
+        contentId: "content-1",
+        content: "first ",
+        nextAfter: 6,
+        totalBytes: 12,
+        complete: false,
+      });
+    }
+    return Response.json({
+      contentId: "content-1",
+      content: "second",
+      totalBytes: 12,
+      complete: true,
+    });
+  };
+
+  assert.equal(await fetchFullTranscriptContent("chat/1", "content-1"), "first second");
+  assert.deepEqual(requests, [
+    "/api/chats/chat%2F1/transcript/content?id=content-1",
+    "/api/chats/chat%2F1/transcript/content?id=content-1&after=6",
+  ]);
 });

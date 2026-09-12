@@ -65,6 +65,9 @@ type Event struct {
 	Name                 string          `json:"name,omitempty"`
 	Input                json.RawMessage `json:"input,omitempty"`
 	Output               string          `json:"output,omitempty"`
+	OutputRef            string          `json:"outputRef,omitempty"`
+	OutputBytes          int64           `json:"outputBytes,omitempty"`
+	OutputTruncated      bool            `json:"outputTruncated,omitempty"`
 	IsError              bool            `json:"isError,omitempty"`
 	ToolName             string          `json:"toolName,omitempty"`
 	Subtype              string          `json:"subtype,omitempty"`

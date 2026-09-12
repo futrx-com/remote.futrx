@@ -1,13 +1,17 @@
 import type { SelfUpdateProgress, SelfUpdateRun } from "../../../models/selfUpdate";
-import { AlertCircle, Loader } from "../../primitives/icons";
+import { AlertCircle, Loader, RotateCcw } from "../../primitives/icons";
 import { formatUpdateRelativeTime, formatUpdateTime } from "./updateTime";
 
 export function UpdateRunCard({
   run,
   restarting,
+  applying,
+  onRetry,
 }: {
   run: SelfUpdateRun;
   restarting: boolean;
+  applying?: boolean;
+  onRetry?: (target: string) => Promise<void> | void;
 }) {
   return (
     <section class="rounded-card border border-line bg-surface overflow-hidden">
@@ -54,6 +58,23 @@ export function UpdateRunCard({
             class="btn btn-primary btn-sm mt-2.5 font-medium"
           >
             Reload to use the new version
+          </button>
+        )}
+        {run.state === "failed" && onRetry && (
+          <button
+            type="button"
+            onClick={() => void onRetry(run.target)}
+            disabled={applying}
+            class="btn btn-primary btn-sm mt-2.5 font-medium inline-flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <RotateCcw class={`w-3.5 h-3.5 ${applying ? "animate-spin" : ""}`} />
+            {applying
+              ? run.updateKind === "application"
+                ? `Retrying deploy of ${run.target}…`
+                : `Retrying update to ${run.target}…`
+              : run.updateKind === "application"
+                ? `Retry deploy of ${run.target}`
+                : `Retry update to ${run.target}`}
           </button>
         )}
       </header>

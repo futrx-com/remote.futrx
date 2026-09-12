@@ -13,8 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -24,6 +26,8 @@ type ProjectHandler struct {
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
 	usage              *UsageHandler
+	shares             *serviceshare.Service
+	publicHostname     string
 	projectHostPattern *regexp.Regexp
 	codeHostPattern    *regexp.Regexp
 }
@@ -37,9 +41,10 @@ func NewProjectHandler(
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
 	escapedHostname := regexp.QuoteMeta(publicHostname)
 	return &ProjectHandler{
-		projects: projects,
-		users:    users,
-		auth:     auth,
+		projects:       projects,
+		users:          users,
+		auth:           auth,
+		publicHostname: publicHostname,
 		projectHostPattern: regexp.MustCompile(
 			`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.` + escapedHostname + `$`,
 		),
@@ -54,6 +59,13 @@ func NewProjectHandler(
 // and authorizes the caller.
 func (h *ProjectHandler) WithUsage(usage *UsageHandler) *ProjectHandler {
 	h.usage = usage
+	return h
+}
+
+// WithShares enables the public preview link routes under
+// /api/projects/{id}/shares. Without it those routes report 503.
+func (h *ProjectHandler) WithShares(shares *serviceshare.Service) *ProjectHandler {
+	h.shares = shares
 	return h
 }
 
@@ -197,6 +209,10 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		h.usage.HandleProjectSummary(w, r, string(id), email, isAdmin)
+		return
+	}
+	if len(parts) >= 2 && parts[1] == "shares" {
+		h.handleShares(w, r, id, parts)
 		return
 	}
 
@@ -458,7 +474,7 @@ func (h *ProjectHandler) HandleTLSAsk(w http.ResponseWriter, r *http.Request) {
 	if mm := h.projectHostPattern.FindStringSubmatch(domain); mm != nil {
 		slug = mm[1]
 		port, err := strconv.Atoi(mm[2])
-		if err != nil || port < 1024 || port > 65535 {
+		if err != nil || port < configconstants.ProjectPreviewMinPort || port > configconstants.ProjectPreviewMaxPort {
 			http.Error(w, "port out of range", http.StatusNotFound)
 			return
 		}
