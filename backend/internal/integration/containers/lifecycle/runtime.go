@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -15,15 +16,35 @@ import (
 )
 
 const (
-	// TODO: We will need to investigate how to hook into a callback instead of increasing the timeout
-	launchTimeout  = 10 * time.Minute
-	migrateTimeout = 5 * time.Minute
-	startTimeout   = 30 * time.Second
-	stopTimeout    = 30 * time.Second
-	restartTimeout = 60 * time.Second
-	deleteTimeout  = 5 * time.Minute
-	queryTimeout   = 10 * time.Second
+	// defaultLaunchTimeout bounds `lxc init` + first start. Unpacking the
+	// multi-GiB base image onto a dir-backed pool takes well over 90s on a
+	// single-vCPU host, and a timeout here kills the create operation
+	// half-way and strands a broken instance, so the ceiling is generous and
+	// FUTRX_LAUNCH_TIMEOUT (Go duration) can raise it further.
+	//
+	// Ten minutes rather than five: qa raised its own flat timeout to that
+	// after hitting the same wall, and their number is the one measured
+	// against a real slow host. The env override stays, because a fixed
+	// ceiling is a guess whatever it is set to.
+	defaultLaunchTimeout = 10 * time.Minute
+	migrateTimeout       = 5 * time.Minute
+	startTimeout         = 30 * time.Second
+	stopTimeout          = 30 * time.Second
+	restartTimeout       = 60 * time.Second
+	deleteTimeout        = 5 * time.Minute
+	queryTimeout         = 10 * time.Second
 )
+
+var launchTimeout = launchTimeoutFromEnv()
+
+func launchTimeoutFromEnv() time.Duration {
+	if raw := os.Getenv("FUTRX_LAUNCH_TIMEOUT"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultLaunchTimeout
+}
 
 // Client translates lifecycle operations into LXD CLI calls.
 type Client struct {

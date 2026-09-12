@@ -1,0 +1,9 @@
+[Unit]
+Description=Remote by FutrX — nightly backup snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/remote-backup
+Nice=10
+IOSchedulingClass=idle
