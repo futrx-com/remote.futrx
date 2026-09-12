@@ -9,6 +9,7 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
+	serviceresources "github.com/futrx-com/remote.futrx.com/internal/service/resources"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
@@ -21,6 +22,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectshares"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileresources"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
@@ -69,6 +71,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	Resources       serviceresources.Repository
 	ProjectShares   serviceshare.Repository
 }
 
@@ -110,6 +113,11 @@ func New(dataDir string) (Stores, error) {
 	schedules, err := fileschedule.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init scheduled tasks store: %w", err)
+	}
+
+	resources, err := fileresources.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init resource settings store: %w", err)
 	}
 
 	users, err := fileusers.New(dataDir)
@@ -158,6 +166,7 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		Resources:       resources,
 		ProjectShares:   projectShares,
 	}, nil
 }

@@ -62,13 +62,14 @@ export const API_ROUTES = {
     collection: "/api/projects",
     item: (id: string) => `/api/projects/${encodeURIComponent(id)}`,
     reorder: "/api/projects/reorder",
-    start: (id: string) => `/api/projects/${encodeURIComponent(id)}/start`,
+    start: (id: string, force = false) =>
+      `/api/projects/${encodeURIComponent(id)}/start${force ? "?force=1" : ""}`,
     stop: (id: string) => `/api/projects/${encodeURIComponent(id)}/stop`,
     restart: (id: string) => `/api/projects/${encodeURIComponent(id)}/restart`,
     container: (id: string) =>
       `/api/projects/${encodeURIComponent(id)}/container`,
-    limits: (id: string) =>
-      `/api/projects/${encodeURIComponent(id)}/limits`,
+    resources: (id: string) =>
+      `/api/projects/${encodeURIComponent(id)}/resources`,
     repairNetwork: (id: string) =>
       `/api/projects/${encodeURIComponent(id)}/repair-network`,
     apps: (id: string) => `/api/projects/${encodeURIComponent(id)}/apps`,
@@ -117,6 +118,7 @@ export const API_ROUTES = {
     cancel: "/auth/2fa/cancel",
   },
   serverInfo: "/api/server/info",
+  adminResources: "/api/admin/resources",
   selfUpdate: {
     status: "/api/admin/update/status",
     check: "/api/admin/update/check",

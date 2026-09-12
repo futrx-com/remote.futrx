@@ -1,27 +1,18 @@
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
+import type { FleetResourcesView, FleetSettings } from "../../models/resources";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { SecuritySettingsController } from "../../state/hooks/auth/useSecuritySettings";
 import type { ComponentType } from "preact";
 import type { PushNotifications } from "../../state/hooks/push/usePushNotifications";
-import {
-  Activity,
-  Bell,
-  Bot,
-  ChevronLeft,
-  Download,
-  Info,
-  Menu,
-  Monitor,
-  ShieldCheck,
-  Users,
-} from "../primitives/icons";
+import { Activity, Bell, Bot, ChevronLeft, Cpu, Download, Info, Menu, Monitor, ShieldCheck, Users } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { SecuritySettings } from "./SecuritySettings";
+import { ResourcesSettings } from "./ResourcesSettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
@@ -33,9 +24,10 @@ export type SettingsTab =
   | "notifications"
   | "agents"
   | "users"
-  | "security"
   | "updates"
   | "info"
+  | "resources"
+  | "security"
   | "usage";
 
 const tabs: Array<{
@@ -81,6 +73,12 @@ const tabs: Array<{
     Icon: ShieldCheck,
   },
   {
+    id: "resources",
+    label: "Resources",
+    description: "Set the CPU, memory, and disk envelope every project container inherits.",
+    Icon: Cpu,
+  },
+  {
     id: "updates",
     label: "Updates",
     description: "Check for new releases and install them.",
@@ -103,6 +101,11 @@ export function SettingsPage({
   serverInfoLoading,
   serverInfoRefreshing,
   serverInfoError,
+  fleetResources,
+  fleetResourcesLoading,
+  fleetResourcesSaving,
+  fleetResourcesError,
+  onSaveFleetResources,
   selfUpdate,
   selfUpdateLoading,
   selfUpdateChecking,
@@ -136,6 +139,11 @@ export function SettingsPage({
   serverInfoLoading: boolean;
   serverInfoRefreshing: boolean;
   serverInfoError: string | null;
+  fleetResources: FleetResourcesView | null;
+  fleetResourcesLoading: boolean;
+  fleetResourcesSaving: boolean;
+  fleetResourcesError: string | null;
+  onSaveFleetResources: (settings: Partial<FleetSettings>) => Promise<void>;
   selfUpdate: SelfUpdateStatus | null;
   selfUpdateLoading: boolean;
   selfUpdateChecking: boolean;
@@ -274,7 +282,20 @@ export function SettingsPage({
             )}
 
             {activeTab === "security" && <SecuritySettings controller={security} />}
-
+            {activeTab === "resources" &&
+              (isAdmin ? (
+                <ResourcesSettings
+                  view={fleetResources}
+                  loading={fleetResourcesLoading}
+                  saving={fleetResourcesSaving}
+                  error={fleetResourcesError}
+                  onSave={onSaveFleetResources}
+                />
+              ) : (
+                <SettingsNotice>
+                  Container resource limits are managed by server administrators.
+                </SettingsNotice>
+              ))}
             {activeTab === "updates" &&
               (isAdmin ? (
                 <UpdatesSettings

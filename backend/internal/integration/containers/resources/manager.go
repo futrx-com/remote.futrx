@@ -4,12 +4,19 @@
 // starve the host (observed twice in 2026-07: an ffmpeg CPU peg and a node
 // OOM each took the box down). The profile puts a fleet-wide ceiling on
 // every container while leaving per-project overrides to the operator.
+//
+// The envelope itself is no longer compiled in: the service layer owns the
+// policy (`internal/service/resources`, persisted to `DATA_DIR/resources.json`)
+// and pushes it here through ApplyDefaults. The values below are only the
+// fallback used before that first push lands.
 package resources
 
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
@@ -26,34 +33,80 @@ const (
 	queryTimeout = 10 * time.Second
 )
 
-// profileConfig is the desired state of the managed profile. The limits
-// mirror the caps the operator applied by hand after the 2026-07 host
-// takedowns. The backend converges the profile to these values on every
-// Launch — edit HERE and redeploy to change the fleet default; hand-edits
-// via `lxc profile edit` are reverted on the next convergence.
-var profileConfig = [...][2]string{
-	// Hard memory ceiling: the container's own OOM killer fires inside the
-	// cgroup; the host never feels it.
-	{"limits.memory", "4GiB"},
-	// CPU cap below the host's core count so the host control plane (LXD,
-	// sshd, backend) always has headroom even with a pegged workspace.
-	{"limits.cpu", "6"},
-	// Fork-bomb guard; the kernel PID table is shared with the host.
-	{"limits.processes", "2000"},
-	// Chrome's own sandbox (nested user namespaces) for the Agent Browser.
-	{"security.nesting", "true"},
+// Defaults is the desired fleet envelope in LXD's own vocabulary. Empty
+// fields are left unmanaged on the profile.
+type Defaults struct {
+	Memory    string
+	CPU       string
+	Processes string
+	// Disk is the fleet root-disk quota. It is applied per container rather
+	// than on the profile: a profile-level root device would have to restate
+	// the storage pool, and getting that wrong breaks every container at once.
+	Disk string
 }
+
+// fallbackDefaults is the envelope in force before the service layer pushes
+// the operator's policy — the caps applied by hand after the 2026-07 host
+// takedowns. It is deliberately generous: the host-aware derivation on first
+// run replaces it within milliseconds of startup.
+var fallbackDefaults = Defaults{Memory: "4GiB", CPU: "6", Processes: "2000"}
 
 // Manager converges the managed profile definition and its attachment to
 // project containers.
 type Manager struct {
 	runner command.Runner
+
+	mu       sync.RWMutex
+	defaults Defaults
+
+	pool poolCache
 }
 
 // NewManager returns a Manager that issues profile operations through runner.
 func NewManager(runner command.Runner) *Manager {
-	return &Manager{runner: runner}
+	return &Manager{runner: runner, defaults: fallbackDefaults}
 }
+
+// SetDefaults replaces the desired fleet envelope. The next convergence — and
+// every subsequent Ensure — writes these values.
+func (m *Manager) SetDefaults(defaults Defaults) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.defaults = defaults
+}
+
+func (m *Manager) currentDefaults() Defaults {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.defaults
+}
+
+// profileEntries is the desired state of the managed profile: the operator's
+// envelope plus the one setting that is a capability rather than a limit.
+func (m *Manager) profileEntries() [][2]string {
+	defaults := m.currentDefaults()
+	entries := make([][2]string, 0, 4)
+	// Hard memory ceiling: the container's own OOM killer fires inside the
+	// cgroup; the host never feels it.
+	if defaults.Memory != "" {
+		entries = append(entries, [2]string{"limits.memory", defaults.Memory})
+	}
+	// CPU cap below the host's core count so the host control plane (LXD,
+	// sshd, backend) always has headroom even with a pegged workspace.
+	if defaults.CPU != "" {
+		entries = append(entries, [2]string{"limits.cpu", defaults.CPU})
+	}
+	// Fork-bomb guard; the kernel PID table is shared with the host.
+	if defaults.Processes != "" {
+		entries = append(entries, [2]string{"limits.processes", defaults.Processes})
+	}
+	// Chrome's own sandbox (nested user namespaces) for the Agent Browser.
+	entries = append(entries, [2]string{"security.nesting", "true"})
+	return entries
+}
+
+// Available reports whether the container runtime CLI is reachable.
+func (m *Manager) Available() bool { return m.runner.Available() }
 
 // Ensure converges the profile definition, then attaches the profile to the
 // container. Idempotent and cheap on the healthy path (a handful of local
@@ -74,6 +127,9 @@ func (m *Manager) Ensure(ctx context.Context, containerName string) error {
 // SetLimits writes container-local overrides, which take precedence over the
 // managed profile. Empty values remove the corresponding override. CPU and
 // memory are instance config keys; root-disk quota is a disk-device property.
+//
+// The caller passes effective values (project override merged over the fleet
+// default), so an empty disk here means "no quota anywhere", not "fall back".
 func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, disk string) error {
 	for _, limit := range []struct {
 		key   string
@@ -97,6 +153,14 @@ func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, dis
 		if err != nil && !missingDeviceOutput(out+" "+err.Error()) {
 			return fmt.Errorf("config device unset %s root size: %w; output: %s", containerName, err, out)
 		}
+		return nil
+	}
+
+	// A `dir` pool cannot enforce a root quota. Writing one anyway either
+	// fails the launch or lies to the operator; skipping it and reporting the
+	// pool capability through the API is the honest option.
+	if !m.quotaSupported(ctx) {
+		log.Printf("resources: skipping %s disk quota %s - storage pool cannot enforce quotas", containerName, disk)
 		return nil
 	}
 
@@ -134,7 +198,7 @@ func (m *Manager) ensureProfile(ctx context.Context) error {
 			return fmt.Errorf("profile create %s: %w; output: %s", ProfileName, err, out)
 		}
 	}
-	for _, kv := range profileConfig {
+	for _, kv := range m.profileEntries() {
 		key, want := kv[0], kv[1]
 		current, _ := command.RunWithTimeout(ctx, m.runner, queryTimeout, "profile", "get", ProfileName, key)
 		if strings.TrimSpace(current) == want {
