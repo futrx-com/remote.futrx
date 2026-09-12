@@ -24,9 +24,15 @@ func newRunState(dataDir string) runState {
 	return runState{dir: filepath.Join(dataDir, stateDirName)}
 }
 
-// reset removes the previous result and prepares an empty log for a fresh run.
+// reset clears every durable record of the previous run. Apply captures
+// the previous RunStatus into prevRun before calling reset, so the
+// classification it needs to reuse on retry is already in memory by the
+// time reset removes the on-disk record.
 func (r runState) reset() error {
 	if err := os.MkdirAll(r.dir, 0o700); err != nil {
+		return err
+	}
+	if err := removeIfPresent(r.runPath()); err != nil {
 		return err
 	}
 	if err := removeIfPresent(r.donePath()); err != nil {
@@ -36,6 +42,13 @@ func (r runState) reset() error {
 		return err
 	}
 	return os.WriteFile(r.logPath(), nil, runFileMode)
+}
+
+// removeRecord discards a run.json that Apply wrote before the updater
+// finished launching. Apply uses it on the StartUpdater failure path so
+// Status() does not resurrect a half-written record after reset() ran.
+func (r runState) removeRecord() {
+	_ = os.Remove(r.runPath())
 }
 
 func (r runState) launch(installDir, target string, kind UpdateKind) UpdaterLaunch {

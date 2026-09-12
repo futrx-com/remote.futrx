@@ -21,6 +21,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
 	"github.com/futrx-com/remote.futrx.com/internal/service/schedulecapability"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
 	servicetmux "github.com/futrx-com/remote.futrx.com/internal/service/tmux"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
@@ -42,6 +43,8 @@ type TmuxClient interface {
 type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
+	servicechat.TranscriptEventWindowSource
+	servicechat.TranscriptProjectionSource
 }
 
 // PushStore persists Web Push registrations and the server's long-lived VAPID
@@ -58,6 +61,7 @@ type Dependencies struct {
 	Projects          serviceproject.Repository
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
+	ProjectShares     serviceshare.Repository
 	Schedules         serviceschedule.Repository
 	Auth              AuthStore
 	Users             serviceuser.Repository
@@ -113,6 +117,7 @@ type Services struct {
 	Chats             *servicechat.Service
 	ChatAccess        *servicechat.AccessService
 	Projects          *serviceproject.Service
+	Shares            *serviceshare.Service
 	Prompt            *prompt.Service
 	Schedules         *serviceschedule.Service
 	ScheduleCaps      *schedulecapability.Registry
@@ -164,7 +169,21 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		push: pushNotifier,
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
-	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
+	projectService := serviceproject.New(
+		projects,
+		deps.ProjectContainers,
+		deps.ProjectSecrets,
+		deps.ProjectAccess,
+		serviceproject.WithChatCleanup(projectChatCleanup{
+			chats: chats,
+			cancel: func(ctx context.Context, id servicechat.ID) error {
+				if runs == nil {
+					return errors.New("run controller is unavailable")
+				}
+				return runs.Cancel(ctx, id)
+			},
+		}),
+	)
 	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
 		Projects:              agentProjectResolver{projects: projectService},
 		Containers:            deps.AgentContainers,
@@ -200,6 +219,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		runs,
 		append([]servicechat.Option{
 			servicechat.WithTranscriptEventSource(deps.Chats),
+			servicechat.WithTranscriptEventWindowSource(deps.Chats),
+			servicechat.WithTranscriptProjectionSource(deps.Chats),
 			servicechat.WithCopiedEventAppender(chats),
 			servicechat.WithSessionPolicy(agentRuntime),
 			servicechat.WithProviderPolicy(agentRuntime),
@@ -284,6 +305,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if authService != nil {
 		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
 	}
+	var shareService *serviceshare.Service
+	if deps.ProjectShares != nil {
+		shareService = serviceshare.New(deps.ProjectShares, projectService)
+	}
 	var tmuxService *servicetmux.Service
 	if deps.TmuxClient != nil {
 		tmuxService = servicetmux.NewSessions(deps.TmuxClient)
@@ -297,6 +322,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Chats:             chatService,
 		ChatAccess:        chatAccessService,
 		Projects:          projectService,
+		Shares:            shareService,
 		Prompt:            promptService,
 		Schedules:         scheduleService,
 		ScheduleCaps:      scheduleCaps,

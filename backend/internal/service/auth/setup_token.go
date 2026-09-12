@@ -24,7 +24,7 @@ var (
 	// ErrSetupTokenRequired is returned for every rejected token - missing,
 	// wrong, expired, or already used. They deliberately share one error so a
 	// caller cannot probe the difference.
-	ErrSetupTokenRequired = errors.New("a valid setup token is required; run: remote setup-token")
+	ErrSetupTokenRequired = errors.New("a valid setup token is required; run: sudo remote setup-token")
 	// ErrSetupTokenUnavailable means the token state could not be read or
 	// written. Claims fail closed on it rather than falling through.
 	ErrSetupTokenUnavailable = errors.New("setup token state is unavailable")

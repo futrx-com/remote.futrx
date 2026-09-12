@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DAY_MS } from "../../config/time.ts";
 import { usageRangeService } from "./usageRangeService.ts";
 
 const NOW = Date.parse("2026-08-17T15:42:11.000Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Whole UTC days a range covers — the property the presets are defined by. */
 function spanInDays(range: { from: number; to: number }): number {

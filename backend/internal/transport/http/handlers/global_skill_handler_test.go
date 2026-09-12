@@ -5,14 +5,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceskills "github.com/futrx-com/remote.futrx.com/internal/service/skills"
@@ -378,38 +375,6 @@ func TestGlobalSkillHandlerRejectsNestedPaths(t *testing.T) {
 func jsonString(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
-}
-
-// twoFactorStoreForTest and sessionRegistryStoreForTest give the auth service
-// the two collaborators it now requires. Neither is exercised by these tests.
-func twoFactorStoreForTest(t *testing.T) serviceauth.TwoFactorStore {
-	t.Helper()
-	store, err := filetwofactor.New(t.TempDir())
-	if err != nil {
-		t.Fatalf("two-factor store: %v", err)
-	}
-	return store
-}
-
-func sessionRegistryStoreForTest(t *testing.T) serviceauth.SessionRegistryStore {
-	t.Helper()
-	store, err := filesessions.New(t.TempDir())
-	if err != nil {
-		t.Fatalf("session registry store: %v", err)
-	}
-	return store
-}
-
-// testAuthOptions are the auth service's tunings, spelled out because New
-// rejects a zero TTL or count and a test only needs them to be valid.
-func testAuthOptions() serviceauth.Options {
-	return serviceauth.Options{
-		PendingLoginTTL:     5 * time.Minute,
-		EnrollmentTTL:       10 * time.Minute,
-		RecoveryCodeCount:   10,
-		SessionHistoryLimit: 20,
-		SetupTokenTTL:       30 * time.Minute,
-	}
 }
 
 // issueTestSession mints a real session cookie. SignSession is gone: issuing a

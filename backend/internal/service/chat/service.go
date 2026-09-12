@@ -11,14 +11,16 @@ import (
 )
 
 type Service struct {
-	repo             Repository
-	transcriptEvents TranscriptEventSource
-	copiedEvents     CopiedEventAppender
-	projects         ProjectResolver
-	tmux             TmuxResolver
-	runs             RunController
-	sessions         SessionPolicy
-	providers        ProviderPolicy
+	repo                 Repository
+	transcriptEvents     TranscriptEventSource
+	transcriptWindow     TranscriptEventWindowSource
+	transcriptProjection TranscriptProjectionSource
+	copiedEvents         CopiedEventAppender
+	projects             ProjectResolver
+	tmux                 TmuxResolver
+	runs                 RunController
+	sessions             SessionPolicy
+	providers            ProviderPolicy
 	// defaultSkills is consulted when a project chat is created, so an admin
 	// can pin a global skill into every new chat.
 	defaultSkills DefaultSkillResolver

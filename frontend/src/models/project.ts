@@ -143,6 +143,31 @@ export interface ProjectSecret {
   updatedAt: number;
 }
 
+/** Metadata for a public preview link returned by list operations. */
+export interface ProjectShare {
+  id: string;
+  port: number;
+  label?: string;
+  createdBy?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/**
+ * A newly-created public preview link. The URL carries the plaintext token and
+ * is returned exactly once, while metadata-only list responses never include it.
+ */
+export interface CreatedProjectShare extends ProjectShare {
+  url: string;
+}
+
+export interface SharePortRow {
+  port: number;
+  process?: string;
+  /** Number of cached links currently pointing at this port. */
+  shareCount: number;
+}
+
 export interface ContainerApp {
   port: number;
   address?: string;
@@ -197,6 +222,14 @@ export interface ProjectContainerRecord {
 export interface SecretsRecord {
   loading: boolean;
   data?: ProjectSecret[];
+  error?: string;
+}
+
+export interface SharesRecord {
+  loading: boolean;
+  data?: ProjectShare[];
+  /** Listening ports discovered in the container, used to offer share targets. */
+  apps?: ContainerApp[];
   error?: string;
 }
 

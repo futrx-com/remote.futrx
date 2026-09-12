@@ -114,6 +114,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			h.handleEvents(w, r, id)
 		case "transcript":
 			h.handleTranscript(w, r, id)
+		case "transcript/content":
+			h.handleTranscriptContent(w, r, id)
 		case "rewind":
 			h.handleRewind(w, r, id)
 		case "fork":
@@ -207,7 +209,27 @@ func (h *ChatHandler) handleTranscript(w http.ResponseWriter, r *http.Request, i
 	page, err := h.chats.TranscriptPage(r.Context(), id, servicechat.TranscriptPageQuery{
 		Limit:     intQuery(r, "limit", 0),
 		BeforeSeq: int64Query(r, "before", 0),
+		ByteLimit: intQuery(r, "bytes", 0),
 	})
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, page)
+}
+
+func (h *ChatHandler) handleTranscriptContent(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	page, err := h.chats.TranscriptContent(
+		r.Context(),
+		id,
+		strings.TrimSpace(r.URL.Query().Get("id")),
+		int64Query(r, "after", 0),
+		intQuery(r, "bytes", 0),
+	)
 	if err != nil {
 		sendChatError(w, err)
 		return
@@ -372,6 +394,8 @@ func sendChatError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, servicechat.ErrNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, "chat not found")
+	case errors.Is(err, servicechat.ErrTranscriptContentNotFound):
+		httptransport.SendErr(w, http.StatusNotFound, "transcript content not found")
 	case errors.Is(err, servicechat.ErrChatRunning):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, servicechat.ErrProjectMembershipRequired),
