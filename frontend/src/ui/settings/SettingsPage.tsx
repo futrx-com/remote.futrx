@@ -1,22 +1,13 @@
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
+import type { GlobalSkillLibrary } from "../../state/hooks/settings/useGlobalSkills";
+import type { ProjectMeta } from "../../models/project";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { SecuritySettingsController } from "../../state/hooks/auth/useSecuritySettings";
 import type { ComponentType } from "preact";
 import type { PushNotifications } from "../../state/hooks/push/usePushNotifications";
-import {
-  Activity,
-  Bell,
-  Bot,
-  ChevronLeft,
-  Download,
-  Info,
-  Menu,
-  Monitor,
-  ShieldCheck,
-  Users,
-} from "../primitives/icons";
+import { Activity, Bell, Bot, ChevronLeft, Code, Download, Info, Menu, Monitor, ShieldCheck, Users } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
@@ -25,6 +16,7 @@ import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
+import { GlobalSkillsSettings } from "./GlobalSkillsSettings";
 import { UsersPanel } from "../account/UsersPanel";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 
@@ -33,9 +25,10 @@ export type SettingsTab =
   | "notifications"
   | "agents"
   | "users"
-  | "security"
   | "updates"
   | "info"
+  | "skills"
+  | "security"
   | "usage";
 
 const tabs: Array<{
@@ -67,6 +60,12 @@ const tabs: Array<{
     label: "Usage",
     description: "Track tokens and estimated cost per project, user, provider, and model.",
     Icon: Activity,
+  },
+  {
+    id: "skills",
+    label: "Global skills",
+    description: "Publish skills that every project can select.",
+    Icon: Code,
   },
   {
     id: "users",
@@ -114,6 +113,8 @@ export function SettingsPage({
   usageRebuilding,
   usageRebuildMessage,
   onRebuildUsage,
+  globalSkills,
+  projects,
   appearanceTheme,
   appearanceLoading,
   appearanceSaving,
@@ -147,6 +148,8 @@ export function SettingsPage({
   usageRebuilding: boolean;
   usageRebuildMessage: string | null;
   onRebuildUsage: () => Promise<void>;
+  globalSkills: GlobalSkillLibrary;
+  projects: ProjectMeta[];
   appearanceTheme: AppearanceTheme;
   appearanceLoading: boolean;
   appearanceSaving: boolean;
@@ -253,6 +256,13 @@ export function SettingsPage({
                 onRebuild={onRebuildUsage}
                 rebuilding={usageRebuilding}
                 rebuildMessage={usageRebuildMessage}
+              />
+            )}
+            {activeTab === "skills" && (
+              <GlobalSkillsSettings
+                isAdmin={isAdmin}
+                library={globalSkills}
+                projects={projects}
               />
             )}
 

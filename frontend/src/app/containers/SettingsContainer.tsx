@@ -7,6 +7,8 @@ import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
+import { useGlobalSkills } from "../../state/hooks/settings/useGlobalSkills";
+import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
@@ -23,7 +25,9 @@ export function SettingsContainer({
   const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
+  const { projects } = useWorkspaceContext();
   const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
+  const globalSkills = useGlobalSkills(activeTab === "skills" && auth.isAdmin);
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
   const security = useSecuritySettings(activeTab === "security");
@@ -71,6 +75,8 @@ export function SettingsContainer({
       usageRebuilding={usageRebuilding}
       usageRebuildMessage={usageRebuildMessage}
       onRebuildUsage={rebuildUsage}
+      globalSkills={globalSkills}
+      projects={projects}
       appearanceTheme={userSettings.settings.appearance.theme}
       appearanceLoading={userSettings.loading}
       appearanceSaving={userSettings.saving}

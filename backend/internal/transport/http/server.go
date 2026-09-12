@@ -44,6 +44,7 @@ type Handlers struct {
 	Middleware        Middleware
 	Static            http.Handler
 	Usage             RouteRegistrar
+	GlobalSkills      RouteRegistrar
 }
 
 func NewHandler(handlers Handlers) http.Handler {
@@ -67,6 +68,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.ServerInfo)
 	register(handlers.SelfUpdate)
 	register(handlers.Skills)
+	register(handlers.GlobalSkills)
 	register(handlers.BrowserInspector)
 	register(handlers.Schedules)
 	register(handlers.Usage)

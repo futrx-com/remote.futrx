@@ -22,26 +22,33 @@ import (
 // instructions and skill compatibility links — in the persistent project
 // workspace.
 type Provisioner struct {
-	runner       command.Runner
-	profiles     serviceprofiles.Source
-	publisher    *assets.Publisher
-	instructions []byte
+	runner          command.Runner
+	profiles        serviceprofiles.Source
+	publisher       *assets.Publisher
+	instructions    []byte
+	globalSkillsDir string
 }
 
 // NewProvisioner returns a workspace provisioner backed by shared container
-// dependencies.
+// dependencies. Options add capabilities that are absent in deployments that
+// do not configure them, such as the platform-wide global skills library.
 func NewProvisioner(
 	runner command.Runner,
 	profileSource serviceprofiles.Source,
 	publisher *assets.Publisher,
 	instructions []byte,
+	options ...Option,
 ) *Provisioner {
-	return &Provisioner{
+	provisioner := &Provisioner{
 		runner:       runner,
 		profiles:     profileSource,
 		publisher:    publisher,
 		instructions: append([]byte(nil), instructions...),
 	}
+	for _, option := range options {
+		option(provisioner)
+	}
+	return provisioner
 }
 
 // EnsureAgentInstructions pushes the shared system-instructions template to
