@@ -217,7 +217,7 @@ Provider tokens, project secrets, the session key, the OAuth client secret, and 
 
 ### 18. Plaintext secrets at rest; leaked `session.key` = permanent admin forgery — **Medium**
 
-**Elevation of privilege / Information disclosure.** `session.key`, `oauth.json` (Google client secret), `local-admin.json` (argon2id hash), and all `projectsecrets/*.json` are plaintext files. There is no encryption at rest and no key rotation mechanism. Anyone who obtains `session.key` (via findings 1/2, a backup, or a disk image) can mint a valid admin session **forever**; the only remediation is manually replacing the key (which logs everyone out). Provider CLI stderr and raw provider JSON are also persisted/logged unredacted, a potential credential sink if a CLI ever echoes a token.
+**Elevation of privilege / Information disclosure.** `session.key`, `oauth.json` (Google client secret), `smtp.json` (Gmail SMTP address and app password), `local-admin.json` (argon2id hash), and all `projectsecrets/*.json` are plaintext files. There is no encryption at rest and no key rotation mechanism. Anyone who obtains `session.key` (via findings 1/2, a backup, or a disk image) can mint a valid admin session **forever**; the only remediation is manually replacing the key (which logs everyone out). Provider CLI stderr and raw provider JSON are also persisted/logged unredacted, a potential credential sink if a CLI ever echoes a token.
 
 - **Residual gap:** no at-rest encryption, no rotation/revocation, no secret scrubbing in logs. Treat `DATA_DIR` and root's home as crown jewels; back them up encrypted; restrict host access tightly.
 

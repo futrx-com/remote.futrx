@@ -82,6 +82,7 @@ func (s *authTestStore) SaveSetupToken(_ context.Context, record SetupTokenRecor
 	s.setupToken = &record
 	return nil
 }
+
 func (s *authTestStore) SessionKey(context.Context) ([]byte, error) { return s.key, nil }
 
 type authTestTwoFactorStore struct {
