@@ -47,6 +47,24 @@ set -euo pipefail
 # files on disk.
 INFRA_DIR_PROBE="$( cd "$( dirname "${BASH_SOURCE[0]:-}" 2>/dev/null || echo . )" >/dev/null 2>&1 && pwd || true )"
 if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
+    # Parse bootstrap-only values before touching either checkout. The full
+    # argument loop below parses them again after we re-exec from disk.
+    BOOTSTRAP_TOKEN="${GITHUB_TOKEN:-}"
+    BOOTSTRAP_REF=""
+    for a in "$@"; do
+        case "$a" in
+            --github-token=*) BOOTSTRAP_TOKEN="${a#*=}" ;;
+            --ref=*)          BOOTSTRAP_REF="${a#*=}" ;;
+        esac
+    done
+    # Validate the ref before demanding root so a malformed --ref reports the
+    # actionable error instead of a misleading root demand (and so the
+    # curl-piped contract in qa-scripts-test.sh holds for non-root runners).
+    # Inline (not via lib/common.sh): no checkout exists on disk yet here.
+    if [ -n "$BOOTSTRAP_REF" ] && ! printf '%s' "$BOOTSTRAP_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
+        echo "--ref must be a full 40-character commit SHA" >&2
+        exit 1
+    fi
     if [ "$EUID" -ne 0 ]; then
         echo "this installer needs root; rerun with sudo" >&2
         exit 1
@@ -60,21 +78,6 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
     TARGET="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
     LEGACY_TARGET="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
     MAIN_REFSPEC="+refs/heads/main:refs/remotes/origin/main"
-
-    # Parse bootstrap-only values before touching either checkout. The full
-    # argument loop below parses them again after we re-exec from disk.
-    BOOTSTRAP_TOKEN="${GITHUB_TOKEN:-}"
-    BOOTSTRAP_REF=""
-    for a in "$@"; do
-        case "$a" in
-            --github-token=*) BOOTSTRAP_TOKEN="${a#*=}" ;;
-            --ref=*)          BOOTSTRAP_REF="${a#*=}" ;;
-        esac
-    done
-    if [ -n "$BOOTSTRAP_REF" ] && ! printf '%s' "$BOOTSTRAP_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
-        echo "--ref must be a full 40-character commit SHA" >&2
-        exit 1
-    fi
 
     # A pre-rename checkout can update itself in place, then the checked-out
     # installer below performs the guarded path migration with rollback.
@@ -149,6 +152,12 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
 fi
 
 # ───────────────── args ─────────────────
+# INFRA_DIR resolves before argument parsing so the shared helpers below
+# (and every validation gate) come from lib/common.sh. The curl|bash
+# bootstrap block above intentionally stays self-contained instead.
+INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# shellcheck source=lib/common.sh
+. "$INFRA_DIR/lib/common.sh"
 HOSTNAME=""
 SKIP_DNS_CHECK=0
 GOOGLE_CLIENT_ID=""
@@ -166,9 +175,8 @@ for a in "$@"; do
         *)   [ -z "$HOSTNAME" ] && HOSTNAME="$a" ;;
     esac
 done
-if [ -n "$TARGET_REF" ] && ! printf '%s' "$TARGET_REF" | grep -qE '^[0-9a-fA-F]{40}$'; then
-    echo "--ref must be a full 40-character commit SHA" >&2
-    exit 1
+if [ -n "$TARGET_REF" ]; then
+    validate_full_sha "$TARGET_REF"
 fi
 if [ -z "$HOSTNAME" ]; then
     read -rp "Public hostname (must already point here in DNS): " HOSTNAME || true
@@ -187,10 +195,7 @@ if printf '%s' "$HOSTNAME" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^\[.*\]$'; 
     echo "  Let's Encrypt cannot issue certs for IPs and your site will lose TLS." >&2
     exit 1
 fi
-if [ "$EUID" -ne 0 ]; then
-    echo "this installer needs root; rerun with sudo" >&2
-    exit 1
-fi
+require_root "this installer"
 
 export HOSTNAME GITHUB_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
 if [ -n "$TARGET_REF" ]; then
@@ -198,7 +203,8 @@ if [ -n "$TARGET_REF" ]; then
 fi
 
 # ───────────────── globals ─────────────────
-INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# INFRA_DIR was resolved before argument parsing (see above) so the shared
+# helpers are available to every validation gate.
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
 LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
 REPO_URL="${FUTRX_REPO_URL:-https://github.com/futrx-com/remote.futrx.git}"
@@ -219,10 +225,8 @@ export INFRA_DIR INSTALL_DIR LEGACY_INSTALL_DIR REPO_URL SERVICE_PORT HOSTNAME_R
 export HOST_CLI_PREFIX HOST_CLI_BIN_DIR PATH
 
 # ───────────────── helpers (sourced by steps) ─────────────────
-log()  { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
-warn() { printf "\n\033[1;33m!! %s\033[0m\n" "$*"; }
-ok()   { printf "\033[1;32m✓\033[0m %s\n" "$*"; }
-err()  { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; }
+# log/warn/ok/err come from lib/common.sh (sourced above); re-export them so
+# the sourced convergence steps can use them in subshells.
 export -f log warn ok err
 
 # render_template TEMPLATE_PATH DEST_PATH

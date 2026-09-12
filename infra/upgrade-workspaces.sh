@@ -28,13 +28,10 @@
 set -euo pipefail
 
 INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# shellcheck source=lib/common.sh
+. "$INFRA_DIR/lib/common.sh"
 DATA_DIR="${FUTRX_DATA_DIR:-/opt/remote.futrx/data}"
 MAINTENANCE_FILE="${FUTRX_MAINTENANCE_FILE:-$DATA_DIR/self-update/maintenance.json}"
-
-log()  { printf "\n\033[1;36m==> %s\033[0m\n" "$*"; }
-warn() { printf "\033[1;33m!! %s\033[0m\n" "$*"; }
-ok()   { printf "\033[1;32m✓\033[0m %s\n" "$*"; }
-err()  { printf "\n\033[1;31m✗ %s\033[0m\n" "$*" >&2; }
 
 DRY_RUN=0
 REBAKE=1
@@ -48,10 +45,7 @@ for a in "$@"; do
     esac
 done
 
-if [ "$EUID" -ne 0 ]; then
-    err "needs root; rerun with sudo"
-    exit 1
-fi
+require_root "upgrade-workspaces"
 if ! command -v lxc >/dev/null; then
     err "lxc CLI not found"
     exit 1

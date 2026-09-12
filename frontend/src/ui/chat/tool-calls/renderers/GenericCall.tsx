@@ -2,9 +2,10 @@ import { TerminalIcon } from "../../../primitives/icons";
 import type { ToolCallProps } from "../ToolCallTypes";
 import { CodeBlock } from "../CodeBlock";
 import { ToolShell } from "../ToolShell";
+import { DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS } from "../../../../config/chat";
 import { truncate } from "../utils";
 
-export function GenericCall({ name, input, output, status, isError }: ToolCallProps) {
+export function GenericCall({ name, input, output, outputExpanded, status, isError }: ToolCallProps) {
   return (
     <ToolShell
       icon={<TerminalIcon class="w-4 h-4" />}
@@ -22,7 +23,7 @@ export function GenericCall({ name, input, output, status, isError }: ToolCallPr
         {output && (
           <div>
             <div class="px-3 py-1 text-[11px] text-ink-300 bg-tint">Output</div>
-            <CodeBlock text={truncate(output, 6000)} />
+            <CodeBlock text={outputExpanded ? output : truncate(output, DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS)} />
           </div>
         )}
       </div>

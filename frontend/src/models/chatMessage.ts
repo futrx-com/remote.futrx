@@ -8,6 +8,9 @@ export type AssistantMessagePart =
       name: string;
       input: Record<string, unknown>;
       output?: string;
+      outputRef?: string;
+      outputBytes?: number;
+      outputTruncated?: boolean;
       isError?: boolean;
       status: "running" | "done";
     }

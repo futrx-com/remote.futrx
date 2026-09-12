@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   sidebarCollapsed: "remote.futrx.sidebarCollapsed",
   collapsedProjects: "remote.futrx.collapsedProjects",
   workspaceBoot: "remote.futrx.workspaceBoot",
+  searchFilters: "remote.futrx.searchFilters",
+  searchSort: "remote.futrx.searchSort",
 } as const;
 
 /**

@@ -1,14 +1,16 @@
 import type { ChatMeta } from "../../models/chat";
-import type { WorkspaceSidebarModel } from "../../models/workspace";
+import type { WorkspaceSidebarModel } from "../../models/workspace.ts";
+import type { WorkspaceSearch } from "../../state/hooks/workspace/useWorkspaceSearch";
 import { useProjectDragReorder } from "../../state/hooks/workspace/useProjectDragReorder";
 import { ChatRow } from "./ChatRow";
 import { ProjectGroup } from "./ProjectGroup";
 import { SidebarEmptyState, SidebarNoMatches } from "./SidebarEmptyState";
 import { SidebarSkeleton } from "./SidebarSkeleton";
-import { WorkspaceSearch } from "./WorkspaceSearch";
+import { SearchBar } from "../search/SearchBar";
+import { SearchResultRow } from "../search/SearchResultRow";
 import { AccountFooter } from "./AccountFooter";
 import { Skeleton } from "../primitives/Skeleton";
-import { ChevronLeft, ChevronRight, Plus, Settings, X } from "../primitives/icons";
+import { ChevronLeft, ChevronRight, Plus, Search, Settings, X } from "../primitives/icons";
 
 // Sidebar chrome is deliberately unpainted until you touch it: the list is the
 // only thing meant to carry visual weight.
@@ -20,14 +22,13 @@ export function Sidebar({
   open,
   model,
   loading,
-  query,
+  search,
   collapsed,
   sidebarCollapsed,
   activeChatId,
   account,
   onClose,
-  onQueryChange,
-  onClearQuery,
+  onOpenPalette,
   onToggleSidebar,
   onNewProject,
   onNewChatInProject,
@@ -45,14 +46,13 @@ export function Sidebar({
   model: WorkspaceSidebarModel;
   /** The first workspace snapshot has not landed yet. */
   loading: boolean;
-  query: string;
+  search: WorkspaceSearch;
   collapsed: Record<string, boolean>;
   sidebarCollapsed: boolean;
   activeChatId: string | null;
   account?: { email: string; authenticated: boolean };
   onClose: () => void;
-  onQueryChange: (query: string) => void;
-  onClearQuery: () => void;
+  onOpenPalette: () => void;
   onToggleSidebar: () => void;
   onNewProject: () => void;
   onNewChatInProject: (projectId?: string) => void;
@@ -68,7 +68,10 @@ export function Sidebar({
 }) {
   const sidebarWidth = sidebarCollapsed ? "md:w-[64px]" : "md:w-[300px]";
   const expandedOnly = sidebarCollapsed ? "md:hidden" : "";
-  const canReorderProjects = !model.query && model.visibleProjects.length > 1;
+  const searching = search.isSearching;
+  const results = search.outcome.hits;
+  // Reordering edits the project order, which only has meaning in the tree.
+  const canReorderProjects = !searching && model.visibleProjects.length > 1;
   const drag = useProjectDragReorder({
     projectIds: model.visibleProjects.map((node) => node.project.id),
     enabled: canReorderProjects,
@@ -133,7 +136,7 @@ export function Sidebar({
           </div>
 
           <div class={expandedOnly}>
-            <WorkspaceSearch query={query} onQueryChange={onQueryChange} onClear={onClearQuery} />
+            <SearchBar search={search} resultCount={results.length} />
           </div>
         </header>
 
@@ -147,6 +150,15 @@ export function Sidebar({
               title="New project"
             >
               <Plus class="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenPalette}
+              class={ghostIconClass}
+              aria-label="Search"
+              title="Search (Ctrl/Cmd + P)"
+            >
+              <Search class="w-4 h-4" />
             </button>
             {onOpenSettings && account?.authenticated && (
               <button
@@ -164,10 +176,23 @@ export function Sidebar({
 
         <div class={`flex items-baseline justify-between gap-2 px-4 pb-3 pt-3.5 ${expandedOnly}`}>
           <span class="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-400">
-            Projects
+            {searching ? "Results" : "Projects"}
           </span>
           {loading ? (
             <Skeleton class="h-2 w-7" />
+          ) : searching ? (
+            <span class="flex items-baseline gap-2">
+              <span class="text-[11px] tabular-nums text-ink-400">
+                {results.length} of {model.totalChats}
+              </span>
+              <button
+                type="button"
+                onClick={search.clearAll}
+                class="rounded px-1 text-[11px] text-ink-400 transition-colors hover:text-ink-100"
+              >
+                Clear
+              </button>
+            </span>
           ) : (
             <span class="text-[11px] tabular-nums text-ink-400">
               {model.totalProjects} · {model.totalChats}
@@ -184,16 +209,25 @@ export function Sidebar({
             <SidebarEmptyState onNewProject={onNewProject} />
           )}
 
-          {model.query && !model.hasMatches && <SidebarNoMatches />}
+          {searching && results.length === 0 && <SidebarNoMatches />}
 
-          {model.visibleProjects.map((node) => (
+          {searching &&
+            results.map((hit) => (
+              <SearchResultRow
+                key={hit.doc.chat.id}
+                hit={hit}
+                active={hit.doc.chat.id === activeChatId}
+                onSelect={() => onSelectChat(hit.doc.chat.id)}
+              />
+            ))}
+
+          {!searching && model.visibleProjects.map((node) => (
             <ProjectGroup
               key={node.project.id}
               project={node.project}
               chats={node.chats}
-              visibleChats={node.filteredChats}
               activeChatId={activeChatId}
-              collapsed={!model.query && collapsed[node.project.id] === true}
+              collapsed={collapsed[node.project.id] === true}
               onToggle={() => onToggleProject(node.project.id)}
               onNewChat={() => onNewChatInProject(node.project.id)}
               onOpenContainer={() => onOpenProjectContainers(node.project.id)}
@@ -208,7 +242,7 @@ export function Sidebar({
             />
           ))}
 
-          {model.visibleLooseChats.length > 0 && (
+          {!searching && model.visibleLooseChats.length > 0 && (
             <div class="pt-2">
               <div class="px-2 pt-2 pb-1 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-400">
                 Unassigned

@@ -2,9 +2,10 @@ import { File } from "../../../primitives/icons";
 import type { ToolCallProps } from "../ToolCallTypes";
 import { CodeBlock } from "../CodeBlock";
 import { ToolShell } from "../ToolShell";
+import { READ_TOOL_OUTPUT_PREVIEW_CHARS } from "../../../../config/chat";
 import { shortPath, truncate } from "../utils";
 
-export function ReadCall({ input, output, status, isError }: Omit<ToolCallProps, "name">) {
+export function ReadCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   return (
     <ToolShell
@@ -13,7 +14,7 @@ export function ReadCall({ input, output, status, isError }: Omit<ToolCallProps,
       status={status}
       isError={isError}
     >
-      {output ? <CodeBlock text={truncate(output, 8000)} /> : null}
+      {output ? <CodeBlock text={outputExpanded ? output : truncate(output, READ_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>
   );
 }

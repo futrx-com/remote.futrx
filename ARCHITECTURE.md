@@ -22,7 +22,7 @@ flowchart TB
     subgraph Host["Single host (Ubuntu/Debian, runs as root)"]
         Caddy["Caddy — public HTTPS edge<br/>on-demand TLS, forward_auth, cookie stripping"]
         Go["Go backend — 127.0.0.1:7682<br/>embedded Preact SPA + REST + WebSockets"]
-        Stores["File stores under DATA_DIR<br/>JSON metadata + JSONL chat logs"]
+        Stores["Stores under DATA_DIR<br/>JSON metadata + JSONL chat logs<br/>derived SQLite chat index"]
         LXD["LXD daemon"]
 
         subgraph C1["Project container A (unprivileged LXD)"]
@@ -51,7 +51,7 @@ flowchart TB
 
 - The Go backend is **one process, bound to loopback** (`HOST=127.0.0.1:7682`, [`backend/internal/config/config.go`](backend/internal/config/config.go)). Caddy is the only thing listening on the public interface.
 - The backend runs as **root** ([`infra/templates/remote.futrx.service.tmpl`](infra/templates/remote.futrx.service.tmpl), `User=root`) because it drives the `lxc` CLI and chowns workspace files into the container idmap. This is a deliberate design choice with security consequences — see the [threat model](docs/threat-model.md).
-- There is **no database.** All platform state is flat files under `DATA_DIR` (`/opt/remote.futrx/data`): JSON for auth/users/projects/access/secrets, append-only JSONL for chat event logs. Concurrency is guarded by in-process mutexes only.
+- There is **no external database service.** Authoritative platform state is flat files under `DATA_DIR` (`/opt/remote.futrx/data`): JSON for auth/users/projects/access/secrets and append-only JSONL for chat event logs. A disposable embedded SQLite database persists chat event offsets and transcript-turn ranges for bounded reads, validating them against JSONL file metadata and a prefix fingerprint before extending them. Concurrency is guarded by in-process mutexes only.
 - Each project is **one unprivileged LXD container** built from a shared base image (`futrx-remote-dev-base`: Ubuntu 24.04 + Node 22 + pinned agent CLIs + Chromium + code-server). Durable state lives on the host and is bind-mounted in.
 
 ## The four public host classes
@@ -62,13 +62,13 @@ Caddy ([`infra/templates/Caddyfile.tmpl`](infra/templates/Caddyfile.tmpl)) termi
 | --- | --- | --- |
 | `remote.example.com` (main) | Go backend on loopback | App session middleware; `/internal/*` blocked externally |
 | `code.<host>` and `<slug>.code.<host>` | code-server IDE in container on `:8842` | `forward_auth` → `/auth/verify` (**registered user only — no project membership check**) |
-| `<slug>--<port>.dev.<host>` | Project dev server on `<slug>.lxd:<port>` | `forward_auth` → `/auth/verify` (**project membership enforced**) |
+| `<slug>--<port>.dev.<host>` | Project dev server on `<slug>.lxd:<port>` | `forward_auth` → `/auth/verify` (**project membership enforced**, or a valid public share link for that exact slug+port) |
 | `<slug>--6080.dev.<host>` | Agent Browser noVNC on `:6080` | `forward_auth` → `/auth/verify` (project membership, via the dev pattern) |
 
 Two properties of this table are load-bearing and both are analyzed in the threat model:
 
 1. **Wildcard subdomains use on-demand TLS**, gated by the backend's `/internal/tls-ask` so only slugs of existing projects can mint certificates ([`project_handler.go` `HandleTLSAsk`](backend/internal/transport/http/handlers/project_handler.go)).
-2. **Caddy strips the platform cookies** (`remote_session`, `remote_2fa_pending`, `remote_oauth_state`, `return_to`) via `header_up` before proxying any request into a container, so untrusted in-container code can never see a replayable session token. This is the mechanism behind the "isolated previews" claim.
+2. **Caddy strips the platform cookies** (`remote_session`, `remote_2fa_pending`, `remote_oauth_state`, `return_to`, `remote_share`) via `header_up` before proxying any request into a container, so untrusted in-container code can never see a replayable session token. This is the mechanism behind the "isolated previews" claim.
 
 ## Backend layering
 
@@ -228,7 +228,9 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project metadata | `DATA_DIR/projects/<id>/meta.json` | JSON | slug is the container name |
 | Project membership | `DATA_DIR/projectaccess/<id>.json` | JSON | flat email list |
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
+| Public preview links | `DATA_DIR/projectshares/<id>.json` | JSON | SHA-256 token digests only, mode 0600 |
 | Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
+| Chat event index | `DATA_DIR/transcript-index.sqlite` | SQLite | disposable event-offset and transcript-turn index rebuilt from chat JSONL |
 | Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
 | Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
 | Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
@@ -240,7 +242,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
 
-JSON and metadata writes use temp-file + rename. Chat events are different: they append directly to JSONL with `O_APPEND`. Neither path adds `fsync`, file locking, or a transaction spanning multiple stores. The design assumes exactly one backend process touching `DATA_DIR`.
+JSON and metadata writes use temp-file + rename. Chat events are different: they append directly to JSONL with `O_APPEND`. The SQLite chat index is derived state, transactionally refreshed from those logs, and is not a source of truth. The authoritative file paths do not add `fsync`, file locking, or a transaction spanning multiple stores. The design assumes exactly one backend process touching `DATA_DIR`.
 
 ## Container model
 

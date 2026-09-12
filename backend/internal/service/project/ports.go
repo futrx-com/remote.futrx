@@ -12,6 +12,13 @@ type Repository interface {
 	Delete(ctx context.Context, id ID) error
 }
 
+// ChatCleanup removes the conversations owned by a project before the project
+// itself is destroyed. Keeping this as a narrow port avoids coupling project
+// policy to chat persistence details.
+type ChatCleanup interface {
+	DeleteProjectChats(ctx context.Context, projectID ID) error
+}
+
 // ContainerLifecycle is the project service's container state-transition port.
 // Implementations may use LXD or any other runtime; project policy only relies
 // on these lifecycle operations.

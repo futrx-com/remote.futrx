@@ -4,7 +4,7 @@ import { CodeBlock } from "../CodeBlock";
 import { ToolShell } from "../ToolShell";
 import { shortPath, truncate } from "../utils";
 
-export function WriteCall({ input, output, status, isError }: Omit<ToolCallProps, "name">) {
+export function WriteCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   const content = (input?.content as string) ?? "";
   return (
@@ -16,7 +16,9 @@ export function WriteCall({ input, output, status, isError }: Omit<ToolCallProps
       isError={isError}
     >
       <CodeBlock text={truncate(content, 8000)} />
-      {output && isError ? <div class="border-t border-ink-500 p-3 text-accent-red font-mono text-xs">{output}</div> : null}
+      {output && (isError || outputExpanded) ? (
+        <div class={`border-t border-ink-500 p-3 font-mono text-xs ${isError ? "text-accent-red" : "text-ink-300"}`}>{output}</div>
+      ) : null}
     </ToolShell>
   );
 }
