@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
+import { capitalize } from "../../../config/text.ts";
+import { useDismissShortcut } from "../../../state/hooks/shared/useDismissShortcut.ts";
 import type { ChatProvider } from "../../../models/chat";
 import type {
   ComposerModelOption,
@@ -61,16 +63,11 @@ export function ComposerAgentPicker({
       const target = event.target as Node | null;
       if (target && !rootRef.current?.contains(target)) close();
     }
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") close();
-    }
     window.addEventListener("mousedown", closeOnOutsideClick);
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      window.removeEventListener("mousedown", closeOnOutsideClick);
-      window.removeEventListener("keydown", closeOnEscape);
-    };
+    return () => window.removeEventListener("mousedown", closeOnOutsideClick);
   }, [open]);
+
+  useDismissShortcut(close, { enabled: open });
 
   useEffect(() => {
     if (loading) close();
@@ -439,5 +436,5 @@ function ModelOption({
 }
 
 function displayProvider(provider: string): string {
-  return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : "Agent";
+  return provider ? capitalize(provider) : "Agent";
 }

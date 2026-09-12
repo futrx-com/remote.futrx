@@ -35,6 +35,8 @@ const (
 	baseImageBuildTimeout    = 15 * time.Minute
 	baseImagePublishTimeout  = 15 * time.Minute
 	baseImageNetworkWarmup   = 3 * time.Second
+	baseImageNetworkTimeout  = 90 * time.Second
+	baseImageNetworkPoll     = 2 * time.Second
 	baseImageProgressTick    = 30 * time.Second
 	baseImageBuildStageCount = 6
 	deleteTimeout            = 30 * time.Second
@@ -111,6 +113,8 @@ type Builder struct {
 	browserInstallScript    string
 	codeServerInstallScript []byte
 	networkWarmup           time.Duration
+	networkTimeout          time.Duration
+	networkPoll             time.Duration
 	progress                ProgressReporter
 }
 
@@ -129,6 +133,8 @@ func NewBuilder(
 		browserInstallScript:    browserInstallScript,
 		codeServerInstallScript: codeServerInstallScript,
 		networkWarmup:           baseImageNetworkWarmup,
+		networkTimeout:          baseImageNetworkTimeout,
+		networkPoll:             baseImageNetworkPoll,
 		progress:                progress,
 	}
 }
@@ -184,9 +190,10 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return bctx.Err()
 	}
 
-	// Fail fast on a container that can only reach IPv6 (see egress.go).
-	if _, err := b.runtime.ExecuteScript(bctx, baseImageBuilderName, ipv4EgressProbe); err != nil {
-		return errors.New(ipv4EgressHint)
+	// Block until the builder has IPv4 egress, rather than failing the build
+	// on a container that is merely still booting (see egress.go).
+	if err := b.waitForIPv4Egress(bctx); err != nil {
+		return err
 	}
 
 	out, err = b.runBuildStage(2, "Installing system tools, Node.js, and agent CLIs", func() (string, error) {
@@ -232,4 +239,35 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 	}
 
 	return nil
+}
+
+// waitForIPv4Egress blocks until the builder container can open an outbound
+// IPv4 connection, or until networkTimeout has passed without one.
+//
+// A container that has not yet finished DHCP on the bridge has no IPv4 route
+// at all, so connect() fails immediately with ENETUNREACH — indistinguishable
+// from a blocked path except in timing, and far more common. Probing once
+// after a fixed warmup therefore fails healthy hosts whenever the lease takes
+// longer than the warmup, which it does on a loaded or small machine. Polling
+// costs a healthy build only the time the lease actually needs, and the build
+// has a 15-minute budget to spend.
+func (b *Builder) waitForIPv4Egress(ctx context.Context) error {
+	deadline := time.Now().Add(b.networkTimeout)
+	for attempts := 1; ; attempts++ {
+		_, err := b.runtime.ExecuteScript(ctx, baseImageBuilderName, ipv4EgressProbe)
+		if err == nil {
+			return nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf(ipv4EgressHint, b.networkTimeout, attempts)
+		}
+		select {
+		case <-time.After(b.networkPoll):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }

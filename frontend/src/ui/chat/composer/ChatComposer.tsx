@@ -1,13 +1,15 @@
 import type { RefObject } from "preact";
-import { useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { modelShortLabel, providerDisplayLabel } from "../../../config/chat";
 import type { QueuedPrompt, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
 import type { Attachment } from "../../../models/upload";
+import { commandPaletteState } from "../../../state/hooks/chat/commandPaletteState";
 import { useComposerAgentCapabilities } from "../../../state/hooks/chat/useComposerAgentCapabilities";
 import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
+import { CommandPalette, type CommandPaletteHandle } from "./CommandPalette";
 import { ComposerAgentControls } from "./ComposerAgentControls";
 import { ComposerDropOverlay } from "./ComposerDropOverlay";
 import { ComposerExecutionControls } from "./ComposerExecutionControls";
@@ -15,20 +17,7 @@ import { PromptTextarea } from "./PromptTextarea";
 import { QueuedPromptList } from "./QueuedPromptList";
 import { SelectedSkillChips } from "./SelectedSkillChips";
 import { SendControls } from "./SendControls";
-import { SlashCommandMenu } from "./SlashCommandMenu";
 import type { ComposerPreferenceActions, ComposerPreferences } from "./preferences";
-
-interface SlashCommandMenuControl {
-  open: boolean;
-  loading: boolean;
-  error: string;
-  query: string;
-  items: RegisteredSkill[];
-  highlight: number;
-  onHighlight: (index: number) => void;
-  onChoose: (skill: RegisteredSkill) => void;
-  onKeyDown: (event: KeyboardEvent) => boolean;
-}
 
 export interface ChatComposerProps {
   projectId?: string;
@@ -53,7 +42,6 @@ export interface ChatComposerProps {
   onRemoveAttachment: (id: string) => void;
   onSelectSkill: (skill: RegisteredSkill) => void;
   onRemoveSelectedSkill: (skill: SelectedSkill) => void;
-  slashCommandMenu: SlashCommandMenuControl;
 }
 
 export function ChatComposer({
@@ -79,7 +67,6 @@ export function ChatComposer({
   onRemoveAttachment,
   onSelectSkill,
   onRemoveSelectedSkill,
-  slashCommandMenu,
 }: ChatComposerProps) {
   const capabilityState = useComposerAgentCapabilities({
     projectId,
@@ -103,6 +90,9 @@ export function ChatComposer({
     refresh: refreshCapabilities,
   } = capabilityState;
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const commandPaletteRef = useRef<CommandPaletteHandle | null>(null);
+  const commandQueryText = useMemo(() => commandPaletteState.query(text), [text]);
+  const showCommandPalette = commandQueryText !== null;
   const disconnected = !canSendPrompt && !streaming;
   const hasContent = text.trim().length > 0 || attachments.some((attachment) => attachment.serverPath);
   const canSend = !uploading && !disconnected && hasContent;
@@ -137,9 +127,29 @@ export function ChatComposer({
     });
   }
 
+  function handleCommandKeyDown(event: KeyboardEvent): boolean {
+    if (!showCommandPalette) return false;
+    return commandPaletteRef.current?.handleKeyDown(event) ?? false;
+  }
+
+  function dismissCommandPalette() {
+    onTextChange("");
+  }
+
   return (
     <div class="codex-composer-shell relative z-20 flex-none bg-canvas">
       {dragging && <ComposerDropOverlay />}
+
+      {showCommandPalette && commandQueryText !== null && (
+        <CommandPalette
+          ref={commandPaletteRef}
+          provider={preferences.provider}
+          projectId={projectId}
+          query={commandQueryText}
+          onSelect={onSelectSkill}
+          onDismiss={dismissCommandPalette}
+        />
+      )}
 
       <SelectedSkillChips skills={selectedSkills} onRemove={onRemoveSelectedSkill} />
       <QueuedPromptList queuedPrompts={queuedPrompts} onRemove={onRemoveQueued} />
@@ -152,19 +162,8 @@ export function ChatComposer({
             event.preventDefault();
             onSend();
           }}
-          class="codex-composer-form composer-form relative flex flex-col px-2.5 pt-2"
+          class="codex-composer-form composer-form flex flex-col px-2.5 pt-2"
         >
-          {slashCommandMenu.open && (
-            <SlashCommandMenu
-              items={slashCommandMenu.items}
-              highlight={slashCommandMenu.highlight}
-              loading={slashCommandMenu.loading}
-              error={slashCommandMenu.error}
-              query={slashCommandMenu.query}
-              onChoose={slashCommandMenu.onChoose}
-              onHighlight={slashCommandMenu.onHighlight}
-            />
-          )}
           <PromptTextarea
             textareaRef={textareaRef}
             text={text}
@@ -174,7 +173,7 @@ export function ChatComposer({
             onTextChange={onTextChange}
             onPaste={onPaste}
             onSend={onSend}
-            onKeyDown={slashCommandMenu.onKeyDown}
+            onKeyDown={handleCommandKeyDown}
           />
 
           <div class="codex-composer-control-deck flex min-w-0 items-center gap-1.5 pt-1.5">

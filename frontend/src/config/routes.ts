@@ -27,6 +27,8 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/ide-open?path=${encodeURIComponent(path)}`,
     transcript: (id: string, query: string) =>
       `/api/chats/${encodeURIComponent(id)}/transcript${query ? `?${query}` : ""}`,
+    transcriptContent: (id: string, query: string) =>
+      `/api/chats/${encodeURIComponent(id)}/transcript/content?${query}`,
     rewind: (id: string) => `/api/chats/${encodeURIComponent(id)}/rewind`,
     historyRepos: (id: string) =>
       `/api/chats/${encodeURIComponent(id)}/history/repos`,
@@ -81,6 +83,9 @@ export const API_ROUTES = {
       `/api/projects/${encodeURIComponent(id)}/secrets/${encodeURIComponent(key)}`,
     usage: (id: string, query = "") =>
       `/api/projects/${encodeURIComponent(id)}/usage${query ? `?${query}` : ""}`,
+    shares: (id: string) => `/api/projects/${encodeURIComponent(id)}/shares`,
+    share: (id: string, shareId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`,
     access: (id: string) => `/api/projects/${encodeURIComponent(id)}/access`,
     accessMember: (id: string, email: string) =>
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,

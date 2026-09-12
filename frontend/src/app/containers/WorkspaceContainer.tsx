@@ -3,6 +3,9 @@ import { NoChatSelected } from "../../ui/layout/NoChatSelected";
 import { ChatSkeleton } from "../../ui/chat/ChatSkeleton";
 import { CreateProjectModal } from "../../ui/projects/CreateProjectModal";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
+import { useCommandPalette } from "../../state/hooks/workspace/useCommandPalette";
+import { usePaletteSearch } from "../../state/hooks/workspace/useWorkspaceSearch";
+import { CommandPalette } from "../../ui/search/CommandPalette";
 import { useWorkspaceCommands } from "../../state/hooks/workspace/useWorkspaceCommands";
 import { ChatContainer } from "./ChatContainer";
 import { ProjectContainersContainer } from "./ProjectContainersContainer";
@@ -12,6 +15,10 @@ import { SidebarContainer } from "./SidebarContainer";
 export function WorkspaceContainer() {
   const workspace = useWorkspaceContext();
   const commands = useWorkspaceCommands();
+  // The one caller of `useCommandPalette`: it binds the chord that toggles the
+  // palette, and this is what renders the palette it toggles.
+  const palette = useCommandPalette();
+  const paletteSearch = usePaletteSearch();
   // Two moments where there is no chat to render but one is still coming: the
   // snapshot has not landed, or it has and the initial-chat effect has not run
   // its pick yet. Both would otherwise flash the "Create your first project"
@@ -56,6 +63,12 @@ export function WorkspaceContainer() {
         projects={workspace.projects}
         onClose={workspace.closeCreateProject}
         onCreate={workspace.createProject}
+      />
+      <CommandPalette
+        search={paletteSearch}
+        open={palette.open}
+        onClose={palette.close}
+        onSelectChat={workspace.selectChat}
       />
     </AppShell>
   );

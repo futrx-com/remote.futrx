@@ -71,12 +71,11 @@ for a in "$@"; do
     esac
 done
 
-if [ "$EUID" -ne 0 ]; then
-    echo "this updater needs root; rerun with sudo" >&2
-    exit 1
-fi
-
 SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+# shellcheck source=lib/common.sh
+. "$SCRIPT_INFRA_DIR/lib/common.sh"
+
+require_root "this updater"
 # shellcheck source=lib/install-migration.sh
 . "$SCRIPT_INFRA_DIR/lib/install-migration.sh"
 # shellcheck source=lib/update-progress.sh
