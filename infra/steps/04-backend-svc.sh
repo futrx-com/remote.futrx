@@ -21,6 +21,16 @@ HOST_CLI_PROFILE_PATH="/etc/profile.d/remote-futrx-host-clis.sh"
 # shellcheck source=../lib/health-check.sh
 . "$INFRA_DIR/lib/health-check.sh"
 
+# Shell commands need the same installation settings as the service below.
+log "Installing /usr/local/bin/remote"
+{
+    printf '#!/bin/bash\n'
+    printf 'export BASE_URL=%q\n' "https://$HOSTNAME"
+    printf 'export DATA_DIR=%q\n' "$INSTALL_DIR/data"
+    printf 'export INSTALL_DIR=%q\n' "$INSTALL_DIR"
+    printf 'exec %q "$@"\n' "$INSTALL_DIR/backend/remote"
+} | install -o root -g root -m 0755 -T /dev/stdin /usr/local/bin/remote
+
 # ───────────────── systemd unit ─────────────────
 log "Rendering $HOST_CLI_PROFILE_PATH"
 render_template "${INFRA_DIR}/templates/remote-futrx-host-clis.sh.tmpl" \

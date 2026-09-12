@@ -1,6 +1,6 @@
 # Data and frontend state
 
-The application does not use a database. Durable metadata is stored as JSON files; chat events use append-only JSONL. Project source files live in a separate host workspace tree.
+The application does not use an external database service. Durable metadata is stored as JSON files; chat events use append-only JSONL. A disposable embedded SQLite database indexes chat event offsets and transcript turns for bounded reads. Project source files live in a separate host workspace tree.
 
 ## Host storage layout
 
@@ -9,6 +9,7 @@ The application does not use a database. Durable metadata is stored as JSON file
 ├── chats/<chat-id>/
 │   ├── meta.json
 │   └── events.jsonl
+├── transcript-index.sqlite              derived chat event offsets and transcript turns
 ├── projects/<project-id>/meta.json
 ├── projectaccess/<project-id>.json
 ├── projectsecrets/<project-id>.json
@@ -108,8 +109,11 @@ flowchart LR
     Append --> Seq["Assign next monotonic seq"]
     Seq --> Meta["Update lastMessageAt for visible events"]
     Meta --> Cache["Refresh in-memory metadata index"]
+    Append -.-> Index["Refresh derived SQLite offset/turn index"]
     Append --> Replay["Replay live events after seq"]
     Append --> Transcript["Project complete, compacted turn pages"]
+    Index -.-> Replay
+    Index -.-> Transcript
     Replay --> Client["Chat UI"]
     Transcript --> Client
 ```
@@ -121,13 +125,27 @@ a read-time transcript projection by `turnId` (or legacy `user` boundaries) and
 coalesce adjacent streaming text/reasoning deltas. The cursor is still a raw
 event sequence, so existing chat files require no migration.
 
+`DATA_DIR/transcript-index.sqlite` is derived from the chat JSONL logs. At
+startup, a background worker backfills up to the 10 most recently active chats;
+other chats are backfilled lazily on first access. The result persists across
+backend restarts and is refreshed incrementally as bytes are appended. File
+size and modification time, incomplete-tail state, and a prefix fingerprint
+checked before untrusted growth decide when to rebuild transactionally. A
+rewind requests an immediate rebuild, while deletion removes the chat's rows.
+Indexed-read failures fall back to scanning canonical JSONL. The index can be
+deleted while the service is stopped and will rebuild automatically. The
+browser initially requests 10 complete turns and requests older history in
+20-turn pages. See the
+[durable chat transcript index developer guide](../dev/chat-transcript-index/)
+for the layer ownership and read, write, and recovery flows.
+
 Scheduled-task definitions are separate from chat metadata. One versioned
 `scheduled-tasks/tasks.json` document holds every task plus persisted active
 claims, pending occurrence state, retry deadline, counts, and last result.
 Writes atomically replace the document. The scheduler loop is in-memory, but it
 reconstructs deadlines and abandons stale claims after a backend restart.
 
-Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp. Chat deletion removes that chat directory.
+Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
 
 ## Project persistence
 

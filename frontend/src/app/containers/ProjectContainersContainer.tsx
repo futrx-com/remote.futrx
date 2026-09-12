@@ -24,7 +24,7 @@ export function ProjectContainersContainer({
 }) {
   const { auth } = useAuthContext();
   const controller = useProjectContainersController(projects, selectedProjectId);
-  const { selectedProject, info, secrets, access } = controller;
+  const { selectedProject, info, secrets, access, shares } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
   const serverInfo = useServerInfo(activeTab === "settings");
   const usage = useProjectUsage(selectedProject?.id);
@@ -42,6 +42,7 @@ export function ProjectContainersContainer({
       infoRecord={info.record}
       secretsRecord={secrets.record}
       accessRecord={access.record}
+      sharesRecord={shares.record}
       refreshing={controller.refreshing}
       isAdmin={auth.isAdmin}
       serverMemoryTotalBytes={serverInfo.info?.memory.totalBytes}
@@ -57,6 +58,8 @@ export function ProjectContainersContainer({
       onDeleteSecret={secrets.remove}
       onAddMember={access.add}
       onRemoveMember={access.remove}
+      onCreateShare={shares.create}
+      onRevokeShare={shares.revoke}
       onRepairNetwork={info.repairNetwork}
       onSetResourceLimits={info.setLimits}
       onStartProject={info.start}
