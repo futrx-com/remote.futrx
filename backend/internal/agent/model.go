@@ -34,6 +34,11 @@ const (
 	EventToolCompleted      EventType = "tool.completed"
 	EventUsageUpdated       EventType = "usage.updated"
 	EventError              EventType = "error"
+
+	// EventQuotaUpdated carries a subscription window the CLI volunteered
+	// mid-run. It is not a request this platform can make, so it arrives when
+	// it arrives — see agent/quota.go.
+	EventQuotaUpdated       EventType = "quota.updated"
 	EventProviderNative     EventType = "provider.native"
 	EventInteractionRequest EventType = "interaction.request"
 	EventInteractionDone    EventType = "interaction.resolved"
@@ -146,9 +151,12 @@ type Event struct {
 	Data           json.RawMessage `json:"data,omitempty"`
 	Usage          json.RawMessage `json:"usage,omitempty"`
 	Raw            json.RawMessage `json:"raw,omitempty"`
-	Native         *NativeEnvelope `json:"native,omitempty"`
-	InteractionID  string          `json:"interactionId,omitempty"`
-	Status         string          `json:"status,omitempty"`
+
+	// Quota is set only on EventQuotaUpdated.
+	Quota         *Quota          `json:"quota,omitempty"`
+	Native        *NativeEnvelope `json:"native,omitempty"`
+	InteractionID string          `json:"interactionId,omitempty"`
+	Status        string          `json:"status,omitempty"`
 }
 
 type CapabilityProvider interface {

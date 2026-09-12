@@ -17,6 +17,7 @@ The application does not use an external database service. Durable metadata is s
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── agent-quota.json                    last provider-reported plan windows
 ├── session.key
 ├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
 └── uploads/tmp/                        tus chunks and sidecars

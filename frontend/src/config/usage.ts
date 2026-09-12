@@ -11,6 +11,11 @@ export const USAGE_RANGE_SPAN_DAYS = { "7d": 7, "30d": 30 } as const;
 /** The window the page opens on, and what an unrecognised preset falls back to. */
 export const USAGE_DEFAULT_RANGE_PRESET = "30d";
 
+/** Visual urgency thresholds for reported subscription-plan usage. */
+export const PLAN_QUOTA_WARNING_PERCENT = 70;
+export const PLAN_QUOTA_SPENT_PERCENT = 90;
+export const PLAN_QUOTA_MIN_VISIBLE_BAR_PERCENT = 2;
+
 /** The windows the Usage page offers, in the order it lists them. */
 export const USAGE_RANGE_PRESETS: Array<{ id: UsageRangePreset; label: string }> = [
   { id: "7d", label: `${USAGE_RANGE_SPAN_DAYS["7d"]} days` },
