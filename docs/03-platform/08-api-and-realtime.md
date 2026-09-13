@@ -33,6 +33,8 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | GET | `/auth/logout` | Clear platform cookies and return to the app |
 | GET | `/auth/verify` | Caddy forward-auth check; preview hosts also check project membership |
 | GET, PUT | `/api/admin/auth/google` | Read or replace Google OAuth configuration; admin only |
+| GET, PUT, DELETE | `/api/admin/email` | Read, replace, or clear the SMTP sender configuration; admin only |
+| POST | `/api/admin/email/test` | Send a test email from the configured sender; admin only |
 
 ## Users and settings
 
