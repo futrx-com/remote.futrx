@@ -58,7 +58,9 @@ type PushStore interface {
 
 type Dependencies struct {
 	Chats             ChatStore
+	ChatLifecycle     ChatLifecyclePublisher
 	Projects          serviceproject.Repository
+	ProjectLifecycle  ProjectLifecyclePublisher
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
 	ProjectShares     serviceshare.Repository
@@ -161,12 +163,17 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	chats := notifyingChatRepository{
 		Repository: deps.Chats,
 		workspace:  workspace,
+		lifecycle:  deps.ChatLifecycle,
 		running: func(id servicechat.ID) bool {
 			return runs != nil && runs.IsRunning(id)
 		},
 		push: pushNotifier,
 	}
-	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
+	projects := notifyingProjectRepository{
+		Repository: deps.Projects,
+		workspace:  workspace,
+		lifecycle:  deps.ProjectLifecycle,
+	}
 	projectService := serviceproject.New(
 		projects,
 		deps.ProjectContainers,
