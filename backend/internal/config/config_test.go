@@ -17,6 +17,16 @@ func TestLoadUsesGlobalAgentCapabilityTimeout(t *testing.T) {
 	}
 }
 
+func TestLoadUsesConfiguredGitIdentity(t *testing.T) {
+	t.Setenv("REMOTE_GIT_USER_NAME", "Example Developer")
+	t.Setenv("REMOTE_GIT_USER_EMAIL", "developer@example.com")
+
+	identity := Load().Git
+	if identity.UserName != "Example Developer" || identity.UserEmail != "developer@example.com" {
+		t.Fatalf("git identity = %#v", identity)
+	}
+}
+
 func TestLoadUsesGlobalAgentPolicyDefaults(t *testing.T) {
 	options := Load().Agent
 	if options.CapabilityCacheTTL != 24*time.Hour {

@@ -26,6 +26,7 @@ type Provisioner struct {
 	profiles     serviceprofiles.Source
 	publisher    *assets.Publisher
 	instructions []byte
+	gitIdentity  GitIdentity
 }
 
 // NewProvisioner returns a workspace provisioner backed by shared container
@@ -35,12 +36,18 @@ func NewProvisioner(
 	profileSource serviceprofiles.Source,
 	publisher *assets.Publisher,
 	instructions []byte,
+	gitIdentity ...GitIdentity,
 ) *Provisioner {
+	identity := GitIdentity{}
+	if len(gitIdentity) > 0 {
+		identity = gitIdentity[0]
+	}
 	return &Provisioner{
 		runner:       runner,
 		profiles:     profileSource,
 		publisher:    publisher,
 		instructions: append([]byte(nil), instructions...),
+		gitIdentity:  identity,
 	}
 }
 

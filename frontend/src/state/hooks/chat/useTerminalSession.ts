@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { terminalApi } from "../../../api/terminalApi";
-import type { TerminalConnection, TerminalStatus } from "../../../types/terminal";
+import type {
+  TerminalConnection,
+  TerminalConnectionCallbacks,
+  TerminalStatus,
+} from "../../../types/terminal";
 import {
   TERMINAL_CONNECTION_ERROR_MESSAGE,
   TERMINAL_DEFAULT_TITLE,
@@ -23,10 +27,12 @@ export function useTerminalSession({
   chatId,
   enabled,
   title,
+  target = "workspace",
 }: {
-  chatId: string;
+  chatId?: string;
   enabled: boolean;
   title?: string;
+  target?: "workspace" | "host";
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
@@ -79,7 +85,7 @@ export function useTerminalSession({
     terminalRef.current = terminal;
     fitRef.current = fit;
 
-    const connection = terminalApi.connect(chatId, {
+    const callbacks: TerminalConnectionCallbacks = {
       onOpen() {
         if (disposed) return;
         setStatus(TERMINAL_STATUS.connected);
@@ -104,7 +110,10 @@ export function useTerminalSession({
           current === TERMINAL_STATUS.error ? current : TERMINAL_STATUS.closed
         );
       },
-    });
+    };
+    const connection = target === "host"
+      ? terminalApi.connectHost(callbacks)
+      : terminalApi.connect(chatId || "", callbacks);
     connectionRef.current = connection;
     setStatus(TERMINAL_STATUS.connecting);
     setError(null);
@@ -132,7 +141,7 @@ export function useTerminalSession({
       terminalRef.current = null;
       fitRef.current = null;
     };
-  }, [chatId, enabled, fitAndResize]);
+  }, [chatId, enabled, fitAndResize, target]);
 
   return {
     hostRef,

@@ -15,9 +15,17 @@ type Config struct {
 	DataDir    string
 	InstallDir string
 	BaseURL    string
+	Git        GitOptions
 	Agent      AgentOptions
 	Auth       AuthOptions
 	Schedule   ScheduleLimits
+}
+
+// GitOptions define the non-secret author identity provisioned into project
+// containers. Authentication remains owned by the existing credential flow.
+type GitOptions struct {
+	UserName  string
+	UserEmail string
 }
 
 // AgentOptions are application-wide policies for the agent subsystem.
@@ -82,6 +90,10 @@ func Load() Config {
 		DataDir:    envDefault("DATA_DIR", "/opt/remote.futrx/data"),
 		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
 		BaseURL:    envDefault("BASE_URL", ""),
+		Git: GitOptions{
+			UserName:  envDefault("REMOTE_GIT_USER_NAME", "Remote User"),
+			UserEmail: envDefault("REMOTE_GIT_USER_EMAIL", "remote@localhost"),
+		},
 		Agent: AgentOptions{
 			CapabilityTimeout:          envDuration("AGENT_CAPABILITY_TIMEOUT", 30*time.Second),
 			HostCLIVersionTimeout:      15 * time.Second,

@@ -70,6 +70,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	}
 	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt)
 	terminalSocket := wstransport.NewContainerTerminalSocket(deps.Services.Chats, deps.Services.Projects)
+	tmuxSocket := wstransport.NewTmuxSocket(deps.TmuxClient)
 	workspaceSocket := wstransport.NewWorkspaceSocket(
 		deps.Services.Chats,
 		deps.Services.Projects,
@@ -78,6 +79,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	if deps.Services.Auth != nil {
 		chatSocket = chatSocket.WithAccessChecker(gate)
 		terminalSocket = terminalSocket.WithAccessChecker(gate)
+		tmuxSocket = tmuxSocket.WithAccessChecker(gate)
 		workspaceSocket = workspaceSocket.WithVisibility(gate)
 	}
 	scheduleHandler := httphandlers.NewScheduleHandler(
@@ -128,7 +130,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Schedules:        scheduleHandler,
 		Usage:            usageHandler,
 		Uploads:          uploads,
-		TmuxWS:           wstransport.NewTmuxSocket(deps.TmuxClient),
+		TmuxWS:           tmuxSocket,
 		TerminalWS:       terminalSocket,
 		ChatWS:           chatSocket,
 		WorkspaceWS:      workspaceSocket,

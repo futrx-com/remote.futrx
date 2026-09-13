@@ -44,6 +44,8 @@ StopWhenUnneeded=yes
 
 [Service]
 Type=exec
+Environment=HOME=/root
+Environment=GIT_CONFIG_GLOBAL=/root/.gitconfig
 Environment=VSCODE_RECONNECTION_GRACE_TIME=60000
 ExecStart=/usr/bin/code-server /workspace
 ExecStartPost=/usr/bin/bash -c 'for i in $(seq 1 50); do curl -fsS -o /dev/null http://127.0.0.1:8081/healthz && exit 0; sleep 0.2; done; exit 0'
@@ -154,6 +156,7 @@ cat > /root/.local/share/code-server/User/settings.json <<'JSON'
   "workbench.settings.enableNaturalLanguageSearch": false,
   "git.autorefresh": true,
   "git.decorations.enabled": true,
+  "github.gitAuthentication": false,
   "scm.diffDecorations": "gutter",
   "files.autoSave": "afterDelay",
   "files.autoSaveDelay": 1500,

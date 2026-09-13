@@ -114,9 +114,10 @@ code.${HOSTNAME} {
     respond "Use <slug>.code.${HOSTNAME}" 400
 }
 
-# Per-project dev URLs. <slug>--<port>.dev.${HOSTNAME} proxies into the
-# project's LXD container at <slug>.lxd:<port>. The .lxd resolution
-# depends on the systemd-resolved drop-in installed by infra/steps/01-host-deps.sh.
+# Per-project dev URLs. Requests enter the project's code-server proxy, which
+# can reach dev servers bound to either 127.0.0.1 or 0.0.0.0 inside the
+# container. The public URL stays at the origin root, so root-relative assets
+# and WebSockets work without exposing the internal /proxy/<port>/ path.
 *.dev.${HOSTNAME} {
     encode zstd gzip
     tls {
@@ -139,7 +140,14 @@ code.${HOSTNAME} {
         header_regexp host Host ^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.${HOSTNAME_RE}$
     }
     handle @valid {
-        reverse_proxy {re.host.1}.lxd:{re.host.2} {
+        rewrite * /proxy/{re.host.2}{uri}
+        reverse_proxy {re.host.1}.lxd:8842 {
+            transport http {
+                keepalive off
+            }
+            # localhost is accepted by Vite releases that predate the
+            # __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS compatibility variable.
+            header_up Host localhost:{re.host.2}
             # Strip remote.futrx's own auth cookies before the request
             # enters the project container. forward_auth (above) already
             # validated the session against the main backend on loopback, so

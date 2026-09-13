@@ -21,6 +21,12 @@ grep -Eq '"updatedAt":[0-9]+' "$FUTRX_UPDATE_PROGRESS_PATH"
 
 grep -Fq 'maintenance.json' "$UPGRADE_SCRIPT"
 grep -Fq -- '--progress-file' "$UPGRADE_SCRIPT"
+grep -Fq 'FUTRX_SERVICE_UNIT_PATH' "$UPGRADE_SCRIPT"
+grep -Fq 'Environment=BASE_URL=' "$UPGRADE_SCRIPT"
+if grep -Fq 'source "$INSTALL_DIR/config.env"' "$UPGRADE_SCRIPT"; then
+    echo "workspace upgrader must not source secret-bearing config.env" >&2
+    exit 1
+fi
 if grep -Eq 'systemctl[[:space:]]+stop' "$UPGRADE_SCRIPT"; then
     echo "workspace upgrader still stops the control plane" >&2
     exit 1

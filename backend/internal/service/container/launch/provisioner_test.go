@@ -23,6 +23,11 @@ func (f failingWorkspace) EnsureSkillLinks(_ context.Context, containerName stri
 	return errors.New("workspace failed")
 }
 
+func (f failingWorkspace) EnsureGitIdentity(_ context.Context, containerName string) error {
+	f.recorder.calls = append(f.recorder.calls, "git identity "+containerName)
+	return errors.New("git identity failed")
+}
+
 type failingBrowser struct{ recorder *callRecorder }
 
 func (f failingBrowser) EnsureScript(_ context.Context, containerName string) error {
@@ -42,8 +47,8 @@ func (f failingBrowser) EnsureNesting(_ context.Context, containerName string) e
 
 type failingCodeServer struct{ recorder *callRecorder }
 
-func (f failingCodeServer) Ensure(_ context.Context, containerName, displayName string) error {
-	f.recorder.calls = append(f.recorder.calls, "code-server "+containerName+" "+displayName)
+func (f failingCodeServer) Ensure(_ context.Context, containerName, displayName, projectSlug string) error {
+	f.recorder.calls = append(f.recorder.calls, "code-server "+containerName+" "+displayName+" "+projectSlug)
 	return errors.New("code-server failed")
 }
 
@@ -64,16 +69,17 @@ func TestProvisionKeepsBestEffortCapabilityOrder(t *testing.T) {
 		failingScheduleTools{recorder: recorder},
 	)
 
-	provisioner.Provision(context.Background(), "project-1", "My Project")
+	provisioner.Provision(context.Background(), "project-1", "My Project", "my-project")
 
 	want := []string{
 		"credentials project-1",
 		"workspace project-1",
+		"git identity project-1",
 		"browser script project-1",
 		"browser skill project-1",
 		"browser nesting project-1",
 		"schedule tools project-1",
-		"code-server project-1 My Project",
+		"code-server project-1 My Project my-project",
 	}
 	if !slices.Equal(recorder.calls, want) {
 		t.Fatalf("calls: got %q, want %q", recorder.calls, want)

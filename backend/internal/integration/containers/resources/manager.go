@@ -31,13 +31,13 @@ const (
 // takedowns. The backend converges the profile to these values on every
 // Launch — edit HERE and redeploy to change the fleet default; hand-edits
 // via `lxc profile edit` are reverted on the next convergence.
-var profileConfig = [...][2]string{
+var profileConfig = [][2]string{
 	// Hard memory ceiling: the container's own OOM killer fires inside the
 	// cgroup; the host never feels it.
-	{"limits.memory", "4GiB"},
+	{"limits.memory", "8GiB"},
 	// CPU cap below the host's core count so the host control plane (LXD,
 	// sshd, backend) always has headroom even with a pegged workspace.
-	{"limits.cpu", "6"},
+	{"limits.cpu", "2"},
 	// Fork-bomb guard; the kernel PID table is shared with the host.
 	{"limits.processes", "2000"},
 	// Chrome's own sandbox (nested user namespaces) for the Agent Browser.
@@ -47,12 +47,28 @@ var profileConfig = [...][2]string{
 // Manager converges the managed profile definition and its attachment to
 // project containers.
 type Manager struct {
-	runner command.Runner
+	runner          command.Runner
+	viteAllowedHost string
 }
 
 // NewManager returns a Manager that issues profile operations through runner.
-func NewManager(runner command.Runner) *Manager {
-	return &Manager{runner: runner}
+func NewManager(runner command.Runner, viteAllowedHost ...string) *Manager {
+	host := ""
+	if len(viteAllowedHost) > 0 {
+		host = strings.TrimSpace(viteAllowedHost[0])
+	}
+	return &Manager{runner: runner, viteAllowedHost: host}
+}
+
+func (m *Manager) desiredProfileConfig() [][2]string {
+	config := append([][2]string(nil), profileConfig...)
+	if m.viteAllowedHost != "" {
+		config = append(config, [2]string{
+			"environment.__VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS",
+			m.viteAllowedHost,
+		})
+	}
+	return config
 }
 
 // Ensure converges the profile definition, then attaches the profile to the
@@ -87,14 +103,14 @@ func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, dis
 			args = []string{"config", "unset", containerName, limit.key}
 		}
 		out, err := command.RunWithTimeout(ctx, m.runner, queryTimeout, args...)
-		if err != nil {
+		if err != nil && !(limit.value == "" && missingConfigOutput(out+" "+err.Error())) {
 			return fmt.Errorf("%s: %w; output: %s", strings.Join(args, " "), err, out)
 		}
 	}
 
 	if disk == "" {
 		out, err := command.RunWithTimeout(ctx, m.runner, queryTimeout, "config", "device", "unset", containerName, "root", "size")
-		if err != nil && !missingDeviceOutput(out+" "+err.Error()) {
+		if err != nil && !missingDeviceOutput(out+" "+err.Error()) && !inheritedDeviceOutput(out+" "+err.Error()) {
 			return fmt.Errorf("config device unset %s root size: %w; output: %s", containerName, err, out)
 		}
 		return nil
@@ -114,12 +130,25 @@ func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, dis
 	return nil
 }
 
+func missingConfigOutput(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "not currently set") ||
+		strings.Contains(lower, "is not set")
+}
+
 func missingDeviceOutput(output string) bool {
 	lower := strings.ToLower(output)
 	return strings.Contains(lower, "not found") ||
 		strings.Contains(lower, "doesn't exist") ||
 		strings.Contains(lower, "does not exist") ||
 		strings.Contains(lower, "not defined")
+}
+
+func inheritedDeviceOutput(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "cannot be modified for individual instance") ||
+		strings.Contains(lower, "override device")
 }
 
 func (m *Manager) ensureProfile(ctx context.Context) error {
@@ -134,7 +163,7 @@ func (m *Manager) ensureProfile(ctx context.Context) error {
 			return fmt.Errorf("profile create %s: %w; output: %s", ProfileName, err, out)
 		}
 	}
-	for _, kv := range profileConfig {
+	for _, kv := range m.desiredProfileConfig() {
 		key, want := kv[0], kv[1]
 		current, _ := command.RunWithTimeout(ctx, m.runner, queryTimeout, "profile", "get", ProfileName, key)
 		if strings.TrimSpace(current) == want {

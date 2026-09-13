@@ -35,7 +35,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
-	containerStack := config.NewContainerStack(lxcClient, agentModules.Profiles(), config.ContainerStackOptions{})
+	publicHostname, err := config.PublicHostname(cfg.BaseURL)
+	if err != nil {
+		log.Fatalf("configure public hostname: %v", err)
+	}
+	containerStack := config.NewContainerStack(lxcClient, agentModules.Profiles(), config.ContainerStackOptions{
+		PublicHostname: publicHostname,
+		GitUserName:    cfg.Git.UserName,
+		GitUserEmail:   cfg.Git.UserEmail,
+	})
 	projects := serviceproject.New(
 		storeSet.Projects,
 		containerStack.ProjectDependencies(),
