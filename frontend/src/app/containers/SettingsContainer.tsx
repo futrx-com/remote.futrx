@@ -48,7 +48,10 @@ export function SettingsContainer({
       setUsageRebuilding(false);
     }
   }, [usageDashboard]);
-  const push = usePushNotifications(activeTab === "notifications");
+  const push = usePushNotifications(
+    activeTab === "notifications",
+    auth.email || auth.adminEmail
+  );
 
   return (
     <SettingsPage

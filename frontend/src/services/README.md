@@ -8,6 +8,7 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 | `chat/` | Where an attachment is stored and what it is called, and where find-in-chat's matches are shown |
 | `files/` | What a filename means: its kind, its icon, what a click does |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
+| `push/` | Which accounts opted this browser into push notifications |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
 | `workspace/` | The sidebar and its search: what they show, what filters them, and what the user folded away or filtered by |
 | `platform/` | The browser and the language — storage, ids, time, diff, downloads, text folding, text matching, DOM text search, which surface an Escape belongs to |

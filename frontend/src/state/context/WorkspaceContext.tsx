@@ -61,7 +61,8 @@ export function WorkspaceProvider({
     () => workspaceUiState.createInitial(takePushNotificationChatId())
   );
   const activeChat = workspaceSidebarService.activeChat(data.chats, ui.activeChatId);
-  const capabilityUserId = auth.email || auth.adminEmail || "anonymous";
+  const account = auth.email || auth.adminEmail;
+  const capabilityUserId = account || "anonymous";
   const activeCapabilityProjectId = activeChat?.projectId;
 
   ////////////////
@@ -131,6 +132,7 @@ export function WorkspaceProvider({
   }, [enabled, capabilityUserId, activeCapabilityProjectId, activeChat?.id]);
 
   useWorkspacePushLifecycle({
+    account: enabled ? account : "",
     activeChatId: ui.activeChatId,
     view: ui.view,
     openChat: openPushChat,

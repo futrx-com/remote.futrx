@@ -26,6 +26,7 @@ export function EditCall({ input, output, outputExpanded, status, isError }: Omi
       status={status}
       isError={isError}
       defaultOpen
+      revealSignal={outputExpanded}
     >
       <div class="divide-y divide-ink-500">
         {patches.map((parts, index) => (

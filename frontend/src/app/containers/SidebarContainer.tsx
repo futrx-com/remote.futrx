@@ -19,7 +19,7 @@ export function SidebarContainer() {
     workspace.chats
   );
   const commands = useWorkspaceCommands();
-  const signOut = useAccountSignOut();
+  const signOut = useAccountSignOut(auth.email || auth.adminEmail);
   const search = useSidebarSearch();
   const openPalette = useOpenCommandPalette();
   const model = useMemo(

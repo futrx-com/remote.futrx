@@ -65,7 +65,7 @@ func TestClientTranslatesImageOperations(t *testing.T) {
 			invoke: func(client *Client) (string, error) {
 				return client.PublishImage(context.Background(), "builder", "remote-base", "base description")
 			},
-			wantArgs: []string{"publish", "builder", "--alias", "remote-base", "description=base description"},
+			wantArgs: []string{"publish", "builder", "--alias", "remote-base", "--compression", "none", "description=base description"},
 		},
 	}
 
