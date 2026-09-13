@@ -13,6 +13,11 @@
     # if you want renewal-failure emails from LE.
     # email you@example.com
 
+    # Optional DNS-01 ACME provider for hosts without public inbound reachability.
+    # Set ACME_DNS_PROVIDER (e.g. github.com/caddy-dns/cloudflare) and
+    # ACME_DNS_TOKEN to enable; install.sh pulls a Caddy build with that module.
+    acme_dns $ACME_DNS_PROVIDER $ACME_DNS_TOKEN
+
     # On-demand TLS for the *.dev.${HOSTNAME} wildcard. Caddy queries the
     # backend's /internal/tls-ask before issuing each cert so attackers
     # can't burn through ACME rate limits by hitting random subdomains.
