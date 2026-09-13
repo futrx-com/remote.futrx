@@ -13,9 +13,11 @@ import (
 
 type lifecycleChatRepositoryStub struct {
 	servicechat.Repository
-	createResult servicechat.Meta
-	updateResult servicechat.Meta
-	err          error
+	createResult   servicechat.Meta
+	updateResult   servicechat.Meta
+	getResult      servicechat.Meta
+	truncateResult []servicechat.Event
+	err            error
 }
 
 func (r lifecycleChatRepositoryStub) Create(context.Context, servicechat.Meta) (servicechat.Meta, error) {
@@ -34,32 +36,64 @@ func (r lifecycleChatRepositoryStub) Delete(context.Context, servicechat.ID) err
 	return r.err
 }
 
+func (r lifecycleChatRepositoryStub) Get(context.Context, servicechat.ID) (servicechat.Meta, error) {
+	return r.getResult, r.err
+}
+
+func (r lifecycleChatRepositoryStub) AppendEvent(
+	_ context.Context,
+	_ servicechat.ID,
+	event servicechat.Event,
+) (servicechat.Event, error) {
+	event.Seq = 7
+	return event, r.err
+}
+
+func (r lifecycleChatRepositoryStub) TruncateEventsBefore(
+	context.Context,
+	servicechat.ID,
+	int64,
+) ([]servicechat.Event, error) {
+	return r.truncateResult, r.err
+}
+
 type recordedChatLifecycleEvent struct {
 	ctx   context.Context
 	event applicationlifecycle.ChatEvent
 }
 
 type recordingChatLifecycleSubscriber struct {
-	events []recordedChatLifecycleEvent
+	beforeRecord func(applicationlifecycle.ChatEvent)
+	events       []recordedChatLifecycleEvent
 }
 
 func (s *recordingChatLifecycleSubscriber) OnChat(
 	ctx context.Context,
 	event applicationlifecycle.ChatEvent,
 ) {
+	if s.beforeRecord != nil {
+		s.beforeRecord(event)
+	}
 	s.events = append(s.events, recordedChatLifecycleEvent{ctx: ctx, event: event})
 }
 
 func TestNotifyingChatRepositoryPublishesSuccessfulRecordLifecycle(t *testing.T) {
 	publisher := applicationlifecycle.NewChatPublisher()
-	subscriber := &recordingChatLifecycleSubscriber{}
+	workspace := workspacehub.New()
+	workspaceEvents := workspace.Subscribe()
+	defer workspaceEvents.Close()
+	subscriber := &recordingChatLifecycleSubscriber{
+		beforeRecord: func(event applicationlifecycle.ChatEvent) {
+			assertChatWorkspaceEvent(t, workspaceEvents.Events(), event)
+		},
+	}
 	publisher.Subscribe(subscriber)
 	repository := notifyingChatRepository{
 		Repository: lifecycleChatRepositoryStub{
 			createResult: servicechat.Meta{ID: "deadbeef"},
 			updateResult: servicechat.Meta{ID: "cafebabe"},
 		},
-		workspace: workspacehub.New(),
+		workspace: workspace,
 		lifecycle: publisher,
 	}
 	ctx := context.Background()
@@ -82,6 +116,28 @@ func TestNotifyingChatRepositoryPublishesSuccessfulRecordLifecycle(t *testing.T)
 	assertChatLifecycleEvents(t, subscriber.events, ctx, want)
 }
 
+func assertChatWorkspaceEvent(
+	t *testing.T,
+	events <-chan workspacehub.Event,
+	lifecycleEvent applicationlifecycle.ChatEvent,
+) {
+	t.Helper()
+	select {
+	case event := <-events:
+		if lifecycleEvent.State == applicationlifecycle.ChatDeleted {
+			if event.Type != "chat.delete" || event.ID != lifecycleEvent.ChatID {
+				t.Fatalf("workspace event = %+v before lifecycle event %+v", event, lifecycleEvent)
+			}
+			return
+		}
+		if event.Type != "chat.upsert" || event.Chat == nil || string(event.Chat.ID) != lifecycleEvent.ChatID {
+			t.Fatalf("workspace event = %+v before lifecycle event %+v", event, lifecycleEvent)
+		}
+	default:
+		t.Fatalf("workspace event missing before lifecycle event %+v", lifecycleEvent)
+	}
+}
+
 func TestNotifyingChatRepositorySkipsFailedRecordLifecycle(t *testing.T) {
 	publisher := applicationlifecycle.NewChatPublisher()
 	subscriber := &recordingChatLifecycleSubscriber{}
@@ -102,6 +158,48 @@ func TestNotifyingChatRepositorySkipsFailedRecordLifecycle(t *testing.T) {
 	}
 	if err := repository.Delete(ctx, "0123abcd"); !errors.Is(err, wantErr) {
 		t.Fatalf("Delete() error = %v, want %v", err, wantErr)
+	}
+	if len(subscriber.events) != 0 {
+		t.Fatalf("events = %+v, want none", subscriber.events)
+	}
+}
+
+func TestNotifyingChatRepositorySkipsRecordLifecycleForTranscriptMutations(t *testing.T) {
+	publisher := applicationlifecycle.NewChatPublisher()
+	subscriber := &recordingChatLifecycleSubscriber{}
+	publisher.Subscribe(subscriber)
+	repository := notifyingChatRepository{
+		Repository: lifecycleChatRepositoryStub{
+			getResult:      servicechat.Meta{ID: "deadbeef"},
+			truncateResult: []servicechat.Event{{Seq: 3, Type: "user"}},
+		},
+		workspace: workspacehub.New(),
+		lifecycle: publisher,
+	}
+	ctx := context.Background()
+
+	appended, err := repository.AppendEvent(ctx, "deadbeef", servicechat.Event{Type: "user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if appended.Seq != 7 || appended.Type != "user" {
+		t.Fatalf("AppendEvent() = %+v, want persisted user event", appended)
+	}
+
+	copied, err := repository.AppendCopiedEvent(ctx, "deadbeef", servicechat.Event{Type: "complete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copied.Seq != 7 || copied.Type != "complete" {
+		t.Fatalf("AppendCopiedEvent() = %+v, want persisted complete event", copied)
+	}
+
+	truncated, err := repository.TruncateEventsBefore(ctx, "deadbeef", 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(truncated) != 1 || truncated[0].Seq != 3 {
+		t.Fatalf("TruncateEventsBefore() = %+v, want configured result", truncated)
 	}
 	if len(subscriber.events) != 0 {
 		t.Fatalf("events = %+v, want none", subscriber.events)
@@ -170,19 +268,30 @@ type recordedProjectLifecycleEvent struct {
 }
 
 type recordingProjectLifecycleSubscriber struct {
-	events []recordedProjectLifecycleEvent
+	beforeRecord func(applicationlifecycle.ProjectEvent)
+	events       []recordedProjectLifecycleEvent
 }
 
 func (s *recordingProjectLifecycleSubscriber) OnProject(
 	ctx context.Context,
 	event applicationlifecycle.ProjectEvent,
 ) {
+	if s.beforeRecord != nil {
+		s.beforeRecord(event)
+	}
 	s.events = append(s.events, recordedProjectLifecycleEvent{ctx: ctx, event: event})
 }
 
 func TestNotifyingProjectRepositoryPublishesSuccessfulRecordLifecycle(t *testing.T) {
 	publisher := applicationlifecycle.NewProjectPublisher()
-	subscriber := &recordingProjectLifecycleSubscriber{}
+	workspace := workspacehub.New()
+	workspaceEvents := workspace.Subscribe()
+	defer workspaceEvents.Close()
+	subscriber := &recordingProjectLifecycleSubscriber{
+		beforeRecord: func(event applicationlifecycle.ProjectEvent) {
+			assertProjectWorkspaceEvent(t, workspaceEvents.Events(), event)
+		},
+	}
 	publisher.Subscribe(subscriber)
 	repository := notifyingProjectRepository{
 		Repository: lifecycleProjectRepositoryStub{
@@ -190,7 +299,7 @@ func TestNotifyingProjectRepositoryPublishesSuccessfulRecordLifecycle(t *testing
 			updateResult:    serviceproject.Meta{ID: "cafebabe"},
 			setStatusResult: serviceproject.Meta{ID: "0123abcd"},
 		},
-		workspace: workspacehub.New(),
+		workspace: workspace,
 		lifecycle: publisher,
 	}
 	ctx := context.Background()
@@ -215,6 +324,28 @@ func TestNotifyingProjectRepositoryPublishesSuccessfulRecordLifecycle(t *testing
 		{State: applicationlifecycle.ProjectDeleted, ProjectID: "feedface"},
 	}
 	assertProjectLifecycleEvents(t, subscriber.events, ctx, want)
+}
+
+func assertProjectWorkspaceEvent(
+	t *testing.T,
+	events <-chan workspacehub.Event,
+	lifecycleEvent applicationlifecycle.ProjectEvent,
+) {
+	t.Helper()
+	select {
+	case event := <-events:
+		if lifecycleEvent.State == applicationlifecycle.ProjectDeleted {
+			if event.Type != "project.delete" || event.ID != lifecycleEvent.ProjectID {
+				t.Fatalf("workspace event = %+v before lifecycle event %+v", event, lifecycleEvent)
+			}
+			return
+		}
+		if event.Type != "project.upsert" || event.Project == nil || string(event.Project.ID) != lifecycleEvent.ProjectID {
+			t.Fatalf("workspace event = %+v before lifecycle event %+v", event, lifecycleEvent)
+		}
+	default:
+		t.Fatalf("workspace event missing before lifecycle event %+v", lifecycleEvent)
+	}
 }
 
 func TestNotifyingProjectRepositorySkipsFailedRecordLifecycle(t *testing.T) {

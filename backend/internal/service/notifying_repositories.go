@@ -22,9 +22,7 @@ func (r notifyingChatRepository) Create(ctx context.Context, meta servicechat.Me
 	next, err := r.Repository.Create(ctx, meta)
 	if err == nil {
 		r.workspace.PublishChatUpsert(r.withRunning(next))
-		if r.lifecycle != nil {
-			r.lifecycle.PublishChatCreated(ctx, string(next.ID))
-		}
+		r.lifecycle.PublishChatCreated(ctx, string(next.ID))
 	}
 	return next, err
 }
@@ -37,9 +35,7 @@ func (r notifyingChatRepository) Update(
 	next, err := r.Repository.Update(ctx, id, fn)
 	if err == nil {
 		r.workspace.PublishChatUpsert(r.withRunning(next))
-		if r.lifecycle != nil {
-			r.lifecycle.PublishChatUpdated(ctx, string(id))
-		}
+		r.lifecycle.PublishChatUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -48,9 +44,7 @@ func (r notifyingChatRepository) Delete(ctx context.Context, id servicechat.ID) 
 	err := r.Repository.Delete(ctx, id)
 	if err == nil {
 		r.workspace.PublishChatDelete(id)
-		if r.lifecycle != nil {
-			r.lifecycle.PublishChatDeleted(ctx, string(id))
-		}
+		r.lifecycle.PublishChatDeleted(ctx, string(id))
 	}
 	return err
 }
@@ -129,9 +123,7 @@ func (r notifyingProjectRepository) Create(ctx context.Context, meta serviceproj
 	next, err := r.Repository.Create(ctx, meta)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
-		if r.lifecycle != nil {
-			r.lifecycle.PublishProjectCreated(ctx, string(next.ID))
-		}
+		r.lifecycle.PublishProjectCreated(ctx, string(next.ID))
 	}
 	return next, err
 }
@@ -144,9 +136,7 @@ func (r notifyingProjectRepository) Update(
 	next, err := r.Repository.Update(ctx, id, fn)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
-		if r.lifecycle != nil {
-			r.lifecycle.PublishProjectUpdated(ctx, string(id))
-		}
+		r.lifecycle.PublishProjectUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -160,9 +150,7 @@ func (r notifyingProjectRepository) SetStatus(
 	next, err := r.Repository.SetStatus(ctx, id, status, errMsg)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
-		if r.lifecycle != nil {
-			r.lifecycle.PublishProjectUpdated(ctx, string(id))
-		}
+		r.lifecycle.PublishProjectUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -171,9 +159,7 @@ func (r notifyingProjectRepository) Delete(ctx context.Context, id serviceprojec
 	err := r.Repository.Delete(ctx, id)
 	if err == nil {
 		r.workspace.PublishProjectDelete(id)
-		if r.lifecycle != nil {
-			r.lifecycle.PublishProjectDeleted(ctx, string(id))
-		}
+		r.lifecycle.PublishProjectDeleted(ctx, string(id))
 	}
 	return err
 }

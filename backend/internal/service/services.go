@@ -152,6 +152,12 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
 	}
+	if deps.ChatLifecycle == nil {
+		return Services{}, errors.New("chat lifecycle publisher is required")
+	}
+	if deps.ProjectLifecycle == nil {
+		return Services{}, errors.New("project lifecycle publisher is required")
+	}
 
 	workspace := workspacehub.New()
 	var runs *runhub.Hub
