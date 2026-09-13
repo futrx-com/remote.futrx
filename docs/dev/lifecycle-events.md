@@ -132,12 +132,12 @@ func (*ChatPublisher) PublishChatDeleted(context.Context, string)
 
 Source: [`chat_publisher.go`](../../backend/internal/lifecycle/chat_publisher.go).
 
-Project and chat events contain only their stable record ID. Do not add full
-metadata merely to save a subscriber lookup: project metadata contains a
-pointer, chat metadata contains maps and slices, and copying either struct would
-still expose mutable references to subscribers. Their metadata also includes
-paths, configuration, and provider session information that most reactions do
-not need.
+Beyond the state discriminator, project and chat events contain only their
+stable record ID. Do not add full metadata merely to save a subscriber lookup:
+project metadata contains a pointer, chat metadata contains maps and slices,
+and copying either struct would still expose mutable references to subscribers.
+Their metadata also includes paths, configuration, and provider session
+information that most reactions do not need.
 
 ## Available events
 
@@ -150,7 +150,7 @@ this section.
 
 | Event | Emission point | Replay and ordering |
 | --- | --- | --- |
-| `UpdateStarted` (`started`) | Synchronously after durable run preparation and before `HostClient.StartUpdater`; launch is about to be attempted but has not succeeded yet | In-memory only; not replayed after process replacement |
+| `UpdateStarted` (`started`) | Synchronously after durable progress is initialized and before `HostClient.StartUpdater`; launch is about to be attempted, and no durable run record or PID exists yet | In-memory only; not replayed after process replacement |
 | `UpdateSucceeded` (`succeeded`) | The reconciler observes a durable successful updater result | Recovered after restart and checkpointed after callbacks |
 | `UpdateFailed` (`failed`) | Immediately after `StartUpdater` fails, or when reconciliation sees a non-zero done marker or a dead updater with no result | Launch failure is not replayed; reconciled failure is checkpointed after callbacks |
 
@@ -203,7 +203,7 @@ port during service composition.
 | --- | --- | --- |
 | `ChatCreated` (`created`) | `chat.Repository.Create` successfully persisted a record | New chat and the new record created by Fork |
 | `ChatUpdated` (`updated`) | `chat.Repository.Update` successfully persisted a record | Metadata changes, mark read/unread, automatic title, provider session persistence, and stale-session recovery |
-| `ChatDeleted` (`deleted`) | `chat.Repository.Delete` returned success | User deletion after run cancellation and project-deletion cascade |
+| `ChatDeleted` (`deleted`) | `chat.Repository.Delete` returned success | User deletion after cancellation when a run is active, and project-deletion cascade |
 
 These report successful repository operations. In particular, `ChatDeleted`
 can also follow an idempotent delete of a valid ID whose record is already
@@ -327,8 +327,9 @@ These details are part of the API contract:
   needs a subscriber-owned bounded queue with explicit overload and shutdown
   behavior. Queue event data, not the request context; that context can be
   canceled as soon as the callback returns.
-- Do not subscribe a nil implementation. It is accepted during registration but
-  panics when the next event invokes it.
+- Passing a nil interface is accepted during registration but panics on
+  dispatch. Avoid typed-nil subscribers too: whether they panic depends on the
+  callback's pointer-receiver implementation.
 
 The shared delivery mechanics are private in
 [`dispatcher.go`](../../backend/internal/lifecycle/dispatcher.go). Public event
@@ -366,8 +367,12 @@ sequenceDiagram
         Backend->>Subscriber: Construct and subscribe
         Backend->>Reconciler: Start one process-lifetime reconciler
     end
-    Updater->>State: Write terminal result after script exits
-    Reconciler->>State: Read run and terminal result
+    alt Terminal result exists
+        Updater->>State: Write terminal result after script exits
+        Reconciler->>State: Read run and terminal result
+    else Updater died without a result
+        Reconciler->>State: Read run, find no result, and detect dead PID
+    end
     Reconciler->>Publisher: Publish succeeded or failed
     Publisher->>Subscriber: OnUpdate(ctx, event)
     Reconciler->>State: Checkpoint published terminal state
@@ -402,8 +407,9 @@ transcript stream.
 
 The project/chat persistence decorators publish existing `workspacehub` events
 before lifecycle callbacks. A slow or panicking lifecycle subscriber therefore
-cannot suppress the established WebSocket notification. The event sets still
-differ:
+cannot prevent the established WebSocket publication attempt. Delivery remains
+best-effort: `workspacehub` drops and closes a subscriber whose buffer is full.
+The event sets still differ:
 
 - `workspacehub` uses `project.upsert`, `project.delete`, `chat.upsert`, and
   `chat.delete` transport messages;
@@ -428,8 +434,16 @@ import (
     "github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 )
 
+type AuditWriter interface {
+    RecordProjectDeletion(context.Context, string) error
+}
+
 type Subscriber struct {
     audit AuditWriter
+}
+
+func New(audit AuditWriter) *Subscriber {
+    return &Subscriber{audit: audit}
 }
 
 var _ lifecycle.ProjectSubscriber = (*Subscriber)(nil)
@@ -474,11 +488,12 @@ serviceSet, err := service.New(ctx, service.Dependencies{
 ```
 
 `service.New` is a nested composition root and starts background work before it
-returns. A subscriber that must observe all project/chat activity must therefore
-be registered before `service.New` receives those publishers. If a proposed
-subscriber cannot be constructed without the completed `serviceSet`, either
-depend on a narrower component available earlier or separate construction from
-startup; registering afterward explicitly accepts a window of missed events.
+returns. A subscriber that must observe all emitted project/chat lifecycle
+events must therefore be registered before `service.New` receives those
+publishers. If a proposed subscriber cannot be constructed without the
+completed `serviceSet`, either depend on a narrower component available earlier
+or separate construction from startup; registering afterward explicitly
+accepts a window of missed events.
 
 For self-update, register before `StartLifecycleReconciler`, whose first pass is
 synchronous and can deliver a terminal event immediately.
@@ -579,8 +594,8 @@ func (p *ProjectPublisher) PublishProjectArchived(ctx context.Context, projectID
 }
 ```
 
-Keep raw dispatch private. Semantic methods prevent callers from constructing
-unsupported states.
+Keep raw dispatch private. Semantic methods prevent callers from publishing
+unsupported states through the publisher.
 
 ### 2. Extend only the producer port that needs it
 
@@ -706,7 +721,7 @@ Add focused tests for:
 
 - each semantic method's exact state and payload;
 - context forwarding through the real producer boundary;
-- no event before a failed transition becomes true;
+- no event when the transition fails before the documented fact becomes true;
 - side-effect and callback ordering;
 - every subscriber's handled and ignored states; and
 - any family-specific restart, replay, duplicate, or partial-success behavior.
