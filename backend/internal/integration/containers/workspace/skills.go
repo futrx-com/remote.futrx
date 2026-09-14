@@ -20,15 +20,21 @@ const ensureWorkspaceSymlinksTimeout = 10 * time.Second
 // EnsureSkillLinks creates the canonical .agents skills directory, migrates
 // legacy skill children when possible, and points each configured
 // compatibility path at .agents/skills. Cheap and idempotent.
+//
+// The global skills library converges first so the per-provider home-directory
+// mirroring below picks up global entries in the same pass. A failing global
+// sync must not cost a project its own skill links, so its error is reported
+// only after the local links are in place.
 func (p *Provisioner) EnsureSkillLinks(ctx context.Context, containerName string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}
+	globalErr := p.EnsureGlobalSkills(ctx, containerName)
 	script := workspaceSkillLinksScript(p.profiles.Snapshot())
 	if _, err := command.RunWithTimeout(ctx, p.runner, ensureWorkspaceSymlinksTimeout, "exec", containerName, "--", "sh", "-c", script); err != nil {
 		return err
 	}
-	return nil
+	return globalErr
 }
 
 func workspaceSkillLinksScript(profiles []provisioning.Profile) string {

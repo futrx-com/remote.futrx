@@ -58,6 +58,10 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | DELETE | `/api/{provider}/login/api-key` | Remove a managed provider API key; currently MiniMax; admin only |
 | GET | `/api/agent-capabilities[?projectId=<id>&refresh=1]` | Discover normalized provider/model controls on the host or in an accessible project; `refresh=1` bypasses the current backend cache entry |
 | GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
+| GET | `/api/skills?provider=...&projectId=...` | List accessible provider, project, and global skills |
+| GET, POST | `/api/admin/skills-global` | List the global skills library, or publish a skill (JSON files map or zip body); admin only |
+| GET, PUT, DELETE | `/api/admin/skills-global/{name}` | Read, replace (files and/or the always-on flag), or delete one global skill; admin only |
+| POST | `/api/admin/skills-global/import` | Copy an existing project skill into the global library; admin only |
 
 The module descriptor chooses one auth mode: managed authorization code,
 managed device flow, managed API key, external, or none. Route registration follows the built
