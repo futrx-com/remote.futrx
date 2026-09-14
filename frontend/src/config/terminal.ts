@@ -34,6 +34,8 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
 
 export const TERMINAL_WEB_SOCKET_BINARY_TYPE = "arraybuffer";
 export const TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed.";
+export const TERMINAL_OVERLAY_LOAD_ERROR_MESSAGE =
+  "Terminal failed to load. The app may have updated in the background — retry, or refresh the page.";
 export const TERMINAL_DEFAULT_TITLE = "workspace";
 export const TERMINAL_INITIAL_FIT_DELAY_MS = 0;
 export const TERMINAL_STATUS = {
