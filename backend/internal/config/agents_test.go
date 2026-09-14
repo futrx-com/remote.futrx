@@ -17,11 +17,15 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	descriptors := catalog.Descriptors()
 	profiles := catalog.Profiles()
 	ids := make([]agent.ProviderID, len(descriptors))
+	profileIDs := make([]string, len(profiles))
+	for index, profile := range profiles {
+		profileIDs[index] = profile.ID
+	}
 	for index, descriptor := range descriptors {
 		ids[index] = descriptor.ID
-		if index >= len(profiles) || profiles[index].ID != string(descriptor.ID) {
-			t.Fatalf("descriptor %q has no aligned profile", descriptor.ID)
-		}
+	}
+	if !slices.Equal(profileIDs, []string{"claude", "codex", "minimax", "kimi", "antigravity", "opencode"}) {
+		t.Fatalf("project profiles = %v", profileIDs)
 	}
 	want := []agent.ProviderID{
 		agent.ProviderClaude,
@@ -29,6 +33,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 		agent.ProviderMiniMax,
 		agent.ProviderKimi,
 		agent.ProviderAntigravity,
+		agent.ProviderOpenCode,
 	}
 	if !slices.Equal(ids, want) {
 		t.Fatalf("agent order = %v, want %v", ids, want)
@@ -54,12 +59,23 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	for index, profile := range hostProfiles {
 		hostIDs[index] = profile.ID
 	}
-	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity"}) {
+	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity", "opencode"}) {
 		t.Fatalf("host profile order = %v", hostIDs)
 	}
-	antigravityCLI := hostProfiles[len(hostProfiles)-1].CLI
-	if antigravityCLI.Binary != "agy" || antigravityCLI.InstallMode != provisioning.InstallWithScript || antigravityCLI.InstallScript == "" {
-		t.Fatalf("Antigravity host CLI policy = %#v", antigravityCLI)
+	var agyProfile, opencodeProfile *provisioning.Profile
+	for i := range hostProfiles {
+		if hostProfiles[i].ID == "antigravity" {
+			agyProfile = &hostProfiles[i]
+		}
+		if hostProfiles[i].ID == "opencode" {
+			opencodeProfile = &hostProfiles[i]
+		}
+	}
+	if opencodeProfile == nil || opencodeProfile.CLI.Binary != "opencode" || opencodeProfile.CLI.PackageName != "opencode-ai" || opencodeProfile.CLI.InstallMode != provisioning.InstallWithNPM {
+		t.Fatalf("OpenCode host CLI policy = %#v", opencodeProfile)
+	}
+	if agyProfile == nil || agyProfile.CLI.Binary != "agy" || agyProfile.CLI.InstallMode != provisioning.InstallWithScript || agyProfile.CLI.InstallScript == "" {
+		t.Fatalf("Antigravity host CLI policy = %#v", agyProfile)
 	}
 
 	runtime, err := catalog.Build(agentmodule.BuildDependencies{})
