@@ -18,6 +18,7 @@ import (
 	containerresources "github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
 	containerruntimeassets "github.com/futrx-com/remote.futrx.com/internal/integration/containers/runtimeassets"
 	containerscheduletools "github.com/futrx-com/remote.futrx.com/internal/integration/containers/scheduletools"
+	containerusersetup "github.com/futrx-com/remote.futrx.com/internal/integration/containers/usersetup"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	servicebrowser "github.com/futrx-com/remote.futrx.com/internal/service/container/browser"
@@ -126,6 +127,7 @@ func NewContainerStack(
 		workspace,
 		browser,
 		codeServer,
+		containerusersetup.NewProvisioner(runner),
 		scheduleTools,
 	)
 	resources := containerresources.NewManager(runner)
