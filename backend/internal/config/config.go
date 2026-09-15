@@ -17,7 +17,15 @@ type Config struct {
 	BaseURL    string
 	Agent      AgentOptions
 	Auth       AuthOptions
+	Plugins    PluginOptions
 	Schedule   ScheduleLimits
+}
+
+// PluginOptions are application-wide settings for installable application
+// backends. Toolchain discovery remains in the plugin integration; config
+// owns the optional environment override supplied to it.
+type PluginOptions struct {
+	GoTool string
 }
 
 // AgentOptions are application-wide policies for the agent subsystem.
@@ -96,6 +104,9 @@ func Load() Config {
 			RecoveryCodeCount:   10,
 			SessionHistoryLimit: 20,
 			SetupTokenTTL:       envDuration("SETUP_TOKEN_TTL", 30*time.Minute),
+		},
+		Plugins: PluginOptions{
+			GoTool: envDefault("REMOTE_PLUGIN_GO", ""),
 		},
 		Schedule: ScheduleLimits{
 			MinInterval:        envDuration("SCHEDULE_MIN_INTERVAL", 5*time.Minute),
