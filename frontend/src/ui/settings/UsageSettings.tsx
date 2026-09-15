@@ -5,6 +5,7 @@ import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { usageFormatService } from "../../services/usage/usageFormatService.ts";
 import { usageRangeService } from "../../services/usage/usageRangeService.ts";
 import { AlertCircle, Loader, RotateCcw } from "../primitives/icons";
+import { PlanQuotaSection } from "./usage/PlanQuotaSection";
 import { UsageBarChart } from "./usage/UsageBarChart";
 import { UsageGroupTable, UsageRecordsTable } from "./usage/UsageTables";
 
@@ -45,6 +46,7 @@ export function UsageSettings({
 
   return (
     <div class="space-y-4">
+      <PlanQuotaSection />
       <section class="rounded-card border border-line bg-surface px-4 py-3 space-y-3">
         <div class="flex flex-wrap items-center gap-2">
           <div class="inline-flex rounded-md border border-line overflow-hidden">

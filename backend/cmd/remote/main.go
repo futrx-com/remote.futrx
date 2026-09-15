@@ -113,6 +113,7 @@ func main() {
 		SessionRegistry:   storeSet.SessionRegistry,
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
+		AgentQuota:        storeSet.AgentQuota,
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
