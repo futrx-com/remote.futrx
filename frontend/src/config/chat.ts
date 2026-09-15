@@ -32,6 +32,7 @@ export function providerDisplayLabel(provider?: string): string {
     antigravity: "Antigravity",
     claude: "Claude",
     codex: "Codex",
+    devin: "Devin",
     kimi: "Kimi",
     minimax: "MiniMax",
   };

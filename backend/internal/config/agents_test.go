@@ -29,6 +29,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 		agent.ProviderMiniMax,
 		agent.ProviderKimi,
 		agent.ProviderAntigravity,
+		agent.ProviderDevin,
 	}
 	if !slices.Equal(ids, want) {
 		t.Fatalf("agent order = %v, want %v", ids, want)
@@ -46,7 +47,8 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 		!catalog.SupportsNativeFork(string(agent.ProviderCodex)) ||
 		!catalog.SupportsNativeFork(string(agent.ProviderMiniMax)) ||
 		catalog.SupportsNativeFork(string(agent.ProviderKimi)) ||
-		catalog.SupportsNativeFork(string(agent.ProviderAntigravity)) {
+		catalog.SupportsNativeFork(string(agent.ProviderAntigravity)) ||
+		catalog.SupportsNativeFork(string(agent.ProviderDevin)) {
 		t.Fatal("catalog native-fork policies do not match provider behavior")
 	}
 	hostProfiles := catalog.HostProfiles()
@@ -54,12 +56,21 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	for index, profile := range hostProfiles {
 		hostIDs[index] = profile.ID
 	}
-	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity"}) {
+	if !slices.Equal(hostIDs, []string{"claude", "codex", "kimi", "antigravity", "devin"}) {
 		t.Fatalf("host profile order = %v", hostIDs)
 	}
-	antigravityCLI := hostProfiles[len(hostProfiles)-1].CLI
+	var antigravityCLI provisioning.CLISpec
+	for _, profile := range hostProfiles {
+		if profile.ID == "antigravity" {
+			antigravityCLI = profile.CLI
+		}
+	}
 	if antigravityCLI.Binary != "agy" || antigravityCLI.InstallMode != provisioning.InstallWithScript || antigravityCLI.InstallScript == "" {
 		t.Fatalf("Antigravity host CLI policy = %#v", antigravityCLI)
+	}
+	devinCLI := hostProfiles[len(hostProfiles)-1].CLI
+	if devinCLI.Binary != "devin" || devinCLI.InstallMode != provisioning.InstallWithScript || devinCLI.InstallScript == "" {
+		t.Fatalf("Devin host CLI policy = %#v", devinCLI)
 	}
 
 	runtime, err := catalog.Build(agentmodule.BuildDependencies{})

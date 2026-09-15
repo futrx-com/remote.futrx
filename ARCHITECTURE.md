@@ -5,7 +5,7 @@ This document describes how remote.futrx is put together: its runtime topology, 
 ## What it is
 
 remote.futrx is a **single-server, self-hosted** workspace for Claude Code,
-Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity. A user creates a project,
+Codex, MiniMax through the Codex harness, Kimi Code, Antigravity, and Devin. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -98,10 +98,10 @@ Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-wor
 1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup. The first claim is gated on a one-time token generated at startup and printed only to the server terminal (`setup-token.json` holds its SHA-256, never the token), so an unclaimed server cannot be taken over by whoever loads the page first; once an administrator exists, that administrator authorises any further claim instead.
 2. **Agent-provider credentials.** Host-wide OAuth tokens for
    Claude/Codex/Kimi, connected once by an admin and **shared by all projects
-   and users** on the box. MiniMax instead reads `MINIMAX_API_KEY` from each
-   project's secret store, while Antigravity authenticates through `agy`
-   inside one project and stores that state in its project-specific durable
-   provider mount.
+   and users** on the box. Devin uses a host-managed manual token flow. MiniMax
+   instead reads `MINIMAX_API_KEY` from each project's secret store, while
+   Antigravity authenticates through `agy` inside one project and stores that
+   state in its project-specific durable provider mount.
 3. **Per-project membership.** A flat email access-list per project (`projectaccess/<id>.json`). Any member — not only admins — can read/write that project's secrets and edit its member list.
 
 **Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp, sid}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches the preview/IDE subdomains for `forward_auth`. By default there is still no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
@@ -248,9 +248,9 @@ JSON and metadata writes use temp-file + rename. Chat events are different: they
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Six bind mounts per project:** `workspace` → `/workspace`, plus the
+- **Seven bind mounts per project:** `workspace` → `/workspace`, plus the
   provider-declared persistent directories for Claude, Codex, MiniMax, Kimi,
-  and Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+  Antigravity, and Devin. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
   whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
   unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
   races.
