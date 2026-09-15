@@ -11,6 +11,7 @@ import (
 type notifyingChatRepository struct {
 	servicechat.Repository
 	workspace *workspacehub.Hub
+	lifecycle ChatLifecyclePublisher
 	running   func(servicechat.ID) bool
 	// push receives every appended event so it can raise notifications for
 	// the few that matter. Nil when push is not configured.
@@ -21,6 +22,7 @@ func (r notifyingChatRepository) Create(ctx context.Context, meta servicechat.Me
 	next, err := r.Repository.Create(ctx, meta)
 	if err == nil {
 		r.workspace.PublishChatUpsert(r.withRunning(next))
+		r.lifecycle.PublishChatCreated(ctx, string(next.ID))
 	}
 	return next, err
 }
@@ -33,6 +35,7 @@ func (r notifyingChatRepository) Update(
 	next, err := r.Repository.Update(ctx, id, fn)
 	if err == nil {
 		r.workspace.PublishChatUpsert(r.withRunning(next))
+		r.lifecycle.PublishChatUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -41,6 +44,7 @@ func (r notifyingChatRepository) Delete(ctx context.Context, id servicechat.ID) 
 	err := r.Repository.Delete(ctx, id)
 	if err == nil {
 		r.workspace.PublishChatDelete(id)
+		r.lifecycle.PublishChatDeleted(ctx, string(id))
 	}
 	return err
 }
@@ -112,12 +116,14 @@ func eventUpdatesWorkspace(eventType string) bool {
 type notifyingProjectRepository struct {
 	serviceproject.Repository
 	workspace *workspacehub.Hub
+	lifecycle ProjectLifecyclePublisher
 }
 
 func (r notifyingProjectRepository) Create(ctx context.Context, meta serviceproject.Meta) (serviceproject.Meta, error) {
 	next, err := r.Repository.Create(ctx, meta)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
+		r.lifecycle.PublishProjectCreated(ctx, string(next.ID))
 	}
 	return next, err
 }
@@ -130,6 +136,7 @@ func (r notifyingProjectRepository) Update(
 	next, err := r.Repository.Update(ctx, id, fn)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
+		r.lifecycle.PublishProjectUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -143,6 +150,7 @@ func (r notifyingProjectRepository) SetStatus(
 	next, err := r.Repository.SetStatus(ctx, id, status, errMsg)
 	if err == nil {
 		r.workspace.PublishProjectUpsert(next)
+		r.lifecycle.PublishProjectUpdated(ctx, string(id))
 	}
 	return next, err
 }
@@ -151,6 +159,7 @@ func (r notifyingProjectRepository) Delete(ctx context.Context, id serviceprojec
 	err := r.Repository.Delete(ctx, id)
 	if err == nil {
 		r.workspace.PublishProjectDelete(id)
+		r.lifecycle.PublishProjectDeleted(ctx, string(id))
 	}
 	return err
 }

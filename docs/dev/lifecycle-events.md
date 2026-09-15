@@ -1,99 +1,291 @@
-# Lifecycle publishers and subscribers
+# Lifecycle event API
 
-`internal/lifecycle` provides typed, in-process notifications between already
-constructed application services. It is deliberately smaller than a message
-bus: it has no discovery, persistence, buffering, retry, transport, or global
-registry.
+`backend/internal/lifecycle` provides typed, in-process notifications between
+already constructed application components. Use it when one component owns a
+documented lifecycle transition and another component needs to react without
+being called directly by the producer.
 
-The current runtime has one event family, application self-updates, represented
-by `UpdatePublisher`. The publisher is injected into `selfupdate.Service`
-through a narrow producer-owned port. No production subscriber is currently
-registered.
+Lifecycle publishers are deliberately smaller than a message bus. They have no
+discovery, persistence, buffering, retry, transport, or global registry. Every
+publisher is an ordinary dependency constructed at the process composition
+root.
 
-This guide explains how to:
+The current runtime provides three event families:
 
-- add an event to an existing event family;
-- add a subscriber to an existing publisher; and
-- add a publisher for a new event family.
+- application self-updates;
+- persisted project records; and
+- persisted chat records.
 
-## Ownership model
+No production subscriber is registered today. The publishers and producer
+wiring are available for new reactions without coupling those reactions to the
+workflows that emit them.
 
-Each part has one owner:
+## API at a glance
 
-| Part | Responsibility | Current example |
+Import the package as:
+
+```go
+import "github.com/futrx-com/remote.futrx.com/internal/lifecycle"
+```
+
+| Family | Constructor | Subscribe method | Subscriber callback |
+| --- | --- | --- | --- |
+| Self-update | `lifecycle.NewUpdatePublisher()` | `(*UpdatePublisher).Subscribe(UpdateSubscriber) func()` | `OnUpdate(context.Context, UpdateEvent)` |
+| Project record | `lifecycle.NewProjectPublisher()` | `(*ProjectPublisher).Subscribe(ProjectSubscriber) func()` | `OnProject(context.Context, ProjectEvent)` |
+| Chat record | `lifecycle.NewChatPublisher()` | `(*ChatPublisher).Subscribe(ChatSubscriber) func()` | `OnChat(context.Context, ChatEvent)` |
+
+Each `Subscribe` call returns an idempotent unsubscribe function. Each public
+publish method constructs one supported typed event; there is intentionally no
+public raw `Publish(any)` API.
+
+### Self-update API
+
+```go
+type UpdateState string
+
+const (
+    UpdateStarted   UpdateState = "started"
+    UpdateSucceeded UpdateState = "succeeded"
+    UpdateFailed    UpdateState = "failed"
+)
+
+type UpdateEvent struct {
+    State     UpdateState
+    Target    string
+    Kind      string
+    StartedBy string
+}
+
+type UpdateSubscriber interface {
+    OnUpdate(context.Context, UpdateEvent)
+}
+
+func NewUpdatePublisher() *UpdatePublisher
+func (*UpdatePublisher) Subscribe(UpdateSubscriber) func()
+func (*UpdatePublisher) PublishUpdateStarted(context.Context, string, string, string)
+func (*UpdatePublisher) PublishUpdateSucceeded(context.Context, string, string, string)
+func (*UpdatePublisher) PublishUpdateFailed(context.Context, string, string, string)
+```
+
+Source: [`update_publisher.go`](../../backend/internal/lifecycle/update_publisher.go).
+
+`Target` is the target release tag, `Kind` is currently `application` or
+`infrastructure`, and `StartedBy` is the account that initiated the update.
+`StartedBy` is private application data even though the event contains no
+credential or token.
+
+### Project API
+
+```go
+type ProjectState string
+
+const (
+    ProjectCreated ProjectState = "created"
+    ProjectUpdated ProjectState = "updated"
+    ProjectDeleted ProjectState = "deleted"
+)
+
+type ProjectEvent struct {
+    State     ProjectState
+    ProjectID string
+}
+
+type ProjectSubscriber interface {
+    OnProject(context.Context, ProjectEvent)
+}
+
+func NewProjectPublisher() *ProjectPublisher
+func (*ProjectPublisher) Subscribe(ProjectSubscriber) func()
+func (*ProjectPublisher) PublishProjectCreated(context.Context, string)
+func (*ProjectPublisher) PublishProjectUpdated(context.Context, string)
+func (*ProjectPublisher) PublishProjectDeleted(context.Context, string)
+```
+
+Source: [`project_publisher.go`](../../backend/internal/lifecycle/project_publisher.go).
+
+### Chat API
+
+```go
+type ChatState string
+
+const (
+    ChatCreated ChatState = "created"
+    ChatUpdated ChatState = "updated"
+    ChatDeleted ChatState = "deleted"
+)
+
+type ChatEvent struct {
+    State  ChatState
+    ChatID string
+}
+
+type ChatSubscriber interface {
+    OnChat(context.Context, ChatEvent)
+}
+
+func NewChatPublisher() *ChatPublisher
+func (*ChatPublisher) Subscribe(ChatSubscriber) func()
+func (*ChatPublisher) PublishChatCreated(context.Context, string)
+func (*ChatPublisher) PublishChatUpdated(context.Context, string)
+func (*ChatPublisher) PublishChatDeleted(context.Context, string)
+```
+
+Source: [`chat_publisher.go`](../../backend/internal/lifecycle/chat_publisher.go).
+
+Beyond the state discriminator, project and chat events contain only their
+stable record ID. Do not add full metadata merely to save a subscriber lookup:
+project metadata contains a pointer, chat metadata contains maps and slices,
+and copying either struct would still expose mutable references to subscribers.
+Their metadata also includes paths, configuration, and provider session
+information that most reactions do not need.
+
+## Available events
+
+The named constants in each family are its event list. There is no runtime
+`[]any` catalog. Adding a constant alone is not enough: every supported state
+also needs a semantic publish method, a real emission point, tests, and a row in
+this section.
+
+### Self-update events
+
+| Event | Emission point | Replay and ordering |
 | --- | --- | --- |
-| Event contract | Defines a small typed fact and its states | [`UpdateState` and `UpdateEvent`](../../backend/internal/lifecycle/update_publisher.go) |
-| Publisher | Owns subscriptions, snapshots, and synchronous dispatch | [`UpdatePublisher`](../../backend/internal/lifecycle/update_publisher.go) |
-| Producer port | Exposes only the publish methods one producer needs | [`selfupdate.UpdateLifecyclePublisher`](../../backend/internal/service/selfupdate/ports.go) |
-| Producer | Publishes at the workflow transition it owns | [`selfupdate.Service`](../../backend/internal/service/selfupdate/service.go) |
-| Subscriber | Owns one reaction to the event; none exists in production today | `lifecycle.UpdateSubscriber` implementation |
-| Composition root | Constructs publishers, injects producer ports, and registers subscribers | [`cmd/remote/main.go`](../../backend/cmd/remote/main.go) |
+| `UpdateStarted` (`started`) | Synchronously after durable progress is initialized and before `HostClient.StartUpdater`; launch is about to be attempted, and no durable run record or PID exists yet | In-memory only; not replayed after process replacement |
+| `UpdateSucceeded` (`succeeded`) | The reconciler observes a durable successful updater result | Recovered after restart and checkpointed after callbacks |
+| `UpdateFailed` (`failed`) | Immediately after `StartUpdater` fails, or when reconciliation sees a non-zero done marker or a dead updater with no result | Launch failure is not replayed; reconciled failure is checkpointed after callbacks |
 
-Publishers belong to one cohesive lifecycle domain. Producers depend on their
-own small publishing interface, not on the concrete publisher. Subscribers
-depend on the typed event contract. The composition root is the only place
-that connects those roles.
+The producing workflow is
+[`selfupdate.Service`](../../backend/internal/service/selfupdate/service.go),
+which depends on its own publish-only
+[`UpdateLifecyclePublisher`](../../backend/internal/service/selfupdate/ports.go)
+port.
+
+### Project record events
+
+| Event | Exact meaning | Current production paths |
+| --- | --- | --- |
+| `ProjectCreated` (`created`) | `project.Repository.Create` successfully persisted a record | Project creation |
+| `ProjectUpdated` (`updated`) | `project.Repository.Update` or `SetStatus` successfully persisted a record | Rename, resource limits, each reordered project, start/stop/restart/upgrade status, create completion/error, and startup status reconciliation |
+| `ProjectDeleted` (`deleted`) | `project.Repository.Delete` returned success | Final record deletion after required chat cleanup |
+
+These are persisted-record facts, not user-action or container-control events.
+Important consequences:
+
+- Project creation first writes a `provisioning` record. Subscribers normally
+  receive `ProjectCreated`, followed by `ProjectUpdated` when status becomes
+  `running` or `error`. The callback runs before creator access is seeded and
+  before container provisioning starts, so only the initial record is
+  guaranteed at that point; `ProjectCreated` does not mean the workspace is
+  ready.
+- `ProjectUpdated` does not identify which field changed. Even a no-op mutation
+  that successfully rewrites the record is an update.
+- Reorder writes projects one at a time. Earlier updates can be delivered before
+  a later item fails.
+- `ProjectDeleted` means the record was removed. Container, secret, and access
+  cleanup are currently best-effort, so it does not promise that every external
+  artifact was removed.
+- Secrets, project membership, shares, browser-only state changes, and network
+  repair do not publish directly. `StartAgentBrowser` can still cause
+  `ProjectUpdated` through its prerequisite project-status write.
+- The publisher belongs to the running `remote` process. The standalone
+  `upgrade-workspaces` executable uses the raw project store and does not emit
+  into another process's in-memory publisher.
+
+The authoritative hooks are in
+[`notifyingProjectRepository`](../../backend/internal/service/notifying_repositories.go).
+It receives the publish-only
+[`ProjectLifecyclePublisher`](../../backend/internal/service/lifecycle_ports.go)
+port during service composition.
+
+### Chat record events
+
+| Event | Exact meaning | Current production paths |
+| --- | --- | --- |
+| `ChatCreated` (`created`) | `chat.Repository.Create` successfully persisted a record | New chat and the new record created by Fork |
+| `ChatUpdated` (`updated`) | `chat.Repository.Update` successfully persisted a record | Metadata changes, mark read/unread, automatic title, provider session persistence, and stale-session recovery |
+| `ChatDeleted` (`deleted`) | `chat.Repository.Delete` returned success | User deletion after cancellation when a run is active, and project-deletion cascade |
+
+These report successful repository operations. In particular, `ChatDeleted`
+can also follow an idempotent delete of a valid ID whose record is already
+missing.
+
+Important consequences:
+
+- Fork emits `ChatCreated` after creating the destination record but before it
+  finishes copying history. A later copy failure does not undo that durable
+  record or the already delivered event. There is no `ChatForked` event today.
+- `ChatUpdated` means the repository's `Update` operation succeeded. It does not
+  mean every part of a chat changed.
+- Appending or rewinding transcript events does not emit `ChatUpdated`.
+- Starting, finishing, failing, or canceling an agent run does not directly emit
+  a dedicated event. Metadata writes during a run can still emit `ChatUpdated`;
+  add a separate chat-run family if a consumer needs the run transitions.
+- No transcript text, prompt, tool input/output, usage payload, or provider
+  session ID is included in a lifecycle event.
+
+The authoritative hooks are in
+[`notifyingChatRepository`](../../backend/internal/service/notifying_repositories.go).
+It receives the publish-only
+[`ChatLifecyclePublisher`](../../backend/internal/service/lifecycle_ports.go)
+port during service composition.
+
+## Ownership and dependency flow
+
+Each role has one owner:
+
+| Role | Responsibility |
+| --- | --- |
+| Event contract | Defines one cohesive family's typed states and smallest safe payload |
+| Concrete publisher | Owns subscriptions and synchronous dispatch for that family |
+| Producer-owned port | Exposes only the semantic publish methods the producer calls |
+| Producer | Publishes after the workflow or persistence transition it authoritatively owns |
+| Subscriber | Owns one reaction; it does not become a second owner of the producer workflow |
+| Composition root | Constructs publishers, injects producer ports, and explicitly registers subscribers |
 
 ```mermaid
 flowchart LR
-    Main["cmd/remote/main.go<br/>composition root"]
-    Publisher["lifecycle.UpdatePublisher"]
-    Port["selfupdate.UpdateLifecyclePublisher<br/>producer-owned port"]
-    Producer["selfupdate.Service<br/>producer"]
-    State["DATA_DIR/self-update<br/>durable run state"]
-    Reconciler["self-update reconciler"]
-    Subscriber["UpdateSubscriber<br/>none registered today"]
+    Main["cmd/remote/main.go<br/>process composition root"]
+    UpdatePublisher["UpdatePublisher"]
+    ProjectPublisher["ProjectPublisher"]
+    ChatPublisher["ChatPublisher"]
+    SelfUpdate["selfupdate.Service"]
+    Services["service.New<br/>service composition"]
+    ProjectRepo["notifyingProjectRepository"]
+    ChatRepo["notifyingChatRepository"]
+    Stores["durable stores"]
+    Subscribers["typed subscribers<br/>none registered today"]
 
-    Main -->|constructs once| Publisher
-    Publisher -.->|satisfies| Port
-    Main -->|injects publisher| Producer
-    Producer -->|depends on| Port
-    Producer -->|PublishUpdateStarted| Publisher
-    Producer --> State
-    State --> Reconciler
-    Reconciler -->|PublishUpdateSucceeded or Failed| Publisher
-    Main -.->|registers after construction| Subscriber
-    Publisher -.->|OnUpdate| Subscriber
+    Main -->|constructs once| UpdatePublisher
+    Main -->|constructs once| ProjectPublisher
+    Main -->|constructs once| ChatPublisher
+    Main -->|injects publish-only port| SelfUpdate
+    Main -->|injects publish-only ports| Services
+    Services --> ProjectRepo
+    Services --> ChatRepo
+    ProjectRepo --> Stores
+    ChatRepo --> Stores
+    SelfUpdate -->|started and terminal states| UpdatePublisher
+    ProjectRepo -->|successful record mutation| ProjectPublisher
+    ChatRepo -->|successful record mutation| ChatPublisher
+    Main -.->|explicit Subscribe calls| Subscribers
+    UpdatePublisher -.-> Subscribers
+    ProjectPublisher -.-> Subscribers
+    ChatPublisher -.-> Subscribers
 ```
 
 There is intentionally no `Registry`, `Bindings`, automatic package
-registration, or package-level singleton. A publisher is an ordinary process
-dependency with explicit construction and wiring.
-
-## Current event catalog
-
-`UpdateEvent` contains the same required payload for every update state:
-
-| Field | Meaning |
-| --- | --- |
-| `State` | Typed discriminator: `started`, `succeeded`, or `failed` |
-| `Target` | Target release tag |
-| `Kind` | Update path selected by the producer, currently `application` or `infrastructure` |
-| `StartedBy` | Account identity that initiated the update |
-
-The value is deliberately small. It excludes credentials, tokens, installer
-logs, progress objects, and mutable run state. `StartedBy` may contain account
-identity information, so subscribers must still handle it as private
-application data.
-
-| State | Publish method | Production emission point | Restart behavior |
-| --- | --- | --- | --- |
-| `UpdateStarted` (`started`) | `PublishUpdateStarted` | Synchronously before `HostClient.StartUpdater` | In-memory only; not replayed |
-| `UpdateSucceeded` (`succeeded`) | `PublishUpdateSucceeded` | Reconciler observes a durable successful result | Recovered after restart, then checkpointed |
-| `UpdateFailed` (`failed`) | `PublishUpdateFailed` | Immediately when updater launch fails, or when reconciliation observes terminal failure | Immediate failure is not replayed; reconciled failure is checkpointed |
-
-The named state constants are the event list for this family. There is no
-runtime `[]any` event catalog: one publish call dispatches one typed event
-value. Keep this table updated whenever that state list changes.
+registration, reflection-based routing, or package-level singleton. Producers
+do not construct or import a concrete publisher. The concrete publishers satisfy
+small interfaces owned next to the producing code.
 
 ## Delivery contract
 
-For each publish call, a publisher:
+For each publish call, every lifecycle publisher:
 
-1. snapshots the current subscriptions under its lock;
-2. releases the lock;
-3. calls that snapshot synchronously in registration order; and
-4. passes the caller's context and a value copy of the event to each callback.
+1. snapshots the current subscriptions while holding its read lock;
+2. releases that lock;
+3. invokes the snapshot synchronously in registration order; and
+4. passes the caller's context and an event value to each callback.
 
 ```mermaid
 sequenceDiagram
@@ -102,291 +294,345 @@ sequenceDiagram
     participant First as First subscriber
     participant Second as Second subscriber
 
-    Producer->>Publisher: Publish(ctx, event fields)
+    Producer->>Publisher: PublishX(ctx, required fields)
     Publisher->>Publisher: Snapshot subscriptions
-    Publisher->>First: OnEvent(ctx, event)
+    Publisher->>First: OnX(ctx, event)
     First-->>Publisher: Return
-    Publisher->>Second: OnEvent(ctx, event)
+    Publisher->>Second: OnX(ctx, event)
     Second-->>Publisher: Return
     Publisher-->>Producer: Return
 ```
 
-The following details are part of the contract:
+These details are part of the API contract:
 
 - Registration order applies within one publish call. Separate concurrent
-  publish calls may overlap and may invoke the same subscriber concurrently.
+  publish calls can overlap and can invoke the same subscriber concurrently.
 - The publisher protects its subscription list, not subscriber-owned state.
-  Every subscriber must be concurrency-safe.
+  Subscribers must synchronize their own mutable state.
 - A callback may subscribe or unsubscribe without deadlocking. The change
   affects later snapshots only.
-- Unsubscribing does not cancel a delivery already present in the current
-  snapshot. The returned cleanup function is idempotent.
+- Unsubscribing does not cancel a callback already captured in the current
+  snapshot. Calling the returned unsubscribe function more than once is safe.
 - A canceled context is still dispatched. Each subscriber decides how its
   reaction honors cancellation.
-- Callbacks cannot return errors. A subscriber must handle or log its own
-  failures.
-- There is no panic recovery. A panic skips later subscribers and unwinds into
-  the caller. During synchronous startup reconciliation it terminates startup;
-  from the polling goroutine it terminates the process. If that happens before
-  a terminal event is checkpointed, the next process can redeliver the event
-  and hit the same panic again. Subscribers must not panic.
-- Slow work blocks the producer and every later subscriber. Put slow work
-  behind a subscriber-owned bounded queue with explicit overload and shutdown
-  behavior. Enqueue the event data and any explicitly copied metadata, not the
-  caller's context: a request context may be canceled as soon as `OnUpdate`
-  returns. A queued worker needs its own lifecycle context.
-- Never subscribe a nil implementation; the current publisher accepts it but
-  the next publish will panic.
+- Callbacks do not return errors. A subscriber owns its own recovery, logging,
+  and retry policy.
+- Publishers do not recover panics. A panic skips later subscribers and unwinds
+  into the producer. For a project or chat mutation, the durable write has
+  succeeded and `workspacehub` publication has already been attempted. A panic
+  during `UpdateStarted` prevents `StartUpdater` from being called; a terminal
+  callback panic during the reconciler's synchronous first pass aborts startup,
+  while one in its polling goroutine terminates the process.
+- Slow work blocks the producer and every later subscriber. A slow reaction
+  needs a subscriber-owned bounded queue with explicit overload and shutdown
+  behavior. Queue event data, not the request context; that context can be
+  canceled as soon as the callback returns.
+- Passing a nil interface is accepted during registration but panics on
+  dispatch. Avoid typed-nil subscribers too: whether they panic depends on the
+  callback's pointer-receiver implementation.
 
-## Process restart and terminal events
+The shared delivery mechanics are private in
+[`dispatcher.go`](../../backend/internal/lifecycle/dispatcher.go). Public event
+construction and subscriber contracts remain domain-specific.
 
-The publisher and its subscription list exist only in memory. Durability, when
-required, belongs to the producing workflow rather than to the publisher.
+## In-memory delivery, replay, and restart
 
-Self-update is the current example. `UpdateStarted` is delivered before the
-detached updater begins. The updater then runs the deployment script. A
-successful application deployment normally replaces the backend before that
-script returns; when the script eventually exits, the updater writes its
-terminal result. Whichever backend process is alive observes that result from
-durable run files. A failure before any restart can therefore be observed by
-the original process, while a successful replacement is observed by the new
-one.
+Publisher instances and subscription lists exist only in one process:
 
-`StartLifecycleReconciler` performs one synchronous pass before starting its
-polling goroutine. If that first pass returns an error, the goroutine is not
-started; the current composition root logs the error. Once the goroutine is
-running, a read or checkpoint error is retried on a later tick.
+- project and chat events are never replayed;
+- a subscriber registered after a project or chat mutation does not receive
+  historical events;
+- direct calls to a raw repository outside the composed `remote` process do not
+  publish; and
+- a process restart discards every subscription and creates new publisher
+  instances in `main.go`.
+
+Durability, where required, belongs to the producing workflow. Self-update is
+the current example because a successful update replaces the backend that
+started it.
 
 ```mermaid
 sequenceDiagram
     participant Updater as Detached updater
-    participant State as Durable run state
+    participant State as Durable update state
     participant Backend as Active backend
     participant Reconciler
-    participant Publisher
-    participant Subscriber as Registered subscribers
+    participant Publisher as UpdatePublisher
+    participant Subscriber as Update subscribers
 
     Updater->>Updater: Run deployment script
-    opt Deployment replaces the backend
-        Updater->>Backend: Restart before script returns
+    opt Deployment replaces backend
+        Updater->>Backend: Restart backend
         Backend->>Publisher: Construct publisher
         Backend->>Subscriber: Construct and subscribe
-        Backend->>Reconciler: StartLifecycleReconciler
+        Backend->>Reconciler: Start one process-lifetime reconciler
     end
-    Updater->>State: On script exit, write terminal result
-    Note over Backend,Subscriber: Active components may belong to the original or replacement process
-    Reconciler->>State: Read run and terminal result
+    alt Terminal result exists
+        Updater->>State: Write terminal result after script exits
+        Reconciler->>State: Read run and terminal result
+    else Updater died without a result
+        Reconciler->>State: Read run, find no result, and detect dead PID
+    end
     Reconciler->>Publisher: Publish succeeded or failed
     Publisher->>Subscriber: OnUpdate(ctx, event)
-    Reconciler->>State: Write PublishedTerminalState
-    Note over Publisher,State: A crash after callback but before checkpoint can cause redelivery
+    Reconciler->>State: Checkpoint published terminal state
+    Note over Publisher,State: A crash after callback and before checkpoint can redeliver
 ```
 
-Terminal delivery is therefore not exactly once. The normal checkpoint stops
-later polls and later processes from repeating the event, but a process can die
-after callbacks run and before the checkpoint is written. Terminal subscribers
-must make their effects idempotent. The current payload has no unique attempt
-ID, so do not claim exact deduplication by event identity; use an inherently
-idempotent operation or a domain-appropriate key.
+`StartLifecycleReconciler` performs one synchronous pass before starting its
+polling goroutine. If the first pass fails, polling is not started. Once running,
+transient read or checkpoint errors are retried on later ticks. Start it once
+with the process-lifetime context; it is not a restartable worker.
 
-The original request context is available to `UpdateStarted`. A reconciled
-terminal event may be delivered by a replacement process with that process's
-context, so a subscriber must not rely on request-scoped values surviving a
-restart. A subscriber registered after a terminal event has already been
-checkpointed will not receive historical replay.
+Terminal self-update delivery is at-least-once across the callback/checkpoint
+crash window, not exactly once. Terminal subscribers must make their effects
+idempotent. The current payload has no unique attempt ID, so use an inherently
+idempotent operation or a domain-appropriate key rather than claiming exact
+deduplication.
 
-## Choose the extension shape
+`UpdateStarted` receives the initiating request context. A reconciled terminal
+event can be delivered by a replacement process with that process's context, so
+subscribers must not rely on request-scoped values surviving an update.
 
-Use the smallest contract that matches the real lifecycle:
+## Lifecycle publishers versus other event mechanisms
 
-| Need | Change |
-| --- | --- |
-| Same lifecycle owner, required payload, subscriber audience, and delivery rules | Add a state and semantic publish method to the existing publisher |
-| Same family, and every state now requires one additional field | Add a required field and migrate every producer, subscriber, and test together |
-| Different payload, lifecycle owner, or subscriber audience, but the same synchronous in-memory delivery contract | Add a separate precise event family and publisher |
-| Asynchronous, cross-process, replayable, or retryable delivery | Use a queue, durable workflow state, an outbox, or transport designed for that guarantee; do not enlarge this in-memory publisher |
+Do not interchange lifecycle publishers with `workspacehub` or the chat
+transcript stream.
 
-```mermaid
-flowchart TD
-    Need["Need a lifecycle notification"] --> Family{"Existing lifecycle family?"}
-    Family -->|No| NewPublisher["Create a new typed publisher"]
-    Family -->|Yes| Contract{"Same required payload and delivery rules?"}
-    Contract -->|Yes| NewState["Add one or more typed states"]
-    Contract -->|No| NewPublisher
-    NewState --> Port["Extend the producer-owned port"]
-    NewPublisher --> Compose["Construct and wire it in main.go"]
-    Port --> Emit["Publish at the owning transition"]
-    Compose --> Emit
-    Emit --> Verify["Test publisher, producer, and subscriber"]
-```
+| Mechanism | Purpose | Delivery |
+| --- | --- | --- |
+| `internal/lifecycle` | Typed application reactions to lifecycle facts | Synchronous, registration ordered, caller context, no buffer or replay |
+| [`workspacehub`](../../backend/internal/service/workspacehub/hub.go) | Push current project/chat read models to WebSocket clients | Buffered channels, no context, unordered subscriber map, slow clients dropped and closed |
+| Chat `Event` stream | Durable conversation, tool, interaction, and usage history | Persisted and sequence-addressed; can contain sensitive or high-volume content |
 
-Do not add optional fields to turn one event into a bag of unrelated payloads.
-Do not create a new publisher until there is a real producer or subscriber that
-needs a different contract.
+The project/chat persistence decorators publish existing `workspacehub` events
+before lifecycle callbacks. A slow or panicking lifecycle subscriber therefore
+cannot prevent the established WebSocket publication attempt. Delivery remains
+best-effort: `workspacehub` drops and closes a subscriber whose buffer is full.
+The event sets still differ:
 
-## Add an event to an existing publisher
-
-Use this path when the new state belongs to application self-update and needs
-the same `Target`, `Kind`, and `StartedBy` fields. The following `cancelled`
-state is illustrative; it is not currently implemented.
-
-### 1. Add the typed state and publish method
-
-In [`update_publisher.go`](../../backend/internal/lifecycle/update_publisher.go):
-
-```go
-const (
-    UpdateStarted   UpdateState = "started"
-    UpdateSucceeded UpdateState = "succeeded"
-    UpdateFailed    UpdateState = "failed"
-    UpdateCancelled UpdateState = "cancelled" // Example only.
-)
-
-func (p *UpdatePublisher) PublishUpdateCancelled(
-    ctx context.Context,
-    target, kind, startedBy string,
-) {
-    p.publish(ctx, UpdateEvent{
-        State:     UpdateCancelled,
-        Target:    target,
-        Kind:      kind,
-        StartedBy: startedBy,
-    })
-}
-```
-
-Keep raw dispatch private. Public publish methods should name domain facts; do
-not expose a generic `Publish(UpdateEvent)` that lets callers construct invalid
-or unsupported states.
-
-### 2. Extend the producer-owned port
-
-Add only the method used by that producer to its local port. For self-update,
-that port is in
-[`internal/service/selfupdate/ports.go`](../../backend/internal/service/selfupdate/ports.go):
-
-```go
-type UpdateLifecyclePublisher interface {
-    PublishUpdateStarted(context.Context, string, string, string)
-    PublishUpdateSucceeded(context.Context, string, string, string)
-    PublishUpdateFailed(context.Context, string, string, string)
-    PublishUpdateCancelled(context.Context, string, string, string)
-}
-```
-
-The compiler will identify every fake or implementation that must move with
-the contract.
-
-### 3. Publish at the owning transition
-
-Call the new method inside the service operation that authoritatively decides
-the transition:
-
-```go
-s.lifecycle.PublishUpdateCancelled(ctx, target, string(kind), startedBy)
-```
-
-Define its ordering before writing code. For example: does cancellation become
-observable before or after the process is stopped, and what is published when
-that stop fails? Pin that existing or intended ordering in a producer test.
-Publish one event for one accepted transition; validation failures and rejected
-duplicate operations should not accidentally publish.
-
-### 4. Update consumers, tests, and this catalog
-
-`UpdateSubscriber` keeps one callback for the whole family, so adding a state
-does not widen its interface. Update subscriber switches only where the new
-state matters. Then add:
-
-- a publisher test for the exact state and payload;
-- a producer test for call count and side-effect ordering;
-- subscriber tests for the reaction and ignored states; and
-- a row in the current event catalog above.
+- `workspacehub` uses `project.upsert`, `project.delete`, `chat.upsert`, and
+  `chat.delete` transport messages;
+- selected transcript appends, rewinds, and in-memory chat running-state changes
+  can publish `chat.upsert` without emitting `ChatUpdated`; and
+- lifecycle events carry only a typed state and stable ID, not a frontend read
+  model.
 
 ## Add a subscriber
 
-Place the reaction with the service or adapter that owns the resulting side
-effect. A subscriber should not become a second owner of the producer's
-workflow.
+### 1. Implement exactly one typed callback
 
-### 1. Implement the typed subscriber contract
-
-This example reacts only to terminal events:
+Put the reaction with the service or adapter that owns its side effect. This
+example records project deletion:
 
 ```go
-type UpdateAudit struct {
-    // Subscriber-owned dependencies.
+package projectaudit
+
+import (
+    "context"
+
+    "github.com/futrx-com/remote.futrx.com/internal/lifecycle"
+)
+
+type AuditWriter interface {
+    RecordProjectDeletion(context.Context, string) error
 }
 
-var _ lifecycle.UpdateSubscriber = (*UpdateAudit)(nil)
+type Subscriber struct {
+    audit AuditWriter
+}
 
-func (s *UpdateAudit) OnUpdate(ctx context.Context, event lifecycle.UpdateEvent) {
+func New(audit AuditWriter) *Subscriber {
+    return &Subscriber{audit: audit}
+}
+
+var _ lifecycle.ProjectSubscriber = (*Subscriber)(nil)
+
+func (s *Subscriber) OnProject(ctx context.Context, event lifecycle.ProjectEvent) {
     switch event.State {
-    case lifecycle.UpdateSucceeded, lifecycle.UpdateFailed:
-        // Perform a fast, concurrency-safe, idempotent, non-panicking reaction.
-    case lifecycle.UpdateStarted:
-        // This subscriber does not own a reaction to the started state.
+    case lifecycle.ProjectDeleted:
+        if err := s.audit.RecordProjectDeletion(ctx, event.ProjectID); err != nil {
+            // Handle or log the failure here. It cannot be returned to the publisher.
+        }
+    case lifecycle.ProjectCreated, lifecycle.ProjectUpdated:
+        // This subscriber has no reaction to these states.
     }
 }
 ```
 
-Treat the received value as input. Do not mutate producer state through hidden
-references or reach back into the producer to reconstruct the event.
+Use a pointer receiver when the subscriber owns mutable dependencies or state.
+The compile-time assertion makes an accidental callback signature change fail
+at build time.
 
-### 2. Register it directly in the composition root
+### 2. Construct and subscribe before publication can begin
 
-Construct all subscriber dependencies first, then subscribe before any
-reconciler, background worker, request handler, or startup hook can publish:
+Register subscribers explicitly in
+[`cmd/remote/main.go`](../../backend/cmd/remote/main.go). Subscribe before giving
+the publisher to a component that can publish:
 
 ```go
-updateLifecycle := lifecycle.NewUpdatePublisher()
-selfUpdateService := selfupdate.New(
-    version.Version,
-    cfg.InstallDir,
-    cfg.DataDir,
-    updatecli.New(),
-    updateLifecycle,
-)
+projectLifecycle := lifecycle.NewProjectPublisher()
+chatLifecycle := lifecycle.NewChatPublisher()
 
-updateAudit := updateaudit.New(/* dependencies */)
-unsubscribeUpdateAudit := updateLifecycle.Subscribe(updateAudit)
-defer unsubscribeUpdateAudit()
+projectAudit := projectaudit.New(/* dependencies available before services start */)
+unsubscribeProjectAudit := projectLifecycle.Subscribe(projectAudit)
+defer unsubscribeProjectAudit()
 
-// Subscription must exist before this synchronous first reconciliation pass.
-if err := selfUpdateService.StartLifecycleReconciler(ctx); err != nil {
-    log.Printf("self-update: lifecycle reconcile warning: %v", err)
-}
+serviceSet, err := service.New(ctx, service.Dependencies{
+    Chats:            storeSet.Chats,
+    ChatLifecycle:    chatLifecycle,
+    Projects:         storeSet.Projects,
+    ProjectLifecycle: projectLifecycle,
+    // Other dependencies omitted.
+})
 ```
 
-In the real composition root, service construction may occur between publisher
-construction and registration. The invariant is registration before anything
-can publish. In particular, registering after `StartLifecycleReconciler` can
-miss the terminal event processed by its synchronous first pass.
+`service.New` is a nested composition root and starts background work before it
+returns. A subscriber that must observe all emitted project/chat lifecycle
+events must therefore be registered before `service.New` receives those
+publishers. If a proposed subscriber cannot be constructed without the
+completed `serviceSet`, either depend on a narrower component available earlier
+or separate construction from startup; registering afterward explicitly
+accepts a window of missed events.
 
-Register multiple subscribers with separate explicit calls. Those calls define
-their per-publish order:
+For self-update, register before `StartLifecycleReconciler`, whose first pass is
+synchronous and can deliver a terminal event immediately.
+
+### 3. Register multiple subscribers explicitly
+
+Registration calls define callback order:
 
 ```go
-unsubscribeAudit := updateLifecycle.Subscribe(updateAudit)
+unsubscribeAudit := chatLifecycle.Subscribe(chatAudit)
 defer unsubscribeAudit()
 
-unsubscribeNotifications := updateLifecycle.Subscribe(updateNotifications)
+unsubscribeNotifications := chatLifecycle.Subscribe(chatNotifications)
 defer unsubscribeNotifications()
 ```
 
-Do not add an aggregate binding catalog solely to shorten these lines.
+Do not add a binding catalog solely to shorten these calls. Explicit wiring
+makes startup order and ownership visible.
 
-### 3. Test the subscriber at its boundary
+### 4. Test the subscriber at its boundary
 
-Test every state that changes subscriber behavior, plus concurrent callbacks
-when it owns mutable state. For a terminal subscriber, execute the same event
-twice and prove the externally visible result is still correct.
+Test every state that changes the subscriber's behavior and every state it must
+ignore. If callbacks can overlap, run concurrent callback tests. For self-update
+terminal reactions, deliver the same event twice and prove the external result
+remains correct.
+
+## Publish an existing event
+
+Application policy should depend on a producer-owned interface, not a concrete
+publisher. Existing project/chat record events are emitted by the persistence
+decorators through
+[`lifecycle_ports.go`](../../backend/internal/service/lifecycle_ports.go):
+
+```go
+type ProjectLifecyclePublisher interface {
+    PublishProjectCreated(context.Context, string)
+    PublishProjectUpdated(context.Context, string)
+    PublishProjectDeleted(context.Context, string)
+}
+```
+
+Call the semantic method only at the authoritative transition:
+
+```go
+next, err := repository.Update(ctx, id, mutate)
+if err == nil {
+    lifecycle.PublishProjectUpdated(ctx, string(id))
+}
+return next, err
+```
+
+Before adding another call, define all of these details:
+
+- what durable or in-memory fact makes the event true;
+- whether publication is before or after the side effect;
+- whether a failed or partially successful operation emits;
+- whether repeated or no-op operations emit;
+- which context is forwarded; and
+- whether a restart can lose or repeat the event.
+
+Pin the decision in a producer test. Validation failures and rejected operations
+must not accidentally publish.
+
+## Add an event to an existing family
+
+Use an existing family only when the new event has the same lifecycle owner,
+required payload, subscriber audience, and delivery guarantees.
+
+```mermaid
+flowchart TD
+    Need["Need a lifecycle notification"] --> Family{"Existing lifecycle family?"}
+    Family -->|No| NewPublisher["Create a typed publisher"]
+    Family -->|Yes| Contract{"Same owner, payload, audience, and delivery?"}
+    Contract -->|Yes| NewState["Add a typed state and semantic method"]
+    Contract -->|No| NewPublisher
+    NewState --> Port["Extend the producer-owned port"]
+    NewPublisher --> Compose["Construct and inject in main.go"]
+    Port --> Emit["Publish at the authoritative transition"]
+    Compose --> Emit
+    Emit --> Verify["Test producer, publisher, and subscribers"]
+    Verify --> Catalog["Update the API reference and event catalog"]
+```
+
+### 1. Add the typed constant and semantic publish method
+
+For an illustrative project state that does not exist today:
+
+```go
+const (
+    ProjectCreated  ProjectState = "created"
+    ProjectUpdated  ProjectState = "updated"
+    ProjectDeleted  ProjectState = "deleted"
+    ProjectArchived ProjectState = "archived" // Example only; not implemented.
+)
+
+func (p *ProjectPublisher) PublishProjectArchived(ctx context.Context, projectID string) {
+    p.publish(ctx, ProjectArchived, projectID)
+}
+```
+
+Keep raw dispatch private. Semantic methods prevent callers from publishing
+unsupported states through the publisher.
+
+### 2. Extend only the producer port that needs it
+
+```go
+type ProjectLifecyclePublisher interface {
+    PublishProjectCreated(context.Context, string)
+    PublishProjectUpdated(context.Context, string)
+    PublishProjectDeleted(context.Context, string)
+    PublishProjectArchived(context.Context, string)
+}
+```
+
+The compiler identifies concrete publishers and test doubles that must change
+with the port.
+
+### 3. Emit and test the exact transition
+
+Publish once at the owner that makes `archived` true. Test event count, payload,
+context, and ordering relative to the operation's existing side effects. Do not
+infer `archived` from a controller route name or add it as an alias for a normal
+record update.
+
+### 4. Update subscribers and this catalog
+
+The subscriber interface stays one method for the whole family, so adding a
+state does not force no-op methods onto every subscriber. Update state switches,
+publisher tests, producer tests, subscriber tests, the API snippet, and the
+event table together.
+
+Do not add optional fields to turn one event into a bag of unrelated payloads.
+If only one state needs a materially different payload or audience, create a
+separate family.
 
 ## Add a new publisher and event family
 
-Create another publisher only for a cohesive lifecycle with a different event
-contract but the same synchronous, in-memory delivery model. The following job
-family is illustrative; it is not production code.
+Create another publisher only for a cohesive lifecycle with this same
+synchronous, in-memory delivery model.
 
 ### 1. Define the event list and subscriber contract
 
@@ -415,44 +661,42 @@ type JobSubscriber interface {
 }
 ```
 
-This named constant set is the event list. Use one event value with a state
-discriminator when all states share required fields and subscribers. If a
-state needs a materially different payload or audience, define another precise
-event family instead of adding optional fields or `any`.
+Use one discriminated event value when every state shares required fields and
+subscribers. Prefer required immutable values. Do not use `any`, optional fields
+for unrelated states, secrets, mutable domain aggregates, transport DTOs, or
+persistence records.
 
-### 2. Implement the publisher
+### 2. Implement the concrete publisher
 
-Add `JobPublisher`, `NewJobPublisher`, `Subscribe`, semantic publish methods,
-and private `publish` and `snapshot` methods in the same file. Its public API
-should have this shape:
+Use `ProjectPublisher` or `ChatPublisher` as the reference. Keep the public API
+domain-specific while reusing the package-private dispatcher:
 
-```text
-JobPublisher
-NewJobPublisher() *JobPublisher
-(*JobPublisher).Subscribe(JobSubscriber) func()
-(*JobPublisher).PublishJobQueued(context.Context, string)
-(*JobPublisher).PublishJobStarted(context.Context, string)
-(*JobPublisher).PublishJobFinished(context.Context, string)
+```go
+type JobPublisher struct {
+    events eventDispatcher[JobEvent]
+}
+
+func NewJobPublisher() *JobPublisher {
+    return &JobPublisher{}
+}
+
+func (p *JobPublisher) Subscribe(subscriber JobSubscriber) func() {
+    return p.events.subscribe(func(ctx context.Context, event JobEvent) {
+        subscriber.OnJob(ctx, event)
+    })
+}
+
+func (p *JobPublisher) PublishJobQueued(ctx context.Context, jobID string) {
+    p.events.publish(ctx, JobEvent{State: JobQueued, JobID: jobID})
+}
 ```
 
-Use `UpdatePublisher` as the implementation reference. Publishers in this
-package preserve these delivery mechanics:
+Add one semantic method per supported state. Do not export the dispatcher or a
+generic publish method.
 
-- snapshot under a read lock and invoke callbacks after releasing it;
-- synchronous registration-order dispatch for one publish call;
-- concurrency-safe subscription changes and publishing;
-- idempotent unsubscribe; and
-- private subscription storage and raw dispatch.
+### 3. Give the producer a narrow port
 
-Some repeated syntax is cheaper than introducing a generic registry or an
-unproven abstraction. Extract shared publisher machinery only when several real
-publishers demonstrate the same stable contract. If a domain needs different
-delivery guarantees, use a mechanism designed for those guarantees instead of
-adding a special-case publisher here.
-
-### 3. Give each producer a narrow port
-
-In the package that produces job transitions:
+Define the interface next to the producing workflow:
 
 ```go
 type JobLifecyclePublisher interface {
@@ -462,60 +706,50 @@ type JobLifecyclePublisher interface {
 }
 ```
 
-Store that interface on the producer and inject it through the producer's
-constructor. Do not import or construct `lifecycle.JobPublisher` inside the
-service.
+Store that interface on the producer and inject it. Do not construct
+`lifecycle.JobPublisher` inside the service.
 
-### 4. Compose producers and subscribers explicitly
+### 4. Compose before startup
 
-In `cmd/remote/main.go`:
-
-```go
-jobLifecycle := lifecycle.NewJobPublisher()
-jobService := job.New(/* dependencies */, jobLifecycle)
-jobAudit := jobaudit.New(/* dependencies */)
-
-unsubscribeJobAudit := jobLifecycle.Subscribe(jobAudit)
-defer unsubscribeJobAudit()
-
-// Start reconciliation, workers, handlers, or other producers only now.
-jobService.Start(ctx)
-```
-
-Keep each publisher as a named local dependency. Do not introduce reflection,
-string-keyed event routing, automatic package discovery, or a package-level
-singleton.
+Construct the publisher in `cmd/remote/main.go`, register subscribers, then pass
+the publisher through the producer's dependency contract before any handler,
+reconciler, or worker can emit.
 
 ### 5. Test the complete boundary
 
 Add focused tests for:
 
-- state and payload construction;
-- context forwarding and registration order;
-- idempotent unsubscribe;
-- subscription changes during a callback;
-- concurrent publishing and subscriber synchronization;
-- delivery already captured before unsubscribe;
-- the producer's exact emission point and side-effect count; and
-- each subscriber's state handling, error policy, and idempotency.
+- each semantic method's exact state and payload;
+- context forwarding through the real producer boundary;
+- no event when the transition fails before the documented fact becomes true;
+- side-effect and callback ordering;
+- every subscriber's handled and ignored states; and
+- any family-specific restart, replay, duplicate, or partial-success behavior.
 
-If the producer crosses a process boundary, separately characterize which
-events are replayed, how they are checkpointed, and what duplicate-delivery
-window subscribers must tolerate.
+The shared dispatcher is already characterized for registration order,
+concurrent publishes, subscription changes during callbacks, idempotent
+unsubscribe, and snapshot delivery. Add new delivery-mechanics tests only when a
+new family intentionally changes that contract.
+
+If the requirement is asynchronous, cross-process, replayable, or retryable,
+use a bounded queue, durable workflow state, outbox, or transport designed for
+that guarantee. Do not add special cases to the in-memory dispatcher.
 
 ## Verification
 
-Use the narrowest affected packages first:
+Run the narrowest affected packages first:
 
 ```bash
 cd backend
-go test -race ./internal/lifecycle ./internal/service/selfupdate
+go test -race \
+  ./internal/lifecycle \
+  ./internal/service/selfupdate \
+  ./internal/service/project \
+  ./internal/service/chat \
+  ./internal/service
 ```
 
-For a new family, append the concrete producer and subscriber package paths to
-that command.
-
-Then run the backend validation:
+Then run the complete backend validation:
 
 ```bash
 go test ./...
@@ -523,23 +757,37 @@ go vet ./...
 go build ./...
 ```
 
-The existing behavioral examples are:
+For documentation changes:
+
+```bash
+cd ../docs.remote.futrx.com
+npm test
+npm run build
+```
+
+The focused behavioral references are:
 
 - [`update_publisher_test.go`](../../backend/internal/lifecycle/update_publisher_test.go)
-  for order, context, unsubscribe, re-entrant subscription changes, snapshot
-  behavior, and concurrent dispatch; and
+  for delivery order, context, unsubscribe, reentrant subscription changes,
+  snapshot behavior, and concurrent dispatch;
+- [`project_publisher_test.go`](../../backend/internal/lifecycle/project_publisher_test.go)
+  and [`chat_publisher_test.go`](../../backend/internal/lifecycle/chat_publisher_test.go)
+  for each current event mapping;
+- [`notifying_repositories_lifecycle_test.go`](../../backend/internal/service/notifying_repositories_lifecycle_test.go)
+  for successful producer emission, WebSocket ordering, failure suppression,
+  and the transcript-mutation boundary; and
 - [`selfupdate/service_test.go`](../../backend/internal/service/selfupdate/service_test.go)
-  for start-before-launch ordering, terminal publication, restart
-  reconciliation, checkpointing, and launch failure.
+  for start-before-launch ordering, terminal reconciliation, checkpointing,
+  restart behavior, and launch failure.
 
-Before finishing an extension, confirm all of the following:
+Before finishing an extension, confirm:
 
-- the publisher owns one cohesive event family;
-- every event has a precise required payload and contains no credentials;
-- every producer sees only its local publish-only port;
-- the event is emitted exactly at the owning workflow transition;
+- the event belongs to one cohesive lifecycle family;
+- its payload contains only precise, required, safe values;
+- the producer sees only its local publish-only port;
+- the event is emitted exactly where its documented fact becomes true;
 - subscribers are registered before publication can begin;
 - subscribers are fast, concurrency-safe, non-panicking, and idempotent where
   redelivery is possible;
-- process-restart and context behavior are explicit; and
-- the event catalog and focused tests describe the same contract.
+- process, context, partial-success, and failure behavior are explicit; and
+- the code, tests, API snippets, and current event catalog agree.
