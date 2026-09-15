@@ -96,8 +96,8 @@ function renderTable(
   context: MarkdownRenderContext,
 ) {
   return (
-    <div key={key} class="overflow-x-auto touch-scroll my-3 border border-line rounded-lg">
-      <table class="w-full text-sm border-collapse">
+    <div key={key} class="max-w-full overflow-x-auto touch-scroll my-3 border border-line rounded-lg">
+      <table class="md-table w-full text-sm border-collapse">
         <thead class="bg-tint">
           <tr>
             {block.header.map((cell, index) => renderTableHeaderCell(cell, index, key, context))}
@@ -126,7 +126,7 @@ function renderTableHeaderCell(
     <th
       key={index}
       dir={isRtl ? "rtl" : "ltr"}
-      class={`${getTextAlignClass(cell)} px-3 py-1.5 font-semibold border-b border-line text-ink-100 [overflow-wrap:anywhere]`}
+      class={`${getTextAlignClass(cell)} whitespace-nowrap px-3 py-1.5 font-semibold border-b border-line text-ink-100`}
     >
       {renderInline(cell, `${blockKey}-h-${index}`, { ...context, isRtl })}
     </th>
@@ -145,7 +145,7 @@ function renderTableDataCell(
     <td
       key={cellIndex}
       dir={isRtl ? "rtl" : "ltr"}
-      class={`${getTextAlignClass(cell)} px-3 py-1.5 border-b border-line [overflow-wrap:anywhere]`}
+      class={`${getTextAlignClass(cell)} px-3 py-1.5 border-b border-line`}
     >
       {renderInline(cell, `${blockKey}-r-${rowIndex}-${cellIndex}`, { ...context, isRtl })}
     </td>

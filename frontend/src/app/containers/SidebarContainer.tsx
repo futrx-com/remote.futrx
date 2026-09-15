@@ -3,6 +3,8 @@ import { Sidebar } from "../../ui/sidebar/Sidebar";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useSidebarState } from "../../state/hooks/workspace/useSidebarState";
+import { useOpenCommandPalette } from "../../state/hooks/workspace/useCommandPalette";
+import { useSidebarSearch } from "../../state/hooks/workspace/useWorkspaceSearch";
 import { useWorkspaceCommands } from "../../state/hooks/workspace/useWorkspaceCommands";
 import { workspaceSidebarService } from "../../services/workspace/workspaceSidebarService.ts";
 import { useAccountSignOut } from "../../state/hooks/auth/useAccountSignOut";
@@ -17,18 +19,20 @@ export function SidebarContainer() {
     workspace.chats
   );
   const commands = useWorkspaceCommands();
-  const signOut = useAccountSignOut();
+  const signOut = useAccountSignOut(auth.email || auth.adminEmail);
+  const search = useSidebarSearch();
+  const openPalette = useOpenCommandPalette();
   const model = useMemo(
-    () => workspaceSidebarService.model(workspace.chats, workspace.projects, sidebar.query),
-    [workspace.chats, workspace.projects, sidebar.query]
+    () => workspaceSidebarService.model(workspace.chats, workspace.projects),
+    [workspace.chats, workspace.projects]
   );
 
   return (
     <Sidebar
       open={workspace.ui.sidebarOpen}
       model={model}
+      search={search}
       loading={!workspace.loaded}
-      query={sidebar.query}
       collapsed={sidebar.collapsed}
       sidebarCollapsed={sidebar.sidebarCollapsed}
       activeChatId={workspace.ui.activeChatId}
@@ -37,8 +41,7 @@ export function SidebarContainer() {
         authenticated: auth.authenticated,
       }}
       onClose={workspace.closeSidebar}
-      onQueryChange={sidebar.setQuery}
-      onClearQuery={() => sidebar.setQuery("")}
+      onOpenPalette={openPalette}
       onToggleSidebar={sidebar.toggleSidebarCollapsed}
       onNewProject={commands.newProject}
       onNewChatInProject={commands.newChatInProject}

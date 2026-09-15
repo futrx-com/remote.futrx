@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { ProjectMeta } from "../../models/project";
 import { PROJECT_MAX_SLUG_LEN } from "../../config/project";
+import { useDismissShortcut } from "../../state/hooks/shared/useDismissShortcut.ts";
 import { createProjectForm } from "./createProjectForm";
 import { Loader, X } from "../primitives/icons";
 
@@ -35,19 +36,9 @@ export function CreateProjectModal({
     return () => clearTimeout(timer);
   }, [open]);
 
-  // close() reads `creating`, so the handler is held in a ref rather than keyed
-  // on: an Escape during an in-flight create must see it and do nothing.
-  const closeRef = useRef(close);
-  closeRef.current = close;
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") closeRef.current();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  // close() reads `creating`, and the handler is read through a ref, so an
+  // Escape during an in-flight create sees it and does nothing.
+  useDismissShortcut(close, { enabled: open });
 
   if (!open) return null;
 

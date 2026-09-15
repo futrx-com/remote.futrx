@@ -33,7 +33,7 @@ if [ -z "$checkout_source_line" ] || [ -z "$host_deps_source_line" ] || [ -z "$a
    [ "$host_deps_source_line" -ge "$app_source_line" ]; then
     fail "target checkout must be selected before host dependencies and agent convergence"
 fi
-grep -Fq 'exec bash "$INSTALL_DIR/infra/install.sh" "$@"' "$CHECKOUT_STEP" || \
+grep -Fq 'remote_exec_selected_installer "$INSTALL_DIR/infra/install.sh" "$@"' "$CHECKOUT_STEP" || \
     fail "checkout selection does not re-execute the selected installer"
 grep -Fq 'HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"' "$INSTALLER" || \
     fail "installer does not define an application-owned host CLI prefix"

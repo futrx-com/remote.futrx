@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,21 +22,32 @@ var (
 	ErrUnknownTag       = errors.New("tag does not exist on origin")
 )
 
+const lifecycleReconcileInterval = time.Second
+
 type Service struct {
 	currentVersion string
 	installDir     string
 	host           HostClient
+	lifecycle      UpdateLifecyclePublisher
 	runs           runState
 
-	mu        sync.Mutex
-	lastCheck *CheckResult
+	mu          sync.Mutex
+	lastCheck   *CheckResult
+	launching   bool
+	reconciling bool
+	dispatching bool
 }
 
-func New(currentVersion, installDir, dataDir string, host HostClient) *Service {
+func New(
+	currentVersion, installDir, dataDir string,
+	host HostClient,
+	lifecycle UpdateLifecyclePublisher,
+) *Service {
 	return &Service{
 		currentVersion: currentVersion,
 		installDir:     installDir,
 		host:           host,
+		lifecycle:      lifecycle,
 		runs:           newRunState(dataDir),
 	}
 }
@@ -44,13 +56,8 @@ func New(currentVersion, installDir, dataDir string, host HostClient) *Service {
 // recent apply run.
 func (s *Service) Status(context.Context) Status {
 	s.mu.Lock()
-	check := s.lastCheck
-	s.mu.Unlock()
-	return Status{
-		CurrentVersion: s.currentVersion,
-		LastCheck:      check,
-		Run:            s.runs.status(s.host.ProcessAlive),
-	}
+	defer s.mu.Unlock()
+	return s.statusLocked()
 }
 
 // Check queries origin for release tags and records whether one is newer
@@ -92,16 +99,32 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 		return s.Status(ctx), fmt.Errorf("%w: %s", ErrUnknownTag, tag)
 	}
 
+	status, err := s.startUpdate(ctx, startedBy, tag)
+	if err != nil {
+		return status, err
+	}
+	return status, nil
+}
+
+func (s *Service) startUpdate(ctx context.Context, startedBy, tag string) (Status, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.launching {
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, ErrUpdateInProgress
+	}
 	// Capture the previous run BEFORE reset so we can reuse its classification
 	// on retry; reset clears run.json as part of the fresh-slate contract.
 	prevRun := s.runs.status(s.host.ProcessAlive)
-	if prevRun != nil && prevRun.State == "running" {
-		return s.statusLocked(), ErrUpdateInProgress
+	if prevRun != nil && prevRun.State == RunStateRunning {
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, ErrUpdateInProgress
 	}
 	if err := s.runs.reset(); err != nil {
-		return s.statusLocked(), err
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, err
 	}
 	// A failed infrastructure update may have already replaced the binary,
 	// so classifyUpdate against currentVersion would collapse to an
@@ -109,7 +132,7 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	// failed. Fall back to the previous failed run's kind when retrying
 	// toward the same target.
 	kind := classifyUpdate(s.currentVersion, tag)
-	if prevRun != nil && prevRun.State == "failed" && prevRun.Target == tag && prevRun.UpdateKind != "" {
+	if prevRun != nil && prevRun.State == RunStateFailed && prevRun.Target == tag && prevRun.UpdateKind != "" {
 		kind = prevRun.UpdateKind
 	}
 	message := "Preparing the infrastructure update"
@@ -119,9 +142,21 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	if err := s.runs.writeProgress(Progress{
 		Phase: "preparing", Message: message, UpdatedAt: time.Now().Unix(),
 	}); err != nil {
-		return s.statusLocked(), err
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, err
 	}
+	s.launching = true
+	s.mu.Unlock()
+
+	// Started is deliberately synchronous and precedes the detached process, so
+	// subscribers observe the transition before that process can replace this
+	// backend. Notifications cannot veto the launch.
+	s.lifecycle.PublishUpdateStarted(ctx, tag, string(kind), startedBy)
 	pid, err := s.host.StartUpdater(s.runs.launch(s.installDir, tag, kind))
+
+	s.mu.Lock()
+	s.launching = false
 	if err != nil {
 		// The new run never started; clear the half-written record so
 		// Status() does not report a stale run with the next attempt's
@@ -129,15 +164,119 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 		// is best-effort: only the in-memory prevRun survives reset().
 		s.runs.removeProgress()
 		s.runs.removeRecord()
-		return s.statusLocked(), fmt.Errorf("start updater: %w", err)
+		status := s.statusLocked()
+		s.mu.Unlock()
+		s.lifecycle.PublishUpdateFailed(ctx, tag, string(kind), startedBy)
+		return status, fmt.Errorf("start updater: %w", err)
 	}
 	record := runRecord{
 		Target: tag, UpdateKind: kind, StartedAt: time.Now().Unix(), StartedBy: startedBy, PID: pid,
 	}
 	if err := s.runs.writeRecord(record); err != nil {
-		return s.statusLocked(), err
+		status := s.statusLocked()
+		s.mu.Unlock()
+		return status, err
 	}
-	return s.statusLocked(), nil
+	status := s.statusLocked()
+	s.mu.Unlock()
+	return status, nil
+}
+
+// StartLifecycleReconciler delivers terminal update events from the durable
+// run state. A successful updater restarts the backend before it writes its
+// done marker, so the replacement process must resume this reconciliation;
+// an in-memory callback owned by the process that launched the updater cannot
+// observe completion reliably.
+func (s *Service) StartLifecycleReconciler(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.reconcileLifecycle(ctx); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	if s.reconciling {
+		s.mu.Unlock()
+		return nil
+	}
+	s.reconciling = true
+	s.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(lifecycleReconcileInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// A transient read/write failure is retried on the next tick. The
+				// synchronous first pass above is returned to startup for logging.
+				_ = s.reconcileLifecycle(ctx)
+			}
+		}
+	}()
+	return nil
+}
+
+func (s *Service) reconcileLifecycle(ctx context.Context) error {
+	s.mu.Lock()
+	if s.dispatching {
+		s.mu.Unlock()
+		return nil
+	}
+
+	record, err := s.runs.readRecord()
+	if errors.Is(err, os.ErrNotExist) {
+		s.mu.Unlock()
+		return nil
+	}
+	if err != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("read update lifecycle state: %w", err)
+	}
+	status := s.runs.status(s.host.ProcessAlive)
+	if status == nil || status.State == RunStateRunning || record.PublishedTerminalState == status.State {
+		s.mu.Unlock()
+		return nil
+	}
+	s.dispatching = true
+	s.mu.Unlock()
+
+	switch status.State {
+	case RunStateSucceeded:
+		s.lifecycle.PublishUpdateSucceeded(ctx, record.Target, string(record.UpdateKind), record.StartedBy)
+	case RunStateFailed:
+		s.lifecycle.PublishUpdateFailed(ctx, record.Target, string(record.UpdateKind), record.StartedBy)
+	default:
+		s.mu.Lock()
+		s.dispatching = false
+		s.mu.Unlock()
+		return nil
+	}
+
+	// Persist delivery after dispatch. If the process dies between those two
+	// operations, the replacement may deliver the event again; subscribers are
+	// therefore required to be idempotent. Losing the terminal event would be
+	// worse than an occasional duplicate.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dispatching = false
+	current, err := s.runs.readRecord()
+	if err != nil {
+		return fmt.Errorf("reread update lifecycle state: %w", err)
+	}
+	// A new Apply may have replaced the completed run while subscribers were
+	// executing. Never stamp the previous event onto that new run.
+	if current.Target != record.Target || current.StartedAt != record.StartedAt || current.PID != record.PID {
+		return nil
+	}
+	current.PublishedTerminalState = status.State
+	if err := s.runs.writeRecord(current); err != nil {
+		return fmt.Errorf("record published update lifecycle state: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) statusLocked() Status {

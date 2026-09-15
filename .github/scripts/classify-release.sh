@@ -9,6 +9,20 @@
 
 set -euo pipefail
 
+is_allowed_patch_hotfix_path() {
+    local previous_tag="$1" target_tag="$2" path="$3"
+    case "${previous_tag}:${target_tag}:${path}" in
+        0.16.0:0.16.1:infra/install.sh|\
+        0.16.0:0.16.1:infra/update.sh|\
+        0.16.0:0.16.1:infra/steps/00-checkout.sh)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 tag="${1:-}"
 if ! [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "release tags must use MAJOR.MINOR.PATCH (got: $tag)" >&2
@@ -56,6 +70,18 @@ if [ -n "$previous" ] && [ "${previous%.*}" = "$current_train" ]; then
         backend/internal/integration/hostcli \
         backend/internal/service/agent/hostcli \
         backend/internal/service/container/image)"
+    blocked_changes=""
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        # 0.16.1 is a one-time recovery patch for entrypoint regressions in
+        # 0.16.0. Keep the exception tied to that exact transition and those
+        # exact files so later patch releases retain the normal safety gate.
+        if is_allowed_patch_hotfix_path "$previous" "$tag" "$path"; then
+            continue
+        fi
+        blocked_changes="${blocked_changes}${blocked_changes:+$'\n'}${path}"
+    done <<<"$protected_changes"
+    protected_changes="$blocked_changes"
     if [ -n "$protected_changes" ]; then
         echo "patch release $tag changes infrastructure-managed paths:" >&2
         echo "$protected_changes" >&2

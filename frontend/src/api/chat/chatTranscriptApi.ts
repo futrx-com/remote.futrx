@@ -1,5 +1,10 @@
 import { API_ROUTES } from "../../config/routes.ts";
-import type { ChatEvent, ChatEventPage } from "../../models/chat.ts";
+import type {
+  ChatEvent,
+  ChatEventPage,
+  TranscriptContentPage,
+  TranscriptIndexProgress,
+} from "../../models/chat.ts";
 import { requestJson } from "../apiRequest.ts";
 
 interface ChatTranscriptTurnPayload {
@@ -14,6 +19,7 @@ interface ChatTranscriptPagePayload {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
+  indexing?: TranscriptIndexProgress;
 }
 
 export async function fetchTranscript(
@@ -37,5 +43,36 @@ function transcriptPageToEventPage(page: ChatTranscriptPagePayload): ChatEventPa
     nextBefore: page.nextBefore,
     lastSeq: page.lastSeq,
     hasMore: page.hasMore,
+    ...(page.indexing ? { indexing: page.indexing } : {}),
   };
+}
+
+export async function fetchTranscriptContent(
+  chatId: string,
+  contentId: string,
+  after = 0,
+): Promise<TranscriptContentPage> {
+  const search = new URLSearchParams({ id: contentId });
+  if (after > 0) search.set("after", String(after));
+  return requestJson<TranscriptContentPage>(
+    "GET",
+    API_ROUTES.chats.transcriptContent(chatId, search.toString()),
+  );
+}
+
+export async function fetchFullTranscriptContent(
+  chatId: string,
+  contentId: string,
+): Promise<string> {
+  let content = "";
+  let after = 0;
+  for (;;) {
+    const page = await fetchTranscriptContent(chatId, contentId, after);
+    content += page.content;
+    if (page.complete) return content;
+    if (!page.nextAfter || page.nextAfter <= after) {
+      throw new Error("invalid transcript content cursor");
+    }
+    after = page.nextAfter;
+  }
 }

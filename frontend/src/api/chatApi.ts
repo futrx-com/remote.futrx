@@ -3,7 +3,11 @@ import { chatEventsApi } from "./chat/chatEventsApi";
 import { chatFilesApi } from "./chat/chatFilesApi";
 import { chatHistoryApi } from "./chat/chatHistoryApi";
 import { chatScheduleApi } from "./chat/chatScheduleApi";
-import { fetchTranscript } from "./chat/chatTranscriptApi";
+import {
+  fetchFullTranscriptContent,
+  fetchTranscript,
+  fetchTranscriptContent,
+} from "./chat/chatTranscriptApi";
 import type { ChatMeta, CreateChatInput, UpdateChatInput } from "../models/chat";
 import { API_ROUTES } from "../config/routes";
 
@@ -25,6 +29,8 @@ export const chatApi = {
     requestJson<ChatMeta>("POST", API_ROUTES.chats.fork(id), {}),
   ...chatFilesApi,
   fetchTranscript,
+  fetchTranscriptContent,
+  fetchFullTranscriptContent,
   rewind: chatEventsApi.rewind,
   ...chatHistoryApi,
   ...chatScheduleApi,

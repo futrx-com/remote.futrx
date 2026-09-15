@@ -1,4 +1,5 @@
 import { useId, useState } from "preact/hooks";
+import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
 
@@ -138,6 +139,10 @@ function WorkspaceAction({
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const onKeyDown = useDismissKeyDown((event) => {
+    setIsDismissed(true);
+    event.stopPropagation();
+  });
   const isTooltipOpen = !isDismissed && (isHovered || isFocused);
   const interactionProps = {
     "aria-describedby": tooltipId,
@@ -150,11 +155,7 @@ function WorkspaceAction({
       setIsFocused(true);
       setIsDismissed(false);
     },
-    onKeyDown: (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setIsDismissed(true);
-      event.stopPropagation();
-    },
+    onKeyDown,
     onMouseEnter: () => {
       setIsHovered(true);
       setIsDismissed(false);

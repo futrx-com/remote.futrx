@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"regexp"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 type Service struct {
 	repo               Repository
+	chats              ChatCleanup
 	containerLifecycle ContainerLifecycle
 	containerInspector ContainerInspector
 	containerNetwork   ContainerNetwork
@@ -40,8 +42,9 @@ func New(
 	containers ContainerDependencies,
 	secrets SecretsRepository,
 	access AccessRepository,
+	options ...Option,
 ) *Service {
-	return &Service{
+	service := &Service{
 		repo:               repo,
 		containerLifecycle: containers.Lifecycle,
 		containerInspector: containers.Inspector,
@@ -50,6 +53,20 @@ func New(
 		access:             newAccessList(access),
 		secrets:            newSecretStore(secrets, containers.Environment),
 		browsers:           newAgentBrowsers(containers.Browser, repo),
+	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
+}
+
+type Option func(*Service)
+
+// WithChatCleanup makes project deletion remove every associated chat before
+// destroying the container or project record.
+func WithChatCleanup(chats ChatCleanup) Option {
+	return func(service *Service) {
+		service.chats = chats
 	}
 }
 
@@ -288,6 +305,11 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return err
+	}
+	if s.chats != nil {
+		if err := s.chats.DeleteProjectChats(ctx, id); err != nil {
+			return fmt.Errorf("delete project chats: %w", err)
+		}
 	}
 	s.browsers.clearState(id)
 	if s.containerLifecycle != nil && m.ContainerName != "" {

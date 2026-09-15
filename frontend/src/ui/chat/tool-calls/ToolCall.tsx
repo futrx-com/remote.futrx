@@ -1,13 +1,33 @@
 import { AskUserQuestion } from "./ask-user-question/AskUserQuestion";
 import type { AskInput, ToolCallProps } from "./ToolCallTypes";
+import { useTranscriptContent } from "../../../state/hooks/chat/useTranscriptContent";
 import { BashCall } from "./renderers/BashCall";
 import { EditCall } from "./renderers/EditCall";
 import { GenericCall } from "./renderers/GenericCall";
 import { ReadCall } from "./renderers/ReadCall";
 import { SearchCall } from "./renderers/SearchCall";
 import { WriteCall } from "./renderers/WriteCall";
+import { toolOutputPreviewLimit } from "./utils";
 
-export function ToolCall({ toolUseId, chatId, name, input, output, isError, status, onAnswerQuestion }: ToolCallProps) {
+export function ToolCall(props: ToolCallProps) {
+  const {
+    toolUseId,
+    chatId,
+    name,
+    input,
+    output,
+    outputRef,
+    outputBytes,
+    onAnswerQuestion,
+  } = props;
+  const response = useTranscriptContent({
+    chatId,
+    content: output,
+    contentRef: outputRef,
+    contentBytes: outputBytes,
+    inlinePreviewLimit: toolOutputPreviewLimit(name),
+  });
+
   if (name === "AskUserQuestion" && toolUseId && chatId && onAnswerQuestion) {
     return (
       <AskUserQuestion
@@ -19,20 +39,50 @@ export function ToolCall({ toolUseId, chatId, name, input, output, isError, stat
     );
   }
 
+  const rendererProps = {
+    ...props,
+    output: response.content,
+    outputExpanded: response.expanded,
+  };
+  let rendered;
   switch (name) {
     case "Read":
-      return <ReadCall input={input} output={output} status={status} isError={isError} />;
+      rendered = <ReadCall {...rendererProps} />;
+      break;
     case "Edit":
     case "MultiEdit":
-      return <EditCall input={input} output={output} status={status} isError={isError} />;
+      rendered = <EditCall {...rendererProps} />;
+      break;
     case "Write":
-      return <WriteCall input={input} output={output} status={status} isError={isError} />;
+      rendered = <WriteCall {...rendererProps} />;
+      break;
     case "Bash":
-      return <BashCall input={input} output={output} status={status} isError={isError} />;
+      rendered = <BashCall {...rendererProps} />;
+      break;
     case "Glob":
     case "Grep":
-      return <SearchCall name={name} input={input} output={output} status={status} isError={isError} />;
+      rendered = <SearchCall {...rendererProps} />;
+      break;
     default:
-      return <GenericCall name={name} input={input} output={output} status={status} isError={isError} />;
+      rendered = <GenericCall {...rendererProps} />;
   }
+
+  return (
+    <>
+      {rendered}
+      {response.canExpand && (
+        <div class="-mt-1 mb-2 flex items-center gap-2 px-2 text-[11px]">
+          <button
+            type="button"
+            disabled={response.disabled}
+            onClick={() => void response.load()}
+            class="text-accent-blue hover:underline disabled:opacity-50"
+          >
+            {response.label}
+          </button>
+          {response.error && <span class="text-accent-red">{response.error}</span>}
+        </div>
+      )}
+    </>
+  );
 }

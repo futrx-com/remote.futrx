@@ -68,3 +68,7 @@ export const ShieldCheck = (p: P) => (<svg {...base} {...p}><path d="M12 22s8-4 
 export const Bell = (p: P) => (<svg {...base} {...p}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>);
 export const BellOff = (p: P) => (<svg {...base} {...p}><path d="M8.7 3A6 6 0 0 1 18 8c0 2.4.4 4.2.9 5.5M6 8a6 6 0 0 1 .3-1.8M3 17h15M13.73 21a2 2 0 0 1-3.46 0"/><path d="m1 1 22 22"/></svg>);
 export const Smartphone = (p: P) => (<svg {...base} {...p}><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg>);
+export const Filter = (p: P) => (<svg {...base} {...p}><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg>);
+export const Calendar = (p: P) => (<svg {...base} {...p}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>);
+export const SlidersHorizontal = (p: P) => (<svg {...base} {...p}><path d="M3 6h10M17 6h4M3 12h4M11 12h10M3 18h10M17 18h4"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="18" r="2"/></svg>);
+export const CornerDownLeft = (p: P) => (<svg {...base} {...p}><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>);

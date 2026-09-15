@@ -124,6 +124,9 @@ function renderAssistantParts(
         name={part.name}
         input={part.input}
         output={part.output}
+        outputRef={part.outputRef}
+        outputBytes={part.outputBytes}
+        outputTruncated={part.outputTruncated}
         isError={part.isError}
         status={part.status}
         onAnswerQuestion={context.onAnswerQuestion}

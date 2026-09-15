@@ -12,7 +12,6 @@ const projectActionClass =
 export function ProjectGroup({
   project,
   chats,
-  visibleChats,
   activeChatId,
   collapsed,
   onToggle,
@@ -33,7 +32,6 @@ export function ProjectGroup({
 }: {
   project: ProjectMeta;
   chats: ChatMeta[];
-  visibleChats: ChatMeta[];
   activeChatId: string | null;
   collapsed: boolean;
   onToggle: () => void;
@@ -75,7 +73,7 @@ export function ProjectGroup({
       node.removeEventListener("scroll", measure);
       observer.disconnect();
     };
-  }, [collapsed, visibleChats.length]);
+  }, [collapsed, chats.length]);
 
   return (
     <div
@@ -168,7 +166,7 @@ export function ProjectGroup({
           ref={listRef}
           class="sidebar-project-chat-list space-y-px overflow-y-auto pl-3 pr-0.5 touch-scroll scrollbar-thin"
         >
-          {visibleChats.length === 0 ? (
+          {chats.length === 0 ? (
             <button
               type="button"
               onClick={onNewChat}
@@ -180,7 +178,7 @@ export function ProjectGroup({
               <Plus class="h-3.5 w-3.5" /> New chat
             </button>
           ) : (
-            visibleChats.map((chat) => (
+            chats.map((chat) => (
               <ChatRow
                 key={chat.id}
                 chat={chat}

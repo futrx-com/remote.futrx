@@ -326,8 +326,9 @@ Replace `remote.example.com` with the hostname you set up above. The installer d
    the server's log. To see it, connect to the server and run:
    `journalctl -u remote --since "-10 min" | grep -A2 "first-time setup"`.
    The link looks like `https://remote.example.com/?token=...` and works for
-   30 minutes. If it has expired or you lost it, run `remote setup-token` on
-   the server to print a fresh one.
+   30 minutes. If it has expired or you lost it, run `sudo remote setup-token` on
+   the server to print a fresh one. The setup data is root-owned; omit
+   `sudo` if you are already root.
 2. Open that link in your browser and create your administrator account —
    this is the login you'll use to manage the server. Only someone who can
    read that link on the server (not just visit the page) can do this, so a

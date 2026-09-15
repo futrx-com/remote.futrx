@@ -99,6 +99,10 @@ grep -Fq 'raw.githubusercontent.com/futrx-com/remote.futrx/${CANDIDATE_SHA}/infr
     fail "install.sh does not download the installer from the immutable candidate commit"
 grep -Fq '"--ref=$candidate_sha"' "$INSTALL_SCRIPT" || \
     fail "install.sh does not pin the bootstrap clone to the candidate commit"
+grep -Fq 'git reset --hard "$candidate_sha"' "$UPDATE_SCRIPT" || \
+    fail "update.sh does not select the verified candidate before executing it"
+grep -Fq 'FUTRX_UPDATE_REEXECED=1' "$UPDATE_SCRIPT" || \
+    fail "update.sh does not mark the preselected candidate checkout"
 grep -Fq 'git clone --depth=1 --branch main --single-branch "$CLONE_URL" "$TARGET"' "$CORE_INSTALL_SCRIPT" || \
     fail "core install.sh does not pin production bootstrap clones to main"
 grep -Fq 'MAIN_REFSPEC="+refs/heads/main:refs/remotes/origin/main"' "$CORE_INSTALL_SCRIPT" || \

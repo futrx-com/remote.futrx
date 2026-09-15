@@ -44,6 +44,7 @@ type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
+	servicechat.TranscriptProjectionSource
 }
 
 // PushStore persists Web Push registrations and the server's long-lived VAPID
@@ -166,7 +167,21 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		push: pushNotifier,
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
-	projectService := serviceproject.New(projects, deps.ProjectContainers, deps.ProjectSecrets, deps.ProjectAccess)
+	projectService := serviceproject.New(
+		projects,
+		deps.ProjectContainers,
+		deps.ProjectSecrets,
+		deps.ProjectAccess,
+		serviceproject.WithChatCleanup(projectChatCleanup{
+			chats: chats,
+			cancel: func(ctx context.Context, id servicechat.ID) error {
+				if runs == nil {
+					return errors.New("run controller is unavailable")
+				}
+				return runs.Cancel(ctx, id)
+			},
+		}),
+	)
 	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
 		Projects:              agentProjectResolver{projects: projectService},
 		Containers:            deps.AgentContainers,
@@ -194,6 +209,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		runs,
 		servicechat.WithTranscriptEventSource(deps.Chats),
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
+		servicechat.WithTranscriptProjectionSource(deps.Chats),
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(agentRuntime),
 		servicechat.WithProviderPolicy(agentRuntime),

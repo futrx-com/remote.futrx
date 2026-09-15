@@ -52,14 +52,12 @@ export type DropPosition = "before" | "after";
 export interface ProjectSidebarNode {
   project: ProjectMeta;
   chats: ChatMeta[];
-  filteredChats: ChatMeta[];
 }
 
+/** The project tree. Ranked search results are owned by the search state. */
 export interface WorkspaceSidebarModel {
   visibleProjects: ProjectSidebarNode[];
   visibleLooseChats: ChatMeta[];
   totalChats: number;
   totalProjects: number;
-  hasMatches: boolean;
-  query: string;
 }

@@ -21,16 +21,22 @@ import (
 var _ servicechat.Repository = (*Store)(nil)
 var _ servicechat.TranscriptEventSource = (*Store)(nil)
 var _ servicechat.TranscriptEventWindowSource = (*Store)(nil)
+var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
 
 // Store manages chat dirs on disk. Single writer per chat via a per-id mutex
 // map; concurrent access across different chats is fine.
 type Store struct {
-	root   string
-	index  *chatEventIndex
-	mu     sync.Mutex
-	locks  map[servicechat.ID]*sync.Mutex
-	metaMu sync.RWMutex
-	metas  map[servicechat.ID]servicechat.Meta
+	root         string
+	index        *chatEventIndex
+	mu           sync.Mutex
+	locks        map[servicechat.ID]*sync.Mutex
+	metaMu       sync.RWMutex
+	metas        map[servicechat.ID]servicechat.Meta
+	indexContext context.Context
+	indexCancel  context.CancelFunc
+	indexWG      sync.WaitGroup
+	indexingMu   sync.Mutex
+	indexing     map[servicechat.ID]struct{}
 }
 
 func New(root string) (*Store, error) {
@@ -42,13 +48,18 @@ func New(root string) (*Store, error) {
 		log.Printf("chat event index unavailable; using canonical JSONL scans: %v", err)
 		index = unavailableChatEventIndex(root, err)
 	}
+	indexContext, indexCancel := context.WithCancel(context.Background())
 	store := &Store{
-		root:  root,
-		index: index,
-		locks: map[servicechat.ID]*sync.Mutex{},
-		metas: map[servicechat.ID]servicechat.Meta{},
+		root:         root,
+		index:        index,
+		locks:        map[servicechat.ID]*sync.Mutex{},
+		metas:        map[servicechat.ID]servicechat.Meta{},
+		indexContext: indexContext,
+		indexCancel:  indexCancel,
+		indexing:     map[servicechat.ID]struct{}{},
 	}
 	if err := store.loadMetaIndex(); err != nil {
+		indexCancel()
 		_ = index.close()
 		return nil, err
 	}
@@ -58,6 +69,8 @@ func New(root string) (*Store, error) {
 // Close releases the derived chat event index. Callers that create a bounded
 // Store lifetime (notably commands and tests) should call it explicitly.
 func (s *Store) Close() error {
+	s.indexCancel()
+	s.indexWG.Wait()
 	return s.index.close()
 }
 

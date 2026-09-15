@@ -62,6 +62,12 @@ fi
 
 # Fetching above places the exact object in this checkout, allowing update.sh
 # to pin the deployment by immutable SHA even when the source was a branch.
+# Select it before invoking the entrypoint so QA can recover even when its
+# current checkout contains a broken updater.
+git reset --hard "$candidate_sha"
+FUTRX_INSTALL_DIR="$install_dir" \
+FUTRX_LEGACY_INSTALL_DIR="/opt/remote.futrx.dev" \
+FUTRX_UPDATE_REEXECED=1 \
 bash infra/update.sh "--ref=$candidate_sha"
 
 deployed_sha="$(git rev-parse --verify 'HEAD^{commit}')"

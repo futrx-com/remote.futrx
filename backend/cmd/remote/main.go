@@ -26,6 +26,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/tmuxcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
+	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
@@ -44,10 +45,12 @@ func main() {
 	// follow dependency direction from configuration and outbound adapters to
 	// application policy, inbound transport, and process-owned runtime work.
 
-	// Configuration and composition inputs: load process settings, choose the
-	// executable mode, and validate values shared by the layers composed below.
+	////////////////////////////////////////
+	// Configuration
+	////////////////////////////////////////
 	ctx := context.Background()
 	cfg := config.Load()
+
 	if runCLICommand(ctx, cfg, os.Args) {
 		return
 	}
@@ -56,13 +59,13 @@ func main() {
 		log.Fatalf("configure public hostname: %v", err)
 	}
 
-	// Outbound integrations and container composition: bind compiled agent
-	// providers and LXD-backed capabilities behind application-facing contracts.
+	////////////////////////////////////////
+	// Container and workspace capabilities
+	////////////////////////////////////////
 	agentModules, err := config.NewAgentModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
-
 	containerStack := config.NewContainerStack(
 		lxc.New(),
 		agentModules.Profiles(),
@@ -71,21 +74,28 @@ func main() {
 		},
 	)
 
-	// Persistence adapters: open file-backed repositories and the disposable,
-	// durable indexes they own.
+	////////////////////////////////////////
+	// Persistence
+	////////////////////////////////////////
 	storeSet, err := stores.New(cfg.DataDir)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}
 
-	// Application services and startup reconciliation: compose policy from
-	// persistence contracts and outbound capabilities, then initialize it.
+	////////////////////////////////////////
+	// Application services
+	////////////////////////////////////////
 	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
+
+	// The update publisher is process-wide. Producers receive only the
+	// publishing capability declared by their own service contract.
+	updateLifecycle := lifecycle.NewUpdatePublisher()
 	selfUpdateService := serviceselfupdate.New(
 		version.Version,
 		cfg.InstallDir,
 		cfg.DataDir,
 		updatecli.New(),
+		updateLifecycle,
 	)
 
 	tmuxClient := tmuxcli.New()
@@ -134,6 +144,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("init services: %v", err)
 	}
+	// Terminal self-update events are reconciled from disk so a backend
+	// replacement can deliver the completion started by its predecessor.
+	if err := selfUpdateService.StartLifecycleReconciler(ctx); err != nil {
+		log.Printf("self-update: lifecycle reconcile warning: %v", err)
+	}
 	log.Printf(
 		"auth: local admin enabled; Google OAuth configured=%t; BASE_URL=%s",
 		serviceSet.Auth.GoogleOAuthEnabled(),
@@ -149,9 +164,9 @@ func main() {
 		log.Printf("services: reconcile warning: %v", err)
 	}
 
-	// Inbound delivery and transport adapters: prepare embedded assets and
-	// delivery-facing collaborators, then bind application services to HTTP and
-	// WebSocket endpoints.
+	////////////////////////////////////////
+	// HTTP transport
+	////////////////////////////////////////
 	static, err := fs.Sub(remote.PublicFS, "public")
 	if err != nil {
 		log.Fatal(err)
@@ -182,8 +197,9 @@ func main() {
 		log.Fatalf("init http handler: %v", err)
 	}
 
-	// Runtime lifecycle: launch process-owned background work and start the
-	// HTTP listener. Background scheduling stays at this composition boundary.
+	////////////////////////////////////////
+	// Process runtime
+	////////////////////////////////////////
 	address := cfg.Addr()
 	server := transport.NewHTTPServer(address, handler)
 	startChatIndexWarmup(

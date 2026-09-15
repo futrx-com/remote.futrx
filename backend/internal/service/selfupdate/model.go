@@ -10,6 +10,15 @@ const (
 	UpdateKindInfrastructure UpdateKind = "infrastructure"
 )
 
+// RunState identifies the externally reported state of an update run.
+type RunState string
+
+const (
+	RunStateRunning   RunState = "running"
+	RunStateSucceeded RunState = "succeeded"
+	RunStateFailed    RunState = "failed"
+)
+
 // CheckResult is the outcome of one tag lookup against origin.
 type CheckResult struct {
 	CheckedAt       int64      `json:"checkedAt"`
@@ -22,7 +31,7 @@ type CheckResult struct {
 // RunStatus describes the most recent apply run, reconstructed from disk so
 // it stays accurate across the restart the update itself triggers.
 type RunStatus struct {
-	State        string     `json:"state"` // running | succeeded | failed
+	State        RunState   `json:"state"`
 	Target       string     `json:"target"`
 	UpdateKind   UpdateKind `json:"updateKind,omitempty"`
 	StartedAt    int64      `json:"startedAt"`
@@ -53,11 +62,12 @@ type Status struct {
 }
 
 type runRecord struct {
-	Target     string     `json:"target"`
-	UpdateKind UpdateKind `json:"updateKind,omitempty"`
-	StartedAt  int64      `json:"startedAt"`
-	StartedBy  string     `json:"startedBy"`
-	PID        int        `json:"pid"`
+	Target                 string     `json:"target"`
+	UpdateKind             UpdateKind `json:"updateKind,omitempty"`
+	StartedAt              int64      `json:"startedAt"`
+	StartedBy              string     `json:"startedBy"`
+	PID                    int        `json:"pid"`
+	PublishedTerminalState RunState   `json:"publishedTerminalState,omitempty"`
 }
 
 type doneRecord struct {

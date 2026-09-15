@@ -66,7 +66,15 @@ export type ChatEvent = ChatEventBase & (
   | { type: "assistant_text"; text: string; messageId?: string }
   | { type: "thinking"; text: string; messageId?: string }
   | { type: "tool_use_start"; id: string; name: string; input: Record<string, unknown> }
-  | { type: "tool_use_end"; id: string; output?: string; isError?: boolean }
+  | {
+      type: "tool_use_end";
+      id: string;
+      output?: string;
+      outputRef?: string;
+      outputBytes?: number;
+      outputTruncated?: boolean;
+      isError?: boolean;
+    }
   | { type: "permission_request"; id: string; toolName: string; input: Record<string, unknown> }
   | { type: "interaction_request"; id: string; interactionId?: string; name: string; input?: Record<string, unknown> }
   | { type: "interaction_resolved"; id: string; interactionId?: string; name?: string }
@@ -86,6 +94,21 @@ export interface ChatEventPage {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
+  indexing?: TranscriptIndexProgress;
+}
+
+export interface TranscriptIndexProgress {
+  indexedBytes: number;
+  totalBytes: number;
+  tailSeqKnown: boolean;
+}
+
+export interface TranscriptContentPage {
+  contentId: string;
+  content: string;
+  nextAfter?: number;
+  totalBytes: number;
+  complete: boolean;
 }
 
 export type ClientToServer =

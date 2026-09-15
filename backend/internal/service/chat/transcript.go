@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
@@ -37,6 +38,7 @@ func WithTranscriptEventWindowSource(source TranscriptEventWindowSource) Option 
 type TranscriptPageQuery struct {
 	Limit     int
 	BeforeSeq int64
+	ByteLimit int
 }
 
 // TranscriptTurn is a read projection of one prompt run. Events retain the
@@ -51,10 +53,38 @@ type TranscriptTurn struct {
 
 // TranscriptPage is the bounded turn projection returned to history clients.
 type TranscriptPage struct {
-	Turns      []TranscriptTurn `json:"turns"`
-	NextBefore int64            `json:"nextBefore,omitempty"`
-	LastSeq    int64            `json:"lastSeq"`
-	HasMore    bool             `json:"hasMore"`
+	Turns      []TranscriptTurn         `json:"turns"`
+	NextBefore int64                    `json:"nextBefore,omitempty"`
+	LastSeq    int64                    `json:"lastSeq"`
+	HasMore    bool                     `json:"hasMore"`
+	Indexing   *TranscriptIndexProgress `json:"indexing,omitempty"`
+}
+
+// TranscriptIndexProgress lets clients keep the live stream connected while
+// a legacy JSONL file is projected in resumable background batches.
+type TranscriptIndexProgress struct {
+	IndexedBytes int64 `json:"indexedBytes"`
+	TotalBytes   int64 `json:"totalBytes"`
+	TailSeqKnown bool  `json:"tailSeqKnown"`
+}
+
+// TranscriptContentPage is one valid UTF-8 chunk of an oversized transcript
+// field. ContentID is opaque and scoped to the chat by the service boundary.
+type TranscriptContentPage struct {
+	ContentID  string `json:"contentId"`
+	Content    string `json:"content"`
+	NextAfter  int64  `json:"nextAfter,omitempty"`
+	TotalBytes int64  `json:"totalBytes"`
+	Complete   bool   `json:"complete"`
+}
+
+// WithTranscriptProjectionSource selects the compact durable read model when
+// storage provides it, while retaining the scanner/window fallback for tests
+// and recovery.
+func WithTranscriptProjectionSource(source TranscriptProjectionSource) Option {
+	return func(service *Service) {
+		service.transcriptProjection = source
+	}
 }
 
 // TranscriptPage projects the raw append-only stream into complete prompt
@@ -67,6 +97,12 @@ func (s *Service) TranscriptPage(
 ) (TranscriptPage, error) {
 	if !ValidID(id) {
 		return TranscriptPage{}, ErrInvalidID
+	}
+	if s.transcriptProjection != nil {
+		page, err := s.transcriptProjection.ReadTranscriptPage(ctx, id, query)
+		if err == nil || !errors.Is(err, ErrTranscriptProjectionUnavailable) {
+			return page, err
+		}
 	}
 
 	projection := newTranscriptProjection(query)
@@ -91,6 +127,26 @@ func (s *Service) TranscriptPage(
 		return TranscriptPage{}, err
 	}
 	return projection.page(), nil
+}
+
+// TranscriptContent retrieves an oversized projected field without exposing a
+// filesystem path or requiring the client to download its containing event.
+func (s *Service) TranscriptContent(
+	ctx context.Context,
+	id ID,
+	contentID string,
+	afterBytes int64,
+	limitBytes int,
+) (TranscriptContentPage, error) {
+	if !ValidID(id) {
+		return TranscriptContentPage{}, ErrInvalidID
+	}
+	if s.transcriptProjection == nil {
+		return TranscriptContentPage{}, ErrTranscriptProjectionUnavailable
+	}
+	return s.transcriptProjection.ReadTranscriptContent(
+		ctx, id, contentID, afterBytes, limitBytes,
+	)
 }
 
 type transcriptProjection struct {

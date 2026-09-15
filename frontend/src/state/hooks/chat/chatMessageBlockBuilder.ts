@@ -60,6 +60,9 @@ class ChatMessageBlockBuilder {
       case "tool_use_end":
         return this.updateTrailingTool(blocks, event.id, {
           output: event.output,
+          ...(event.outputRef ? { outputRef: event.outputRef } : {}),
+          ...(event.outputBytes ? { outputBytes: event.outputBytes } : {}),
+          ...(event.outputTruncated ? { outputTruncated: true } : {}),
           isError: event.isError,
           status: "done",
         });
