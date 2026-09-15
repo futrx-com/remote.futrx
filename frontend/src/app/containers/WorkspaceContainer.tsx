@@ -8,6 +8,7 @@ import { usePaletteSearch } from "../../state/hooks/workspace/useWorkspaceSearch
 import { CommandPalette } from "../../ui/search/CommandPalette";
 import { useWorkspaceCommands } from "../../state/hooks/workspace/useWorkspaceCommands";
 import { ChatContainer } from "./ChatContainer";
+import { useActiveProjectExtensions } from "../../state/hooks/extensions/useActiveProjectExtensions";
 import { ProjectContainersContainer } from "./ProjectContainersContainer";
 import { SettingsContainer } from "./SettingsContainer";
 import { SidebarContainer } from "./SidebarContainer";
@@ -25,6 +26,15 @@ export function WorkspaceContainer() {
   // pitch at someone who already has projects.
   const chatPending =
     !workspace.loaded || (!workspace.activeChat && workspace.chats.length > 0);
+
+  // The project the user is in right now: the one whose settings are open, or
+  // the one owning the chat they are reading. Project-installed extensions
+  // follow this; with neither, no project is active and only global ones show.
+  useActiveProjectExtensions(
+    workspace.ui.view === "project-containers"
+      ? workspace.ui.containerProjectId
+      : workspace.activeChat?.projectId
+  );
 
   return (
     <AppShell sidebar={<SidebarContainer />}>

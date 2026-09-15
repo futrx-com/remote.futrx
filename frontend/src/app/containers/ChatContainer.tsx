@@ -63,6 +63,7 @@ export function ChatContainer({
     rewind,
     refreshMeta,
     attachmentBasePath,
+    projectId: displayMeta.projectId,
   });
   const browser = useChatBrowserController({
     chat: displayMeta,
@@ -95,6 +96,8 @@ export function ChatContainer({
   const { hasRepos } = useWorkspaceGitRepos({ chatId: chat.id, status });
   const workspaceActions = {
     cwd: displayMeta.cwd || "~",
+    chatId: chat.id,
+    projectId: displayMeta.projectId,
     onToggleTerminal: drawers.terminalOpen ? drawers.closeTerminal : drawers.openTerminal,
     onToggleBrowser: browser.browserOpen ? browser.closeBrowserDrawer : drawers.openBrowser,
     onToggleHistory: drawers.historyOpen ? drawers.closeHistory : drawers.openHistory,
