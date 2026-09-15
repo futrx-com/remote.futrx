@@ -10,6 +10,8 @@ import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
 import { CommandPalette, type CommandPaletteHandle } from "./CommandPalette";
+import { ExtensionSlot } from "../../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { ComposerAgentControls } from "./ComposerAgentControls";
 import { ComposerDropOverlay } from "./ComposerDropOverlay";
 import { ComposerExecutionControls } from "./ComposerExecutionControls";
@@ -183,6 +185,13 @@ export function ChatComposer({
               disconnected={disconnected}
               unsupported={attachmentsUnsupported}
               onFilesSelected={onFilesSelected}
+            />
+
+            {/* Outside the md-only wrapper below, so a contributed action is
+                reachable on a phone too. */}
+            <ExtensionSlot
+              name={EXTENSION_SLOTS.composerActions}
+              projectId={projectId}
             />
 
             <div class="hidden min-w-0 flex-1 items-center gap-1.5 md:flex">

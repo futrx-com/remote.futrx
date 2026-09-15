@@ -8,6 +8,8 @@ import { useProjectContainersController } from "../../state/hooks/projects/usePr
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useProjectUsage } from "../../state/hooks/usage/useProjectUsage";
+import { useProjectApplications } from "../../state/hooks/applications/useApplications";
+import { extensionHost } from "../extensions/extensionHost";
 
 export function ProjectContainersContainer({
   projects,
@@ -28,6 +30,12 @@ export function ProjectContainersContainer({
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
   const serverInfo = useServerInfo(activeTab === "settings");
   const usage = useProjectUsage(selectedProject?.id);
+  const applications = useProjectApplications(
+    selectedProject,
+    activeTab === "applications",
+    auth.isAdmin,
+    extensionHost.sync,
+  );
 
   const deleteSelectedProject = useCallback(async () => {
     if (!selectedProject) return;
@@ -56,6 +64,7 @@ export function ProjectContainersContainer({
       onTabChange={setActiveTab}
       onSaveSecret={secrets.save}
       onDeleteSecret={secrets.remove}
+      applications={applications}
       onAddMember={access.add}
       onRemoveMember={access.remove}
       onCreateShare={shares.create}
