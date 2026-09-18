@@ -5,12 +5,17 @@ import (
 	"errors"
 	"fmt"
 
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/service/permission"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
 type removedUserProjectAccess interface {
 	List(ctx context.Context) ([]serviceproject.Meta, error)
 	RemoveAccess(ctx context.Context, projectID serviceproject.ID, email string) error
+}
+
+type removedUserPermissions interface {
+	RemoveUserPolicy(ctx context.Context, email string) error
 }
 
 type removedUserSubscriptions interface {
@@ -32,12 +37,16 @@ type removedUserSecurityState interface {
 // already-revoked access.
 type userRemovalCleanup struct {
 	projects        removedUserProjectAccess
+	permissions     removedUserPermissions
 	subscriptions   removedUserSubscriptions
 	twoFactor       removedUserSecurityState
 	sessionRegistry removedUserSecurityState
 }
 
 func (c userRemovalCleanup) CleanupRemovedUser(ctx context.Context, email string) error {
+	// Removing a user revokes their access whatever the removing caller may
+	// manage, so cleanup is trusted internal work.
+	ctx = servicepermission.ContextWithSystemActor(ctx)
 	var cleanupErrors []error
 	if c.projects != nil {
 		projects, err := c.projects.List(ctx)
@@ -49,6 +58,11 @@ func (c userRemovalCleanup) CleanupRemovedUser(ctx context.Context, email string
 					cleanupErrors = append(cleanupErrors, fmt.Errorf("remove access to project %s: %w", project.ID, err))
 				}
 			}
+		}
+	}
+	if c.permissions != nil {
+		if err := c.permissions.RemoveUserPolicy(ctx, email); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove permission assignments: %w", err))
 		}
 	}
 	if c.subscriptions != nil {

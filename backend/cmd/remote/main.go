@@ -124,6 +124,7 @@ func main() {
 		ProjectSecrets:    storeSet.ProjectSecrets,
 		ProjectAccess:     storeSet.ProjectAccess,
 		ProjectShares:     storeSet.ProjectShares,
+		Permissions:       storeSet.Permissions,
 		Schedules:         storeSet.Schedules,
 		Auth:              storeSet.Auth,
 		Users:             storeSet.Users,

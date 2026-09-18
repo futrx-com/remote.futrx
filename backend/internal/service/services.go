@@ -15,6 +15,7 @@ import (
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/service/permission"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -63,6 +64,7 @@ type Dependencies struct {
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
 	ProjectShares     serviceshare.Repository
+	Permissions       servicepermission.Repository
 	Schedules         serviceschedule.Repository
 	Auth              AuthStore
 	Users             serviceuser.Repository
@@ -138,6 +140,7 @@ type Services struct {
 	Workspace         *workspacehub.Hub
 	Auth              *serviceauth.Service
 	Users             *serviceuser.Service
+	Permissions       *servicepermission.Service
 	UserSettings      *serviceusersettings.Service
 	Skills            *serviceskills.Catalog
 	Tmux              *servicetmux.Service
@@ -163,6 +166,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
 	}
+	if deps.Permissions == nil {
+		return Services{}, errors.New("permission repository is required")
+	}
 
 	workspace := workspacehub.New()
 	var runs *runhub.Hub
@@ -179,12 +185,34 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		},
 		push: pushNotifier,
 	}
+	// Identity and policy are built before the project service so the project
+	// service can receive its authorizer at construction. Auth reads users
+	// through a removal-cleanup-free view of the same repository: cleanup needs
+	// the project service, which needs authorization, which needs auth. Only
+	// removal differs between the two views, and auth never removes users.
+	authService, err := newAuth(
+		ctx,
+		deps.Auth,
+		serviceuser.New(deps.Users),
+		deps.AuthBaseURL,
+		deps.TwoFactor,
+		deps.SessionRegistry,
+		deps.AuthOptions,
+	)
+	if err != nil {
+		return Services{}, err
+	}
+	permissionService, err := newPermissions(ctx, deps.Permissions, authService, deps.ProjectAccess)
+	if err != nil {
+		return Services{}, err
+	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	projectService := serviceproject.New(
 		projects,
 		deps.ProjectContainers,
 		deps.ProjectSecrets,
 		deps.ProjectAccess,
+		serviceproject.WithAuthorizer(permissionService),
 		serviceproject.WithChatCleanup(projectChatCleanup{
 			chats: chats,
 			cancel: func(ctx context.Context, id servicechat.ID) error {
@@ -233,23 +261,12 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		deps.Users,
 		serviceuser.WithRemovalCleanup(userRemovalCleanup{
 			projects:        projectService,
+			permissions:     permissionService,
 			subscriptions:   deps.Push,
 			twoFactor:       deps.TwoFactor,
 			sessionRegistry: deps.SessionRegistry,
 		}),
 	)
-	authService, err := newAuth(
-		ctx,
-		deps.Auth,
-		userService,
-		deps.AuthBaseURL,
-		deps.TwoFactor,
-		deps.SessionRegistry,
-		deps.AuthOptions,
-	)
-	if err != nil {
-		return Services{}, err
-	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
 	var usageService *serviceusage.Service
 	promptOptions := []prompt.Option{
@@ -344,6 +361,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Workspace:         workspace,
 		Auth:              authService,
 		Users:             userService,
+		Permissions:       permissionService,
 		UserSettings:      userSettingsService,
 		Skills:            skillCatalog,
 		Tmux:              tmuxService,
@@ -369,8 +387,11 @@ func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID s
 	return meta.Slug, nil
 }
 
+// EnsureRunning readies a container on behalf of an installed application
+// that a caller has already been admitted to use, so it is trusted internal
+// work rather than an explicit lifecycle action by that caller.
 func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
-	_, err := a.projects.Start(ctx, serviceproject.ID(projectID))
+	_, err := a.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(projectID))
 	return err
 }
 
