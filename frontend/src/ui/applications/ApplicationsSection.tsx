@@ -1,5 +1,7 @@
 import { useMemo } from "preact/hooks";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { AlertCircle } from "../primitives/icons";
 import { CatalogGrid } from "./ApplicationCatalog";
 import { InstalledList } from "./InstalledApplications";
@@ -21,7 +23,7 @@ export function ApplicationsSection({
   // One instance per application per scope. A failed install is not an installation:
   // it is an attempt that left an error to read, so its card offers a retry
   // rather than claiming the application is installed.
-  const { installedImageIds, failedImageIds } = useMemo(
+  const { installedApplicationIds, failedApplicationIds } = useMemo(
     () => catalogInstallationState(instances),
     [instances],
   );
@@ -41,11 +43,18 @@ export function ApplicationsSection({
         <h3 class="text-[13px] font-medium text-ink-100">Available applications</h3>
         <CatalogGrid
           applications={installable}
-          installedIds={installedImageIds}
-          failedIds={failedImageIds}
+          installedIds={installedApplicationIds}
+          failedIds={failedApplicationIds}
           controller={controller}
         />
       </div>
+
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.applicationsPanel}
+        scope={scope}
+        projectId={controller.projectId}
+        class="block"
+      />
 
       <p class="text-[11.5px] text-ink-400 leading-relaxed">
         {scope === "global"

@@ -82,7 +82,9 @@ func (s *Service) transition(ctx context.Context, id string, target InstanceStat
 	if err != nil {
 		return View{}, err
 	}
-	// An application without infrastructure moves its backend process and record together.
+	// An application without infrastructure may be purely a record: stopped
+	// means the SPA no longer loads its extension. If it has a backend, the
+	// backend process and record move together.
 	if !application.NeedsContainer() {
 		if err := s.moveBackend(ctx, application, inst, target); err != nil {
 			_ = s.saveStatus(ctx, &inst, StatusError, err.Error())

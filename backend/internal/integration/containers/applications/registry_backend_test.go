@@ -151,7 +151,7 @@ func TestRegistryBackendSource(t *testing.T) {
 	if _, err := fs.Stat(source, "main.go"); err != nil {
 		t.Errorf("backend source is not rooted at backend/: %v", err)
 	}
-	for _, id := range []string{fixtureService, fixturePortless, "no-such-application"} {
+	for _, id := range []string{fixtureService, fixturePortless, fixtureUI, "no-such-application"} {
 		if _, ok := r.BackendSource(id); ok {
 			t.Errorf("%s reports backend source it does not have", id)
 		}

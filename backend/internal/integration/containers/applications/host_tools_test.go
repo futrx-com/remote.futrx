@@ -106,7 +106,7 @@ func TestRegistryRejectsIncompleteApplicationDeclarations(t *testing.T) {
 		},
 		{
 			name: "a host tool on an application that provisions nothing",
-			application: svc.Application{Name: "Test", Scopes: []svc.Scope{svc.ScopeProject}, Backend: &svc.ApplicationBackend{}, HostTools: []svc.HostTool{{
+			application: svc.Application{Name: "Test", Scopes: []svc.Scope{svc.ScopeProject}, UI: &svc.ApplicationUI{}, HostTools: []svc.HostTool{{
 				Name:      "tool",
 				Version:   "1",
 				Downloads: map[string]svc.HostToolDownload{"amd64": {URL: "https://example.invalid/tool", SHA256: "00"}},

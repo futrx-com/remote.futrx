@@ -44,8 +44,8 @@ func validateApplication(application svc.Application) error {
 	} else if application.Port.Internal == 0 && (application.Port.DefaultExternal != 0 || application.Healthcheck.Command != "") {
 		return fmt.Errorf("port.defaultExternal and healthcheck require port.internal")
 	}
-	if application.Backend == nil && !application.NeedsContainer() && len(application.Skills) == 0 {
-		return fmt.Errorf("application has no infra, backend, or skills")
+	if application.UI == nil && application.Backend == nil && !application.NeedsContainer() && len(application.Skills) == 0 {
+		return fmt.Errorf("application has no infra, backend, ui, or skills")
 	}
 	return nil
 }

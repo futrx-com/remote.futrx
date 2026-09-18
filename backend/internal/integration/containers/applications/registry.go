@@ -170,6 +170,12 @@ func loadApplication(catalog fs.FS, id string) (svc.Application, []byte, error) 
 	if err := validateInstallScriptPath(application.Install); err != nil {
 		return svc.Application{}, nil, err
 	}
+	ui, err := loadApplicationUI(catalog, path.Join(root, "ui"), application.UI)
+	if err != nil {
+		return svc.Application{}, nil, fmt.Errorf("ui: %w", err)
+	}
+	application.UI = ui
+
 	backend, err := loadApplicationBackend(catalog, path.Join(root, backendDir), application.Backend)
 	if err != nil {
 		return svc.Application{}, nil, fmt.Errorf("backend: %w", err)
