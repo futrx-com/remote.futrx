@@ -9,6 +9,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	applicationlifecycle "github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -33,6 +34,10 @@ type serviceTestProvider struct {
 	id agent.ProviderID
 }
 
+type serviceTestScheduleRepository struct {
+	serviceschedule.Repository
+}
+
 func (p serviceTestProvider) ID() agent.ProviderID { return p.id }
 
 func (p serviceTestProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
@@ -41,6 +46,37 @@ func (p serviceTestProvider) Capabilities(context.Context, agent.CapabilityReque
 
 func (p serviceTestProvider) Run(context.Context, agent.RunRequest, func(agent.Event)) error {
 	return nil
+}
+
+func newServiceTestCatalog(t *testing.T) *agentmodule.Catalog {
+	t.Helper()
+	descriptor := agentmodule.Descriptor{
+		ID:               "external-agent",
+		Label:            "External Agent",
+		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+		Auth:             agentmodule.AuthExternal,
+		AuthInstructions: "Authenticate outside Remote.",
+		Features:         agentmodule.Features{Skills: agentmodule.SkillsNone},
+	}
+	factory, err := agentmodule.NewFactory(
+		descriptor,
+		nil,
+		func(agentmodule.Dependencies, *provisioning.Profile) (agentmodule.Components, error) {
+			binding := agentauth.NewExternalBinding(descriptor.ID)
+			return agentmodule.Components{
+				Provider: serviceTestProvider{id: descriptor.ID},
+				Auth:     &binding,
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := agentmodule.NewCatalog(factory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return catalog
 }
 
 func (p *contextAwareScheduleProvider) ID() agent.ProviderID {
@@ -124,33 +160,50 @@ func TestNewRejectsPartialAgentContainerDependencies(t *testing.T) {
 	}
 }
 
-func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
-	descriptor := agentmodule.Descriptor{
-		ID:               "external-agent",
-		Label:            "External Agent",
-		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost},
-		Auth:             agentmodule.AuthExternal,
-		AuthInstructions: "Authenticate outside Remote.",
-		Features:         agentmodule.Features{Skills: agentmodule.SkillsNone},
-	}
-	factory, err := agentmodule.NewFactory(descriptor, nil, func(agentmodule.Dependencies, *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewExternalBinding(descriptor.ID)
-		return agentmodule.Components{
-			Provider: serviceTestProvider{id: descriptor.ID},
-			Auth:     &binding,
-		}, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	catalog, err := agentmodule.NewCatalog(factory)
-	if err != nil {
-		t.Fatal(err)
+func TestNewRequiresLifecyclePublishers(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*Dependencies)
+		want      string
+	}{
+		{
+			name: "chat",
+			configure: func(deps *Dependencies) {
+				deps.ChatLifecycle = nil
+			},
+			want: "chat lifecycle publisher is required",
+		},
+		{
+			name: "project",
+			configure: func(deps *Dependencies) {
+				deps.ProjectLifecycle = nil
+			},
+			want: "project lifecycle publisher is required",
+		},
 	}
 
-	_, err = New(context.Background(), Dependencies{
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			deps := Dependencies{
+				AgentModules:     newServiceTestCatalog(t),
+				Schedules:        serviceTestScheduleRepository{},
+				ChatLifecycle:    applicationlifecycle.NewChatPublisher(),
+				ProjectLifecycle: applicationlifecycle.NewProjectPublisher(),
+			}
+			test.configure(&deps)
+
+			_, err := New(context.Background(), deps)
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("New() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
+	_, err := New(context.Background(), Dependencies{
 		Auth:         fileauth.New(t.TempDir()),
-		AgentModules: catalog,
+		AgentModules: newServiceTestCatalog(t),
 	})
 	if !errors.Is(err, agentmodule.ErrNoAccessGate) {
 		t.Fatalf("New error = %v, want ErrNoAccessGate", err)

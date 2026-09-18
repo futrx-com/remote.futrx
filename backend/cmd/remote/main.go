@@ -106,9 +106,11 @@ func main() {
 	////////////////////////////////////////
 	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
 
-	// The update publisher is process-wide. Producers receive only the
+	// Lifecycle publishers are process-wide. Producers receive only the
 	// publishing capability declared by their own service contract.
 	updateLifecycle := lifecycle.NewUpdatePublisher()
+	projectLifecycle := lifecycle.NewProjectPublisher()
+	chatLifecycle := lifecycle.NewChatPublisher()
 	selfUpdateService := serviceselfupdate.New(
 		version.Version,
 		cfg.InstallDir,
@@ -120,7 +122,9 @@ func main() {
 	tmuxClient := tmuxcli.New()
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
+		ChatLifecycle:     chatLifecycle,
 		Projects:          storeSet.Projects,
+		ProjectLifecycle:  projectLifecycle,
 		ProjectSecrets:    storeSet.ProjectSecrets,
 		ProjectAccess:     storeSet.ProjectAccess,
 		ProjectShares:     storeSet.ProjectShares,
