@@ -53,8 +53,8 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 	}
 	inst.Env = env
 	// An application with no infrastructure has no container side: installing it only
-	// records that the user turned it on, which is what makes its backend run.
-	// Everything below this branch — container, port, proxy
+	// records that the user turned it on, which is what makes its ui/ load and
+	// its plugin run. Everything below this branch — container, port, proxy
 	// device, install script — exists only for applications that provision software.
 	if !application.NeedsContainer() {
 		inst.Status = StatusRunning
@@ -70,7 +70,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 
 	// Only the container half needs a container runtime, which is why the
 	// check is here rather than at the top: a server with no LXD can still
-	// install an application that only contributes backend behavior.
+	// install an application that only contributes UI or backend behavior.
 	if s.installer == nil {
 		return View{}, ErrUnavailable
 	}
@@ -103,7 +103,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 		return View{}, err
 	}
 	// An application may ship a backend too — the container half provisions
-	// the software, and callers talk to the backend half.
+	// the software, and the UI talks to the backend half.
 	if err := s.startBackend(ctx, application, inst); err != nil {
 		_ = s.saveStatus(ctx, &inst, StatusError, err.Error())
 		return View{}, err

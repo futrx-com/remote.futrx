@@ -11,6 +11,10 @@ import (
 type Registry interface {
 	List() []Application
 	Get(id string) (Application, bool)
+	// UIAsset returns one file from an application's ui/ directory. assetPath is
+	// relative to that directory ("scripts/main.js"); anything escaping it, or
+	// belonging to an application without a ui/, reports not found.
+	UIAsset(applicationID, assetPath string) ([]byte, bool)
 }
 
 // InstallSpec is everything Installer needs to realize an instance in a

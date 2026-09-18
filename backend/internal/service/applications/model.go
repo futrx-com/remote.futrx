@@ -116,6 +116,23 @@ type HostToolDownload struct {
 	Compression string `json:"compression,omitempty"`
 }
 
+// ApplicationUI describes the browser-side extension an application ships in its ui/
+// directory. It is what lets an application contribute to the Remote UI itself —
+// a button, a panel, a popup — instead of only installing software in a
+// container. Every path is relative to applications/<id>/ui/ and is validated at
+// catalog load time, so a broken reference fails loudly rather than 404ing
+// in the browser.
+type ApplicationUI struct {
+	// Entry is the ES module whose default export is called with the
+	// extension API when the SPA loads the application's UI.
+	Entry string `json:"entry,omitempty"`
+	// Styles are stylesheets injected into the document, in order.
+	Styles []string `json:"styles,omitempty"`
+	// Views are HTML fragments the entry module fetches by name, keyed by the
+	// name it asks for (e.g. "popup" -> "views/popup.html").
+	Views map[string]string `json:"views,omitempty"`
+}
+
 // ApplicationSource says where a catalog entry came from. It is decided by the
 // registry that loaded the entry and overwrites anything application.json declares,
 // so a package cannot describe itself as built in.
@@ -153,9 +170,6 @@ type Application struct {
 	// Service is the systemd unit name inside the container used for
 	// start/stop/status.
 	Service string `json:"service,omitempty"`
-	// Backend is set when the application ships a backend/ directory. Nil means the
-	// application has no Go backend and nothing is compiled or run for it.
-	Backend *ApplicationBackend `json:"backend,omitempty"`
 	// Install is the install-script filename relative to the application directory.
 	Install     string      `json:"install"`
 	Healthcheck Healthcheck `json:"healthcheck,omitempty"`
@@ -164,8 +178,14 @@ type Application struct {
 	// Base is the LXD image alias used when this app runs as a dedicated
 	// (global) container. Empty defaults to the platform default.
 	Base string `json:"base,omitempty"`
-	// Skills names the agent skills this application ships. It is filled in by the
-	// registry from the application's own skills/ directory rather than being
+	// UI is set when the application ships a ui/ directory. Nil means the application has
+	// no browser-side extension and the SPA loads nothing for it.
+	UI *ApplicationUI `json:"ui,omitempty"`
+	// Backend is set when the application ships a backend/ directory. Nil means the
+	// application has no Go backend and nothing is compiled or run for it.
+	Backend *ApplicationBackend `json:"backend,omitempty"`
+	// Skills names the agent skills this application ships. Like UI, it is filled in
+	// by the registry from the application's own skills/ directory rather than
 	// declared in application.json: each subdirectory holding a SKILL.md is one
 	// skill, published into the project workspace when the application is installed
 	// and taken back when it is uninstalled.

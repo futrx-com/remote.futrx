@@ -15,6 +15,8 @@ func (r *singleApplicationRegistry) Get(id string) (Application, bool) {
 	return r.application, true
 }
 
+func (r *singleApplicationRegistry) UIAsset(string, string) ([]byte, bool) { return nil, false }
+
 // fakeStore is the shared in-memory store for application service tests. It
 // records writes and deletions while keeping reads consistent with them.
 type fakeStore struct {

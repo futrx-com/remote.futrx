@@ -1,6 +1,9 @@
 import { useMemo } from "preact/hooks";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { AlertCircle } from "../primitives/icons";
+import { ApplicationPackages } from "./ApplicationPackages";
 import { CatalogGrid } from "./ApplicationCatalog";
 import { InstalledList } from "./InstalledApplications";
 import { catalogInstallationState } from "./applicationPresentation";
@@ -21,7 +24,7 @@ export function ApplicationsSection({
   // One instance per application per scope. A failed install is not an installation:
   // it is an attempt that left an error to read, so its card offers a retry
   // rather than claiming the application is installed.
-  const { installedImageIds, failedImageIds } = useMemo(
+  const { installedApplicationIds, failedApplicationIds } = useMemo(
     () => catalogInstallationState(instances),
     [instances],
   );
@@ -37,15 +40,28 @@ export function ApplicationsSection({
 
       <InstalledList controller={controller} />
 
+      {/* Uploading extends the server-wide catalog, so it sits above the grid
+          it feeds rather than inside it. It is shown wherever an admin manages
+          applications — Settings and every project — because the catalog they
+          are looking at is the same one either way. */}
+      {controller.managesPackages && <ApplicationPackages controller={controller} />}
+
       <div class="space-y-2.5">
         <h3 class="text-[13px] font-medium text-ink-100">Available applications</h3>
         <CatalogGrid
           applications={installable}
-          installedIds={installedImageIds}
-          failedIds={failedImageIds}
+          installedIds={installedApplicationIds}
+          failedIds={failedApplicationIds}
           controller={controller}
         />
       </div>
+
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.applicationsPanel}
+        scope={scope}
+        projectId={controller.projectId}
+        class="block"
+      />
 
       <p class="text-[11.5px] text-ink-400 leading-relaxed">
         {scope === "global"

@@ -17,8 +17,9 @@ import (
 // infrastructure. Per-project routes are delegated here by ProjectHandler,
 // which has already enforced project membership.
 type ApplicationsHandler struct {
-	apps *serviceapplications.Service
-	auth *serviceauth.Service
+	apps     *serviceapplications.Service
+	auth     *serviceauth.Service
+	projects visibleProjects
 }
 
 // NewApplicationsHandler builds the handler. apps may be nil when the server
@@ -26,8 +27,9 @@ type ApplicationsHandler struct {
 func NewApplicationsHandler(
 	apps *serviceapplications.Service,
 	auth *serviceauth.Service,
+	projects visibleProjects,
 ) *ApplicationsHandler {
-	return &ApplicationsHandler{apps: apps, auth: auth}
+	return &ApplicationsHandler{apps: apps, auth: auth, projects: projects}
 }
 
 func (h *ApplicationsHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -76,6 +78,29 @@ func (h *ApplicationsHandler) handleCollection(w http.ResponseWriter, r *http.Re
 func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/api/applications/")
 
+	// /api/applications/ui lists the extensions this caller should load. It is
+	// readable by any registered user because every user renders the UI of the
+	// apps installed around them.
+	if rest == "ui" {
+		h.serveUIExtensions(w, r)
+		return
+	}
+
+	// /api/applications/packages[/<id>] manages uploaded application packages.
+	// It is checked before the instance parser below so "packages" can never be
+	// read as an instance id.
+	if rest == "packages" || strings.HasPrefix(rest, "packages/") {
+		h.handlePackages(w, r, rest)
+		return
+	}
+
+	// /api/applications/catalog/<applicationID>/ui/<path> serves the browser-side
+	// extension an application ships. Same audience as the catalog it belongs to.
+	if strings.HasPrefix(rest, "catalog/") {
+		h.serveUIAsset(w, r, strings.TrimPrefix(rest, "catalog/"))
+		return
+	}
+
 	// /api/applications/catalog is readable by any registered user, since the
 	// project UI uses the same catalog.
 	if rest == "catalog" {
@@ -101,9 +126,9 @@ func (h *ApplicationsHandler) handleResource(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Calling a global instance's plugin is the one thing on a global app that
-	// is not administration: the plugin is the server-side half of a feature
-	// that is offered to every signed-in user, so it is gated by the application's
-	// own access level instead. Managing the app stays admin-only.
+	// is not administration: the plugin is the server-side half of an
+	// extension that renders for every signed-in user, so it is gated by the
+	// application's own access level instead. Managing the app stays admin-only.
 	if path, ok := isBackendPath(action); ok {
 		if !h.requireRegistered(w, r) {
 			return
@@ -365,17 +390,24 @@ func sendAppError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrNoBackend):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, serviceapplications.ErrPackageNotFound):
+		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrBackendAccess):
 		httptransport.SendErr(w, http.StatusForbidden, err.Error())
 	case errors.Is(err, serviceapplications.ErrAlreadyInstalled),
-		errors.Is(err, serviceapplications.ErrNotRunning):
+		errors.Is(err, serviceapplications.ErrNotRunning),
+		errors.Is(err, serviceapplications.ErrPackageInUse),
+		errors.Is(err, serviceapplications.ErrPackageReserved):
 		httptransport.SendErr(w, http.StatusConflict, err.Error())
-	case errors.Is(err, serviceapplications.ErrNotSupported):
+	case errors.Is(err, serviceapplications.ErrNotSupported),
+		errors.Is(err, serviceapplications.ErrPackageInvalid):
 		// The request is well formed and the caller is allowed to make it; the
 		// application simply has nothing to apply it to — setting a port on an app
 		// that binds none, say. That is the caller's mistake to see, not a
 		// server fault.
 		httptransport.SendErr(w, http.StatusUnprocessableEntity, err.Error())
+	case errors.Is(err, serviceapplications.ErrPackagesUnavailable):
+		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnknownApplication),
 		errors.Is(err, serviceapplications.ErrScope),
 		errors.Is(err, serviceapplications.ErrProjectneeded),
