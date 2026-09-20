@@ -3,7 +3,6 @@ package lifecycle
 
 import (
 	"context"
-	"sync"
 )
 
 // UpdateState identifies the transition represented by an UpdateEvent.
@@ -29,17 +28,10 @@ type UpdateSubscriber interface {
 	OnUpdate(context.Context, UpdateEvent)
 }
 
-type updateSubscription struct {
-	id         uint64
-	subscriber UpdateSubscriber
-}
-
 // UpdatePublisher owns application self-update subscribers and dispatches
 // events to them synchronously in registration order.
 type UpdatePublisher struct {
-	mu            sync.RWMutex
-	nextID        uint64
-	subscriptions []updateSubscription
+	events eventDispatcher[UpdateEvent]
 }
 
 // NewUpdatePublisher creates a publisher with no subscribers.
@@ -50,27 +42,9 @@ func NewUpdatePublisher() *UpdatePublisher {
 // Subscribe registers a subscriber and returns an idempotent function that
 // removes it.
 func (p *UpdatePublisher) Subscribe(subscriber UpdateSubscriber) (unsubscribe func()) {
-	p.mu.Lock()
-	id := p.nextID
-	p.nextID++
-	p.subscriptions = append(p.subscriptions, updateSubscription{id: id, subscriber: subscriber})
-	p.mu.Unlock()
-
-	removed := false
-	return func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		if removed {
-			return
-		}
-		removed = true
-		for index, subscription := range p.subscriptions {
-			if subscription.id == id {
-				p.subscriptions = append(p.subscriptions[:index], p.subscriptions[index+1:]...)
-				return
-			}
-		}
-	}
+	return p.events.subscribe(func(ctx context.Context, event UpdateEvent) {
+		subscriber.OnUpdate(ctx, event)
+	})
 }
 
 // PublishUpdateStarted reports that an application update has started.
@@ -97,15 +71,5 @@ func (p *UpdatePublisher) PublishUpdateFailed(ctx context.Context, target, kind,
 }
 
 func (p *UpdatePublisher) publish(ctx context.Context, event UpdateEvent) {
-	for _, subscription := range p.snapshot() {
-		subscription.subscriber.OnUpdate(ctx, event)
-	}
-}
-
-func (p *UpdatePublisher) snapshot() []updateSubscription {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	subscriptions := make([]updateSubscription, len(p.subscriptions))
-	copy(subscriptions, p.subscriptions)
-	return subscriptions
+	p.events.publish(ctx, event)
 }

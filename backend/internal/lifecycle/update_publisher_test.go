@@ -86,6 +86,51 @@ func TestUpdatePublisherIdentifiesTerminalStates(t *testing.T) {
 	}
 }
 
+func TestUpdatePublisherDispatchesCanceledContext(t *testing.T) {
+	publisher := NewUpdatePublisher()
+	var received context.Context
+	publisher.Subscribe(updateSubscriberFunc(func(ctx context.Context, _ UpdateEvent) {
+		received = ctx
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	publisher.PublishUpdateStarted(ctx, "0.4.0", "application", "admin@example.com")
+
+	if received != ctx {
+		t.Fatal("subscriber did not receive the canceled publishing context")
+	}
+	if received.Err() != context.Canceled {
+		t.Fatalf("subscriber context error = %v, want context canceled", received.Err())
+	}
+}
+
+func TestUpdatePublisherPropagatesPanicAndSkipsLaterSubscribers(t *testing.T) {
+	publisher := NewUpdatePublisher()
+	publisher.Subscribe(updateSubscriberFunc(func(context.Context, UpdateEvent) {
+		panic("subscriber failed")
+	}))
+	laterCalled := false
+	publisher.Subscribe(updateSubscriberFunc(func(context.Context, UpdateEvent) {
+		laterCalled = true
+	}))
+
+	var recovered any
+	func() {
+		defer func() {
+			recovered = recover()
+		}()
+		publisher.PublishUpdateStarted(context.Background(), "0.4.0", "application", "admin@example.com")
+	}()
+
+	if recovered != "subscriber failed" {
+		t.Fatalf("recovered panic = %v, want subscriber failure", recovered)
+	}
+	if laterCalled {
+		t.Fatal("subscriber after panic was called")
+	}
+}
+
 func TestUpdatePublisherUnsubscribeIsIdempotent(t *testing.T) {
 	publisher := NewUpdatePublisher()
 	var mu sync.Mutex
