@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -413,7 +414,18 @@ func (s *Service) UploadTarget(ctx context.Context, id ID) (string, error) {
 	// subdir isolates attachments from the source tree.
 	root := meta.Cwd
 	if meta.ProjectID != "" && s.projects != nil {
-		if ws, err := s.projects.WorkspaceForProject(ctx, meta.ProjectID); err == nil && ws != "" {
+		ws, err := s.projects.WorkspaceForProject(ctx, meta.ProjectID)
+		// A deleted project is not a failure to look one up: the chat and its
+		// transcript outlive the project, and it can still take an attachment
+		// into the directory it was working in. Every other error means the
+		// workspace exists but could not be resolved, and uploading into the
+		// chat's own cwd instead would put the file somewhere the caller is not
+		// expecting it.
+		switch {
+		case errors.Is(err, ErrProjectNotFound):
+		case err != nil:
+			return "", err
+		case ws != "":
 			root = ws
 		}
 	}
