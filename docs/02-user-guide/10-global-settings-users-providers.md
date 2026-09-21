@@ -26,7 +26,8 @@ without login controls.
 
 Claude, Codex, and Kimi authentication is host-wide and administrator-managed.
 Sign in once on the parent host; Remote then seeds those provider credentials
-into project containers. MiniMax uses a host-managed Token Plan subscription
+into project containers. Devin uses a host-managed manual token flow with the
+same credential seeding. MiniMax uses a host-managed Token Plan subscription
 key. Antigravity uses a project-local sign-in flow; both are described below.
 
 ![Administrator view of Claude, Codex, and Kimi authentication](/assets/docs/screenshots/03-agent-authentication-01m05s.webp)
@@ -93,6 +94,20 @@ its model list remains unavailable until a validated key exists.
 4. Approve the account.
 5. Return to Remote and wait for the connected state.
 
+### Connect Devin
+
+Devin authentication is host-managed. An administrator runs the manual token
+flow once on the host; Remote then seeds the credential file into project
+containers.
+
+1. On the host, run `devin auth login --force-manual-token-flow`.
+2. Open the displayed `app.devin.ai/auth/cli/continue` URL.
+3. Sign in to Devin in the browser.
+4. Paste the returned code into the CLI prompt.
+5. Wait for the credentials file to be written.
+6. In Remote, choose **Refresh models** in a project chat's provider/model
+   picker to pick up the newly synchronized credentials.
+
 ### Use Antigravity
 
 Antigravity appears in both the chat provider picker and the administrator's
@@ -125,16 +140,16 @@ is unavailable to a loose chat. Use a project chat for normal Antigravity work.
 
 Antigravity does not satisfy Remote's initial provider gate because Remote
 cannot observe external auth authoritatively. A server administrator must still
-connect one of the current gate-eligible modules: Claude, Codex, or Kimi.
+connect one of the current gate-eligible modules: Claude, Codex, Kimi, or Devin.
 
 ### Shared-provider implications
 
-- Every user and project shares the same host Claude, Codex, and Kimi accounts
-  and their quotas.
-- Those three provider credentials are copied into project credential
+- Every user and project shares the same host Claude, Codex, Kimi, and Devin
+  accounts and their quotas.
+- Those four provider credentials are copied into project credential
   locations.
 - An agent that can read its project credential files can act with that provider authority.
-- Claude, Codex, and Kimi homes are durable but separate by provider format, not separate security principals.
+- Claude, Codex, Kimi, and Devin homes are durable but separate by provider format, not separate security principals.
 - Re-authentication can affect every project.
 - Antigravity is project-local rather than host-wide, but its credential state
   is still readable by container root and shared by everyone with authority in
