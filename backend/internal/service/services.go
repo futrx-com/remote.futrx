@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/smtp"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
@@ -15,6 +17,7 @@ import (
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	serviceemail "github.com/futrx-com/remote.futrx.com/internal/service/email"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -29,6 +32,8 @@ import (
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspacehub"
+
+	emailoutbound "github.com/futrx-com/remote.futrx.com/internal/port/email/outbound"
 )
 
 type AuthStore interface {
@@ -71,6 +76,7 @@ type Dependencies struct {
 	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
 	Usage             serviceusage.Repository
+	Email             emailoutbound.ConfigurationStore
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -150,6 +156,11 @@ type Services struct {
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
+	Email             *serviceemail.Service
+	// Mailer is the entry point every other service uses to send email. It
+	// hides credentials, MIME and HTML email markup behind a builder; see
+	// service/email.Mail.
+	Mailer *serviceemail.Mailer
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -335,6 +346,13 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	pushNotifier.audience.projects = projectService
 	pushNotifier.audience.users = userService
 
+	// The admin settings handler takes the Service (it manages the
+	// configuration); every feature that merely wants to send mail takes the
+	// Mailer facade. smtp.Client satisfies emailoutbound.Sender directly, so
+	// composition needs no adapter between the two.
+	emailService := serviceemail.New(deps.Email, smtp.New(constants.SMTPDialTimeout))
+	mailer := serviceemail.NewMailer(emailService, emailDirectory{users: userService})
+
 	return Services{
 		Chats:             chatService,
 		ChatAccess:        chatAccessService,
@@ -357,6 +375,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
+		Email:             emailService,
+		Mailer:            mailer,
 	}, nil
 }
 

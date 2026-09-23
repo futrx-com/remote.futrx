@@ -18,6 +18,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplications"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileemail"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
@@ -29,6 +30,8 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusage"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
+
+	emailoutbound "github.com/futrx-com/remote.futrx.com/internal/port/email/outbound"
 )
 
 type AuthStore interface {
@@ -72,6 +75,7 @@ type Stores struct {
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
+	Email           emailoutbound.ConfigurationStore
 	ProjectShares   serviceshare.Repository
 }
 
@@ -150,6 +154,7 @@ func New(dataDir string) (Stores, error) {
 	}
 
 	authStore := fileauth.New(dataDir)
+	email := fileemail.New(dataDir)
 	return Stores{
 		Chats:           chats,
 		chatIndexWarmer: chats,
@@ -166,6 +171,7 @@ func New(dataDir string) (Stores, error) {
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
+		Email:           email,
 		ProjectShares:   projectShares,
 	}, nil
 }
