@@ -7,7 +7,7 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 | `auth/` | Which agent providers are logged in, and the recovery-code file a user saves |
 | `chat/` | Where an attachment is stored and what it is called, and where find-in-chat's matches are shown |
 | `extensions/` | What the SPA has finished, and which application asked to hear it |
-| `files/` | What a filename means: its kind, its icon, what a click does |
+| `files/` | Which workspace media core can show, plus attachment-size formatting |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
 | `push/` | Which accounts opted this browser into push notifications |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
@@ -75,11 +75,9 @@ because it can never import back.
 ## What lives here, and what does not
 
 A module belongs here when **no single caller owns it**. `fileService` is read
-by the file tree, the markdown parser, the IDE links and a hook;
-`workspaceSidebarService` by a container and a context. That is also why
-`files/` is its own folder rather than living under `chat/` where all four of
-today's callers happen to sit: the service is about files, and the next caller
-will not be a chat one.
+by the markdown parser, IDE links, and attachment chips; the installable File
+Management application owns its own browser policy. `workspaceSidebarService`
+is read by a container and a context.
 
 A module with exactly one owner stays with that owner — see the note in
 [`../state/README.md`](../state/README.md). `chatEventStateProjector` sits in
@@ -114,15 +112,12 @@ reads at the call site where `rangeService` would not.
 
 Methods drop the prefix the receiver now carries. Where two methods differ in
 a way a reader could mistake for duplication, the names say so:
-`fileService.formatBytes` and `fileService.formatBytesCompact` produce
-different strings on purpose, and a test pins both.
+`fileService.formatBytesCompact` is pinned by the attachment-chip test.
 
 ## Types, constants and tests
 
 Same rules as everywhere else in the app: a data shape goes to `models/` and a
 tunable to `config/`, whichever service happens to compute or consume it.
-`FileCategory` sits in `models/files.ts` because the file tree keys its icon
-table by it.
 
 What stays is what describes one service's own insides and never appears in an
 import elsewhere — `LineDiffPart`, `FileOpenAction`, `ChatBuckets`.

@@ -1,15 +1,16 @@
 # Workspace tools
 
-The chat header opens Terminal, Files, Git History, Schedules, Browser, and the
-project IDE. Most are views over the same project workspace; Schedules is a
-host-control-plane view whose runs return to the same chat.
+The chat header opens Terminal, application-contributed panes such as Files,
+Git History, Schedules, Browser, and the project IDE. Most are views over the
+same project workspace; Schedules is a host-control-plane view whose runs
+return to the same chat.
 
 ## Tool map
 
 ```mermaid
 flowchart TD
     Chat["Project chat"] --> Terminal["Resizable Terminal pane"]
-    Chat --> Files["File manager"]
+    Chat --> Files["File Management application"]
     Chat --> History["Git history"]
     Chat --> Browser["Browser drawer"]
     Chat --> IDE["Browser IDE links"]
@@ -61,6 +62,12 @@ Important behavior:
 
 ## File manager
 
+Files is supplied by the built-in **File Management** application, installed
+globally on first startup. Core owns the pane shell, chat authorization, and
+media viewer; the application owns the browser UI and file operations. An
+administrator can stop or uninstall it from Applications, which removes Files
+for everyone until it is installed and started again.
+
 ```mermaid
 flowchart LR
     Open["Open Files drawer"] --> Root["List workspace root"]
@@ -72,9 +79,10 @@ flowchart LR
     Expand --> IDE["Open path in IDE"]
 ```
 
-The backend resolves all paths relative to the chat working directory and
-rejects traversal. Listings and search results can report truncation rather
-than returning unbounded data.
+Core authorizes the chat and supplies its trusted workspace root to the
+application backend. The application keeps every operation within that root,
+including through symlinks. Listings and search results can report truncation
+rather than returning unbounded data.
 
 Selecting a file routes by type:
 
@@ -112,8 +120,8 @@ sequenceDiagram
 The terminal exists only for chats attached to a project. Opening it starts one
 interactive `bash -l` process for that loaded chat. On desktop it is a
 resizable workspace pane beside the chat; its width is retained in browser
-`localStorage`. Terminal, Files, History, Schedules, and Browser panes are
-mutually exclusive. Hiding and reopening Terminal in the same loaded chat
+`localStorage`. Terminal, application panes, History, Schedules, and Browser
+panes are mutually exclusive. Hiding and reopening Terminal in the same loaded chat
 keeps the socket, shell, and unsubmitted input alive. Switching chats,
 reloading or closing the page, or losing the socket tears the PTY down; it is
 not a persistent tmux session.
@@ -184,7 +192,8 @@ in the in-app viewer.
 ## Code map
 
 - Upload handler: [`backend/internal/transport/http/upload_tus.go`](../../backend/internal/transport/http/upload_tus.go)
-- Workspace files: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
+- File Management application: [`applications/file-management/`](../../applications/file-management/)
+- Core media-link service: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
 - Terminal socket: [`backend/internal/transport/ws/container_terminal_socket.go`](../../backend/internal/transport/ws/container_terminal_socket.go)
 - Git history: [`backend/internal/service/githistory/service.go`](../../backend/internal/service/githistory/service.go)
 - IDE service: [`backend/internal/service/workspaceide/service.go`](../../backend/internal/service/workspaceide/service.go)

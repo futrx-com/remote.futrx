@@ -195,7 +195,7 @@ flowchart TD
 
     ActiveChat["Active ChatContainer"] --> ChatHook["useChat metadata, history, stream"]
     ActiveChat --> Composer["draft, queue, attachments"]
-    ActiveChat --> Drawers["files, history, schedules, browser, terminal"]
+    ActiveChat --> Drawers["application panes, history, schedules, browser, terminal"]
 ```
 
 | State | Lifetime |

@@ -119,7 +119,7 @@ controls switch ports, resize or reload the pane, and open the app in a new tab.
       <img src="docs/assets/readme/feature-files.webp" alt="Remote workspace file browser showing the demo project files">
       <br>
       <strong>Files without leaving the chat</strong><br>
-      Browse a lazy-loaded tree, search by filename, download files or folders, preview supported media, and open source files in the IDE.
+      The preinstalled File Management application lets you browse a lazy-loaded tree, search by filename, download files or folders, preview supported media, and open source files in the IDE.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/readme/feature-ide.webp" alt="Orbit Tasks source code open in Remote's browser IDE">

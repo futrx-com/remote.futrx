@@ -1,6 +1,6 @@
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
-import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
+import { CalendarClock, Clock, Code, Monitor, Terminal } from "../../primitives/icons";
 import { ExtensionSlot } from "../../primitives/ExtensionSlot";
 import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
@@ -23,12 +23,10 @@ export function WorkspaceActions({
   onToggleTerminal,
   onToggleBrowser,
   onToggleHistory,
-  onToggleFiles,
   onToggleSchedules,
   terminalOpen,
   browserOpen,
   historyOpen,
-  filesOpen,
   schedulesOpen,
   showHistory,
   showSchedules,
@@ -43,12 +41,10 @@ export function WorkspaceActions({
   onToggleTerminal: () => void;
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
-  onToggleFiles: () => void;
   onToggleSchedules: () => void;
   terminalOpen: boolean;
   browserOpen: boolean;
   historyOpen: boolean;
-  filesOpen: boolean;
   schedulesOpen: boolean;
   showHistory: boolean;
   showSchedules: boolean;
@@ -110,16 +106,6 @@ export function WorkspaceActions({
           />
         );
       })}
-      <WorkspaceAction
-        Icon={Folder}
-        onClick={onToggleFiles}
-        label={filesOpen ? "Close workspace files" : "Workspace files"}
-        tooltip={filesOpen ? "Close workspace files" : "Browse workspace files"}
-        expanded={filesOpen}
-        controls="workspace-files-pane"
-        action="files"
-        tooltipPlacement={tooltipPlacement}
-      />
       {showSchedules && (
         <WorkspaceAction
           Icon={CalendarClock}

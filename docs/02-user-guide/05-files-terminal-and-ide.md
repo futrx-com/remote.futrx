@@ -4,6 +4,11 @@ Files, Terminal, and IDE are three views of the same project workspace. Use
 **Files** to inspect and download, **Open Terminal** for direct shell work, and
 **Open in IDE** for code editing.
 
+Files is the built-in **File Management** application. Remote installs and
+starts it globally the first time this version runs. If the Files action is
+missing, an administrator should check its state on the Applications page; a
+deliberate uninstall is remembered across restarts.
+
 ![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
 
 ## Before you begin
@@ -109,7 +114,8 @@ Examples:
 /workspace/src/app.ts:42:7
 ```
 
-Current inline media types are:
+Core's chat-link endpoint and the File Management application support these
+inline media types:
 
 - images: `.avif`, `.bmp`, `.gif`, `.ico`, `.jpeg`, `.jpg`, `.png`, `.svg`,
   `.tif`, `.tiff`, and `.webp`;

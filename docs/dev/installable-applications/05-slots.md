@@ -23,7 +23,7 @@ degrades on an older one instead of failing to load.
 
 | Constant | Name | Where it renders | Context |
 |---|---|---|---|
-| `chatHeaderActions` | `chat.header.actions` | Chat header rail, ahead of the IDE / terminal / files / schedules / preview icons | `chatId`, `projectId`, `cwd` |
+| `chatHeaderActions` | `chat.header.actions` | Chat header rail, ahead of the IDE / terminal / workspace-pane / schedules / preview icons | `chatId`, `projectId`, `cwd` |
 | `composerActions` | `chat.composer.actions` | Composer control deck, beside the attach (`+`) button | `projectId` |
 | `projectRowActions` | `sidebar.project.actions` | A project row's hover actions, ahead of container info and "New chat" | `projectId`, `projectName` |
 | `sidebarHeaderActions` | `sidebar.header.actions` | Sidebar header, beside "New project" | — |

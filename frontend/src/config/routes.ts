@@ -23,14 +23,6 @@ export const API_ROUTES = {
     read: (id: string) => `/api/chats/${encodeURIComponent(id)}/read`,
     unread: (id: string) => `/api/chats/${encodeURIComponent(id)}/unread`,
     fork: (id: string) => `/api/chats/${encodeURIComponent(id)}/fork`,
-    files: (id: string, path = "") =>
-      `/api/chats/${encodeURIComponent(id)}/files${path ? `?path=${encodeURIComponent(path)}` : ""}`,
-    filesSearch: (id: string, query: string) =>
-      `/api/chats/${encodeURIComponent(id)}/files/search?q=${encodeURIComponent(query)}`,
-    fileDownload: (id: string, path: string) =>
-      `/api/chats/${encodeURIComponent(id)}/files/download?path=${encodeURIComponent(path)}`,
-    folderDownload: (id: string, path = "") =>
-      `/api/chats/${encodeURIComponent(id)}/files/download-folder${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     mediaOpen: (id: string, path: string) =>
       `/api/chats/${encodeURIComponent(id)}/media-open?path=${encodeURIComponent(path)}`,
     ideOpen: (id: string, path: string) =>

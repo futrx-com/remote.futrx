@@ -207,10 +207,6 @@ html[data-theme="light"] {
       width: min(820px, calc(100vw - 360px));
       max-width: none;
     }
-    .workspace-files-pane[aria-hidden="false"] {
-      width: min(560px, calc(100vw - 320px));
-      max-width: none;
-    }
     .workspace-extension-pane[aria-hidden="false"] {
       width: min(var(--workspace-extension-width, 560px), calc(100vw - 320px));
       max-width: none;

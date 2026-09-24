@@ -77,7 +77,7 @@ The Go backend is strictly stratified. Requests flow **down** through the layers
 ```
 transport/  ── HTTP handlers, WebSocket sockets, auth middleware
     │
-service/    ── business logic: chat, prompt, project, user, auth, container/*, workspacefiles, ...
+service/    ── business logic: chat, prompt, project, user, auth, applications, container/*, ...
     │
 integration/ & stores/  ── the outside world: lxc CLI, git CLI, tmux, host fs, Google OAuth; file-backed stores
 ```

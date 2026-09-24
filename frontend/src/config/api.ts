@@ -20,5 +20,3 @@ export const CHAT_STREAM_MESSAGE_TYPES = {
 } as const;
 /** Usage records fetched per drill-down page. */
 export const USAGE_RECORD_PAGE_LIMIT = 100;
-/** How long typing settles before the workspace file search is sent. */
-export const WORKSPACE_FILE_SEARCH_DEBOUNCE_MS = 250;

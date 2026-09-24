@@ -40,9 +40,9 @@ flowchart LR
 
 | Layer | Responsibility |
 | --- | --- |
-| Frontend | Authentication gates, workspace navigation, chat rendering, drawers, settings, and API clients |
+| Frontend | Authentication gates, workspace navigation, chat rendering, core and application panes, settings, and API clients |
 | HTTP and WebSocket transport | Routes, JSON responses, upgrades, session checks, and project membership checks |
-| Services | Agent module catalog/runtime, auth, capability and execution orchestration, chat, prompt, schedule, project, user, settings, skills, Git, files, browser, and container policy |
+| Services | Agent and application runtimes, auth, capability and execution orchestration, chat, prompt, schedule, project, user, settings, skills, Git, media links, browser, and container policy |
 | Integrations | LXD, Git, tmux, host filesystem, Google OAuth, host metrics, and container commands |
 | Stores | File-backed auth, users, settings, chats, scheduled tasks, projects, access lists, and secrets |
 | Infrastructure | Installation, systemd, Caddy, LXD image creation, updates, and recovery timers |
@@ -59,7 +59,7 @@ flowchart TD
 
     Chat --> Composer["Provider, model, mode, skills, attachments"]
     Chat --> Messages["Text, reasoning, tools, usage"]
-    Chat --> Drawers["History, files, schedules, browser"]
+    Chat --> Drawers["History, application panes, schedules, browser"]
     Chat --> Terminal["Resizable Terminal pane"]
 
     Projects --> Lifecycle["Start, stop, restart, delete"]
@@ -129,7 +129,7 @@ The main shell switches between three views without browser routing:
 
 | View | Main features |
 | --- | --- |
-| Chat | Streaming thread, composer, terminal, files, Git history, schedules, and browsers |
+| Chat | Streaming thread, composer, terminal, application panes (including Files), Git history, schedules, and browsers |
 | Project workspaces | Lifecycle, diagnostics, limits, secrets, and sharing |
 | Settings | Provider sign-in, system/dark/light theme, Google users, and server metrics |
 

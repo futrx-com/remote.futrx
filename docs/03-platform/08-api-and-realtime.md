@@ -154,10 +154,7 @@ Every `{id}` project route first requires admin status or project membership. Re
 | POST | `/api/chats/{id}/unread` | Force unread state |
 | GET | `/api/chats/{id}/ide-open?path=...` | Validate path and redirect to the correct IDE URL |
 | GET | `/api/chats/{id}/media-open?path=...` | Serve supported workspace media inline |
-| GET | `/api/chats/{id}/files?path=...` | List a workspace directory |
-| GET | `/api/chats/{id}/files/search?q=...` | Search workspace filenames |
-| GET | `/api/chats/{id}/files/download?path=...` | Download one file |
-| GET | `/api/chats/{id}/files/download-folder?path=...` | Stream a folder ZIP |
+| any | `/api/chats/{id}/applications/{instance}/backend/{path...}` | Call an application backend with core-authorized chat/workspace context |
 | GET | `/api/chats/{id}/history/repos` | Discover workspace Git repositories |
 | GET | `/api/chats/{id}/history/commits?repo=&limit=` | List commits |
 | GET | `/api/chats/{id}/history/diff?repo=&sha=` | Read one commit patch |

@@ -10,14 +10,12 @@ export function useChatDrawerController({
   hideBrowser: () => void;
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [filesOpen, setFilesOpen] = useState(false);
   const [schedulesOpen, setSchedulesOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [extensionPaneId, setExtensionPaneId] = useState<string | null>(null);
 
   useEffect(() => {
     setHistoryOpen(false);
-    setFilesOpen(false);
     setSchedulesOpen(false);
     setTerminalOpen(false);
     setExtensionPaneId(null);
@@ -25,7 +23,6 @@ export function useChatDrawerController({
 
   function openBrowser() {
     setHistoryOpen(false);
-    setFilesOpen(false);
     setSchedulesOpen(false);
     setTerminalOpen(false);
     setExtensionPaneId(null);
@@ -34,26 +31,15 @@ export function useChatDrawerController({
 
   function openHistory() {
     hideBrowser();
-    setFilesOpen(false);
     setSchedulesOpen(false);
     setTerminalOpen(false);
     setExtensionPaneId(null);
     setHistoryOpen(true);
   }
 
-  function openFiles() {
-    hideBrowser();
-    setHistoryOpen(false);
-    setSchedulesOpen(false);
-    setTerminalOpen(false);
-    setExtensionPaneId(null);
-    setFilesOpen(true);
-  }
-
   function openSchedules() {
     hideBrowser();
     setHistoryOpen(false);
-    setFilesOpen(false);
     setTerminalOpen(false);
     setExtensionPaneId(null);
     setSchedulesOpen(true);
@@ -62,7 +48,6 @@ export function useChatDrawerController({
   function openTerminal() {
     hideBrowser();
     setHistoryOpen(false);
-    setFilesOpen(false);
     setSchedulesOpen(false);
     setExtensionPaneId(null);
     setTerminalOpen(true);
@@ -71,7 +56,6 @@ export function useChatDrawerController({
   function openExtensionPane(id: string) {
     hideBrowser();
     setHistoryOpen(false);
-    setFilesOpen(false);
     setSchedulesOpen(false);
     setTerminalOpen(false);
     setExtensionPaneId(id);
@@ -79,18 +63,15 @@ export function useChatDrawerController({
 
   return {
     historyOpen,
-    filesOpen,
     schedulesOpen,
     terminalOpen,
     extensionPaneId,
     openBrowser,
     openHistory,
-    openFiles,
     openSchedules,
     openTerminal,
     openExtensionPane,
     closeHistory: () => setHistoryOpen(false),
-    closeFiles: () => setFilesOpen(false),
     closeSchedules: () => setSchedulesOpen(false),
     closeTerminal: () => setTerminalOpen(false),
     closeExtensionPane: () => setExtensionPaneId(null),
