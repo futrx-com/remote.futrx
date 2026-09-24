@@ -208,7 +208,7 @@ go build ./applications/<id>/backend
 | `404 … application has no backend backend` | the application ships no `backend/`, or you are calling the wrong instance |
 | `403 … restricted to administrators` | the application declares `"access": "admin"` |
 | `403` from the backend itself | the backend's own `Request.Caller` check refused you |
-| `backend call timed out` | the route took longer than the application's `timeoutMs`. The backend is still running; the call was abandoned. |
+| `backend call timed out` | the route took longer than the application's `timeoutMs`. The backend process remains running and Remote cancels that call's `Request.CancellationContext`; check that blocking backend work observes it. |
 | `backend panicked: …` | a route panicked. The process survived — check `health` and you will see the same pid. |
 | `remote.backend.available is false` | the application ships no `backend/`, or no install of it is running for this caller |
 | `no running backend with id …` | you passed an `instanceId` that is not in `remote.backend.instances` |

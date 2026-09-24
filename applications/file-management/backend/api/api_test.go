@@ -3,6 +3,7 @@ package api
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	appWorkspace "futrx.local/catalog/applications/file-management/backend/workspace"
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
@@ -216,6 +218,55 @@ func TestFolderDownloadRejectsHeadWithoutBuildingArchive(t *testing.T) {
 	}
 	if _, _, _, streamed := response.ResponseStream(); streamed {
 		t.Fatal("HEAD folder download built an archive stream")
+	}
+}
+
+func TestFolderDownloadStopsWaitingForSpoolOnRequestCancellation(t *testing.T) {
+	backend, root := testBackend(t)
+	spoolDirectory := t.TempDir()
+	spooler, err := appWorkspace.NewSpooler(
+		spoolDirectory,
+		t.TempDir(),
+		1,
+		1<<20,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := spooler.Prepare(context.Background(), func(destination io.Writer) error {
+		_, writeErr := destination.Write([]byte("held"))
+		return writeErr
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Close()
+	backend.mu.Lock()
+	backend.spooler = spooler
+	backend.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	queued := request(root, http.MethodGet, "files/download-folder", nil).WithCancellation(ctx)
+	response := make(chan applications.Response, 1)
+	go func() {
+		result, _ := backend.Handle(queued)
+		response <- result
+	}()
+	// The only spool slot remains held, so the request cannot complete before
+	// cancellation unless its request context was lost.
+	select {
+	case result := <-response:
+		t.Fatalf("queued archive returned before cancellation: %+v", result)
+	case <-time.After(25 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case result := <-response:
+		if result.Status != http.StatusInternalServerError || !strings.Contains(string(result.Body), context.Canceled.Error()) {
+			t.Fatalf("canceled archive response = %d %s", result.Status, result.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("queued archive did not stop after request cancellation")
 	}
 }
 

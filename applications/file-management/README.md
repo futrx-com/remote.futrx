@@ -50,7 +50,9 @@ without allowing escapes, and refuse special files.
   being transferred across all global and project installs on one server, so
   active spool data stays at or below roughly 2 GiB in aggregate.
 - The five-minute backend timeout bounds opening a response and building a ZIP;
-  once its response stream is open, the HTTP request owns the transfer lifetime.
+  disconnecting or timing out also cancels a ZIP waiting for a spool slot or
+  being built. Once its response stream is open, the HTTP request owns the
+  transfer lifetime.
 
 ## Upgrade and cleanup
 

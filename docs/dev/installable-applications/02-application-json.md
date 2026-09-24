@@ -313,7 +313,7 @@ under `backend/api/` remains accepted for older uploaded packages.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `access` | string | `registered` | `registered` — any signed-in user may call the backend; `admin` — administrators only. |
-| `timeoutMs` | int | `15000` | Requests the bound for opening one response; `0` selects the default. Any nonnegative value is accepted for compatibility, but the effective runtime maximum is `300000` (five minutes). A backend that has not produced its buffered response or opened its response stream by then fails that call and keeps running. An open stream follows the HTTP request lifetime instead. Event delivery has a separate 30-second maximum. |
+| `timeoutMs` | int | `15000` | Requests the bound for opening one response; `0` selects the default. Any nonnegative value is accepted for compatibility, but the effective runtime maximum is `300000` (five minutes). A backend that has not produced its buffered response or opened its response stream by then fails that call and keeps running; Remote also cancels that request's `CancellationContext` so cooperative backend work can stop. An open stream follows the HTTP request lifetime instead. Event delivery has a separate 30-second maximum. |
 
 `access` is the only capability control the platform enforces on a backend's
 behalf. Anything finer is the backend's own job, using `Request.Caller` — see

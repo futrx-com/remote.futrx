@@ -26,6 +26,7 @@ type InitReply struct {
 }
 
 type HandleArgs struct {
+	RequestID      uint64
 	Request        applications.Request
 	StreamBrokerID uint32
 	StreamBroker   bool
@@ -35,6 +36,18 @@ type HandleReply struct {
 	Response applications.Response
 	Stream   *StreamInfo
 	Error    string
+}
+
+// CancelArgs identifies one Handle call whose host context has ended. Calls
+// share the primary net/rpc connection, so cancellation must never close that
+// connection or affect another request in the same backend process.
+type CancelArgs struct {
+	RequestID        uint64
+	DeadlineExceeded bool
+}
+
+type CancelReply struct {
+	Acknowledged bool
 }
 
 // StreamInfo describes content that travels over the brokered random-access

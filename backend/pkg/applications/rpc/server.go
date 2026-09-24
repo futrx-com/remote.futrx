@@ -1,17 +1,20 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 	"net/rpc"
+	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 	goplugin "github.com/hashicorp/go-plugin"
 )
 
 type server struct {
-	impl   applications.Backend
-	events *runtimeEvents
-	broker *goplugin.MuxBroker
+	impl     applications.Backend
+	events   *runtimeEvents
+	broker   *goplugin.MuxBroker
+	requests requestCancellations
 }
 
 func (s *server) Describe(_ DescribeArgs, reply *DescribeReply) error {
@@ -37,8 +40,11 @@ func (s *server) Init(args InitArgs, reply *InitReply) error {
 }
 
 func (s *server) Handle(args HandleArgs, reply *HandleReply) error {
+	requestContext, finish := s.requests.begin(args.RequestID)
+	defer finish()
+	request := args.Request.WithCancellation(requestContext)
 	response, err := recovered(func() (applications.Response, error) {
-		return s.impl.Handle(args.Request)
+		return s.impl.Handle(request)
 	})
 	content, size, modTime, streaming := response.ResponseStream()
 	if err != nil {
@@ -73,6 +79,94 @@ func (s *server) Handle(args HandleArgs, reply *HandleReply) error {
 	}
 	reply.Response = response
 	return nil
+}
+
+// Cancel ends one in-flight Handle call. net/rpc reads requests in order but
+// dispatches methods concurrently, so Cancel can run before Handle registers.
+// requestCancellations retains that early signal and applies it at begin.
+func (s *server) Cancel(args CancelArgs, reply *CancelReply) error {
+	cause := error(context.Canceled)
+	if args.DeadlineExceeded {
+		cause = context.DeadlineExceeded
+	}
+	s.requests.cancel(args.RequestID, cause)
+	reply.Acknowledged = true
+	return nil
+}
+
+type requestCancellations struct {
+	mu               sync.Mutex
+	active           map[uint64]context.CancelCauseFunc
+	pending          map[uint64]error
+	completedThrough uint64
+	completed        map[uint64]struct{}
+}
+
+func (r *requestCancellations) begin(id uint64) (context.Context, func()) {
+	if id == 0 {
+		return context.Background(), func() {}
+	}
+	ctx, cancel := context.WithCancelCause(context.Background())
+	r.mu.Lock()
+	if r.active == nil {
+		r.active = make(map[uint64]context.CancelCauseFunc)
+	}
+	r.active[id] = cancel
+	if cause, ok := r.pending[id]; ok {
+		delete(r.pending, id)
+		cancel(cause)
+	}
+	r.mu.Unlock()
+	return ctx, func() { r.finish(id, cancel) }
+}
+
+func (r *requestCancellations) cancel(id uint64, cause error) {
+	if id == 0 {
+		return
+	}
+	r.mu.Lock()
+	if cancel := r.active[id]; cancel != nil {
+		r.mu.Unlock()
+		cancel(cause)
+		return
+	}
+	if id <= r.completedThrough {
+		r.mu.Unlock()
+		return
+	}
+	if _, ok := r.completed[id]; ok {
+		r.mu.Unlock()
+		return
+	}
+	if r.pending == nil {
+		r.pending = make(map[uint64]error)
+	}
+	r.pending[id] = cause
+	r.mu.Unlock()
+}
+
+func (r *requestCancellations) finish(id uint64, cancel context.CancelCauseFunc) {
+	cancel(context.Canceled)
+	r.mu.Lock()
+	delete(r.active, id)
+	delete(r.pending, id)
+	if id == r.completedThrough+1 {
+		r.completedThrough = id
+		for {
+			next := r.completedThrough + 1
+			if _, ok := r.completed[next]; !ok {
+				break
+			}
+			delete(r.completed, next)
+			r.completedThrough = next
+		}
+	} else if id > r.completedThrough {
+		if r.completed == nil {
+			r.completed = make(map[uint64]struct{})
+		}
+		r.completed[id] = struct{}{}
+	}
+	r.mu.Unlock()
 }
 
 func (s *server) BindEvents(args BindEventsArgs, reply *BindEventsReply) error {

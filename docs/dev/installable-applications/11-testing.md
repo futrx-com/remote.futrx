@@ -53,17 +53,18 @@ go build ./... && go vet ./...
 | `service/applications/backend_test.go` | who may call a backend, when, and what lifecycle does to its process |
 | `service/applications/defaults_test.go` | one-time default installation, validation, adoption, retries, failure isolation, and respecting stop/uninstall |
 | `stores/fileapplications/store_test.go` | atomic instance and `defaults.json` persistence, permissions, concurrency, and uninstall independence |
-| `applications/host_test.go` | compiling, launching, one process per instance, restart, timeout, panic isolation, data retention, large seekable responses, and late-stream cleanup |
+| `applications/host_test.go` | compiling, launching, one process per instance, restart, per-request cancellation without process restart, timeout, panic isolation, data retention, large seekable responses, and late-stream cleanup |
 | `applications/events_test.go` | publication authorization, host-stamped identity, payload limits, runtime binding, and delivery |
 | `applications/builder_test.go` | fingerprinting and the generated module files |
 | `applications/catalog_test.go` | an API importing a sibling lifecycle package, with container source excluded, compiled and called end to end |
 | `pkg/applications/mux_test.go` | route matching, method fallbacks, request helpers |
 | `pkg/applications/rpc/events_test.go` | core-owned emitter binding and subscriber delivery across the backend RPC boundary |
+| `pkg/applications/rpc/cancellation_test.go` | early cancellation before `Handle` registers, concurrent-call isolation, completed-call cleanup, and cancellation across the primary RPC connection |
 | `pkg/applications/rpc/stream_test.go` | bounded absolute reads, seek behavior, disconnect cleanup, and blocked-read cancellation across the response-stream RPC boundary |
 | `lifecycle/event_bus_test.go`, `application_event_bridge_test.go` | defensive payload copies and canonical version-1 core event envelopes |
 | `handlers/applications_backend_handler_test.go` | which headers cross the boundary, plus streamed `GET`, `HEAD`, ranges, conditionals, and cancellation |
 | `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, per-instance spool cleanup, and application-wide archive slots |
-| `applications/file-management/backend/api/api_test.go` | trusted chat-context requirement, route JSON, status mapping, dispositions, media policy, and ZIP responses |
+| `applications/file-management/backend/api/api_test.go` | trusted chat-context requirement, route JSON, status mapping, dispositions, media policy, ZIP responses, and cancellation while waiting for an archive spool slot |
 
 `applications` tests compile real backends with the Go toolchain, so they take
 tens of seconds on a cold cache. `-short` skips exactly those:

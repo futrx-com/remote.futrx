@@ -28,6 +28,10 @@ type backendCallResult struct {
 	err      error
 }
 
+type contextBackend interface {
+	HandleContext(context.Context, applications.Request) (applications.Response, error)
+}
+
 func (p *backendProcess) running() bool {
 	return !p.client.Exited()
 }
@@ -36,14 +40,33 @@ func (p *backendProcess) stop() {
 	p.client.Kill()
 }
 
-// call enforces the service's timeout on a transport that has no notion of
-// one. net/rpc calls cannot be cancelled, so a timed-out call is abandoned
-// rather than interrupted; the backend keeps running and the next request
-// finds it healthy.
+// call enforces the service's timeout and, for the current RPC transport,
+// signals that cancellation to only this Handle invocation. Older/custom
+// Backend implementations retain the compatibility path below.
 func (p *backendProcess) call(
 	ctx context.Context,
 	request applications.Request,
 ) (applications.Response, error) {
+	if backend, ok := p.backend.(contextBackend); ok {
+		response, err := backend.HandleContext(ctx, request)
+		if ctx.Err() != nil {
+			// Completion and cancellation can become ready together. If the
+			// transport handed us a stream while the caller's context ended,
+			// ownership cannot escape through the timeout path.
+			if content, _, _, streaming := response.ResponseStream(); streaming && content != nil {
+				_ = content.Close()
+			}
+			if !p.running() {
+				return applications.Response{}, errors.New("backend exited while handling the request")
+			}
+			return applications.Response{}, fmt.Errorf("backend call timed out: %w", ctx.Err())
+		}
+		if err != nil {
+			return applications.Response{}, fmt.Errorf("backend call failed: %w", err)
+		}
+		return response, nil
+	}
+
 	done := make(chan backendCallResult)
 	go func() {
 		response, err := p.backend.Handle(request)

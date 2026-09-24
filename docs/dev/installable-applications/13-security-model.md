@@ -49,6 +49,7 @@ session.
 | A backend cannot write the session | `writeBackendResponse` | `Set-Cookie` is dropped; every response is `nosniff` |
 | A streamed backend response cannot dictate HTTP framing | `writeBackendResponse` + `http.ServeContent` | core drops supplied `Content-Length`, owns range/status handling, and closes content on cancellation |
 | One streamed read has bounded cross-process memory | `pkg/applications/rpc/stream.go` | absolute reads are capped at 256 KiB; the application passes an open reader, never a path for core to reopen |
+| Canceling one backend request does not terminate its process or sibling calls | `pkg/applications/rpc` | core sends a call-scoped cancellation signal; the backend must observe `Request.CancellationContext`, `Done`, or `Err` to stop its own work promptly |
 
 ## Application backends
 
@@ -78,6 +79,15 @@ path validation and file authority in the application that owns the feature.
 Core closes the reader when the HTTP request finishes or is cancelled, and a
 stream that arrives after the backend-call deadline is closed without being
 exposed to the caller.
+
+Before a response is opened, caller cancellation is cooperative. Remote closes
+only that request's cancellation context across the process boundary and keeps
+the shared backend process and its other calls running. Backend code must pass
+`Request.CancellationContext()` into blocking queues, filesystem work, or
+downstream calls when it wants those operations to stop promptly. Ignoring the
+signal does not grant more authority, but it can waste host resources until the
+handler eventually returns; Remote drains that late reply and closes any late
+stream.
 
 ### What admits it
 

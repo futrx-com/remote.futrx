@@ -14,6 +14,8 @@
 // pkg/applications/rpc, which is what a backend's main() calls.
 package applications
 
+import "context"
+
 // APIVersion is the version of this contract. A backend reports the version it
 // was built against in its Descriptor, so the host can refuse a mismatch
 // instead of failing in an unreadable way at the first call.
@@ -137,6 +139,12 @@ type Request struct {
 	Body    []byte              `json:"body,omitempty"`
 	Caller  Caller              `json:"caller"`
 	Context RequestContext      `json:"context,omitempty"`
+
+	// cancellation is attached by the RPC transport after the serializable
+	// request crosses the process boundary. It is deliberately absent from the
+	// wire shape: callers signal cancellation through a separate RPC keyed to
+	// this Handle call.
+	cancellation context.Context
 }
 
 // Response is what the host turns back into an HTTP response. A zero Status is

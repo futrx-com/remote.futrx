@@ -1,9 +1,11 @@
 package rpc
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/rpc"
+	"sync/atomic"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
@@ -12,8 +14,9 @@ import (
 // applications.Backend, so the host calls a backend exactly as a backend author
 // implements one.
 type Client struct {
-	client *rpc.Client
-	broker interface {
+	client        *rpc.Client
+	nextRequestID atomic.Uint64
+	broker        interface {
 		NextId() uint32
 		AcceptAndServe(uint32, any)
 	}
@@ -49,16 +52,50 @@ func (c *Client) Init(instance applications.Instance) error {
 }
 
 func (c *Client) Handle(request applications.Request) (applications.Response, error) {
-	args := HandleArgs{Request: request}
+	return c.HandleContext(context.Background(), request)
+}
+
+// HandleContext forwards one request and signals its cancellation without
+// closing the shared backend connection. The ordinary Backend interface stays
+// source-compatible; Remote's host detects this richer transport method.
+func (c *Client) HandleContext(ctx context.Context, request applications.Request) (applications.Response, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	args := HandleArgs{RequestID: c.nextRequestID.Add(1), Request: request}
 	streamBroker, hasStreamBroker := c.broker.(responseStreamBroker)
 	if hasStreamBroker {
 		args.StreamBrokerID = c.broker.NextId()
 		args.StreamBroker = true
 	}
-	var reply HandleReply
-	if err := c.client.Call("Plugin.Handle", args, &reply); err != nil {
-		return applications.Response{}, fmt.Errorf("handle: %w", err)
+	reply := new(HandleReply)
+	call := c.client.Go("Plugin.Handle", args, reply, make(chan *rpc.Call, 1))
+	select {
+	case completed := <-call.Done:
+		if completed.Error != nil {
+			return applications.Response{}, fmt.Errorf("handle: %w", completed.Error)
+		}
+		return c.handleResponse(args, *reply, streamBroker, hasStreamBroker)
+	case <-ctx.Done():
+		// net/rpc supports concurrent calls on one connection. Go sends the
+		// cancellation request before returning, while the abandoned Handle
+		// reply is drained in the background so a late stream can still be
+		// accepted and closed.
+		c.client.Go("Plugin.Cancel", CancelArgs{
+			RequestID:        args.RequestID,
+			DeadlineExceeded: ctx.Err() == context.DeadlineExceeded,
+		}, new(CancelReply), nil)
+		go c.discardHandleResponse(call, args, reply, streamBroker, hasStreamBroker)
+		return applications.Response{}, fmt.Errorf("handle: %w", ctx.Err())
 	}
+}
+
+func (c *Client) handleResponse(
+	args HandleArgs,
+	reply HandleReply,
+	streamBroker responseStreamBroker,
+	hasStreamBroker bool,
+) (applications.Response, error) {
 	if reply.Error != "" {
 		return applications.Response{}, fmt.Errorf("handle: %s", reply.Error)
 	}
@@ -76,6 +113,26 @@ func (c *Client) Handle(request applications.Request) (applications.Response, er
 		return response, nil
 	}
 	return reply.Response, nil
+}
+
+func (c *Client) discardHandleResponse(
+	call *rpc.Call,
+	args HandleArgs,
+	reply *HandleReply,
+	streamBroker responseStreamBroker,
+	hasStreamBroker bool,
+) {
+	completed := <-call.Done
+	if completed.Error != nil {
+		return
+	}
+	response, err := c.handleResponse(args, *reply, streamBroker, hasStreamBroker)
+	if err != nil {
+		return
+	}
+	if content, _, _, ok := response.ResponseStream(); ok && content != nil {
+		_ = content.Close()
+	}
 }
 
 // BindEvents opens the core-owned callback connection used by Runtime.Events.

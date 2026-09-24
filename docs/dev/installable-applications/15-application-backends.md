@@ -297,6 +297,7 @@ The complete namespace, routing, lifecycle, queue, and delivery contract is in
 | `Method`, `Path`, `Query`, `Headers`, `Body` | the browser's call. `Path` is relative to the instance's `/backend/` prefix and has no leading slash. |
 | `Caller` | `{ Email, IsAdmin }`, resolved by the server |
 | `Context.Chat` | on a chat-scoped route only: `{ ID, ProjectID, WorkspaceRoot }`, resolved after core authorizes the chat |
+| `CancellationContext()`, `Done()`, `Err()` | the call lifetime resolved by Remote; it ends when the browser disconnects or the backend setup deadline expires |
 
 **`Caller` is stamped by the server, not read from the request.** A browser
 cannot forge it, which is what makes it usable for authorization. The transport
@@ -314,6 +315,15 @@ browser-facing chat `cwd` as authority.
 
 Bodies are capped at 1 MiB. Larger input is rejected with `413` before the
 backend is called, never silently truncated.
+
+Cancellation is per call and cooperative. Pass
+`request.CancellationContext()` to blocking work, or select on
+`request.Done()` and inspect `request.Err()`. Remote signals
+`context.Canceled` when the HTTP caller goes away and
+`context.DeadlineExceeded` when `timeoutMs` expires. The backend process and
+other concurrent calls remain alive. If a handler ignores the signal, its
+caller still returns; the transport drains the late reply and closes a stream
+returned after cancellation.
 
 ### `Response`
 
@@ -574,9 +584,10 @@ meant to be. Anything that must survive belongs in `DataDir`.
 opening a streamed response. Any nonnegative manifest value is accepted for
 compatibility, while the effective runtime timeout is capped at 300000. Once a
 stream is open, transfer time follows the HTTP request rather than this setup
-deadline. A timed-out call is abandoned rather than interrupted — net/rpc has
-no per-call cancellation — so the backend may finish its work unobserved; if it
-finishes by returning a stream, Remote immediately closes that late stream.
+deadline. Before that point, a timeout signals the request's cancellation
+context without killing the shared process. A cooperative handler stops; an
+ignoring handler may finish unobserved, and Remote immediately closes any
+stream it returns late.
 
 ## Combining capabilities
 
@@ -596,7 +607,10 @@ protocol to serve, and net/rpc keeps a backend's dependencies to this SDK and
 the standard library — no protobuf, no code generation, no checked-in
 `.pb.go`.
 
-Buffered calls use the primary net/rpc connection. Each streamed response uses
+Buffered calls and call-scoped cancellation use the primary net/rpc connection.
+The current go-plugin wire handshake is protocol 5; a unique request ID lets a
+concurrent `Cancel` RPC close only the matching backend context, including when
+that signal races ahead of `Handle` registration. Each streamed response uses
 go-plugin's multiplex broker for a separate bounded random-access reader. This
 keeps existing `Backend`, `Request.Body`, `Response.Body`, and browser URLs
 compatible while allowing the HTTP server to seek for ranges without holding

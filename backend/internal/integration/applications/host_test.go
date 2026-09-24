@@ -116,6 +116,15 @@ func (b *backend) Handle(request applications.Request) (applications.Response, e
 			time.Time{},
 			nil,
 		), nil
+	case "cancel":
+		if err := os.WriteFile(filepath.Join(b.instance.DataDir, "cancel-started"), []byte("started"), 0o600); err != nil {
+			return applications.Response{}, err
+		}
+		<-request.Done()
+		if err := os.WriteFile(filepath.Join(b.instance.DataDir, "cancel-finished"), []byte(request.Err().Error()), 0o600); err != nil {
+			return applications.Response{}, err
+		}
+		return applications.Text(http.StatusRequestTimeout, request.Err().Error()), nil
 	case "slow":
 		select {}
 	}
@@ -419,6 +428,54 @@ func TestLateStreamIsClosedAfterCallerTimeout(t *testing.T) {
 			t.Fatal("stream returned after timeout was not closed")
 		}
 		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func TestCallerCancellationStopsOnlyThatBackendHandle(t *testing.T) {
+	host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
+	spec := testInstance("test-application", "instance-cancel")
+	before := string(call(t, host, spec, applications.Request{Method: "GET", Path: "pid"}).Body)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	called := make(chan error, 1)
+	go func() {
+		_, err := host.Call(ctx, spec, applications.Request{Method: "GET", Path: "cancel"})
+		called <- err
+	}()
+	waitForFile := func(name string) string {
+		t.Helper()
+		path := filepath.Join(host.dataDir(spec.ID), name)
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			body, err := os.ReadFile(path)
+			if err == nil {
+				return string(body)
+			}
+			if !os.IsNotExist(err) {
+				t.Fatalf("read %s: %v", name, err)
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s", name)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	waitForFile("cancel-started")
+	cancel()
+	select {
+	case err := <-called:
+		if err == nil || !strings.Contains(err.Error(), "context canceled") {
+			t.Fatalf("canceled call error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("host call did not return after cancellation")
+	}
+	if got := waitForFile("cancel-finished"); got != context.Canceled.Error() {
+		t.Fatalf("backend observed cancellation %q", got)
+	}
+	after := string(call(t, host, spec, applications.Request{Method: "GET", Path: "pid"}).Body)
+	if before != after {
+		t.Fatalf("canceling one Handle restarted or changed the backend:\nbefore=%s\nafter=%s", before, after)
 	}
 }
 

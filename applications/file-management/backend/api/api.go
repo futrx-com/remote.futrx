@@ -148,10 +148,10 @@ func (b *api) downloadFolder(request applications.Request) applications.Response
 		return applications.Errorf(http.StatusServiceUnavailable, "archive spool is not initialized")
 	}
 
-	// The request does not carry cancellation while the archive is being built,
-	// so this timeout bounds the setup phase. Once the stream is returned, core
-	// closes it when the client disconnects.
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// ZIP construction and admission to the bounded spool queue both follow the
+	// HTTP request lifetime. The local cap remains an application-level guard
+	// when a caller stays connected indefinitely.
+	ctx, cancel := context.WithTimeout(request.CancellationContext(), 5*time.Minute)
 	defer cancel()
 	spooled, err := spooler.Prepare(ctx, func(destination io.Writer) error {
 		return b.files.WriteArchive(ctx, archive, destination)
