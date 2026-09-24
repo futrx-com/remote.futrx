@@ -181,7 +181,9 @@ and why.
 container infrastructure and declares only a browser extension plus a host
 backend. Its pane uses core-authorized chat context to browse the workspace;
 its [README](file-management/README.md) documents behavior, security limits,
-verification, and cleanup.
+verification, and cleanup. It is the first entry in core's one-time default
+installation list, so upgrades preserve the Files feature unless an
+administrator later stops or uninstalls it.
 
 The larger developer fixtures described in [Fixtures](../docs/dev/installable-applications/10-fixtures.md) —
 `ui-playground`, `ui-sandbox`, `backend-playground` — are not in this

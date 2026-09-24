@@ -7,9 +7,11 @@ ZIP archives.
 
 ## Install and use
 
-Install the application globally to make it available in every chat, or install
-it in a project to limit it to that project's chats. Start the install, open a
-chat, and select **Files** in the workspace header. A project install is preferred
+Remote installs and starts File Management globally once when a server first
+upgrades to a release that includes it. An administrator can stop or uninstall
+that copy without a later restart restoring it. The application may also be
+installed in a project to limit a separate copy to that project's chats. Open a
+chat and select **Files** in the workspace header. A project install is preferred
 on that project's chats; otherwise the running global install is used.
 
 The pane loads one directory level at a time. Search begins after two characters.

@@ -291,6 +291,9 @@ add its ID to `builtInDefaultApplicationIDs` in
 `backend/internal/service/applications/defaults.go`. This is deliberately not
 an `application.json` field: packages cannot nominate themselves.
 
+The current production list contains `file-management`, which preserves the
+workspace Files feature through its migration from core into an application.
+
 Before the HTTP server is constructed, startup reconciliation validates that
 every listed ID comes from the embedded catalog and supports global scope. A
 new ID is installed and started globally with its declared/default-generated

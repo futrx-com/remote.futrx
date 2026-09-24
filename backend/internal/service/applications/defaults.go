@@ -8,10 +8,9 @@ import (
 
 // builtInDefaultApplicationIDs is the product policy for applications a
 // server installs globally on the first startup that knows about them. Keep
-// this list to built-in catalog IDs only. It is intentionally empty until the
-// file-management application lands.
+// this list to built-in catalog IDs only.
 var builtInDefaultApplicationIDs = []string{
-	// "file-management",
+	"file-management",
 }
 
 // DefaultApplicationIDs returns a copy of the product's default-application

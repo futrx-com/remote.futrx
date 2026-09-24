@@ -39,3 +39,32 @@ func TestFileManagementApplicationContract(t *testing.T) {
 		t.Fatal("file-management backend source is missing")
 	}
 }
+
+func TestProductionDefaultApplicationsAreInstallableWithoutInput(t *testing.T) {
+	registry, err := NewRegistry(EmbeddedCatalog(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := svc.DefaultApplicationIDs()
+	if len(ids) == 0 {
+		t.Fatal("production default application policy is empty")
+	}
+	for _, id := range ids {
+		application, ok := registry.Get(id)
+		if !ok {
+			t.Errorf("default application %q is missing from the built-in catalog", id)
+			continue
+		}
+		if application.Source != svc.SourceBuiltin {
+			t.Errorf("default application %q source = %q, want built-in", id, application.Source)
+		}
+		if !application.SupportsScope(svc.ScopeGlobal) {
+			t.Errorf("default application %q does not support global scope", id)
+		}
+		for _, input := range application.Env {
+			if input.Required && input.Default == "" && input.Generate == "" {
+				t.Errorf("default application %q requires interactive input %q", id, input.Key)
+			}
+		}
+	}
+}

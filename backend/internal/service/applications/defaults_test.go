@@ -85,9 +85,14 @@ func defaultService(
 	)
 }
 
-func TestDefaultApplicationIDsAreEmptyUntilFileManagementLands(t *testing.T) {
-	if ids := DefaultApplicationIDs(); len(ids) != 0 {
-		t.Fatalf("production default applications = %v, want none", ids)
+func TestDefaultApplicationIDs(t *testing.T) {
+	if ids := DefaultApplicationIDs(); !slices.Equal(ids, []string{"file-management"}) {
+		t.Fatalf("production default applications = %v, want file-management", ids)
+	}
+	ids := DefaultApplicationIDs()
+	ids[0] = "mutated"
+	if got := DefaultApplicationIDs(); !slices.Equal(got, []string{"file-management"}) {
+		t.Fatalf("caller mutated default policy: %v", got)
 	}
 }
 
@@ -380,7 +385,7 @@ func TestReconcileDefaultApplicationsDeduplicatesPolicyList(t *testing.T) {
 func TestReconcileDefaultApplicationsWithEmptyPolicyDoesNotReadStore(t *testing.T) {
 	defaults := &fakeDefaultInstallationStore{listErr: errors.New("must not be read")}
 	service := New(applicationMapRegistry{}, &fakeStore{}, nil, nil, nil,
-		WithDefaultApplications(defaults, DefaultApplicationIDs()...))
+		WithDefaultApplications(defaults))
 
 	if err := service.ReconcileDefaultApplications(context.Background()); err != nil {
 		t.Fatalf("empty policy reconcile: %v", err)
