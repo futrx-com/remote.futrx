@@ -86,10 +86,11 @@ type Dependencies struct {
 
 	// Installable-application capabilities. When AppStore and
 	// AppRegistry are set the Applications service is enabled.
-	AppStore     serviceapplications.Store
-	AppRegistry  serviceapplications.Registry
-	AppInstaller serviceapplications.Installer
-	AppPorts     serviceapplications.PortAllocator
+	AppStore        serviceapplications.Store
+	AppDefaultStore serviceapplications.DefaultInstallationStore
+	AppRegistry     serviceapplications.Registry
+	AppInstaller    serviceapplications.Installer
+	AppPorts        serviceapplications.PortAllocator
 	// AppBackends runs the application backends applications ship in their backend/ directory.
 	// Leaving it nil keeps every other application capability working and
 	// reports backend calls as unavailable.
@@ -338,6 +339,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithPackageCatalog(deps.AppPackages),
 			serviceapplications.WithLifecyclePublisher(deps.ApplicationLifecycle),
 			serviceapplications.WithEventSource(ctx, deps.ApplicationEvents),
+			serviceapplications.WithDefaultApplications(
+				deps.AppDefaultStore,
+				serviceapplications.DefaultApplicationIDs()...,
+			),
 		)
 	}
 
@@ -424,10 +429,18 @@ func (s Services) AuthEnabled() bool {
 }
 
 func (s Services) Reconcile(ctx context.Context) error {
-	if s.Projects == nil {
-		return nil
+	var errs []error
+	if s.Applications != nil {
+		if err := s.Applications.ReconcileDefaultApplications(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("applications: %w", err))
+		}
 	}
-	return s.Projects.Reconcile(ctx)
+	if s.Projects != nil {
+		if err := s.Projects.Reconcile(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("projects: %w", err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 type scheduledPromptExecutor struct {

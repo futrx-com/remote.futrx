@@ -67,7 +67,9 @@ an administrator can also add a validated application ZIP at runtime. See
 
 Adding an application requires **no code changes**. `NewRegistry()` walks the
 directory at startup, validates every entry, and the new app appears in the
-Applications tab.
+Applications tab. Making a built-in application a product default is a
+separate, explicit core policy described below; it is never declared by the
+application package.
 
 ## One application, composable capabilities
 
@@ -281,6 +283,31 @@ sequenceDiagram
     API-->>UI: 200 — it appears under Installed
 ```
 
+### Default-installed built-in applications
+
+Most applications are installed only by an administrator or project member.
+For a product feature that must arrive enabled with a Remote release, core may
+add its ID to `builtInDefaultApplicationIDs` in
+`backend/internal/service/applications/defaults.go`. This is deliberately not
+an `application.json` field: packages cannot nominate themselves.
+
+Before the HTTP server is constructed, startup reconciliation validates that
+every listed ID comes from the embedded catalog and supports global scope. A
+new ID is installed and started globally with its declared/default-generated
+environment. On success, Remote adds the ID to
+`<dataDir>/applications/defaults.json`. Existing running or stopped global
+instances are adopted without changing their state.
+
+A default must therefore install without interactive input: every required
+environment field needs a manifest default or generator. Otherwise its seed
+fails, stays unrecorded, and is retried on the next startup.
+
+The durable record is history, not desired state. Once an ID is recorded,
+startup never recreates a missing instance or starts a stopped one. Therefore
+an administrator's later uninstall or stop remains effective. Adding another
+ID in a future release installs only that new default; removing an ID from the
+core list does not uninstall it or erase its history.
+
 ## How an extension reaches the screen
 
 ```
@@ -317,8 +344,9 @@ An extension has to pass all three before anything of it appears:
 
 1. **It must be in the catalog.** Built-in applications are embedded in the
    server binary; uploaded applications join the same registry from disk.
-2. **The user must have installed it**, and the instance must be *running*.
-   Being in the catalog puts nothing on anyone's screen. See
+2. **It must be installed**, explicitly by a user or by the one-time built-in
+   default policy, and the instance must be *running*. Catalog membership alone
+   puts nothing on anyone's screen. See
    [12 — HTTP API](12-http-api.md) for `GET /api/applications/ui`.
 3. **The surface must be in scope.** A globally installed extension renders
    everywhere; one installed in a project renders only inside that project.

@@ -51,6 +51,8 @@ go build ./... && go vet ./...
 | `installer_test.go` | which `lxc` commands each scope issues — and, crucially, which it must **not** |
 | `service/applications/ui_extensions_test.go` | which extensions a caller may load, and their install scope |
 | `service/applications/backend_test.go` | who may call a backend, when, and what lifecycle does to its process |
+| `service/applications/defaults_test.go` | one-time default installation, validation, adoption, retries, failure isolation, and respecting stop/uninstall |
+| `stores/fileapplications/store_test.go` | atomic instance and `defaults.json` persistence, permissions, concurrency, and uninstall independence |
 | `applications/host_test.go` | compiling, launching, one process per instance, restart, timeout, panic isolation, data retention |
 | `applications/events_test.go` | publication authorization, host-stamped identity, payload limits, runtime binding, and delivery |
 | `applications/builder_test.go` | fingerprinting and the generated module files |

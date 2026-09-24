@@ -124,6 +124,16 @@ and nothing else. Start with
 No other code changes are required — the app appears in the catalog
 automatically for both scopes.
 
+Catalog membership does not normally install an application. A small,
+core-owned list in
+`backend/internal/service/applications/defaults.go` is the exception for
+product features that must be present on existing servers after an upgrade.
+Only built-in applications that support global scope may be listed. Remote
+installs each newly listed ID once and records that attempt in
+`<dataDir>/applications/defaults.json`; an administrator can then stop or
+uninstall it without the next restart undoing that choice. Do not add optional
+catalog applications to that list.
+
 ## Adding an app without a release
 
 An administrator can upload the same directory as a `.zip` from **Settings →
@@ -134,9 +144,10 @@ directory. See [Uploaded packages](../docs/dev/installable-applications/16-uploa
 
 ## Three things that surprise people
 
-**Being in the catalog grants nothing.** An extension loads only after a user
-installs the application — globally, or in a project they belong to — and only while
-that instance is running. Stopping an app turns its UI off. See
+**Being in the catalog normally grants nothing.** An extension loads only after
+the application is installed — explicitly by a user, or once by the narrow
+core-owned default list above — and only while that instance is running.
+Stopping an app turns its UI off. See
 [Scoping and visibility](../docs/dev/installable-applications/08-scoping-and-visibility.md).
 
 **Extension code is frontend code.** It runs on the main origin with the SPA's

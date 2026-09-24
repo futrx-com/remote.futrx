@@ -21,6 +21,7 @@ var (
 	ErrAlreadyInstalled   = errors.New("applications: this application is already installed in this scope")
 	ErrNotSupported       = errors.New("applications: capability not supported")
 	ErrInvalidState       = errors.New("applications: invalid lifecycle state")
+	ErrInvalidDefault     = errors.New("applications: invalid default application")
 
 	// Uploaded-package errors.
 	ErrPackagesUnavailable = errors.New("applications: uploaded packages are not available on this server")
@@ -43,6 +44,8 @@ type Clock func() int64
 type Service struct {
 	registry      Registry
 	store         Store
+	defaultStore  DefaultInstallationStore
+	defaultIDs    []string
 	installer     Installer
 	projects      ProjectContainers
 	ports         PortAllocator
@@ -60,6 +63,19 @@ type Service struct {
 // optional because a server without a Go toolchain, or a build that ships no
 // backend applications, must still install and run everything else.
 type Option func(*Service)
+
+// WithDefaultApplications enables startup reconciliation for the named
+// built-in applications. ids are copied so the process-wide policy cannot be
+// changed through a caller-owned slice after the service is constructed.
+func WithDefaultApplications(store DefaultInstallationStore, ids ...string) Option {
+	return func(s *Service) {
+		if len(ids) == 0 {
+			return
+		}
+		s.defaultStore = store
+		s.defaultIDs = append([]string(nil), ids...)
+	}
+}
 
 // WithBackendHost enables applications that ship a host backend. Without it,
 // their catalog entries still load and every backend call reports the feature

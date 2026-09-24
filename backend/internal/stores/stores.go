@@ -56,6 +56,14 @@ type PushStore interface {
 	VAPIDKeys(generate func() (private string, public string, err error)) (string, string, error)
 }
 
+// ApplicationStore retains the installed-instance and default-installation
+// records exposed by the same file-backed store. Services receive the narrower
+// capabilities separately at composition time.
+type ApplicationStore interface {
+	serviceapplications.Store
+	serviceapplications.DefaultInstallationStore
+}
+
 type Stores struct {
 	Chats           ChatStore
 	chatIndexWarmer recentChatIndexWarmer
@@ -68,7 +76,7 @@ type Stores struct {
 	UserSettings    serviceusersettings.Repository
 	TwoFactor       serviceauth.TwoFactorStore
 	SessionRegistry serviceauth.SessionRegistryStore
-	Applications    serviceapplications.Store
+	Applications    ApplicationStore
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore

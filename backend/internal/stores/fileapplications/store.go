@@ -3,6 +3,7 @@
 // Layout under <dataDir>/applications:
 //
 //	global.json            map[instanceID]Instance   (global-scope apps)
+//	defaults.json          application IDs seeded by default policy
 //	projects/<id>.json     map[instanceID]Instance   (that project's apps)
 //
 // Records may contain generated secrets (DB passwords), so every file is mode
@@ -23,7 +24,14 @@ import (
 	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 )
 
-var _ svc.Store = (*Store)(nil)
+var (
+	_ svc.Store                    = (*Store)(nil)
+	_ svc.DefaultInstallationStore = (*Store)(nil)
+)
+
+type defaultInstallations struct {
+	Installed []string `json:"installed"`
+}
 
 // Store persists application instances as JSON files.
 type Store struct {
@@ -57,6 +65,8 @@ func New(dataDir string) (*Store, error) {
 }
 
 func (s *Store) globalPath() string { return filepath.Join(s.root, "global.json") }
+
+func (s *Store) defaultsPath() string { return filepath.Join(s.root, "defaults.json") }
 
 func (s *Store) projectPath(projectID string) string {
 	return filepath.Join(s.root, "projects", projectID+".json")
@@ -135,6 +145,10 @@ func loadFile(path string) (map[string]svc.Instance, error) {
 }
 
 func saveFile(path string, m map[string]svc.Instance) error {
+	return saveJSON(path, m)
+}
+
+func saveJSON(path string, value any) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, ".apps-*.tmp")
 	if err != nil {
@@ -147,7 +161,7 @@ func saveFile(path string, m map[string]svc.Instance) error {
 	}
 	enc := json.NewEncoder(tmp)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(m); err != nil {
+	if err := enc.Encode(value); err != nil {
 		tmp.Close()
 		return err
 	}
@@ -155,6 +169,39 @@ func saveFile(path string, m map[string]svc.Instance) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+func loadDefaultInstallations(path string) (defaultInstallations, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return defaultInstallations{Installed: []string{}}, nil
+		}
+		return defaultInstallations{}, err
+	}
+	if len(raw) == 0 {
+		return defaultInstallations{Installed: []string{}}, nil
+	}
+	var defaults defaultInstallations
+	if err := json.Unmarshal(raw, &defaults); err != nil {
+		return defaultInstallations{}, fmt.Errorf("unmarshal %s: %w", path, err)
+	}
+	defaults.Installed = normalizeApplicationIDs(defaults.Installed)
+	return defaults, nil
+}
+
+func normalizeApplicationIDs(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	normalized := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		normalized = append(normalized, id)
+	}
+	sort.Strings(normalized)
+	return normalized
 }
 
 func sorted(m map[string]svc.Instance) []svc.Instance {
@@ -178,6 +225,44 @@ func (s *Store) ListGlobal(_ context.Context) ([]svc.Instance, error) {
 	}
 	s.remember(path, m)
 	return sorted(m), nil
+}
+
+// ListDefaultInstallations returns application IDs already considered by the
+// built-in default policy. The record is independent of live instances so an
+// uninstall does not make a default eligible for automatic installation again.
+func (s *Store) ListDefaultInstallations(_ context.Context) ([]string, error) {
+	path := s.defaultsPath()
+	mu := s.lock(path)
+	mu.Lock()
+	defer mu.Unlock()
+	defaults, err := loadDefaultInstallations(path)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), defaults.Installed...), nil
+}
+
+// MarkDefaultInstallation durably records one successfully installed or
+// adopted default application. Repeated marks are idempotent.
+func (s *Store) MarkDefaultInstallation(_ context.Context, applicationID string) error {
+	if applicationID == "" {
+		return errors.New("default application id is empty")
+	}
+	path := s.defaultsPath()
+	mu := s.lock(path)
+	mu.Lock()
+	defer mu.Unlock()
+	defaults, err := loadDefaultInstallations(path)
+	if err != nil {
+		return err
+	}
+	for _, id := range defaults.Installed {
+		if id == applicationID {
+			return nil
+		}
+	}
+	defaults.Installed = normalizeApplicationIDs(append(defaults.Installed, applicationID))
+	return saveJSON(path, defaults)
 }
 
 // ListProject returns all instances scoped to a project.

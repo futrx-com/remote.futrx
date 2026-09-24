@@ -112,6 +112,21 @@ own — `infra/update.sh` owns that, and recycles workspaces deliberately rather
 than re-running install scripts across every container at boot. A stopped
 instance still upgrades on its next start.
 
+### Defaults introduced by a release
+
+A release may add a built-in, globally installable application to Remote's
+core-owned default list. Startup installs and starts that ID once, then records
+it in `<dataDir>/applications/defaults.json`. Servers that already have a
+running or stopped global copy record it without changing its state.
+
+This record intentionally survives instance deletion. If an administrator
+uninstalls the default, later restarts and releases do not recreate it. A new
+ID added to the list is installed on upgrade; deleting an ID from the list does
+not uninstall existing copies, and re-adding a previously recorded ID does not
+resurrect it. Failed installations remain unrecorded and are retried on a later
+startup; failures do not prevent other newly introduced defaults from being
+reconciled.
+
 ## Related
 
 - [16 — Uploaded packages](16-uploaded-packages.md) — how a package gets into

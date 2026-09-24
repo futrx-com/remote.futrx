@@ -191,6 +191,7 @@ func main() {
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
 		AppStore:             storeSet.Applications,
+		AppDefaultStore:      storeSet.Applications,
 		AppRegistry:          appRegistry,
 		AppInstaller:         containerStack.AppInstaller,
 		AppPorts:             containerStack.AppPorts,

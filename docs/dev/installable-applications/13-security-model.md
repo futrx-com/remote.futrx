@@ -31,6 +31,7 @@ session.
 |---|---|---|
 | Only validated catalog applications exist | embedded catalog or admin-only package upload through `Registry` | No loose runtime source directory or unvalidated package path |
 | A malformed application cannot enter the catalog | `registry.go:validate`, `registry_ui.go:loadApplicationUI` | Fails built-in startup/tests or the package upload |
+| Only trusted product code selects automatic installs | `builtInDefaultApplicationIDs` + `Service.ReconcileDefaultApplications` | Each ID must be built in and globally installable; packages cannot declare themselves a default |
 | Assets stay inside one application's `ui/` | `registry.go:cleanUIPath` | The only path out of the package |
 | Only signed-in users fetch assets | `applications_handler.go` | Same gate as the catalog |
 | Responses are not sniffable | `Content-Type` from extension + `nosniff` | Types are pinned, never guessed |
@@ -235,6 +236,10 @@ from *the build* to *the administrator*, and nowhere further:
 - **No reserved id may be taken.** A package cannot claim the id of a built-in
   application, so it cannot redefine what an application the operator already trusts
   installs.
+- **No package can become a default.** Automatic installation is a core-owned
+  list and reconciliation checks catalog provenance again before acting. The
+  successful one-time marker is kept outside instance records, so uninstalling
+  a default remains an administrator choice rather than a temporary state.
 - **The extractor is the one new attack surface.** It refuses escaping paths,
   symlinks, special files, oversized members and compression bombs, and writes
   nothing executable. Everything lands under `$DATA_DIR/app-packages/applications/<id>/`.

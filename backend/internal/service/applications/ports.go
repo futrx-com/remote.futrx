@@ -95,6 +95,15 @@ type Store interface {
 	Delete(ctx context.Context, id string) error
 }
 
+// DefaultInstallationStore remembers which built-in applications have already
+// been installed by the server's default policy. It is deliberately separate
+// from Store: uninstalling an instance must not erase this record, otherwise a
+// deliberately removed default would return on the next process start.
+type DefaultInstallationStore interface {
+	ListDefaultInstallations(ctx context.Context) ([]string, error)
+	MarkDefaultInstallation(ctx context.Context, applicationID string) error
+}
+
 // ProjectContainers resolves and readies a project's container. Implemented by
 // the project service so applications never depends on it directly.
 type ProjectContainers interface {
