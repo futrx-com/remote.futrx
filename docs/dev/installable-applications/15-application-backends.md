@@ -378,6 +378,13 @@ prefix beats a shorter one. Unmatched paths get `404`, and a matched path with
 the wrong method gets `405`. Inside a prefix handler, `request.Tail("kv/")`
 gives you the rest.
 
+For `HEAD`, the router first honors an explicit `HEAD` or `"*"` method route.
+If neither matches, it dispatches to the matching `GET` route while preserving
+`request.Method == "HEAD"`. A streamed `router.GET(...)` endpoint therefore
+gets normal HTTP `HEAD` behavior without a duplicate registration. A backend
+that switches on `Request` itself instead of using `Router` must handle `HEAD`
+explicitly.
+
 ## Reaching a backend from the browser
 
 `remote.backend` is described in

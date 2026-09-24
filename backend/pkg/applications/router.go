@@ -126,6 +126,22 @@ func (router *Router) Serve(request Request) Response {
 			best, bestScore = route, score
 		}
 	}
+	// HEAD has the same representation metadata as GET. Give an explicitly
+	// registered HEAD route (or an any-method route) the first chance above,
+	// then reuse the most-specific GET route when neither exists. Keep the
+	// original method on request so a handler can still avoid GET-only work.
+	if best == nil && method == http.MethodHead {
+		for i := range router.routes {
+			route := &router.routes[i]
+			if route.method != http.MethodGet {
+				continue
+			}
+			score, matches := route.match(path)
+			if matches && score > bestScore {
+				best, bestScore = route, score
+			}
+		}
+	}
 	switch {
 	case best != nil:
 		return best.handler(request)

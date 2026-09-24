@@ -47,6 +47,34 @@ func TestRouterRouting(t *testing.T) {
 	}
 }
 
+func TestRouterHeadFallsBackToGetAndPreservesTheRequestMethod(t *testing.T) {
+	router := NewRouter()
+	router.GET("download", "", func(request Request) Response {
+		return Text(200, "get handler saw "+request.Method)
+	})
+
+	response := router.Serve(Request{Method: http.MethodHead, Path: "download"})
+	if response.Status != http.StatusOK {
+		t.Fatalf("HEAD status = %d, want 200", response.Status)
+	}
+	if got := string(response.Body); got != "get handler saw HEAD" {
+		t.Fatalf("HEAD body = %q", got)
+	}
+}
+
+func TestRouterExplicitHeadPrecedesGetFallback(t *testing.T) {
+	router := NewRouter()
+	router.GET("download", "", func(Request) Response { return Text(200, "get") })
+	router.Handle(http.MethodHead, "download", "", func(Request) Response {
+		return Text(200, "head")
+	})
+
+	response := router.Serve(Request{Method: http.MethodHead, Path: "download"})
+	if got := string(response.Body); got != "head" {
+		t.Fatalf("HEAD body = %q, want explicit HEAD handler", got)
+	}
+}
+
 // An exact route and a prefix route can both match; the exact one has to win,
 // or a backend could never special-case one key of a wildcard collection.
 func TestRouterPrefersExactOverPrefixAndLongerPrefix(t *testing.T) {

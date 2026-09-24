@@ -243,6 +243,10 @@ things are **not** forwarded: `Cookie` and `Authorization`. The caller is
 supplied separately, resolved from the session, so a backend can authorize a
 caller without being able to act as them.
 
+`HEAD` is forwarded as `HEAD`. The SDK `Router` automatically falls back to a
+matching `GET` handler when no explicit `HEAD` or any-method handler matches;
+hand-written dispatch must make the same choice itself.
+
 Request bodies are capped at 1 MiB.
 
 The backend can answer with a buffered `{ Status, Headers, Body }` response or
