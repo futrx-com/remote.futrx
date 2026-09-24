@@ -247,7 +247,9 @@ caller without being able to act as them.
 matching `GET` handler when no explicit `HEAD` or any-method handler matches;
 hand-written dispatch must make the same choice itself.
 
-Request bodies are capped at 1 MiB.
+Request bodies are capped at 1 MiB. A larger body is rejected with `413`
+before the backend is called; it is never forwarded as a truncated 1 MiB
+prefix.
 
 The backend can answer with a buffered `{ Status, Headers, Body }` response or
 seekable content created by `applications.Stream`. Buffered answers become the
@@ -354,6 +356,7 @@ has authorized:
 | `404` | unknown instance, wrong scope for the route, asset not found or out of bounds, the application ships no backend |
 | `405` | wrong method |
 | `409` | this application is already installed in this scope; a backend call while the app is stopped |
+| `413` | a backend request body exceeds 1 MiB |
 | `500` | anything else, including install-script failure, a backend that failed to compile, and a call that timed out |
 | `503` | applications unavailable (no container runtime configured), or no backend host |
 

@@ -115,9 +115,8 @@ func (h *ApplicationsHandler) serveBackendAs(
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxBackendRequestBody))
-	if err != nil {
-		httptransport.SendErr(w, http.StatusBadRequest, "unreadable request body")
+	body, ok := readBackendRequestBody(w, r)
+	if !ok {
 		return
 	}
 	request := applications.Request{
@@ -127,7 +126,10 @@ func (h *ApplicationsHandler) serveBackendAs(
 		Headers: forwardableHeaders(r.Header),
 		Body:    body,
 	}
-	var response applications.Response
+	var (
+		response applications.Response
+		err      error
+	)
 	if chat == nil {
 		response, err = h.apps.CallBackend(r.Context(), id, request, caller)
 	} else {
@@ -138,6 +140,22 @@ func (h *ApplicationsHandler) serveBackendAs(
 		return
 	}
 	writeBackendResponse(w, r, response)
+}
+
+// readBackendRequestBody reads one byte beyond the public limit so oversized
+// input is rejected instead of silently forwarding a valid-looking truncated
+// prefix to the application.
+func readBackendRequestBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBackendRequestBody+1))
+	if err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, "unreadable request body")
+		return nil, false
+	}
+	if len(body) > maxBackendRequestBody {
+		httptransport.SendErr(w, http.StatusRequestEntityTooLarge, "request body exceeds 1 MiB limit")
+		return nil, false
+	}
+	return body, true
 }
 
 // backendCaller resolves the signed-in user a backend will see. A backend is

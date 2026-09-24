@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +36,40 @@ func TestIsBackendPath(t *testing.T) {
 		if ok != tc.want || path != tc.path {
 			t.Errorf("isBackendPath(%q) = %q, %v; want %q, %v", tc.action, path, ok, tc.path, tc.want)
 		}
+	}
+}
+
+func TestReadBackendRequestBodyAcceptsTheExactLimit(t *testing.T) {
+	want := bytes.Repeat([]byte("x"), maxBackendRequestBody)
+	request := httptest.NewRequest(http.MethodPost, "/backend/upload", bytes.NewReader(want))
+	response := httptest.NewRecorder()
+
+	body, ok := readBackendRequestBody(response, request)
+	if !ok {
+		t.Fatalf("exact-limit body was rejected with status %d: %s", response.Code, response.Body.String())
+	}
+	if !bytes.Equal(body, want) {
+		t.Fatalf("body length = %d, want %d", len(body), len(want))
+	}
+}
+
+func TestReadBackendRequestBodyRejectsRatherThanTruncatesOversizeInput(t *testing.T) {
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/backend/upload",
+		bytes.NewReader(bytes.Repeat([]byte("x"), maxBackendRequestBody+1)),
+	)
+	response := httptest.NewRecorder()
+
+	body, ok := readBackendRequestBody(response, request)
+	if ok || body != nil {
+		t.Fatalf("oversized body was forwarded with %d bytes", len(body))
+	}
+	if response.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
+	}
+	if !strings.Contains(response.Body.String(), "exceeds 1 MiB") {
+		t.Fatalf("error body = %q", response.Body.String())
 	}
 }
 
