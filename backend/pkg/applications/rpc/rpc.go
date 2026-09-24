@@ -33,7 +33,7 @@ const BackendName = "backend"
 // version a backend was compiled against is reported separately in its
 // Descriptor.
 var Handshake = goplugin.HandshakeConfig{
-	ProtocolVersion:  3,
+	ProtocolVersion:  4,
 	MagicCookieKey:   "REMOTE_FUTRX_APPLICATION_BACKEND",
 	MagicCookieValue: "b0f2b4b6-remote-futrx-application-backend",
 }

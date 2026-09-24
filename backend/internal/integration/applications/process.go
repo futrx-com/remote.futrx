@@ -23,6 +23,11 @@ type backendProcess struct {
 	descriptor    applications.Descriptor
 }
 
+type backendCallResult struct {
+	response applications.Response
+	err      error
+}
+
 func (p *backendProcess) running() bool {
 	return !p.client.Exited()
 }
@@ -39,14 +44,10 @@ func (p *backendProcess) call(
 	ctx context.Context,
 	request applications.Request,
 ) (applications.Response, error) {
-	type result struct {
-		response applications.Response
-		err      error
-	}
-	done := make(chan result, 1)
+	done := make(chan backendCallResult)
 	go func() {
 		response, err := p.backend.Handle(request)
-		done <- result{response: response, err: err}
+		deliverBackendCall(ctx, done, backendCallResult{response: response, err: err})
 	}()
 
 	select {
@@ -60,6 +61,20 @@ func (p *backendProcess) call(
 			return applications.Response{}, errors.New("backend exited while handling the request")
 		}
 		return applications.Response{}, fmt.Errorf("backend call timed out: %w", ctx.Err())
+	}
+}
+
+// deliverBackendCall closes a streamed response that arrives after its caller
+// has timed out. A buffered response owns no resource, but abandoning a stream
+// without this handoff would leave both the broker connection and the
+// application-owned reader open until the process exits.
+func deliverBackendCall(ctx context.Context, done chan<- backendCallResult, outcome backendCallResult) {
+	select {
+	case done <- outcome:
+	case <-ctx.Done():
+		if content, _, _, ok := outcome.response.ResponseStream(); ok && content != nil {
+			_ = content.Close()
+		}
 	}
 }
 

@@ -375,7 +375,11 @@ encoding; segments are escaped.
 ### `remote.backend.fetch(path, options?)`
 
 The same call, resolving the raw `Response`. Use it for a non-JSON body, a
-stream, or when you want the status rather than an exception.
+stream, or when you want the status rather than an exception. Application
+backends can return seekable content with `applications.Stream`; this remains
+an ordinary browser `Response`, so `response.body`, cancellation through
+`options.signal`, `Range`, and conditional request headers work without a
+second frontend API.
 
 ### `remote.backend.describe(target?)`
 
@@ -392,7 +396,9 @@ for (const route of descriptor.routes ?? []) {
 ### `remote.backend.url(path, target?)`
 
 The URL a call would use, for an `<iframe>`, a download link, or your own
-`fetch`. Throws if no install can be resolved.
+`fetch`. Throws if no install can be resolved. Prefer this form for `<video>`,
+`<audio>`, and download links: the browser can issue its own `HEAD` and byte
+range requests against a streamed backend response.
 
 ### What the backend sees
 

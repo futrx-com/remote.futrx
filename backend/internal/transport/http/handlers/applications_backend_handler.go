@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -136,7 +137,7 @@ func (h *ApplicationsHandler) serveBackendAs(
 		sendAppError(w, err)
 		return
 	}
-	writeBackendResponse(w, response)
+	writeBackendResponse(w, r, response)
 }
 
 // backendCaller resolves the signed-in user a backend will see. A backend is
@@ -168,6 +169,12 @@ var hopByHopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
+var streamManagedHeaders = map[string]bool{
+	"accept-ranges": true,
+	"content-range": true,
+	"last-modified": true,
+}
+
 // forwardableHeaders copies the request headers a backend may usefully read.
 // Credentials are withheld: the backend is told who the caller is through
 // Request.Caller, and giving it their session cookie as well would hand every
@@ -188,10 +195,12 @@ func forwardableHeaders(header http.Header) map[string][]string {
 // Set-Cookie is dropped because a backend's response is same-origin with the
 // SPA and must not be able to write the session; the content type is pinned
 // with nosniff for the same reason ui/ assets are.
-func writeBackendResponse(w http.ResponseWriter, response applications.Response) {
+func writeBackendResponse(w http.ResponseWriter, request *http.Request, response applications.Response) {
+	content, _, modTime, streaming := response.ResponseStream()
 	for name, values := range response.Headers {
 		lower := strings.ToLower(name)
-		if hopByHopHeaders[lower] || lower == "set-cookie" || lower == "content-length" {
+		if hopByHopHeaders[lower] || lower == "set-cookie" || lower == "content-length" ||
+			(streaming && streamManagedHeaders[lower]) {
 			continue
 		}
 		for _, value := range values {
@@ -202,6 +211,19 @@ func writeBackendResponse(w http.ResponseWriter, response applications.Response)
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	if streaming {
+		// The request context outlives the manifest's backend-call timeout: that
+		// timeout only bounds opening a response. Once open, a stream is closed
+		// by completion, caller cancellation, or connection failure.
+		stopClose := context.AfterFunc(request.Context(), func() { _ = content.Close() })
+		defer func() {
+			stopClose()
+			_ = content.Close()
+		}()
+		http.ServeContent(w, request, "", modTime, content)
+		return
+	}
 
 	status := response.Status
 	if status < 100 || status > 599 {

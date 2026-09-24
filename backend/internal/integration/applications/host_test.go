@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,12 +32,26 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 	"github.com/futrx-com/remote.futrx.com/pkg/applications/rpc"
 )
 
 type backend struct{ instance applications.Instance }
+
+type responseStream struct {
+	*strings.Reader
+	marker string
+}
+
+func (s *responseStream) Close() error {
+	if s.marker == "" {
+		return nil
+	}
+	return os.WriteFile(s.marker, []byte("closed"), 0o600)
+}
 
 func (b *backend) Describe() (applications.Descriptor, error) {
 	return applications.Descriptor{
@@ -79,6 +94,26 @@ func (b *backend) Handle(request applications.Request) (applications.Response, e
 		return applications.Text(http.StatusOK, string(data)), nil
 	case "boom":
 		panic("deliberate")
+	case "stream":
+		data := strings.Repeat("0123456789abcdef", (2 << 20) / 16)
+		return applications.Stream(
+			&responseStream{Reader: strings.NewReader(data)},
+			int64(len(data)),
+			time.Unix(1700000000, 0),
+			map[string][]string{"Content-Type": {"application/test-stream"}},
+		), nil
+	case "late-stream":
+		time.Sleep(250 * time.Millisecond)
+		data := "late"
+		return applications.Stream(
+			&responseStream{
+				Reader: strings.NewReader(data),
+				marker: filepath.Join(b.instance.DataDir, "late-stream-closed"),
+			},
+			int64(len(data)),
+			time.Time{},
+			nil,
+		), nil
 	case "slow":
 		select {}
 	}
@@ -252,6 +287,70 @@ func TestHostCompilesAndServesABackend(t *testing.T) {
 		if !strings.Contains(string(response.Body), want) {
 			t.Errorf("response %s does not contain %s", response.Body, want)
 		}
+	}
+}
+
+func TestHostStreamsASeekableResponseWithoutBuffering(t *testing.T) {
+	host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
+	spec := testInstance("test-application", "instance-stream")
+	response := call(t, host, spec, applications.Request{Method: "GET", Path: "stream"})
+
+	if response.Body != nil {
+		t.Fatalf("buffered body has %d bytes, want nil", len(response.Body))
+	}
+	content, size, modTime, ok := response.ResponseStream()
+	if !ok {
+		t.Fatal("response has no stream")
+	}
+	defer content.Close()
+	if size != 2<<20 {
+		t.Fatalf("stream size = %d", size)
+	}
+	if !modTime.Equal(time.Unix(1_700_000_000, 0)) {
+		t.Errorf("mod time = %s", modTime)
+	}
+	if got := response.Headers["Content-Type"]; len(got) != 1 || got[0] != "application/test-stream" {
+		t.Errorf("Content-Type = %v", got)
+	}
+	first := make([]byte, 32)
+	if _, err := io.ReadFull(content, first); err != nil || string(first) != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("first read = %q, %v", first, err)
+	}
+	position, err := content.Seek(-16, io.SeekEnd)
+	if err != nil || position != size-16 {
+		t.Fatalf("SeekEnd() = %d, %v", position, err)
+	}
+	last, err := io.ReadAll(content)
+	if err != nil || string(last) != "0123456789abcdef" {
+		t.Fatalf("last read = %q, %v", last, err)
+	}
+}
+
+func TestLateStreamIsClosedAfterCallerTimeout(t *testing.T) {
+	host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
+	spec := testInstance("test-application", "instance-late-stream")
+	call(t, host, spec, applications.Request{Method: "GET", Path: "pid"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := host.Call(ctx, spec, applications.Request{Method: "GET", Path: "late-stream"}); err == nil {
+		t.Fatal("late stream reported success")
+	} else if !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("call error = %v, want timeout", err)
+	}
+
+	marker := filepath.Join(host.dataDir(spec.ID), "late-stream-closed")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat close marker: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("stream returned after timeout was not closed")
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
 }
 

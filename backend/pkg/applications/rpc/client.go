@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"fmt"
+	"net"
 	"net/rpc"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
@@ -16,6 +17,10 @@ type Client struct {
 		NextId() uint32
 		AcceptAndServe(uint32, any)
 	}
+}
+
+type responseStreamBroker interface {
+	Accept(uint32) (net.Conn, error)
 }
 
 var _ applications.Backend = (*Client)(nil)
@@ -44,12 +49,31 @@ func (c *Client) Init(instance applications.Instance) error {
 }
 
 func (c *Client) Handle(request applications.Request) (applications.Response, error) {
+	args := HandleArgs{Request: request}
+	streamBroker, hasStreamBroker := c.broker.(responseStreamBroker)
+	if hasStreamBroker {
+		args.StreamBrokerID = c.broker.NextId()
+		args.StreamBroker = true
+	}
 	var reply HandleReply
-	if err := c.client.Call("Plugin.Handle", HandleArgs{Request: request}, &reply); err != nil {
+	if err := c.client.Call("Plugin.Handle", args, &reply); err != nil {
 		return applications.Response{}, fmt.Errorf("handle: %w", err)
 	}
 	if reply.Error != "" {
 		return applications.Response{}, fmt.Errorf("handle: %s", reply.Error)
+	}
+	if reply.Stream != nil {
+		if !hasStreamBroker || !args.StreamBroker {
+			return applications.Response{}, fmt.Errorf("handle: backend returned a stream without a broker")
+		}
+		connection, err := streamBroker.Accept(args.StreamBrokerID)
+		if err != nil {
+			return applications.Response{}, fmt.Errorf("handle: accept response stream: %w", err)
+		}
+		stream := newRemoteStream(rpc.NewClient(connection), reply.Stream.Size)
+		response := applications.Stream(stream, reply.Stream.Size, reply.Stream.ModTime, reply.Response.Headers)
+		response.Status = reply.Response.Status
+		return response, nil
 	}
 	return reply.Response, nil
 }

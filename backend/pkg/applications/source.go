@@ -26,7 +26,7 @@ const (
 // The list is explicit rather than a *.go glob so that test files stay out of
 // what a backend compiles against. TestSourceCoversEveryFile keeps it complete.
 //
-//go:embed contract.go events.go router.go request.go response.go source.go rpc/client.go rpc/rpc.go rpc/server.go rpc/wire.go
+//go:embed contract.go events.go router.go request.go response.go source.go rpc/client.go rpc/rpc.go rpc/server.go rpc/stream.go rpc/wire.go
 var sdkSource embed.FS
 
 // Source returns the SDK's own Go source, rooted at this package's directory:

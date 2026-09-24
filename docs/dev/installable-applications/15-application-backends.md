@@ -307,8 +307,9 @@ Bodies are capped at 1 MiB.
 
 ### `Response`
 
-`{ Status, Headers, Body }`. A zero `Status` is sent as `200`. `Set-Cookie` and
-hop-by-hop headers are dropped, and every response is served `nosniff`.
+Small responses use `{ Status, Headers, Body }`. A zero `Status` is sent as
+`200`. `Set-Cookie`, supplied `Content-Length`, and hop-by-hop headers are
+dropped, and every response is served `nosniff`.
 
 Build one with the helpers rather than by hand:
 
@@ -320,6 +321,46 @@ applications.Errorf(http.StatusForbidden, "%s may not do that", request.Caller.E
 
 `Errorf` produces `{"error": "…"}`, which is the shape `remote.backend.call`
 turns back into a thrown `Error` with your message intact.
+
+For a file or another large seekable result, hand Remote an already-open
+`io.ReadSeekCloser` instead of filling `Body`:
+
+```go
+file, err := os.Open(path)
+if err != nil {
+    return applications.Errorf(http.StatusNotFound, "%v", err), nil
+}
+info, err := file.Stat()
+if err != nil {
+    file.Close()
+    return applications.Errorf(http.StatusInternalServerError, "%v", err), nil
+}
+return applications.Stream(file, info.Size(), info.ModTime(), map[string][]string{
+    "Content-Type":        {"application/octet-stream"},
+    "Content-Disposition": {`attachment; filename="export.zip"`},
+}), nil
+```
+
+`applications.Stream(content, size, modTime, headers)` takes ownership of
+`content`. `size` must be exact and non-negative. After the constructor returns,
+do not also set `Body` or close the content yourself. Core closes it after the
+transfer, when the caller disconnects, when transport setup fails, or when a
+stream arrives after its call timed out. Cancellation may close content while a
+read is blocked; `*os.File` supports that lifecycle, and custom readers must as
+well.
+
+Core serves streamed content through `http.ServeContent`, so `GET`, `HEAD`,
+byte ranges (including multipart ranges), `If-Modified-Since`, and `If-Range`
+work without application code. The stream constructor starts at `200`; do not
+replace that status, because core owns the eventual `200`, `206`, `304`, or
+`416` status and calculated content length. A non-zero `modTime` enables
+`Last-Modified` conditionals. Reads cross
+the process boundary in random-access chunks capped at 256 KiB rather than
+buffering the whole response in either process.
+
+Request uploads have not changed: `Request.Body` remains buffered and capped at
+1 MiB. A future upload-streaming contract will be an explicit request API; it
+will not silently change `Request.Body` or this response-stream lifecycle.
 
 ### `Router`
 
@@ -504,11 +545,13 @@ meant to be. Anything that must survive belongs in `DataDir`.
 | The source does not compile | install or start fails, with the compiler's output | there is no process |
 | The contract version mismatches | start fails, saying both versions | the process is killed |
 
-`timeoutMs` defaults to 15000 and is per call. Any nonnegative manifest value is
-accepted for compatibility, while the effective runtime timeout is capped at
-300000. A timed-out call is abandoned rather than interrupted — net/rpc has no
-cancellation — so the backend finishes its work unobserved and answers the next
-request normally.
+`timeoutMs` defaults to 15000 and bounds producing a buffered response or
+opening a streamed response. Any nonnegative manifest value is accepted for
+compatibility, while the effective runtime timeout is capped at 300000. Once a
+stream is open, transfer time follows the HTTP request rather than this setup
+deadline. A timed-out call is abandoned rather than interrupted — net/rpc has
+no per-call cancellation — so the backend may finish its work unobserved; if it
+finishes by returning a stream, Remote immediately closes that late stream.
 
 ## Combining capabilities
 
@@ -527,6 +570,12 @@ catalog embedded in this server, so there is no second language for a neutral
 protocol to serve, and net/rpc keeps a backend's dependencies to this SDK and
 the standard library — no protobuf, no code generation, no checked-in
 `.pb.go`.
+
+Buffered calls use the primary net/rpc connection. Each streamed response uses
+go-plugin's multiplex broker for a separate bounded random-access reader. This
+keeps existing `Backend`, `Request.Body`, `Response.Body`, and browser URLs
+compatible while allowing the HTTP server to seek for ranges without holding
+the complete result in memory.
 
 The whole transport is
 [`pkg/applications/rpc`](../../../backend/pkg/applications/rpc/rpc.go).

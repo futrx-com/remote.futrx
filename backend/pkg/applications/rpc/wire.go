@@ -1,6 +1,10 @@
 package rpc
 
-import "github.com/futrx-com/remote.futrx.com/pkg/applications"
+import (
+	"time"
+
+	"github.com/futrx-com/remote.futrx.com/pkg/applications"
+)
 
 // net/rpc requires exported argument and reply types, and carries an error
 // only as a string. Each reply therefore has its own Error field, which keeps
@@ -22,12 +26,33 @@ type InitReply struct {
 }
 
 type HandleArgs struct {
-	Request applications.Request
+	Request        applications.Request
+	StreamBrokerID uint32
+	StreamBroker   bool
 }
 
 type HandleReply struct {
 	Response applications.Response
+	Stream   *StreamInfo
 	Error    string
+}
+
+// StreamInfo describes content that travels over the brokered random-access
+// connection identified by HandleArgs.StreamBrokerID.
+type StreamInfo struct {
+	Size    int64
+	ModTime time.Time
+}
+
+type StreamReadArgs struct {
+	Offset int64
+	Length int
+}
+
+type StreamReadReply struct {
+	Data  []byte
+	EOF   bool
+	Error string
 }
 
 // BindEventsArgs carries the broker stream backing the core-owned event

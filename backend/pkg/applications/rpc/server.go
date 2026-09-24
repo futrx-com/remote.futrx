@@ -40,8 +40,38 @@ func (s *server) Handle(args HandleArgs, reply *HandleReply) error {
 	response, err := recovered(func() (applications.Response, error) {
 		return s.impl.Handle(args.Request)
 	})
+	content, size, modTime, streaming := response.ResponseStream()
+	if err != nil {
+		if streaming && content != nil {
+			_ = closeWithoutPanic(content)
+		}
+		reply.Error = errorText(err)
+		return nil
+	}
+	if streaming {
+		switch {
+		case content == nil:
+			err = fmt.Errorf("stream content is nil")
+		case size < 0:
+			err = fmt.Errorf("stream size is negative")
+		case response.Body != nil:
+			err = fmt.Errorf("stream response also contains a buffered body")
+		case response.Status != 0 && response.Status != 200:
+			err = fmt.Errorf("stream response status must be 0 or 200")
+		case s.broker == nil || !args.StreamBroker:
+			err = fmt.Errorf("response stream broker is unavailable")
+		}
+		if err != nil {
+			if content != nil {
+				_ = closeWithoutPanic(content)
+			}
+			reply.Error = errorText(err)
+			return nil
+		}
+		reply.Stream = &StreamInfo{Size: size, ModTime: modTime}
+		go serveStream(s.broker, args.StreamBrokerID, content)
+	}
 	reply.Response = response
-	reply.Error = errorText(err)
 	return nil
 }
 

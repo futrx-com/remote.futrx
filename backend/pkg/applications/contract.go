@@ -134,11 +134,15 @@ type Request struct {
 }
 
 // Response is what the host turns back into an HTTP response. A zero Status is
-// sent as 200.
+// sent as 200. Body is the compatibility path for small, buffered responses.
+// Large or seekable responses should be created with Stream instead; the
+// stream itself is deliberately process-local and is carried over a separate,
+// bounded RPC connection rather than encoded into this value.
 type Response struct {
 	Status  int                 `json:"status"`
 	Headers map[string][]string `json:"headers,omitempty"`
 	Body    []byte              `json:"body,omitempty"`
+	stream  *responseStream
 }
 
 // Backend is the required contract for an application's host backend. All three

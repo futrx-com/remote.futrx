@@ -47,6 +47,8 @@ session.
 | A stopped app's backend is unreachable | `Service.backendSpec` | `409` rather than a silent start |
 | An admin-only backend stays admin-only | `ApplicationBackend.Audience` + the service | Enforced before the process is reached |
 | A backend cannot write the session | `writeBackendResponse` | `Set-Cookie` is dropped; every response is `nosniff` |
+| A streamed backend response cannot dictate HTTP framing | `writeBackendResponse` + `http.ServeContent` | core drops supplied `Content-Length`, owns range/status handling, and closes content on cancellation |
+| One streamed read has bounded cross-process memory | `pkg/applications/rpc/stream.go` | absolute reads are capped at 256 KiB; the application passes an open reader, never a path for core to reopen |
 
 ## Application backends
 
@@ -66,6 +68,14 @@ There is no sandbox around it, and none is implied. A backend is not
 less-trusted code running under supervision; it is server code with a process
 boundary, and the boundary exists for *robustness* — a panicking or hanging
 backend costs one call — not for containment.
+
+A streamed response does not widen that privilege. The backend opens the
+content itself and transfers ownership of an `io.ReadSeekCloser`; core receives
+only bounded reads over the process broker, not a filesystem path. This keeps
+path validation and file authority in the application that owns the feature.
+Core closes the reader when the HTTP request finishes or is cancelled, and a
+stream that arrives after the backend-call deadline is closed without being
+exposed to the caller.
 
 ### What admits it
 

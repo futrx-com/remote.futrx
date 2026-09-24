@@ -245,10 +245,20 @@ caller without being able to act as them.
 
 Request bodies are capped at 1 MiB.
 
-The backend's answer becomes the HTTP response as-is, minus `Set-Cookie` and
-hop-by-hop headers, and always with `X-Content-Type-Options: nosniff`. A backend
-that sets no status answers `200`; one that sets no content type answers
-`application/octet-stream`.
+The backend can answer with a buffered `{ Status, Headers, Body }` response or
+seekable content created by `applications.Stream`. Buffered answers become the
+HTTP response as-is. Streamed answers are served by core with `GET`, `HEAD`,
+single and multipart byte ranges, and `Last-Modified` conditionals; core chooses
+the resulting `200`, `206`, `304`, or `416` status and computes the content
+length.
+
+Both forms drop `Set-Cookie`, supplied `Content-Length`, and hop-by-hop headers,
+and always set `X-Content-Type-Options: nosniff`. Streamed answers also replace
+supplied `Accept-Ranges`, `Content-Range`, and `Last-Modified` with values core
+derives from the request and stream metadata. A buffered backend that sets no
+status answers `200`; either form with no content type answers
+`application/octet-stream`. Closing the browser request closes an open backend
+stream.
 
 ```
 POST /api/applications/9f1c2ab40e77/backend/kv/greeting
