@@ -220,6 +220,73 @@ test("workspace panes keep metadata, order, scope, disposal, and application cle
   assert.equal(registry.workspacePanes().length, 0);
 });
 
+test("workspace pane identity is stable across order and registration lifecycles", () => {
+  const registry = createRegistry();
+  const disposeFiles = registry.registerWorkspacePane("files", {
+    id: "browser",
+    label: "Files",
+    icon: "<svg></svg>",
+    render: noop,
+  });
+  registry.registerWorkspacePane("notes", {
+    id: "browser",
+    label: "Notes",
+    icon: "<svg></svg>",
+    render: noop,
+  });
+
+  assert.deepEqual(
+    registry.workspacePanes().map((pane) => pane.id),
+    ["files:browser", "notes:browser"],
+    "different applications may use the same public pane id",
+  );
+
+  disposeFiles();
+  registry.register("files", EXTENSION_SLOTS.chatHeaderActions, noop);
+  registry.registerWorkspacePane("files", {
+    id: "browser",
+    label: "Files",
+    icon: "<svg></svg>",
+    render: noop,
+  });
+
+  assert.deepEqual(
+    registry.workspacePanes().map((pane) => pane.id),
+    ["notes:browser", "files:browser"],
+    "unrelated registrations and re-registration do not change pane identity",
+  );
+});
+
+test("the first duplicate workspace pane registration wins deterministically", () => {
+  const registry = createRegistry();
+  const firstRender = () => {};
+  const disposeFirst = registry.registerWorkspacePane("files", {
+    id: "browser",
+    label: "First",
+    icon: "<svg></svg>",
+    render: firstRender,
+  });
+  const disposeDuplicate = registry.registerWorkspacePane("files", {
+    id: "browser",
+    label: "Duplicate",
+    icon: "<svg></svg>",
+    render: noop,
+  });
+
+  assert.equal(registry.workspacePanes().length, 1);
+  assert.equal(registry.workspacePanes()[0]?.label, "First");
+  assert.equal(registry.workspacePanes()[0]?.render, firstRender);
+
+  disposeDuplicate();
+  assert.equal(
+    registry.workspacePanes().length,
+    1,
+    "disposing the ignored registration leaves the accepted pane mounted",
+  );
+  disposeFirst();
+  assert.equal(registry.workspacePanes().length, 0);
+});
+
 test("invalid workspace panes are dropped without throwing", () => {
   const registry = createRegistry();
   const dispose = registry.registerWorkspacePane("broken", {

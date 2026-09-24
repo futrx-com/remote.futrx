@@ -184,7 +184,7 @@ remote.ui.addWorkspacePane({
 
 | Field | Notes |
 |---|---|
-| `id` | Required stable id within the application. Use lowercase letters, digits, and dashes. |
+| `id` | Required stable, unique id within the application. Use lowercase letters, digits, and dashes. Remote combines it with the application id for pane identity. |
 | `label` | Required pane heading and accessible trigger name. |
 | `title` | Optional trigger tooltip; defaults to `label`. |
 | `icon` | Required inline SVG/HTML mark. Omit dimensions; Remote renders it at 16×16. |
@@ -200,6 +200,10 @@ such as timers or observers must be released by cleanup. If install scope or
 
 The returned disposer is idempotent. It removes both trigger and pane; stopping
 or uninstalling the application does the same automatically.
+
+Register each pane id only once. If an application registers the same id more
+than once, Remote keeps the first registration and ignores later duplicates.
+Another application may use the same pane id without conflict.
 
 ## `remote.ui.openMedia(media)`
 

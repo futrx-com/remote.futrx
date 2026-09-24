@@ -140,3 +140,7 @@ project install visibility as slots, and may use `when` for a narrower rule.
 Its body mounts only while open and its cleanup runs on close, chat changes,
 scope changes, stop, or uninstall. See
 [06 — Extension API](06-extension-api.md#remoteuiaddworkspacepanepane).
+
+Pane identity is the application id plus the pane's public `id`, so it remains
+stable across reloads and registration-order changes. A pane id must be unique
+within its application; the first registration wins when one is duplicated.

@@ -118,7 +118,7 @@ export interface ExtensionContribution {
 
 /** Public options accepted by `remote.ui.addWorkspacePane`. */
 export interface ExtensionWorkspacePane {
-  /** Stable within this application; used for diagnostics and accessibility. */
+  /** Stable and unique within this application; used for identity and accessibility. */
   id: string;
   /** Accessible name and tooltip for the chat-header trigger. */
   label: string;
@@ -136,7 +136,9 @@ export interface ExtensionWorkspacePane {
 /** Internal, install-scoped form retained by the extension registry. */
 export interface ExtensionWorkspacePaneContribution
   extends Omit<ExtensionWorkspacePane, "id"> {
+  /** Stable composite identity formed from `applicationId` and `paneId`. */
   id: string;
+  /** The public id supplied by the application. */
   paneId: string;
   applicationId: string;
   order: number;

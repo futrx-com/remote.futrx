@@ -20,7 +20,7 @@ export function createExtensionStore() {
   const counters = new Map<string, number>();
   const visibilityByImage = new Map<string, ExtensionVisibility>();
 
-  return createStore<ExtensionStoreState & ExtensionStoreActions>()((set) => ({
+  return createStore<ExtensionStoreState & ExtensionStoreActions>()((set, get) => ({
     bySlot: new Map(),
     workspacePanes: [],
     activeProjectId: null,
@@ -93,11 +93,16 @@ export function createExtensionStore() {
         );
         return () => {};
       }
-      const sequence = (counters.get(applicationId) ?? 0) + 1;
-      counters.set(applicationId, sequence);
+      const contributionId = `${applicationId}:${paneId}`;
+      if (get().workspacePanes.some((candidate) => candidate.id === contributionId)) {
+        console.warn(
+          `[extensions] ${applicationId}: duplicate workspace pane id "${paneId}" ignored`,
+        );
+        return () => {};
+      }
       const contribution: ExtensionWorkspacePaneContribution = {
         ...pane,
-        id: `${applicationId}#${sequence}`,
+        id: contributionId,
         paneId,
         label,
         icon,
