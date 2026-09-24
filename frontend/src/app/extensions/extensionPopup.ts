@@ -75,7 +75,12 @@ export function openExtensionPopup(
   // close hands ownership back to the surface underneath.
   window.addEventListener("keydown", onKeyDown);
   document.body.appendChild(overlay);
-  unmount = options.mount?.(body);
+  try {
+    unmount = options.mount?.(body);
+  } catch (error) {
+    handle.close();
+    throw error;
+  }
   return handle;
 }
 

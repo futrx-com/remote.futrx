@@ -137,9 +137,9 @@ func (b *api) downloadFolder(request applications.Request) applications.Response
 		return applications.Errorf(http.StatusServiceUnavailable, "archive spool is not initialized")
 	}
 
-	// Request does not yet carry a cancellation context across the RPC boundary.
-	// The process-level backend timeout remains the outer bound until streamed
-	// responses add disconnect propagation.
+	// The request does not carry cancellation while the archive is being built,
+	// so this timeout bounds the setup phase. Once the stream is returned, core
+	// closes it when the client disconnects.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	spooled, err := spooler.Prepare(ctx, func(destination io.Writer) error {

@@ -160,3 +160,25 @@ test("a popup opened over another surface does not cascade dismissal", () => {
     dom.restore();
   }
 });
+
+test("a failed mount removes the popup and releases its dismiss claim", () => {
+  const dom = installDOM();
+  const behindClaim = dismissStackService.claim();
+  try {
+    assert.throws(
+      () =>
+        openExtensionPopup({
+          mount: () => {
+            throw new Error("mount failed");
+          },
+        }),
+      /mount failed/,
+    );
+
+    assert.equal(dom.document.body.children.length, 0);
+    assert.equal(dismissStackService.owns(behindClaim), true);
+  } finally {
+    dismissStackService.release(behindClaim);
+    dom.restore();
+  }
+});
