@@ -31,9 +31,11 @@ deliberate uninstall is remembered across restarts.
 | Run a command or inspect a process | **Open Terminal** | Whatever the command changes |
 | Read and edit a codebase | **Open in IDE** | Whatever is saved through code-server |
 
-All three start from the chat's current working directory. In a normal project
-chat that is `/workspace`; a chat working in a contained subdirectory opens
-that location where supported.
+Files always starts at the server-authorized workspace root: the project's
+workspace for a project chat, or Remote's fixed installation workspace for a
+Loose chat. Changing a chat's working directory cannot move Files outside that
+root. Terminal and IDE navigation may start at the chat's current working
+directory; in a normal project chat that is `/workspace`.
 
 ## Browse and download files
 

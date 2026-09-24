@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -122,6 +123,12 @@ func (b *api) media(request applications.Request) applications.Response {
 }
 
 func (b *api) downloadFolder(request applications.Request) applications.Response {
+	// A ZIP has no cheap representation metadata: its size only exists after
+	// walking and compressing the tree. Do not let a HEAD probe consume a spool
+	// slot and the full archive budget when it cannot use the body.
+	if strings.EqualFold(request.Method, http.MethodHead) {
+		return applications.Errorf(http.StatusMethodNotAllowed, "HEAD is not supported for folder downloads")
+	}
 	root, response, ok := chatWorkspace(request)
 	if !ok {
 		return response

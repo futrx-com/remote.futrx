@@ -184,6 +184,25 @@ func TestFolderDownloadMapsSpoolLimitBeforeSuccess(t *testing.T) {
 	}
 }
 
+func TestFolderDownloadRejectsHeadWithoutBuildingArchive(t *testing.T) {
+	backend, root := testBackend(t)
+	response, err := backend.Handle(request(
+		root,
+		http.MethodHead,
+		"files/download-folder",
+		map[string][]string{"path": {"src"}},
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status != http.StatusMethodNotAllowed {
+		t.Fatalf("HEAD status = %d, want %d", response.Status, http.StatusMethodNotAllowed)
+	}
+	if _, _, _, streamed := response.ResponseStream(); streamed {
+		t.Fatal("HEAD folder download built an archive stream")
+	}
+}
+
 func TestRouterPreservesMethodAndNotFoundErrors(t *testing.T) {
 	backend, root := testBackend(t)
 	response, _ := backend.Handle(request(root, http.MethodPost, "files", nil))
