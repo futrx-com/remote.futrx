@@ -8,6 +8,7 @@ import (
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/service/permission"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
@@ -18,6 +19,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplications"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
@@ -74,6 +76,7 @@ type Stores struct {
 	AgentAPIKeys    agentauth.APIKeyStore
 	AgentAccounts   agentauth.AccountStore
 	ProjectShares   serviceshare.Repository
+	Permissions     servicepermission.Repository
 }
 
 // WarmRecentChatIndexes populates disposable read indexes through the
@@ -145,6 +148,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init applications store: %w", err)
 	}
 
+	permissions, err := filepermissions.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init permissions store: %w", err)
+	}
+
 	push, err := filepush.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init push subscriptions store: %w", err)
@@ -169,5 +177,6 @@ func New(dataDir string) (Stores, error) {
 		AgentAPIKeys:    authStore,
 		AgentAccounts:   authStore,
 		ProjectShares:   projectShares,
+		Permissions:     permissions,
 	}, nil
 }

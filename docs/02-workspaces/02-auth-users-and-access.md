@@ -219,3 +219,4 @@ sequenceDiagram
 - 2FA challenge and Security-tab handlers: [`backend/internal/transport/http/handlers/auth_twofactor_handler.go`](../../backend/internal/transport/http/handlers/auth_twofactor_handler.go), [`backend/internal/transport/http/handlers/security_handler.go`](../../backend/internal/transport/http/handlers/security_handler.go)
 - User service: [`backend/internal/service/user/service.go`](../../backend/internal/service/user/service.go)
 - Access adapter: [`backend/internal/transport/transport.go`](../../backend/internal/transport/transport.go)
+- Permissions (registry, evaluator, roles, delegation; see the [developer guide](../dev/permissions.md)): [`backend/internal/service/permission/`](../../backend/internal/service/permission/)
