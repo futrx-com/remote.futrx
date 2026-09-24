@@ -1,6 +1,7 @@
 import { AppShell } from "../../ui/layout/AppShell";
 import { NoChatSelected } from "../../ui/layout/NoChatSelected";
 import { ChatSkeleton } from "../../ui/chat/ChatSkeleton";
+import { MediaViewerOverlay } from "../../ui/chat/files/MediaViewerOverlay";
 import { CreateProjectModal } from "../../ui/projects/CreateProjectModal";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useCommandPalette } from "../../state/hooks/workspace/useCommandPalette";
@@ -82,6 +83,7 @@ export function WorkspaceContainer() {
         onClose={palette.close}
         onSelectChat={workspace.selectChat}
       />
+      <MediaViewerOverlay />
     </AppShell>
   );
 }

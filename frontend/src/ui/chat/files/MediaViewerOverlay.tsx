@@ -3,8 +3,8 @@ import { useMediaViewer } from "../../../state/hooks/chat/useMediaViewer";
 import { useDismissShortcut } from "../../../state/hooks/shared/useDismissShortcut.ts";
 import { Download, ExternalLink, X } from "../../primitives/icons";
 
-// Full-screen host for the in-app media viewer. Mounted once per chat view;
-// renders whatever mediaViewerStore currently holds.
+// Full-screen host for the in-app media viewer. Mounted once for the signed-in
+// workspace so chat links, built-in tools, and every extension surface share it.
 export function MediaViewerOverlay() {
   const { item, close } = useMediaViewer();
 

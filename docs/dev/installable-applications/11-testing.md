@@ -87,6 +87,7 @@ npm run build     # tsc -b + vite; type errors fail here
 |---|---|
 | `state/stores/extensions/extensionStore.test.ts` | ordering, unknown slots, `when` predicates, disposal, application removal, workspace panes, and all the scoping rules |
 | `config/extensions.test.ts` | slot names are unique, and every slot declares an icon appearance |
+| `app/extensions/extensionApi.test.ts` | frontend commands delegate to their core-owned surfaces |
 | `app/extensions/extensionBackend.test.ts` | which running backend a call resolves to, and the URL it builds |
 
 Run one file directly while iterating:

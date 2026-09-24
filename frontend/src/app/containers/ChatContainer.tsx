@@ -3,7 +3,6 @@ import type { ProjectMeta } from "../../models/project";
 import { useEffect, useMemo, useRef } from "preact/hooks";
 import { BrowserDrawer } from "../../ui/chat/browser/BrowserDrawer";
 import { ChatThread } from "../../ui/chat/ChatThread";
-import { MediaViewerOverlay } from "../../ui/chat/files/MediaViewerOverlay";
 import type { ChatComposerProps } from "../../ui/chat/composer/ChatComposer";
 import { WorkspaceActions } from "../../ui/chat/header/WorkspaceActions";
 import { HistoryDrawer } from "../../ui/chat/history/HistoryDrawer";
@@ -295,7 +294,6 @@ export function ChatContainer({
           />
         ))}
       </div>
-      <MediaViewerOverlay />
     </div>
   );
 }

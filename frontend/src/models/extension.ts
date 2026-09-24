@@ -5,6 +5,7 @@ import type {
   AppInstance,
   AppScope,
 } from "./application";
+import type { MediaKind } from "./files";
 
 export interface ExtensionSlotCatalog {
   sidebarHeaderActions: "sidebar.header.actions";
@@ -205,6 +206,15 @@ export interface ExtensionPopupHandle {
   close: () => void;
 }
 
+/** Media Remote's app-wide viewer can present for an extension. */
+export interface ExtensionMediaOptions {
+  /** Browser-reachable resource URL used by the viewer and its toolbar links. */
+  url: string;
+  /** Display name used for the dialog label and download filename. */
+  name: string;
+  kind: MediaKind;
+}
+
 /**
  * Which running backend a call should reach. An application installed in more than
  * one place runs a process per install, so a call that does not say resolves
@@ -276,6 +286,7 @@ export interface ExtensionApi {
     addButton: (slot: string, button: ExtensionButton) => () => void;
     addIconButton: (slot: string, button: ExtensionIconButton) => () => void;
     addWorkspacePane: (pane: ExtensionWorkspacePane) => () => void;
+    openMedia: (media: ExtensionMediaOptions) => void;
     openPopup: (options?: ExtensionPopupOptions) => ExtensionPopupHandle;
   };
   /**

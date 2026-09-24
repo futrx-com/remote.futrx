@@ -14,6 +14,7 @@ import type {
   ExtensionVisibility,
 } from "../../models/extension";
 import { extensionEventService } from "../../services/extensions/extensionEventService.ts";
+import { mediaViewerStore } from "../../state/stores/media/mediaViewerStore.ts";
 import { createBackendApi } from "./extensionBackend.ts";
 import { openExtensionPopup } from "./extensionPopup.ts";
 
@@ -79,6 +80,7 @@ export function createExtensionApi(
         ),
       addWorkspacePane: (pane) =>
         registry.registerWorkspacePane(application.id, pane),
+      openMedia: (media) => mediaViewerStore.getState().open(media),
       openPopup: openExtensionPopup,
     },
     events: {

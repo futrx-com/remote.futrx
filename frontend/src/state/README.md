@@ -15,9 +15,10 @@ push stores and `pushPageFocus`, and the workspace feed — so the folders are
 where the coupling already was, not a grid imposed over it.
 
 `media/` is the one domain with no matching `hooks/` folder.
-`mediaViewerStore` is opened from file-manager rows and from chat links alike,
-and filing it under whichever domain holds today's callers would claim an
-ownership it does not have.
+`mediaViewerStore` is opened from file-manager rows, chat links, and application
+extensions alike, and filing it under whichever domain holds today's callers
+would claim an ownership it does not have. Its single overlay host lives at the
+workspace level so commands from chat, project, and global surfaces all paint.
 
 `hooks/shared/` is the pressure valve, the way `platform/` is for services: a
 hook that knows nothing about any one domain goes there rather than being filed

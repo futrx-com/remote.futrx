@@ -34,6 +34,7 @@ remote.ui.register(slot, render, options?)      → dispose
 remote.ui.addButton(slot, button)               → dispose
 remote.ui.addIconButton(slot, button)           → dispose
 remote.ui.addWorkspacePane(pane)                → dispose
+remote.ui.openMedia(media)                      → void
 remote.ui.openPopup(options?)                   → { body, close }
 
 remote.views.load(name)        // Promise<string>
@@ -199,6 +200,33 @@ such as timers or observers must be released by cleanup. If install scope or
 
 The returned disposer is idempotent. It removes both trigger and pane; stopping
 or uninstalling the application does the same automatically.
+
+## `remote.ui.openMedia(media)`
+
+Opens Remote's app-wide media viewer for a browser-reachable resource:
+
+```js
+remote.ui.openMedia({
+  url: remote.assets.url("assets/diagram.png"),
+  name: "diagram.png",
+  kind: "image",
+});
+```
+
+| Field | Notes |
+|---|---|
+| `url` | Required resource URL. The viewer uses it directly for the media element, Open in new tab, and Download actions. |
+| `name` | Required accessible label and suggested download filename. |
+| `kind` | One of `image`, `video`, `audio`, or `pdf`. Selects the native viewer element. |
+
+The command is synchronous and returns nothing. A later call replaces the
+current item. The viewer can be opened from any extension surface and closes
+with its Close action, backdrop, or Escape.
+
+`openMedia` is presentation, not access: it does not fetch the resource or
+grant authorization. The URL must already be reachable by the signed-in
+browser. Serve an accurate content type, and support byte ranges when video or
+audio seeking needs them.
 
 ## `remote.ui.openPopup(options?)`
 
