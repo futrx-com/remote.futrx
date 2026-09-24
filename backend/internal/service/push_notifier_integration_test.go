@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 
@@ -112,6 +113,14 @@ func (r userRepoStub) Count(context.Context) (int, error)                      {
 type capturingSender struct {
 	mu       sync.Mutex
 	payloads []servicepush.Notification
+	// fail, when set, rejects every delivery with this error.
+	fail error
+}
+
+func (s *capturingSender) failWith(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fail = err
 }
 
 func (s *capturingSender) PublicKey() string { return "BTestKey" }
@@ -128,6 +137,9 @@ func (s *capturingSender) Send(
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.fail != nil {
+		return s.fail
+	}
 	s.payloads = append(s.payloads, notification)
 	return nil
 }
@@ -559,5 +571,73 @@ func TestAnUnreadChatDoesNotNotifyAgainUntilItIsRead(t *testing.T) {
 	appendAt(servicechat.Event{T: 60, Type: "complete", ScheduledTaskID: "task1"})
 	if sent := sender.captured(); len(sent) != 3 {
 		t.Fatalf("captured %+v, want a notification after the read", sent)
+	}
+}
+
+// A question marks the chat as notified too, so a scheduled run that finishes
+// after it must not stack a second entry before the user has read the chat.
+func TestAScheduledFinishAfterAQuestionStaysQuietUntilRead(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe", Title: "Plan"})
+	ctx := context.Background()
+	chats := repo.Repository.(*chatRepoStub)
+	appendEvent := func(ev servicechat.Event) {
+		t.Helper()
+		if _, err := repo.AppendEvent(ctx, "beefcafe", ev); err != nil {
+			t.Fatal(err)
+		}
+		repo.push.push.Wait()
+	}
+
+	appendEvent(servicechat.Event{T: 10, Type: "tool_use_start", Name: "AskUserQuestion"})
+	appendEvent(servicechat.Event{T: 20, Type: "complete"})
+	appendEvent(servicechat.Event{T: 30, Type: "user", Text: "nightly", ScheduledTaskID: "task1"})
+	appendEvent(servicechat.Event{T: 40, Type: "complete", ScheduledTaskID: "task1"})
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion {
+		t.Fatalf("captured %+v, want only the question", sent)
+	}
+
+	_, _ = chats.Update(ctx, "beefcafe", func(m *servicechat.Meta) { m.LastReadAt = 45 })
+	appendEvent(servicechat.Event{T: 50, Type: "user", Text: "nightly", ScheduledTaskID: "task1"})
+	appendEvent(servicechat.Event{T: 60, Type: "complete", ScheduledTaskID: "task1"})
+	if sent := sender.captured(); len(sent) != 2 || sent[1].Kind != servicepush.KindScheduled {
+		t.Fatalf("captured %+v, want the scheduled finish after the read", sent)
+	}
+}
+
+// Suppression exists to avoid repeating a notification the user already has.
+// One that never reached a device must not silence the chat.
+func TestAFailedDeliveryDoesNotSilenceTheChat(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe", Title: "Plan"})
+	ctx := context.Background()
+
+	sender.failWith(errors.New("503 service unavailable"))
+	_, _ = repo.AppendEvent(ctx, "beefcafe", servicechat.Event{T: 10, Type: "complete"})
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 0 {
+		t.Fatalf("captured %+v, want nothing while delivery fails", sent)
+	}
+
+	sender.failWith(nil)
+	_, _ = repo.AppendEvent(ctx, "beefcafe", servicechat.Event{T: 20, Type: "error", Message: "boom"})
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindError {
+		t.Fatalf("captured %+v, want the next event to notify", sent)
+	}
+}
+
+func TestDeletingAChatForgetsItsNotificationState(t *testing.T) {
+	repo, _ := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe", Title: "Plan"})
+	ctx := context.Background()
+
+	_, _ = repo.AppendEvent(ctx, "beefcafe", servicechat.Event{Type: "tool_use_start", Name: "AskUserQuestion"})
+	repo.push.push.Wait()
+	if err := repo.Delete(ctx, "beefcafe"); err != nil {
+		t.Fatal(err)
+	}
+
+	repo.push.mu.Lock()
+	defer repo.push.mu.Unlock()
+	if len(repo.push.parked) != 0 || len(repo.push.notified) != 0 {
+		t.Fatalf("parked = %v, notified = %v; want both empty", repo.push.parked, repo.push.notified)
 	}
 }

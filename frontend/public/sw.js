@@ -79,9 +79,14 @@ async function handlePush(event) {
   if (payload.chatId && (await isChatOnScreen(payload.chatId))) return;
 
   const urgent = payload.kind === "question";
+  const tag = payload.tag || "remote-futrx";
+  // The tag should make the new notification replace the old one, but iOS
+  // ignores it and stacks them. Closing the old ones first gives every
+  // platform the same one-entry-per-chat tray.
+  await closeNotifications(tag);
   await self.registration.showNotification(payload.title || "remote.futrx", {
     body: payload.body || "",
-    tag: payload.tag || "remote-futrx",
+    tag,
     icon: ICON,
     badge: BADGE,
     data: { chatId: payload.chatId || null, kind: payload.kind || null },
@@ -92,6 +97,15 @@ async function handlePush(event) {
     vibrate: urgent ? [90, 60, 90] : undefined,
     timestamp: Date.now(),
   });
+}
+
+async function closeNotifications(tag) {
+  try {
+    const shown = await self.registration.getNotifications({ tag });
+    for (const notification of shown) notification.close();
+  } catch {
+    // Worst case the old entry stays in the tray next to the new one.
+  }
 }
 
 async function subscriptionBelongsToCurrentAccount() {

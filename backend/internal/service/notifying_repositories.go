@@ -41,6 +41,7 @@ func (r notifyingChatRepository) Delete(ctx context.Context, id servicechat.ID) 
 	err := r.Repository.Delete(ctx, id)
 	if err == nil {
 		r.workspace.PublishChatDelete(id)
+		r.push.ChatDeleted(id)
 	}
 	return err
 }

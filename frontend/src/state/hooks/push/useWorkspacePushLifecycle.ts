@@ -3,6 +3,7 @@ import { useEffect } from "preact/hooks";
 import type { WorkspaceView } from "../../../models/workspace";
 import { pushNotificationStore } from "../../stores/push/pushNotificationStore";
 import { pushPresenceStore } from "../../stores/push/pushPresenceStore";
+import { closeNotificationsOfWatchedChat } from "../../stores/push/pushTrayCleanup";
 import { usePushDeviceRestore } from "./usePushDeviceRestore";
 
 interface WorkspacePushLifecycleOptions {
@@ -38,4 +39,7 @@ export function useWorkspacePushLifecycle({
     pushNotificationStore.getState().setVisibleChat(onScreen);
     pushPresenceStore.getState().setWatchedChat(onScreen);
   }, [activeChatId, view]);
+
+  // Clear a chat's notifications once the user is actually looking at it.
+  useEffect(() => closeNotificationsOfWatchedChat(), []);
 }

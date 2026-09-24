@@ -1,5 +1,5 @@
 import { serviceWorkerTransport } from "../transport/serviceWorkerTransport.ts";
-import { PUSH_SERVICE_WORKER } from "../config/push.ts";
+import { chatNotificationTag, PUSH_SERVICE_WORKER } from "../config/push.ts";
 
 interface PushServiceWorkerCallbacks {
   visibleChatId: () => string | null;
@@ -36,6 +36,22 @@ class PushServiceWorkerApi {
 
   ready(): Promise<ServiceWorkerRegistration> {
     return serviceWorkerTransport.ready();
+  }
+
+  /**
+   * Removes a chat's notifications from the tray once the user is looking at
+   * it. iOS never clears them on its own, so every turn would otherwise leave
+   * one behind.
+   */
+  async closeChatNotifications(chatId: string): Promise<void> {
+    try {
+      const registration = await this.currentRegistration();
+      if (!registration) return;
+      const shown = await registration.getNotifications({ tag: chatNotificationTag(chatId) });
+      for (const notification of shown) notification.close();
+    } catch {
+      // A leftover entry is harmless; tapping it just opens the chat.
+    }
   }
 
   connect(callbacks: PushServiceWorkerCallbacks): void {

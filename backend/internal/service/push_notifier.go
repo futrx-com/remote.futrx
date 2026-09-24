@@ -46,7 +46,15 @@ type chatPushNotifier struct {
 	// has not seen the chat since, so later turns stay quiet instead of
 	// piling up: iOS ignores the per-chat tag and stacks every notification.
 	// Held in memory; a restart costs at most one extra notification per chat.
-	notified map[servicechat.ID]int64
+	notified map[servicechat.ID]unreadNotice
+	claims   uint64
+}
+
+// unreadNotice is one chat's outstanding notification. claim identifies the
+// send that recorded it, so a failed delivery can undo only its own record.
+type unreadNotice struct {
+	readAt int64
+	claim  uint64
 }
 
 // ChatEvent decides whether an appended event deserves a notification and, if
@@ -85,7 +93,8 @@ func (n *chatPushNotifier) ChatEvent(chatID servicechat.ID, event servicechat.Ev
 	if len(recipients) == 0 {
 		return
 	}
-	if !n.claimUnreadSlot(chatID, meta.LastReadAt, kind == servicepush.KindQuestion) {
+	claim, ok := n.claimUnreadSlot(chatID, meta.LastReadAt, kind == servicepush.KindQuestion)
+	if !ok {
 		return
 	}
 
@@ -105,6 +114,10 @@ func (n *chatPushNotifier) ChatEvent(chatID servicechat.ID, event servicechat.Ev
 		// tray entry instead of stacking behind it.
 		Tag:    "chat:" + string(chatID),
 		Urgent: urgent,
+	}, func(delivered int) {
+		if delivered == 0 {
+			n.releaseUnreadSlot(chatID, claim)
+		}
 	})
 }
 
@@ -112,21 +125,47 @@ func (n *chatPushNotifier) ChatEvent(chatID servicechat.ID, event servicechat.Ev
 // records the read marker the notification is about to go out against. A
 // question always goes through: the run is blocked on the user, and an older
 // "finished" notification must not hide that.
+//
+// The slot is claimed before delivery so two events racing through here
+// cannot both send; releaseUnreadSlot hands it back if nothing arrived.
 func (n *chatPushNotifier) claimUnreadSlot(
 	chatID servicechat.ID,
 	lastReadAt int64,
 	isQuestion bool,
-) bool {
+) (uint64, bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	if n.notified == nil {
-		n.notified = map[servicechat.ID]int64{}
+		n.notified = map[servicechat.ID]unreadNotice{}
 	}
-	if marker, pending := n.notified[chatID]; pending && lastReadAt <= marker && !isQuestion {
-		return false
+	if notice, pending := n.notified[chatID]; pending && lastReadAt <= notice.readAt && !isQuestion {
+		return 0, false
 	}
-	n.notified[chatID] = lastReadAt
-	return true
+	n.claims++
+	n.notified[chatID] = unreadNotice{readAt: lastReadAt, claim: n.claims}
+	return n.claims, true
+}
+
+// releaseUnreadSlot forgets a claim whose notification reached no device, so
+// the chat is not kept quiet about something the user never saw. A newer
+// claim for the same chat is left alone.
+func (n *chatPushNotifier) releaseUnreadSlot(chatID servicechat.ID, claim uint64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if notice, ok := n.notified[chatID]; ok && notice.claim == claim {
+		delete(n.notified, chatID)
+	}
+}
+
+// ChatDeleted drops everything held for a chat that no longer exists.
+func (n *chatPushNotifier) ChatDeleted(chatID servicechat.ID) {
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	delete(n.parked, chatID)
+	delete(n.notified, chatID)
 }
 
 // trackUserPrompt treats a prompt the user typed as having seen the chat, so
