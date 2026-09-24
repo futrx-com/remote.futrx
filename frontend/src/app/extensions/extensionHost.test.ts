@@ -126,13 +126,18 @@ function entryModuleLoader(): {
   load: LoadEntryModule;
   urls: string[];
   events: string[];
+  backendInstances: string[][];
 } {
   const urls: string[] = [];
   const events: string[] = [];
+  const backendInstances: string[][] = [];
   const load: LoadEntryModule = async (url) => {
     urls.push(url);
     return {
       default: (remote: ExtensionApi) => {
+        backendInstances.push(
+          remote.backend.instances.map((instance) => instance.instanceId),
+        );
         remote.ui.register(remote.slots.applicationsPanel, () => {});
         remote.ui.addWorkspacePane({
           id: "workspace",
@@ -146,7 +151,7 @@ function entryModuleLoader(): {
       },
     };
   };
-  return { load, urls, events };
+  return { load, urls, events, backendInstances };
 }
 
 /**
@@ -265,6 +270,42 @@ test("re-syncing an unchanged catalog neither re-imports nor re-registers", asyn
   assert.equal(panelContributions().length, 1);
 
   stopWatching();
+});
+
+test("re-syncing reloads an extension when its running backend set changes", async (t) => {
+  installDocument(t);
+  const first = helloExtension();
+  first.application.backend = { access: "registered" };
+  first.backends = [{ instanceId: "global-1", scope: "global" }];
+  const second = helloExtension(false);
+  second.application.backend = { access: "registered" };
+  second.projectIds = ["project-1"];
+  second.backends = [{
+    instanceId: "project-1-copy",
+    scope: "project",
+    projectId: "project-1",
+  }];
+  serveExtensions(t, [[first], [second]]);
+  const { registry, panelContributions, paneContributions } = createRegistry();
+  const entry = entryModuleLoader();
+  const host = new ExtensionHost(registry, entry.load);
+
+  await host.sync();
+  await host.sync();
+
+  assert.deepEqual(entry.backendInstances, [
+    ["global-1"],
+    ["project-1-copy"],
+  ]);
+  assert.equal(entry.urls.length, 2);
+  assert.equal(panelContributions().length, 1, "old contributions were removed");
+  assert.equal(paneContributions().length, 1, "old panes were removed");
+  assert.deepEqual(paneContributions()[0]?.visibility, {
+    global: false,
+    projectIds: ["project-1"],
+  });
+  emitUploadCompleted();
+  assert.equal(entry.events.length, 1, "old event subscriptions were removed");
 });
 
 test("a failed extension list leaves what is loaded alone", async (t) => {

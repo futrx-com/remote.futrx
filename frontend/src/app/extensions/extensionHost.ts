@@ -28,7 +28,7 @@ const importEntryModule: LoadEntryModule = (url) =>
 export class ExtensionHost {
   private readonly registry: ExtensionRegistry;
   private readonly loadEntryModule: LoadEntryModule;
-  private readonly loaded = new Set<string>();
+  private readonly loaded = new Map<string, string>();
   private inFlight: Promise<void> | null = null;
   private resyncRequested = false;
 
@@ -99,7 +99,7 @@ export class ExtensionHost {
     const installed = new Set(
       extensions.map((extension) => extension.application.id),
     );
-    for (const applicationId of this.loaded) {
+    for (const applicationId of this.loaded.keys()) {
       if (installed.has(applicationId)) continue;
       this.forget(applicationId);
     }
@@ -107,8 +107,13 @@ export class ExtensionHost {
 
   private async loadImage(extension: AppUIExtension): Promise<void> {
     const { application } = extension;
-    if (this.loaded.has(application.id)) return;
-    this.loaded.add(application.id);
+    const signature = extensionSignature(extension);
+    if (this.loaded.get(application.id) === signature) return;
+    if (this.loaded.has(application.id)) this.forget(application.id);
+    // forget() also removes the old image's cached visibility. Restore the
+    // visibility for this image before its activation registers anything.
+    this.registry.setVisibility(application.id, this.visibilityOf(extension));
+    this.loaded.set(application.id, signature);
     try {
       for (const style of application.ui?.styles ?? []) {
         this.injectStylesheet(application.id, style);
@@ -170,3 +175,23 @@ export class ExtensionHost {
 }
 
 export const extensionHost = new ExtensionHost(extensionRegistry);
+
+// The entry module closes over the ExtensionApi it receives. Visibility and
+// backend instances are therefore part of the loaded image even when the
+// catalog application itself did not change. Re-activating on either change
+// prevents a surviving pane from calling an instance that was stopped or
+// uninstalled during a foreground resync.
+function extensionSignature(extension: AppUIExtension): string {
+  return JSON.stringify({
+    application: extension.application,
+    global: extension.global,
+    projectIds: [...(extension.projectIds ?? [])].sort(),
+    backends: [...(extension.backends ?? [])]
+      .map(({ instanceId, scope, projectId }) => ({ instanceId, scope, projectId }))
+      .sort((left, right) =>
+        `${left.scope}:${left.projectId ?? ""}:${left.instanceId}`.localeCompare(
+          `${right.scope}:${right.projectId ?? ""}:${right.instanceId}`,
+        )
+      ),
+  });
+}
