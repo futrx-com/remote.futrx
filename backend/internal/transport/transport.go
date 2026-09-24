@@ -90,6 +90,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Applications,
 		deps.Services.Auth,
 		deps.Services.Projects,
+		deps.Services.Chats,
 	)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,

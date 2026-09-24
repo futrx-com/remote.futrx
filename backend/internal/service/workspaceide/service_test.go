@@ -95,6 +95,23 @@ func TestOpenURLWorkspaceRootHasNoPayload(t *testing.T) {
 	}
 }
 
+func TestOpenURLAtRootDoesNotBroadenTrustedRoot(t *testing.T) {
+	t.Parallel()
+	root := "/srv/workspace/remote.futrx"
+	service := New(testBaseURL, testProjectsRoot)
+	got, err := service.OpenURLAtRoot(root, "/workspace/README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := redirectQuery(t, got)
+	if folder := query.Get("folder"); folder != root {
+		t.Fatalf("folder = %q, want exact trusted root %q", folder, root)
+	}
+	if payload := query.Get("payload"); !strings.Contains(payload, root+"/README.md") {
+		t.Fatalf("payload %q does not stay beneath exact trusted root", payload)
+	}
+}
+
 func TestOpenFilePayloadEscapesPaths(t *testing.T) {
 	payload := openFilePayload("code.remote.futrx.com", "/workspace/a b/file.md", 12, 0)
 	for _, want := range []string{

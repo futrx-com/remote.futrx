@@ -164,6 +164,7 @@ func main() {
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
 		AuthBaseURL:       cfg.BaseURL,
+		HostWorkspaceRoot: cfg.InstallDir,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
 		AgentModules:      agentModules,

@@ -8,7 +8,6 @@ import (
 
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
-	"github.com/futrx-com/remote.futrx.com/internal/shared/workspacepath"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
@@ -74,16 +73,30 @@ func (h *ApplicationsHandler) HandleChatBackend(
 		httptransport.SendErr(w, http.StatusNotFound, "not found")
 		return
 	}
-	root := workspacepath.Root(meta.Cwd)
-	if root == "" {
+	chat, err := h.trustedChatContext(r.Context(), meta)
+	if err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, "chat workspace is unavailable")
 		return
 	}
-	h.serveBackendAs(w, r, id, path, caller, &applications.ChatContext{
+	h.serveBackendAs(w, r, id, path, caller, &chat)
+}
+
+func (h *ApplicationsHandler) trustedChatContext(
+	ctx context.Context,
+	meta servicechat.Meta,
+) (applications.ChatContext, error) {
+	if h.chatWorkspaces == nil {
+		return applications.ChatContext{}, servicechat.ErrWorkspaceUnavailable
+	}
+	root, err := h.chatWorkspaces.TrustedWorkspaceRoot(ctx, meta)
+	if err != nil {
+		return applications.ChatContext{}, err
+	}
+	return applications.ChatContext{
 		ID:            string(meta.ID),
 		ProjectID:     string(meta.ProjectID),
 		WorkspaceRoot: root,
-	})
+	}, nil
 }
 
 func (h *ApplicationsHandler) serveBackendAs(

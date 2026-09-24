@@ -302,6 +302,9 @@ chat-scoped call overwrites it with core's verified values. A global install
 may serve any chat the caller can access. A project install is accepted only
 for a chat in that same project. `WorkspaceRoot` is a convenient trusted input,
 not a process sandbox; backend code retains its normal server privileges.
+Core derives it from the project record for project chats and from the fixed
+deployment `INSTALL_DIR` for loose chats. It never treats the mutable
+browser-facing chat `cwd` as authority.
 
 Bodies are capped at 1 MiB. Larger input is rejected with `413` before the
 backend is called, never silently truncated.

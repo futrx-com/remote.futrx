@@ -25,6 +25,15 @@ func (s *Service) OpenURL(cwd, rawPath string) (string, error) {
 	return s.redirectURL(target), nil
 }
 
+// OpenURLAtRoot opens a path beneath an exact core-authorized workspace root.
+func (s *Service) OpenURLAtRoot(root, rawPath string) (string, error) {
+	target, err := workspacepath.ResolveFileAtRoot(rawPath, root)
+	if err != nil {
+		return "", err
+	}
+	return s.redirectURL(target), nil
+}
+
 func (s *Service) redirectURL(target workspacepath.Target) string {
 	base := s.baseURL
 	folder := target.WorkspaceRoot

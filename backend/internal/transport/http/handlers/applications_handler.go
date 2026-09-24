@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -17,9 +19,17 @@ import (
 // infrastructure. Per-project routes are delegated here by ProjectHandler,
 // which has already enforced project membership.
 type ApplicationsHandler struct {
-	apps     *serviceapplications.Service
-	auth     *serviceauth.Service
-	projects visibleProjects
+	apps           *serviceapplications.Service
+	auth           *serviceauth.Service
+	projects       visibleProjects
+	chatWorkspaces trustedChatWorkspaceResolver
+}
+
+// trustedChatWorkspaceResolver is the only chat capability an application
+// backend handler needs. Its result is server-owned authorization metadata,
+// never a path copied from the browser-facing chat model.
+type trustedChatWorkspaceResolver interface {
+	TrustedWorkspaceRoot(context.Context, servicechat.Meta) (string, error)
 }
 
 // NewApplicationsHandler builds the handler. apps may be nil when the server
@@ -28,8 +38,11 @@ func NewApplicationsHandler(
 	apps *serviceapplications.Service,
 	auth *serviceauth.Service,
 	projects visibleProjects,
+	chatWorkspaces trustedChatWorkspaceResolver,
 ) *ApplicationsHandler {
-	return &ApplicationsHandler{apps: apps, auth: auth, projects: projects}
+	return &ApplicationsHandler{
+		apps: apps, auth: auth, projects: projects, chatWorkspaces: chatWorkspaces,
+	}
 }
 
 func (h *ApplicationsHandler) RegisterRoutes(mux *http.ServeMux) {

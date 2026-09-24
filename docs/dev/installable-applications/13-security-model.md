@@ -111,6 +111,16 @@ still runs with server privileges and could access other host paths on its own.
 The value prevents a caller from selecting another chat's workspace through
 the supported API; it does not contain trusted backend code.
 
+`WorkspaceRoot` never comes from the chat's `cwd`. That field is a mutable
+working-directory hint and browser clients may set it. For a project chat,
+core resolves the root from the project record identified by the already
+authorized `ProjectID`; for a loose chat, it uses the deployment's fixed
+`INSTALL_DIR` host workspace. An injected `/`, `/etc`, or another project's
+workspace in chat metadata therefore cannot change an application backend's
+filesystem authority. The core IDE-open and media-open routes use the same
+resolved root, so handing a file from an application pane back to a core viewer
+does not reintroduce the mutable path.
+
 ### Reviewing a backend
 
 - **Does it authorize?** If any route does something not every signed-in user

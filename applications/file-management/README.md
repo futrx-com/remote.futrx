@@ -22,8 +22,11 @@ folders download as ZIP files.
 
 The backend only accepts chat-scoped calls. Remote authorizes the chat first and
 stamps its trusted workspace root into `Request.Context.Chat`; the browser never
-supplies a host path. Filesystem operations are rooted beneath that directory,
-resolve symlinks without allowing escapes, and refuse special files.
+supplies a host path. Project chats resolve that root from their project record;
+loose chats use Remote's fixed host installation workspace. A mutable chat
+working directory cannot select `/`, another project, or another host path.
+Filesystem operations are rooted beneath that directory, resolve symlinks
+without allowing escapes, and refuse special files.
 
 ## Verify
 

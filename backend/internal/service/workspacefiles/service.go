@@ -31,6 +31,16 @@ func New(store Store) *Service {
 
 func (s *Service) OpenMedia(cwd, rawPath string) (Media, error) {
 	target, err := workspacepath.ResolveFile(rawPath, cwd)
+	return s.openMedia(target, err)
+}
+
+// OpenMediaAtRoot opens media beneath an exact core-authorized workspace root.
+func (s *Service) OpenMediaAtRoot(root, rawPath string) (Media, error) {
+	target, err := workspacepath.ResolveFileAtRoot(rawPath, root)
+	return s.openMedia(target, err)
+}
+
+func (s *Service) openMedia(target workspacepath.Target, err error) (Media, error) {
 	if err != nil {
 		return Media{}, err
 	}

@@ -44,3 +44,22 @@ func TestResolveFileRejectsUnsafePaths(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveFileAtRootPreservesExactTrustedRoot(t *testing.T) {
+	t.Parallel()
+	root := "/srv/workspace/remote.futrx"
+	target, err := ResolveFileAtRoot("/workspace/frontend/src/main.ts", root)
+	if err != nil {
+		t.Fatalf("ResolveFileAtRoot: %v", err)
+	}
+	if target.WorkspaceRoot != root {
+		t.Fatalf("workspace root = %q, want exact trusted root %q", target.WorkspaceRoot, root)
+	}
+	if want := root + "/frontend/src/main.ts"; target.FilePath != want {
+		t.Fatalf("file path = %q, want %q", target.FilePath, want)
+	}
+
+	if _, err := ResolveFileAtRoot("/srv/workspace/other/secret", root); err == nil {
+		t.Fatal("absolute path outside the exact root was accepted")
+	}
+}

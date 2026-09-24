@@ -327,7 +327,12 @@ func (h *ChatHandler) handleIDEOpen(w http.ResponseWriter, r *http.Request, meta
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	redirectURL, err := h.ide.OpenURL(meta.Cwd, r.URL.Query().Get("path"))
+	root, err := h.trustedWorkspaceRoot(r, meta)
+	if err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, "chat workspace is unavailable")
+		return
+	}
+	redirectURL, err := h.ide.OpenURLAtRoot(root, r.URL.Query().Get("path"))
 	if err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -340,7 +345,12 @@ func (h *ChatHandler) handleMediaOpen(w http.ResponseWriter, r *http.Request, me
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	media, err := h.files.OpenMedia(meta.Cwd, r.URL.Query().Get("path"))
+	root, err := h.trustedWorkspaceRoot(r, meta)
+	if err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, "chat workspace is unavailable")
+		return
+	}
+	media, err := h.files.OpenMediaAtRoot(root, r.URL.Query().Get("path"))
 	if err != nil {
 		sendMediaOpenError(w, err)
 		return
@@ -354,6 +364,13 @@ func (h *ChatHandler) handleMediaOpen(w http.ResponseWriter, r *http.Request, me
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'unsafe-inline'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, media.File.Name, media.File.ModTime, media.File.Content())
+}
+
+func (h *ChatHandler) trustedWorkspaceRoot(r *http.Request, meta servicechat.Meta) (string, error) {
+	if h.chats == nil {
+		return "", servicechat.ErrWorkspaceUnavailable
+	}
+	return h.chats.TrustedWorkspaceRoot(r.Context(), meta)
 }
 
 func sendMediaOpenError(w http.ResponseWriter, err error) {

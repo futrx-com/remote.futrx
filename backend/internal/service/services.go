@@ -72,6 +72,7 @@ type Dependencies struct {
 	Push              PushStore
 	Usage             serviceusage.Repository
 	AuthBaseURL       string
+	HostWorkspaceRoot string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
 	AgentModules      *agentmodule.Catalog
@@ -239,6 +240,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(agentRuntime),
 		servicechat.WithProviderPolicy(agentRuntime),
+		servicechat.WithHostWorkspaceRoot(deps.HostWorkspaceRoot),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)

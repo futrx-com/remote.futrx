@@ -3,6 +3,7 @@ package httphandlers
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -12,8 +13,84 @@ import (
 	"testing"
 	"time"
 
+	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
+
+type handlerProjectWorkspaceResolver map[servicechat.ProjectID]string
+
+func (r handlerProjectWorkspaceResolver) WorkspaceForProject(
+	_ context.Context,
+	id servicechat.ProjectID,
+) (string, error) {
+	root, ok := r[id]
+	if !ok {
+		return "", errors.New("project not found")
+	}
+	return root, nil
+}
+
+func TestTrustedChatContextUsesServerOwnedWorkspace(t *testing.T) {
+	t.Parallel()
+	const (
+		projectRoot      = "/var/lib/remote/projects/allowed/workspace"
+		otherProjectRoot = "/var/lib/remote/projects/other/workspace"
+		hostRoot         = "/opt/remote.futrx"
+	)
+	workspaces := servicechat.New(
+		nil,
+		handlerProjectWorkspaceResolver{"allowed": projectRoot},
+		nil,
+		nil,
+		servicechat.WithHostWorkspaceRoot(hostRoot),
+	)
+	handler := &ApplicationsHandler{chatWorkspaces: workspaces}
+
+	tests := []struct {
+		name string
+		meta servicechat.Meta
+		want applications.ChatContext
+	}{
+		{
+			name: "malicious project root is ignored",
+			meta: servicechat.Meta{ID: "chat-1", ProjectID: "allowed", Cwd: "/"},
+			want: applications.ChatContext{ID: "chat-1", ProjectID: "allowed", WorkspaceRoot: projectRoot},
+		},
+		{
+			name: "cross-project cwd is ignored",
+			meta: servicechat.Meta{ID: "chat-2", ProjectID: "allowed", Cwd: otherProjectRoot},
+			want: applications.ChatContext{ID: "chat-2", ProjectID: "allowed", WorkspaceRoot: projectRoot},
+		},
+		{
+			name: "malicious loose-chat root is ignored",
+			meta: servicechat.Meta{ID: "chat-3", Cwd: "/etc"},
+			want: applications.ChatContext{ID: "chat-3", WorkspaceRoot: hostRoot},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := handler.trustedChatContext(context.Background(), test.meta)
+			if err != nil {
+				t.Fatalf("trustedChatContext: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("context = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestTrustedChatContextFailsClosedWithoutResolver(t *testing.T) {
+	t.Parallel()
+	handler := &ApplicationsHandler{}
+	_, err := handler.trustedChatContext(context.Background(), servicechat.Meta{
+		ID: "chat-1", Cwd: "/browser/chosen",
+	})
+	if !errors.Is(err, servicechat.ErrWorkspaceUnavailable) {
+		t.Fatalf("error = %v, want ErrWorkspaceUnavailable", err)
+	}
+}
 
 // The backend prefix has to be recognised exactly: too loose and an instance
 // named "backendish" routes to a backend, too strict and nested routes break.

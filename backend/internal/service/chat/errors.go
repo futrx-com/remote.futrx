@@ -9,6 +9,7 @@ var (
 	ErrInvalidRewindTimestamp          = errors.New("invalid rewind timestamp")
 	ErrChatRunning                     = errors.New("chat has an active run")
 	ErrNotFound                        = errors.New("chat not found")
+	ErrWorkspaceUnavailable            = errors.New("chat workspace unavailable")
 	ErrTranscriptContentNotFound       = errors.New("transcript content not found")
 	ErrTranscriptProjectionUnavailable = errors.New("transcript projection unavailable")
 )

@@ -17,6 +17,7 @@ type Service struct {
 	transcriptProjection TranscriptProjectionSource
 	copiedEvents         CopiedEventAppender
 	projects             ProjectResolver
+	hostWorkspaceRoot    string
 	tmux                 TmuxResolver
 	runs                 RunController
 	sessions             SessionPolicy
@@ -58,6 +59,15 @@ func WithSessionPolicy(policy SessionPolicy) Option {
 func WithProviderPolicy(policy ProviderPolicy) Option {
 	return func(service *Service) {
 		service.providers = policy
+	}
+}
+
+// WithHostWorkspaceRoot sets the server-owned filesystem root exposed to
+// application backends for loose chats. A loose chat's Cwd is caller mutable,
+// so it is intentionally not used as filesystem authority.
+func WithHostWorkspaceRoot(root string) Option {
+	return func(service *Service) {
+		service.hostWorkspaceRoot = root
 	}
 }
 

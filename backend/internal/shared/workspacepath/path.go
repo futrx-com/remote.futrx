@@ -46,7 +46,21 @@ func ResolveFile(rawPath, cwd string) (Target, error) {
 	if workspaceRoot == "" {
 		return Target{}, errors.New("chat workspace is unavailable")
 	}
+	return resolveFile(rawPath, workspaceRoot)
+}
 
+// ResolveFileAtRoot resolves a user-facing path beneath an exact, already
+// trusted workspace root. Unlike ResolveFile, it never broadens a nested path
+// by searching for a directory named "workspace".
+func ResolveFileAtRoot(rawPath, workspaceRoot string) (Target, error) {
+	workspaceRoot = filepath.Clean(strings.TrimSpace(workspaceRoot))
+	if !filepath.IsAbs(workspaceRoot) {
+		return Target{}, errors.New("chat workspace is unavailable")
+	}
+	return resolveFile(rawPath, workspaceRoot)
+}
+
+func resolveFile(rawPath, workspaceRoot string) (Target, error) {
 	rawPath, line, column := parseLineReference(rawPath)
 	if rawPath == "" {
 		return Target{}, errors.New("path is required")
