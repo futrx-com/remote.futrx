@@ -84,6 +84,22 @@ export type ExtensionRender = (
 
 export type ExtensionPredicate = (context: ExtensionSlotContext) => boolean;
 
+/** Context supplied to an application-owned pane in the active chat workspace. */
+export interface ExtensionWorkspacePaneContext {
+  chatId: string;
+  projectId?: string;
+  cwd: string;
+}
+
+export type ExtensionWorkspacePaneRender = (
+  host: HTMLElement,
+  context: ExtensionWorkspacePaneContext,
+) => void | (() => void);
+
+export type ExtensionWorkspacePanePredicate = (
+  context: ExtensionWorkspacePaneContext,
+) => boolean;
+
 export interface ExtensionVisibility {
   global: boolean;
   projectIds: string[];
@@ -99,6 +115,33 @@ export interface ExtensionContribution {
   visibility: ExtensionVisibility;
 }
 
+/** Public options accepted by `remote.ui.addWorkspacePane`. */
+export interface ExtensionWorkspacePane {
+  /** Stable within this application; used for diagnostics and accessibility. */
+  id: string;
+  /** Accessible name and tooltip for the chat-header trigger. */
+  label: string;
+  /** Optional trigger tooltip. The pane heading remains `label`. */
+  title?: string;
+  /** Inline SVG/HTML mark. Core controls its dimensions and colour. */
+  icon: string;
+  /** Preferred desktop width in pixels, clamped by core and the viewport. */
+  width?: number;
+  render: ExtensionWorkspacePaneRender;
+  order?: number;
+  when?: ExtensionWorkspacePanePredicate;
+}
+
+/** Internal, install-scoped form retained by the extension registry. */
+export interface ExtensionWorkspacePaneContribution
+  extends Omit<ExtensionWorkspacePane, "id"> {
+  id: string;
+  paneId: string;
+  applicationId: string;
+  order: number;
+  visibility: ExtensionVisibility;
+}
+
 export interface ExtensionRegisterOptions {
   order?: number;
   when?: ExtensionPredicate;
@@ -111,12 +154,17 @@ export interface ExtensionRegistry {
     render: ExtensionRender,
     options?: ExtensionRegisterOptions,
   ) => () => void;
+  registerWorkspacePane: (
+    applicationId: string,
+    pane: ExtensionWorkspacePane,
+  ) => () => void;
   setVisibility: (applicationId: string, visibility: ExtensionVisibility) => void;
   removeApplication: (applicationId: string) => void;
 }
 
 export interface ExtensionStoreState {
   bySlot: ReadonlyMap<ExtensionSlotName, ExtensionContribution[]>;
+  workspacePanes: ExtensionWorkspacePaneContribution[];
   activeProjectId: string | null;
 }
 
@@ -222,6 +270,7 @@ export interface ExtensionApi {
     ) => () => void;
     addButton: (slot: string, button: ExtensionButton) => () => void;
     addIconButton: (slot: string, button: ExtensionIconButton) => () => void;
+    addWorkspacePane: (pane: ExtensionWorkspacePane) => () => void;
     openPopup: (options?: ExtensionPopupOptions) => ExtensionPopupHandle;
   };
   /**

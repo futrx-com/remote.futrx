@@ -126,3 +126,17 @@ more.
 
 The slot re-reads its contributions whenever the registry changes, so an
 extension that loads after the surface has already rendered still appears.
+
+## Workspace panes are composite contributions
+
+A chat workspace pane is not a slot. It needs a trigger in the chat header,
+mutual exclusion with Remote's own panes, a desktop width, mobile focus
+handling, and a close control as one unit. Register that unit with
+`remote.ui.addWorkspacePane(...)`; core renders its trigger and chrome while
+the application renders only the body.
+
+The pane receives `{ chatId, projectId?, cwd }`, follows the same global or
+project install visibility as slots, and may use `when` for a narrower rule.
+Its body mounts only while open and its cleanup runs on close, chat changes,
+scope changes, stop, or uninstall. See
+[06 — Extension API](06-extension-api.md#remoteuiaddworkspacepanepane).

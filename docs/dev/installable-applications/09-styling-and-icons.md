@@ -186,3 +186,15 @@ const ICON =
 close button — using the app's tokens. Style only the **body** you fill, and
 keep it to the app's type scale. `width` sets the body's max width in pixels
 and is clamped to the viewport, so a popup stays usable on a phone.
+
+## Workspace panes
+
+`remote.ui.addWorkspacePane` supplies the trigger, header, icon well, title,
+close button, responsive width, and mobile focus handling. Style only the body
+host passed to `render`. It has no padding and clips overflow, so the
+application can choose its own body layout; add an inner scrolling element when
+content may exceed the available height.
+
+The optional numeric `width` is a desktop preference, not a fixed promise. It
+is clamped to 320–1200 pixels and to the room left beside the chat. On mobile,
+every workspace pane fills the screen.

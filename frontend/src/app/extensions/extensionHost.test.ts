@@ -90,6 +90,8 @@ function createRegistry() {
   const store = createExtensionStore();
   const registry: ExtensionRegistry = {
     register: (...args) => store.getState().register(...args),
+    registerWorkspacePane: (...args) =>
+      store.getState().registerWorkspacePane(...args),
     setVisibility: (...args) => store.getState().setVisibility(...args),
     removeApplication: (...args) => store.getState().removeApplication(...args),
   };
@@ -97,6 +99,7 @@ function createRegistry() {
     registry,
     panelContributions: () =>
       store.getState().bySlot.get(EXTENSION_SLOTS.applicationsPanel) ?? [],
+    paneContributions: () => store.getState().workspacePanes,
   };
 }
 
@@ -131,6 +134,12 @@ function entryModuleLoader(): {
     return {
       default: (remote: ExtensionApi) => {
         remote.ui.register(remote.slots.applicationsPanel, () => {});
+        remote.ui.addWorkspacePane({
+          id: "workspace",
+          label: "Workspace",
+          icon: "<svg></svg>",
+          render: () => {},
+        });
         remote.events.on("upload.completed", () => {
           events.push(remote.application.id);
         });
@@ -163,7 +172,7 @@ function emitUploadCompleted(): void {
 test("watching syncs immediately and loads the installed extension", async (t) => {
   const browser = installDocument(t);
   const served = serveExtensions(t, [[helloExtension()]]);
-  const { registry, panelContributions } = createRegistry();
+  const { registry, panelContributions, paneContributions } = createRegistry();
   const entry = entryModuleLoader();
   const host = new ExtensionHost(registry, entry.load);
 
@@ -175,6 +184,7 @@ test("watching syncs immediately and loads the installed extension", async (t) =
     "/api/applications/catalog/hello-remote/ui/scripts/main.js",
   ]);
   assert.equal(panelContributions().length, 1);
+  assert.equal(paneContributions().length, 1);
   assert.equal(browser.listenerCount("visibilitychange"), 1);
 
   stopWatching();
@@ -183,7 +193,7 @@ test("watching syncs immediately and loads the installed extension", async (t) =
 test("returning to the foreground drops an extension uninstalled elsewhere", async (t) => {
   const browser = installDocument(t);
   serveExtensions(t, [[helloExtension()], []]);
-  const { registry, panelContributions } = createRegistry();
+  const { registry, panelContributions, paneContributions } = createRegistry();
   const entry = entryModuleLoader();
   const host = new ExtensionHost(registry, entry.load);
 
@@ -195,6 +205,7 @@ test("returning to the foreground drops an extension uninstalled elsewhere", asy
   await settled();
 
   assert.equal(panelContributions().length, 0);
+  assert.equal(paneContributions().length, 0);
   emitUploadCompleted();
   assert.deepEqual(entry.events, [], "its event handlers go with it");
 

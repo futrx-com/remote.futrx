@@ -211,6 +211,10 @@ html[data-theme="light"] {
       width: min(560px, calc(100vw - 320px));
       max-width: none;
     }
+    .workspace-extension-pane[aria-hidden="false"] {
+      width: min(var(--workspace-extension-width, 560px), calc(100vw - 320px));
+      max-width: none;
+    }
     .workspace-terminal-pane[aria-hidden="false"] {
       width: var(--workspace-terminal-width, 560px);
       max-width: var(--workspace-terminal-max-width, max(420px, calc(100% - 320px)));

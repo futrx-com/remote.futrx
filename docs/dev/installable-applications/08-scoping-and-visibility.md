@@ -46,6 +46,10 @@ The extension does not choose this and cannot widen it. The backend reports the
 scope of each install, the host records it before the entry module runs, and
 `ExtensionRegistry` filters every contribution on every render.
 
+Workspace panes follow the same rule. Their trigger and pane disappear
+together; if a currently open pane falls out of scope, Remote closes it rather
+than leaving an empty mobile workspace.
+
 ## What "in P" means
 
 A project's extension belongs to **the time the user spends in that project**,

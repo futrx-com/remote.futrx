@@ -34,7 +34,7 @@ applications/
   ui-playground/
     README.md
     application.json
-    ui/              browser extension: buttons, panels, popups
+    ui/              browser extension: buttons, panels, workspace panes, popups
       views/*.html
       style/*.css
       scripts/main.js

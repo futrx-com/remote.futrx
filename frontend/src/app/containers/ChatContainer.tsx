@@ -1,6 +1,6 @@
 import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { BrowserDrawer } from "../../ui/chat/browser/BrowserDrawer";
 import { ChatThread } from "../../ui/chat/ChatThread";
 import { MediaViewerOverlay } from "../../ui/chat/files/MediaViewerOverlay";
@@ -20,6 +20,12 @@ import { useChatReadMarker } from "../../state/hooks/chat/useChatReadMarker";
 import { useDismissShortcut } from "../../state/hooks/shared/useDismissShortcut.ts";
 import { useTerminalOverlayController } from "../../ui/chat/terminal/useTerminalOverlayController";
 import { useWorkspaceGitRepos } from "../../state/hooks/chat/useWorkspaceGitRepos";
+import { useExtensionWorkspacePanes } from "../../state/hooks/extensions/useExtensionWorkspacePanes";
+import {
+  ExtensionWorkspacePane,
+  extensionPaneAction,
+} from "../../ui/chat/extensions/ExtensionWorkspacePane";
+import { defaultWorkspacePath } from "../../ui/chat/ideLinks";
 
 export function ChatContainer({
   chat,
@@ -79,6 +85,23 @@ export function ChatContainer({
     hideBrowser: browser.closeBrowserDrawer,
   });
   const terminal = useTerminalOverlayController(drawers.terminalOpen);
+  const workspacePaneContext = useMemo(() => ({
+    chatId: chat.id,
+    projectId: displayMeta.projectId || undefined,
+    cwd: displayMeta.cwd && displayMeta.cwd !== "~"
+      ? displayMeta.cwd
+      : defaultWorkspacePath,
+  }), [chat.id, displayMeta.projectId, displayMeta.cwd]);
+  const extensionPanes = useExtensionWorkspacePanes(workspacePaneContext);
+  const activeExtensionPane = extensionPanes.find(
+    (pane) => pane.id === drawers.extensionPaneId,
+  ) ?? null;
+
+  useEffect(() => {
+    if (drawers.extensionPaneId && !activeExtensionPane) {
+      drawers.closeExtensionPane();
+    }
+  }, [drawers.extensionPaneId, activeExtensionPane]);
 
   // `eventCount` stands in for "the thread changed": find re-reads the rendered
   // messages on it, so a match list cannot go stale against a streaming reply.
@@ -110,6 +133,12 @@ export function ChatContainer({
     schedulesOpen: drawers.schedulesOpen,
     showHistory: hasRepos,
     showSchedules: !!displayMeta.projectId,
+    extensionPanes,
+    activeExtensionPaneId: drawers.extensionPaneId,
+    onToggleExtensionPane: (id: string) =>
+      drawers.extensionPaneId === id
+        ? drawers.closeExtensionPane()
+        : drawers.openExtensionPane(id),
   };
   const activePane = drawers.historyOpen
     ? "history"
@@ -121,7 +150,9 @@ export function ChatContainer({
           ? "terminal"
           : browser.browserOpen
             ? "browser"
-            : null;
+            : activeExtensionPane
+              ? extensionPaneAction(activeExtensionPane.id)
+              : null;
   const previousMobilePane = useRef<typeof activePane>(null);
 
   useEffect(() => {
@@ -254,6 +285,15 @@ export function ChatContainer({
             onClose={drawers.closeTerminal}
           />
         )}
+        {extensionPanes.map((pane) => (
+          <ExtensionWorkspacePane
+            key={pane.id}
+            pane={pane}
+            open={pane.id === drawers.extensionPaneId}
+            context={workspacePaneContext}
+            onClose={drawers.closeExtensionPane}
+          />
+        ))}
       </div>
       <MediaViewerOverlay />
     </div>

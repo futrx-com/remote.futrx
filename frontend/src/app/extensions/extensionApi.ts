@@ -77,6 +77,8 @@ export function createExtensionApi(
           },
           { order: button.order, when: button.when },
         ),
+      addWorkspacePane: (pane) =>
+        registry.registerWorkspacePane(application.id, pane),
       openPopup: openExtensionPopup,
     },
     events: {

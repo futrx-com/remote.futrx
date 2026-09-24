@@ -33,6 +33,7 @@ remote.slots                   // { chatHeaderActions: "chat.header.actions", �
 remote.ui.register(slot, render, options?)      → dispose
 remote.ui.addButton(slot, button)               → dispose
 remote.ui.addIconButton(slot, button)           → dispose
+remote.ui.addWorkspacePane(pane)                → dispose
 remote.ui.openPopup(options?)                   → { body, close }
 
 remote.views.load(name)        // Promise<string>
@@ -157,6 +158,47 @@ Rules for the icon SVG:
 
 `label` is required and is not rendered: it is the button's accessible name, so
 write it as one ("Open in Cursor", not "cursor").
+
+## `remote.ui.addWorkspacePane(pane)`
+
+Adds one mutually-exclusive pane to the active chat workspace. Remote owns the
+header trigger, pane shell, heading, close button, width, and mobile focus
+behavior. The application owns only the body it renders:
+
+```js
+remote.ui.addWorkspacePane({
+  id: "files",
+  label: "Files",
+  title: "Browse workspace files",
+  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor">…</svg>',
+  width: 560,
+  order: 0,
+  when: ({ cwd }) => Boolean(cwd),
+  render(host, context) {
+    host.textContent = `Workspace: ${context.cwd}`;
+    return () => { /* release listeners, timers, and other resources */ };
+  },
+});
+```
+
+| Field | Notes |
+|---|---|
+| `id` | Required stable id within the application. Use lowercase letters, digits, and dashes. |
+| `label` | Required pane heading and accessible trigger name. |
+| `title` | Optional trigger tooltip; defaults to `label`. |
+| `icon` | Required inline SVG/HTML mark. Omit dimensions; Remote renders it at 16×16. |
+| `width` | Preferred desktop width in pixels. Defaults to `560` and is clamped to 320–1200 and the available viewport. Mobile panes are always full width. |
+| `order` | Ascending order among application-owned pane triggers; default `0`. |
+| `when(context)` | Optional visibility predicate receiving `{ chatId, projectId?, cwd }`. |
+| `render(host, context)` | Draws the open pane body. May return cleanup. |
+
+Only one workspace pane—built-in or application-owned—is open at a time. The
+body mounts when the user opens it and unmounts on close, so persistent work
+such as timers or observers must be released by cleanup. If install scope or
+`when` makes an open pane disappear, Remote closes it and restores the chat.
+
+The returned disposer is idempotent. It removes both trigger and pane; stopping
+or uninstalling the application does the same automatically.
 
 ## `remote.ui.openPopup(options?)`
 

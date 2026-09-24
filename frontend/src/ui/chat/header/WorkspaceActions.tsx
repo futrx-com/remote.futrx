@@ -4,6 +4,8 @@ import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../pri
 import { ExtensionSlot } from "../../primitives/ExtensionSlot";
 import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
+import type { ExtensionWorkspacePaneContribution } from "../../../models/extension";
+import { extensionPaneAction } from "../extensions/ExtensionWorkspacePane";
 
 // Two states only, and they never fight over the same property: Tailwind emits
 // utilities in file order, so an "expanded" colour appended after a base colour
@@ -31,6 +33,9 @@ export function WorkspaceActions({
   showHistory,
   showSchedules,
   orientation,
+  extensionPanes = [],
+  activeExtensionPaneId = null,
+  onToggleExtensionPane = () => {},
 }: {
   cwd: string;
   chatId?: string;
@@ -48,6 +53,9 @@ export function WorkspaceActions({
   showHistory: boolean;
   showSchedules: boolean;
   orientation: "horizontal" | "vertical";
+  extensionPanes?: ExtensionWorkspacePaneContribution[];
+  activeExtensionPaneId?: string | null;
+  onToggleExtensionPane?: (id: string) => void;
 }) {
   const workspacePath = cwd && cwd !== "~" ? cwd : defaultWorkspacePath;
   const ideUrl = buildIdeUrl(workspacePath);
@@ -90,6 +98,18 @@ export function WorkspaceActions({
           tooltipPlacement={tooltipPlacement}
         />
       )}
+      {extensionPanes.map((pane) => {
+        const expanded = activeExtensionPaneId === pane.id;
+        return (
+          <WorkspacePaneAction
+            key={pane.id}
+            pane={pane}
+            expanded={expanded}
+            onClick={() => onToggleExtensionPane(pane.id)}
+            tooltipPlacement={tooltipPlacement}
+          />
+        );
+      })}
       <WorkspaceAction
         Icon={Folder}
         onClick={onToggleFiles}
@@ -123,6 +143,72 @@ export function WorkspaceActions({
         tooltipPlacement={tooltipPlacement}
       />
     </div>
+  );
+}
+
+function WorkspacePaneAction({
+  pane,
+  expanded,
+  onClick,
+  tooltipPlacement,
+}: {
+  pane: ExtensionWorkspacePaneContribution;
+  expanded: boolean;
+  onClick: () => void;
+  tooltipPlacement: "below" | "left";
+}) {
+  const tooltipId = useId();
+  const [isHovered, setIsHovered] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
+  const onKeyDown = useDismissKeyDown((event) => {
+    setIsDismissed(true);
+    event.stopPropagation();
+  });
+  const isTooltipOpen = !isDismissed && (isHovered || isFocused);
+  const action = extensionPaneAction(pane.id);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-controls={`workspace-${action}-pane`}
+      aria-label={expanded ? `Close ${pane.label}` : pane.label}
+      aria-describedby={tooltipId}
+      data-workspace-action={action}
+      class={expanded ? actionExpanded : actionIdle}
+      onBlur={() => {
+        setIsFocused(false);
+        setIsDismissed(false);
+      }}
+      onFocus={() => {
+        setIsFocused(true);
+        setIsDismissed(false);
+      }}
+      onKeyDown={onKeyDown}
+      onMouseEnter={() => {
+        setIsHovered(true);
+        setIsDismissed(false);
+      }}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <span
+        class="grid h-4 w-4 flex-none place-items-center [&>svg]:h-full [&>svg]:w-full"
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: pane.icon }}
+      />
+      <span
+        id={tooltipId}
+        role="tooltip"
+        class={`workspace-action-tooltip pointer-events-none absolute z-50 whitespace-nowrap rounded-control border border-line bg-raised px-2 py-1 text-[11px] font-medium text-ink-100 shadow-pop transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
+          tooltipPlacement === "below"
+            ? `right-0 top-full mt-2 ${isTooltipOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"}`
+            : `right-full top-1/2 mr-2 -translate-y-1/2 ${isTooltipOpen ? "translate-x-0 opacity-100" : "translate-x-1 opacity-0"}`
+        }`}
+      >
+        {expanded ? `Close ${pane.label}` : (pane.title ?? pane.label)}
+      </span>
+    </button>
   );
 }
 

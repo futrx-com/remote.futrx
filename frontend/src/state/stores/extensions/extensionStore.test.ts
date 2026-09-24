@@ -7,6 +7,7 @@ import type {
   ExtensionSlotName,
 } from "../../../models/extension.ts";
 import { visibleExtensionContributions } from "../../hooks/extensions/extensionContributionState.ts";
+import { visibleExtensionWorkspacePanes } from "../../hooks/extensions/extensionContributionState.ts";
 import { createExtensionStore } from "./extensionStore.ts";
 
 const noop = () => {};
@@ -37,6 +38,7 @@ function createRegistry() {
   const store = createExtensionStore();
   return {
     register: store.getState().register,
+    registerWorkspacePane: store.getState().registerWorkspacePane,
     setVisibility: store.getState().setVisibility,
     setActiveProject: store.getState().setActiveProject,
     removeApplication: store.getState().removeApplication,
@@ -54,6 +56,16 @@ function createRegistry() {
             state.activeProjectId,
           )
         : contributions;
+    },
+    workspacePanes(context?: { chatId: string; projectId?: string; cwd: string }) {
+      const state = store.getState();
+      return context
+        ? visibleExtensionWorkspacePanes(
+            state.workspacePanes,
+            context,
+            state.activeProjectId,
+          )
+        : state.workspacePanes;
     },
   };
 }
@@ -159,6 +171,86 @@ test("contribution ids are unique per application so slots can key on them", () 
     .contributions(EXTENSION_SLOTS.applicationsPanel)
     .map((c) => c.id);
   assert.deepEqual(ids, ["mysql#1", "mysql#2"]);
+});
+
+test("workspace panes keep metadata, order, scope, disposal, and application cleanup", () => {
+  const registry = createRegistry();
+  registry.setActiveProject("p1");
+  registry.setVisibility("files", { global: false, projectIds: ["p1"] });
+  registry.setVisibility("notes", { global: true, projectIds: [] });
+  const dispose = registry.registerWorkspacePane("files", {
+    id: "browser",
+    label: "Workspace files",
+    icon: "<svg></svg>",
+    order: 5,
+    when: (context) => context.cwd !== "~",
+    render: noop,
+  });
+  registry.registerWorkspacePane("notes", {
+    id: "notes",
+    label: "Notes",
+    icon: "<svg></svg>",
+    order: -1,
+    render: noop,
+  });
+
+  assert.deepEqual(registry.workspacePanes().map((pane) => pane.applicationId), [
+    "notes",
+    "files",
+  ]);
+  assert.deepEqual(
+    registry.workspacePanes({ chatId: "c1", projectId: "p1", cwd: "/workspace" })
+      .map((pane) => pane.paneId),
+    ["notes", "browser"],
+  );
+  assert.deepEqual(
+    registry.workspacePanes({ chatId: "c2", projectId: "p2", cwd: "/workspace" })
+      .map((pane) => pane.paneId),
+    ["notes"],
+  );
+  assert.deepEqual(
+    registry.workspacePanes({ chatId: "c1", projectId: "p1", cwd: "~" })
+      .map((pane) => pane.paneId),
+    ["notes"],
+  );
+
+  dispose();
+  assert.deepEqual(registry.workspacePanes().map((pane) => pane.applicationId), ["notes"]);
+  registry.removeApplication("notes");
+  assert.equal(registry.workspacePanes().length, 0);
+});
+
+test("invalid workspace panes are dropped without throwing", () => {
+  const registry = createRegistry();
+  const dispose = registry.registerWorkspacePane("broken", {
+    id: "",
+    label: "Broken",
+    icon: "<svg></svg>",
+    render: noop,
+  });
+  assert.equal(typeof dispose, "function");
+  assert.equal(registry.workspacePanes().length, 0);
+});
+
+test("workspace pane widths are finite and clamped to safe desktop bounds", () => {
+  const registry = createRegistry();
+  for (const [id, width] of [
+    ["narrow", 10],
+    ["wide", 5000],
+    ["default", Number.NaN],
+  ] as const) {
+    registry.registerWorkspacePane("app", {
+      id,
+      label: id,
+      icon: "<svg></svg>",
+      width,
+      render: noop,
+    });
+  }
+  assert.deepEqual(
+    registry.workspacePanes().map((pane) => pane.width),
+    [320, 1200, undefined],
+  );
 });
 
 // ---- install scope ---------------------------------------------------------

@@ -12,6 +12,8 @@ import type {
   ExtensionStoreActions,
   ExtensionStoreState,
   ExtensionVisibility,
+  ExtensionWorkspacePane,
+  ExtensionWorkspacePaneContribution,
 } from "../../../models/extension.ts";
 
 export function createExtensionStore() {
@@ -20,6 +22,7 @@ export function createExtensionStore() {
 
   return createStore<ExtensionStoreState & ExtensionStoreActions>()((set) => ({
     bySlot: new Map(),
+    workspacePanes: [],
     activeProjectId: null,
 
     setVisibility: (applicationId, visibility) => {
@@ -31,6 +34,9 @@ export function createExtensionStore() {
           contribution.applicationId === applicationId
             ? { ...contribution, visibility }
             : contribution,
+        ),
+        workspacePanes: state.workspacePanes.map((pane) =>
+          pane.applicationId === applicationId ? { ...pane, visibility } : pane,
         ),
       }));
     },
@@ -72,6 +78,52 @@ export function createExtensionStore() {
       };
     },
 
+    registerWorkspacePane: (applicationId, pane: ExtensionWorkspacePane) => {
+      const paneId = typeof pane?.id === "string" ? pane.id.trim() : "";
+      const label = typeof pane?.label === "string" ? pane.label.trim() : "";
+      const icon = typeof pane?.icon === "string" ? pane.icon.trim() : "";
+      if (
+        !workspacePaneIDPattern.test(paneId)
+        || !label
+        || !icon
+        || typeof pane.render !== "function"
+      ) {
+        console.warn(
+          `[extensions] ${applicationId}: workspace panes require a lowercase id, label, icon, and render`,
+        );
+        return () => {};
+      }
+      const sequence = (counters.get(applicationId) ?? 0) + 1;
+      counters.set(applicationId, sequence);
+      const contribution: ExtensionWorkspacePaneContribution = {
+        ...pane,
+        id: `${applicationId}#${sequence}`,
+        paneId,
+        label,
+        icon,
+        width: normalizePaneWidth(pane.width),
+        applicationId,
+        order: pane.order ?? 0,
+        visibility: visibilityByImage.get(applicationId) ?? DEFAULT_EXTENSION_VISIBILITY,
+      };
+      set((state) => ({
+        workspacePanes: [...state.workspacePanes, contribution].sort(
+          (left, right) => left.order - right.order,
+        ),
+      }));
+
+      let disposed = false;
+      return () => {
+        if (disposed) return;
+        disposed = true;
+        set((state) => ({
+          workspacePanes: state.workspacePanes.filter(
+            (candidate) => candidate !== contribution,
+          ),
+        }));
+      };
+    },
+
     removeApplication: (applicationId) => {
       visibilityByImage.delete(applicationId);
       set((state) => {
@@ -84,10 +136,22 @@ export function createExtensionStore() {
           changed ||= remaining.length !== contributions.length;
           if (remaining.length) bySlot.set(slot, remaining);
         }
-        return changed ? { bySlot } : state;
+        const workspacePanes = state.workspacePanes.filter(
+          (pane) => pane.applicationId !== applicationId,
+        );
+        changed ||= workspacePanes.length !== state.workspacePanes.length;
+        return changed ? { bySlot, workspacePanes } : state;
       });
     },
   }));
+}
+
+const workspacePaneIDPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function normalizePaneWidth(width: number | undefined): number | undefined {
+  if (width === undefined) return undefined;
+  if (!Number.isFinite(width)) return undefined;
+  return Math.min(1200, Math.max(320, Math.round(width)));
 }
 
 function isExtensionSlot(slot: string): slot is ExtensionSlotName {
@@ -132,6 +196,8 @@ export const extensionStore = createExtensionStore();
 
 export const extensionRegistry: ExtensionRegistry = {
   register: (...args) => extensionStore.getState().register(...args),
+  registerWorkspacePane: (...args) =>
+    extensionStore.getState().registerWorkspacePane(...args),
   setVisibility: (...args) => extensionStore.getState().setVisibility(...args),
   removeApplication: (...args) => extensionStore.getState().removeApplication(...args),
 };
