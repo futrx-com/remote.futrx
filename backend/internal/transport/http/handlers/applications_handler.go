@@ -390,6 +390,8 @@ func sendAppError(w http.ResponseWriter, err error) {
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrNoBackend):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, serviceapplications.ErrBackendContextAccess):
+		httptransport.SendErr(w, http.StatusNotFound, "application not found")
 	case errors.Is(err, serviceapplications.ErrPackageNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, serviceapplications.ErrBackendAccess):
@@ -410,6 +412,7 @@ func sendAppError(w http.ResponseWriter, err error) {
 	case errors.Is(err, serviceapplications.ErrPackagesUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnknownApplication),
+		errors.Is(err, serviceapplications.ErrBackendContext),
 		errors.Is(err, serviceapplications.ErrScope),
 		errors.Is(err, serviceapplications.ErrProjectneeded),
 		errors.Is(err, serviceapplications.ErrRequiredEnv),

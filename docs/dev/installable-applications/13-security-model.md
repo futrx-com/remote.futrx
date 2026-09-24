@@ -82,17 +82,23 @@ runs on the host.
 
 ### What the platform does enforce
 
-Between a browser and a backend, the platform guarantees three things:
+Between a browser and a backend, the platform guarantees four things:
 
 | Guarantee | Why it matters |
 |---|---|
 | `Request.Caller` is the session's identity, overwritten server-side | A backend can authorize callers, because the browser cannot lie about who it is |
 | `Cookie` and `Authorization` are never forwarded | A backend is told who is asking without being handed the means to become them |
 | `access: "admin"` is checked before the process is reached | An application can keep its backend off non-admin sessions without writing the check itself |
+| `Request.Context.Chat` exists only after core authorizes that chat; project installs must match its project | A backend can use the verified workspace root without trusting a browser-supplied host path |
 
 Everything finer — which caller may do which thing — is the backend's own job.
 A backend that ignores `Request.Caller` is as open as its `access` level, which
 for the default `registered` means every signed-in user.
+
+Chat context is authorization metadata, not a filesystem sandbox. The backend
+still runs with server privileges and could access other host paths on its own.
+The value prevents a caller from selecting another chat's workspace through
+the supported API; it does not contain trusted backend code.
 
 ### Reviewing a backend
 

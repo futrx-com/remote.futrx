@@ -77,6 +77,28 @@ test("an explicit instance id wins, and an unknown one is refused", () => {
   );
 });
 
+test("a chat target uses the authorized chat route for either install scope", () => {
+  const global = createBackendApi(application, [globalInstance]);
+  assert.equal(
+    global.url("files/a b", { chatId: "chat/one" }),
+    "/api/chats/chat%2Fone/applications/global-1/backend/files/a%20b",
+  );
+
+  const project = createBackendApi(application, [projectInstance]);
+  assert.equal(
+    project.url("files", { chatId: "chat-1", projectId: "alpha" }),
+    "/api/chats/chat-1/applications/project-1/backend/files",
+  );
+});
+
+test("an explicit instance still selects the process behind a chat route", () => {
+  const backend = createBackendApi(application, [globalInstance, projectInstance]);
+  assert.equal(
+    backend.url("health", { chatId: "chat-1", instanceId: "project-1" }),
+    "/api/chats/chat-1/applications/project-1/backend/health",
+  );
+});
+
 // An application whose backend is not running is the case an extension should degrade
 // around, so `available` says so rather than every call throwing later.
 test("an application with no running install reports itself unavailable", () => {

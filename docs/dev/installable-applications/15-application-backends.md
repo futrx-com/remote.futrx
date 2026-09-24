@@ -290,11 +290,18 @@ The complete namespace, routing, lifecycle, queue, and delivery contract is in
 |---|---|
 | `Method`, `Path`, `Query`, `Headers`, `Body` | the browser's call. `Path` is relative to the instance's `/backend/` prefix and has no leading slash. |
 | `Caller` | `{ Email, IsAdmin }`, resolved by the server |
+| `Context.Chat` | on a chat-scoped route only: `{ ID, ProjectID, WorkspaceRoot }`, resolved after core authorizes the chat |
 
 **`Caller` is stamped by the server, not read from the request.** A browser
 cannot forge it, which is what makes it usable for authorization. The transport
 withholds the caller's `Cookie` and `Authorization` headers, so a backend is told
 who is asking without being handed the means to act as them.
+
+`Context` follows the same rule: ordinary backend calls always clear it, and a
+chat-scoped call overwrites it with core's verified values. A global install
+may serve any chat the caller can access. A project install is accepted only
+for a chat in that same project. `WorkspaceRoot` is a convenient trusted input,
+not a process sandbox; backend code retains its normal server privileges.
 
 Bodies are capped at 1 MiB.
 
@@ -356,6 +363,16 @@ remote.ui.register(remote.slots.applicationsPanel, async (host, context) => {
 });
 ```
 
+From a workspace pane, include `chatId` as well when the backend needs the
+authorized workspace:
+
+```js
+await remote.backend.call("files", {
+  chatId: context.chatId,
+  projectId: context.projectId,
+});
+```
+
 ## Reaching a backend over HTTP
 
 See [12 — HTTP API](12-http-api.md#backend-backend-routes). Both scopes:
@@ -365,6 +382,8 @@ GET    /api/applications/{instanceID}/backend                describe
 ANY    /api/applications/{instanceID}/backend/{path...}      call
 GET    /api/projects/{projectID}/applications/{instanceID}/backend
 ANY    /api/projects/{projectID}/applications/{instanceID}/backend/{path...}
+GET    /api/chats/{chatID}/applications/{instanceID}/backend
+ANY    /api/chats/{chatID}/applications/{instanceID}/backend/{path...}
 ```
 
 Calling a backend is the one action on a **global** instance that is not

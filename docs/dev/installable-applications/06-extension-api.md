@@ -294,6 +294,7 @@ Every method takes an optional target:
 | *(nothing)* | the global install, or the only one if there is no global |
 | `{ projectId }` | that project's install, falling back to the global one |
 | `{ instanceId }` | exactly that install; an unknown id throws |
+| `{ chatId, projectId? }` | the selected install through an authorized chat, with trusted chat and workspace context stamped by Remote |
 
 `projectId` is a **preference, not a filter**, which is what makes the common
 case a one-liner: pass the slot's context and a call follows the surface the
@@ -305,6 +306,23 @@ remote.ui.register(remote.slots.applicationsPanel, async (host, context) => {
   host.textContent = `backend pid ${health.pid}`;
 });
 ```
+
+Workspace panes commonly need the workspace belonging to the chat rather than
+an arbitrary path supplied by browser code. Pass both fields from the pane
+context to use the chat-scoped route:
+
+```js
+const files = await remote.backend.call("files", {
+  chatId: context.chatId,
+  projectId: context.projectId,
+});
+```
+
+Core checks that the caller may access that chat. A project install must belong
+to the same project; a global install may serve any authorized chat. The
+backend then receives `request.Context.Chat` with the verified chat id, project
+id, and absolute workspace root. Calls without `chatId` receive no chat
+context, even if browser code tries to put one in the request body.
 
 ### `remote.backend.call(path, options?)`
 
@@ -352,7 +370,8 @@ The URL a call would use, for an `<iframe>`, a download link, or your own
 
 Not what you send. The server stamps the signed-in caller onto every request
 and **withholds your cookies** from the backend, so a backend can authorize a
-caller but cannot act as them. See
+caller but cannot act as them. On a chat-scoped URL it also stamps the
+authorized chat and workspace context. See
 [13 — Security model](13-security-model.md#application-backends).
 
 ## `remote.events.on(name, handler)`

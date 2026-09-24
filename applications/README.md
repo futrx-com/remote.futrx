@@ -111,7 +111,9 @@ and nothing else. Start with
    `views/*.html` are loadable by name.
 4. Optionally add a `backend/` executable for server-side work. Its `main.go`
    composes a value that implements `applications.Backend`; the application's
-   `ui/` reaches it through `remote.backend.call(...)`. Keep request handling in
+   `ui/` reaches it through `remote.backend.call(...)`. A workspace surface can
+   include `{ chatId, projectId }` to receive core-authorized chat and workspace
+   context. Keep request handling in
    `backend/api/` and each event publisher in `backend/lifecycle/`, then compose
    them at the root through `rpc.ServeWithRuntime`. See
    [Application backends](../docs/dev/installable-applications/15-application-backends.md).

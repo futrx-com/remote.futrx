@@ -15,6 +15,7 @@ import (
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
+	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
 
 type ChatHandler struct {
@@ -25,6 +26,7 @@ type ChatHandler struct {
 	history   *servicegithistory.Service
 	ide       *serviceworkspaceide.Service
 	schedules *ScheduleHandler
+	apps      *ApplicationsHandler
 }
 
 func NewChatHandler(
@@ -47,6 +49,11 @@ func NewChatHandler(
 
 func (h *ChatHandler) WithSchedules(schedules *ScheduleHandler) *ChatHandler {
 	h.schedules = schedules
+	return h
+}
+
+func (h *ChatHandler) WithApplications(apps *ApplicationsHandler) *ChatHandler {
+	h.apps = apps
 	return h
 }
 
@@ -109,6 +116,20 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) == 2 {
+		if strings.HasPrefix(parts[1], "applications/") {
+			if h.apps == nil {
+				httptransport.SendErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			h.apps.HandleChatBackend(
+				w,
+				r,
+				meta,
+				applications.Caller{Email: email, IsAdmin: isAdmin},
+				strings.TrimPrefix(parts[1], "applications/"),
+			)
+			return
+		}
 		switch parts[1] {
 		case "events":
 			h.handleEvents(w, r, id)

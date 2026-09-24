@@ -207,6 +207,99 @@ func TestCallBackendStampsTheResolvedCaller(t *testing.T) {
 	}
 }
 
+func TestCallBackendClearsBrowserSuppliedContext(t *testing.T) {
+	host := &recordingHost{}
+	service, _ := withInstance(backendImage(nil), runningInstance(), host)
+
+	_, err := service.CallBackend(
+		context.Background(),
+		"abc123",
+		applications.Request{Context: applications.RequestContext{Chat: &applications.ChatContext{
+			ID: "forged", ProjectID: "secret", WorkspaceRoot: "/etc",
+		}}},
+		anyCaller(),
+	)
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if got := host.requests[0].Context.Chat; got != nil {
+		t.Fatalf("ordinary call retained forged chat context: %+v", got)
+	}
+}
+
+func TestCallBackendForChatStampsTrustedContext(t *testing.T) {
+	host := &recordingHost{}
+	service, _ := withInstance(backendImage(nil), runningInstance(), host)
+	trusted := applications.ChatContext{
+		ID: "chat-1", ProjectID: "project-1", WorkspaceRoot: "/srv/projects/one/workspace",
+	}
+
+	_, err := service.CallBackendForChat(
+		context.Background(),
+		"abc123",
+		applications.Request{Context: applications.RequestContext{Chat: &applications.ChatContext{
+			ID: "forged", WorkspaceRoot: "/etc",
+		}}},
+		anyCaller(),
+		trusted,
+	)
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	got := host.requests[0].Context.Chat
+	if got == nil || *got != trusted {
+		t.Fatalf("chat context = %+v, want %+v", got, trusted)
+	}
+}
+
+func TestBackendChatScope(t *testing.T) {
+	global := runningInstance()
+	project := runningInstance()
+	project.Scope = ScopeProject
+	project.ProjectID = "project-1"
+	chat := applications.ChatContext{
+		ID: "chat-1", ProjectID: "project-1", WorkspaceRoot: "/srv/projects/one/workspace",
+	}
+
+	for _, tc := range []struct {
+		name     string
+		instance Instance
+		chat     applications.ChatContext
+		wantErr  error
+	}{
+		{name: "global install", instance: global, chat: chat},
+		{name: "matching project install", instance: project, chat: chat},
+		{
+			name: "another project install", instance: project,
+			chat:    applications.ChatContext{ID: "chat-2", ProjectID: "project-2", WorkspaceRoot: "/workspace"},
+			wantErr: ErrBackendContextAccess,
+		},
+		{
+			name: "project install in a loose chat", instance: project,
+			chat:    applications.ChatContext{ID: "chat-3", WorkspaceRoot: "/workspace"},
+			wantErr: ErrBackendContextAccess,
+		},
+		{
+			name: "missing workspace", instance: global,
+			chat:    applications.ChatContext{ID: "chat-4"},
+			wantErr: ErrBackendContext,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host := &recordingHost{}
+			service, _ := withInstance(backendImage(nil), tc.instance, host)
+			_, err := service.CallBackendForChat(
+				context.Background(), "abc123", applications.Request{}, anyCaller(), tc.chat)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+			if tc.wantErr != nil && len(host.requests) != 0 {
+				t.Fatal("a refused chat context reached the backend")
+			}
+		})
+	}
+}
+
 func TestCallBackendRefusals(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -311,6 +404,23 @@ func TestDescribeBackendReportsTheImagePolicy(t *testing.T) {
 	}
 	if described.Descriptor.APIVersion != applications.APIVersion {
 		t.Errorf("descriptor = %+v", described.Descriptor)
+	}
+}
+
+func TestDescribeBackendForChatUsesTheSameScopeGate(t *testing.T) {
+	instance := runningInstance()
+	instance.Scope = ScopeProject
+	instance.ProjectID = "project-1"
+	service, _ := withInstance(backendImage(nil), instance, &recordingHost{})
+
+	_, err := service.DescribeBackendForChat(
+		context.Background(),
+		instance.ID,
+		anyCaller(),
+		applications.ChatContext{ID: "chat-1", ProjectID: "project-2", WorkspaceRoot: "/workspace"},
+	)
+	if !errors.Is(err, ErrBackendContextAccess) {
+		t.Fatalf("error = %v, want ErrBackendContextAccess", err)
 	}
 }
 

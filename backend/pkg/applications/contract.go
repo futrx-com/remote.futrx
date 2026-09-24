@@ -67,6 +67,24 @@ type Caller struct {
 	IsAdmin bool   `json:"isAdmin"`
 }
 
+// RequestContext contains trusted context that Remote resolved for a backend
+// call. The browser cannot populate this field: the service clears it on an
+// ordinary backend route and stamps it only after the corresponding core
+// resource has been authorized.
+type RequestContext struct {
+	Chat *ChatContext `json:"chat,omitempty"`
+}
+
+// ChatContext identifies the chat and workspace for a call made through a
+// chat-scoped backend URL. WorkspaceRoot is an absolute host path. It is
+// authorization context, not a process sandbox: application backends run with
+// the same host privileges on both scoped and unscoped calls.
+type ChatContext struct {
+	ID            string `json:"id"`
+	ProjectID     string `json:"projectId,omitempty"`
+	WorkspaceRoot string `json:"workspaceRoot"`
+}
+
 // Instance is the installed copy of the application this backend process belongs to.
 // One process serves one instance, so these values are fixed for its lifetime
 // and are handed over once through Backend.Init.
@@ -112,6 +130,7 @@ type Request struct {
 	Headers map[string][]string `json:"headers,omitempty"`
 	Body    []byte              `json:"body,omitempty"`
 	Caller  Caller              `json:"caller"`
+	Context RequestContext      `json:"context,omitempty"`
 }
 
 // Response is what the host turns back into an HTTP response. A zero Status is

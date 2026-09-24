@@ -21,6 +21,13 @@ export class ExtensionBackendTargets {
 
   url(path: string, target?: ExtensionBackendTarget): string {
     const instance = this.resolve(target);
+    if (target?.chatId) {
+      return API_ROUTES.chats.applicationBackend(
+        target.chatId,
+        instance.instanceId,
+        path,
+      );
+    }
     return instance.scope === "project" && instance.projectId
       ? API_ROUTES.projects.applicationBackend(
         instance.projectId,

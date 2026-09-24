@@ -19,16 +19,46 @@ var (
 	// ErrNotRunning is returned when a backend is asked for while its instance
 	// is stopped: a stopped app's backend is off, exactly as its UI is.
 	ErrNotRunning = errors.New("applications: application is not running")
+	// ErrBackendContext is returned when core could not resolve a complete,
+	// trusted context for a scoped backend call.
+	ErrBackendContext = errors.New("applications: invalid backend context")
+	// ErrBackendContextAccess is returned when an instance does not belong to
+	// the project containing the chat through which it was addressed.
+	ErrBackendContextAccess = errors.New("applications: backend unavailable in chat context")
 )
 
 // DescribeBackend starts the instance's backend if needed and returns what it says
 // about itself, including the routes an extension may call.
 func (s *Service) DescribeBackend(ctx context.Context, id string, caller applications.Caller) (BackendDescriptor, error) {
+	return s.describeBackend(ctx, id, caller, nil)
+}
+
+// DescribeBackendForChat describes a backend only when the install may serve
+// the already-authorized chat. Global installs serve every chat; a project
+// install serves chats in that exact project.
+func (s *Service) DescribeBackendForChat(
+	ctx context.Context,
+	id string,
+	caller applications.Caller,
+	chat applications.ChatContext,
+) (BackendDescriptor, error) {
+	return s.describeBackend(ctx, id, caller, &chat)
+}
+
+func (s *Service) describeBackend(
+	ctx context.Context,
+	id string,
+	caller applications.Caller,
+	chat *applications.ChatContext,
+) (BackendDescriptor, error) {
 	unlock := s.instanceLocks.rlock(id)
 	defer unlock()
 
 	instance, application, err := s.backendInstance(ctx, id, caller)
 	if err != nil {
+		return BackendDescriptor{}, err
+	}
+	if err := validateBackendChat(instance, chat); err != nil {
 		return BackendDescriptor{}, err
 	}
 	ctx, cancel := s.backendDeadline(ctx, application)
@@ -57,6 +87,29 @@ func (s *Service) CallBackend(
 	request applications.Request,
 	caller applications.Caller,
 ) (applications.Response, error) {
+	return s.callBackend(ctx, id, request, caller, nil)
+}
+
+// CallBackendForChat forwards a request with chat context that core has
+// resolved and authorized. The supplied request cannot override either the
+// caller or context stamped here.
+func (s *Service) CallBackendForChat(
+	ctx context.Context,
+	id string,
+	request applications.Request,
+	caller applications.Caller,
+	chat applications.ChatContext,
+) (applications.Response, error) {
+	return s.callBackend(ctx, id, request, caller, &chat)
+}
+
+func (s *Service) callBackend(
+	ctx context.Context,
+	id string,
+	request applications.Request,
+	caller applications.Caller,
+	chat *applications.ChatContext,
+) (applications.Response, error) {
 	unlock := s.instanceLocks.rlock(id)
 	defer unlock()
 
@@ -64,7 +117,15 @@ func (s *Service) CallBackend(
 	if err != nil {
 		return applications.Response{}, err
 	}
+	if err := validateBackendChat(instance, chat); err != nil {
+		return applications.Response{}, err
+	}
 	request.Caller = caller
+	request.Context = applications.RequestContext{}
+	if chat != nil {
+		trusted := *chat
+		request.Context.Chat = &trusted
+	}
 
 	ctx, cancel := s.backendDeadline(ctx, application)
 	defer cancel()
@@ -77,6 +138,22 @@ func (s *Service) CallBackend(
 		response.Status = 200
 	}
 	return response, nil
+}
+
+func validateBackendChat(instance applications.Instance, chat *applications.ChatContext) error {
+	if chat == nil {
+		return nil
+	}
+	if chat.ID == "" || chat.WorkspaceRoot == "" {
+		return ErrBackendContext
+	}
+	if instance.Scope == string(ScopeGlobal) {
+		return nil
+	}
+	if instance.Scope != string(ScopeProject) || chat.ProjectID == "" || instance.ProjectID != chat.ProjectID {
+		return ErrBackendContextAccess
+	}
+	return nil
 }
 
 // backendInstance resolves an instance to a runnable backend, enforcing every

@@ -187,6 +187,8 @@ it verbatim.
 | *any* | `/api/applications/{id}/backend/{path…}` | Call the backend |
 | `GET` | `/api/projects/{projectID}/applications/{id}/backend` | Describe |
 | *any* | `/api/projects/{projectID}/applications/{id}/backend/{path…}` | Call |
+| `GET` | `/api/chats/{chatID}/applications/{id}/backend` | Describe after authorizing the chat and install scope |
+| *any* | `/api/chats/{chatID}/applications/{id}/backend/{path…}` | Call with trusted chat/workspace context |
 
 Calling a backend on a **global** instance is the one action there that is not
 admin-only. The backend is the server side of an extension that renders for
@@ -194,6 +196,26 @@ every signed-in user, so managing the app stays admin-only while calling it
 requires only a session — narrowed to administrators when the application declares
 `"backend": { "access": "admin" }`. Project routes require membership, checked
 before delegation as everywhere else.
+
+The chat route first applies the same session and project-membership check as
+every other chat resource. It then allows a global instance or an instance
+installed in that chat's project and stamps this server-resolved context onto
+the forwarded request:
+
+```json
+{
+  "context": {
+    "chat": {
+      "id": "chat-123",
+      "projectId": "project-456",
+      "workspaceRoot": "/var/lib/remote/projects/example/workspace"
+    }
+  }
+}
+```
+
+Loose chats omit `projectId`. Their chat route can therefore address only a
+global instance. Browser-supplied context is discarded on every route.
 
 ### `GET …/backend`
 

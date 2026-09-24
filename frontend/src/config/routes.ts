@@ -50,6 +50,8 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/history/checkout`,
     schedules: (id: string) =>
       `/api/chats/${encodeURIComponent(id)}/schedules`,
+    applicationBackend: (id: string, appId: string, path = "") =>
+      `/api/chats/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
   },
   schedules: {
     item: (id: string) => `/api/schedules/${encodeURIComponent(id)}`,

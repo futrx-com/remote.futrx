@@ -214,6 +214,11 @@ export interface ExtensionBackendTarget {
   /** Address one instance explicitly, by the id from `remote.backend.instances`. */
   instanceId?: string;
   /**
+   * Address the backend through an authorized chat. Remote then supplies the
+   * backend with trusted chat, project, and workspace context.
+   */
+  chatId?: string;
+  /**
    * Prefer the instance installed in this project, falling back to the global
    * one. Pass `context.projectId` from a slot and a call follows the surface
    * the user is on.
