@@ -37,13 +37,18 @@ type SearchResult struct {
 
 type File struct {
 	Name        string
+	Size        int64
 	ModTime     time.Time
 	ContentType string
 	content     io.ReadSeekCloser
 }
 
-func (f *File) Content() io.ReadSeeker { return f.content }
-func (f *File) Close() error           { return f.content.Close() }
+func (f *File) Content() io.ReadSeeker          { return f }
+func (f *File) Read(buffer []byte) (int, error) { return f.content.Read(buffer) }
+func (f *File) Seek(offset int64, whence int) (int64, error) {
+	return f.content.Seek(offset, whence)
+}
+func (f *File) Close() error { return f.content.Close() }
 
 type Archive struct {
 	Name     string

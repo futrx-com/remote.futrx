@@ -98,24 +98,24 @@ func (s *Store) ListDir(root, relative string, maxEntries int) ([]*Node, bool, e
 	return listing.result(workspace, relative)
 }
 
-func (s *Store) OpenFile(root, relative string) (io.ReadSeekCloser, string, time.Time, error) {
+func (s *Store) OpenFile(root, relative string) (io.ReadSeekCloser, string, int64, time.Time, error) {
 	workspace, err := newSecureWorkspace(root)
 	if err != nil {
-		return nil, "", time.Time{}, err
+		return nil, "", 0, time.Time{}, err
 	}
 	defer workspace.close()
 	resolved, err := workspace.resolve(relative)
 	if err != nil {
-		return nil, "", time.Time{}, err
+		return nil, "", 0, time.Time{}, err
 	}
 	file, info, err := workspace.openRegular(resolved)
 	if err != nil {
 		if errors.Is(err, errNotRegularFile) {
-			return nil, "", time.Time{}, os.ErrNotExist
+			return nil, "", 0, time.Time{}, os.ErrNotExist
 		}
-		return nil, "", time.Time{}, err
+		return nil, "", 0, time.Time{}, err
 	}
-	return file, info.Name(), info.ModTime(), nil
+	return file, info.Name(), info.Size(), info.ModTime(), nil
 }
 
 func (s *Store) Search(root, query string, limit int) ([]*Node, bool, error) {

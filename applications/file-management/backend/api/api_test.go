@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,6 +46,25 @@ func request(root, method, path string, query map[string][]string) applications.
 			ID: "chat-1", WorkspaceRoot: root,
 		}},
 	}
+}
+
+func readStream(t *testing.T, response applications.Response) []byte {
+	t.Helper()
+	content, size, _, ok := response.ResponseStream()
+	if !ok || content == nil {
+		t.Fatal("response is not streamed")
+	}
+	if response.Body != nil {
+		t.Fatalf("streamed response also buffered %d body bytes", len(response.Body))
+	}
+	body, readErr := io.ReadAll(content)
+	if closeErr := content.Close(); readErr != nil || closeErr != nil {
+		t.Fatalf("read stream: read=%v close=%v", readErr, closeErr)
+	}
+	if int64(len(body)) != size {
+		t.Fatalf("stream body size = %d, declared %d", len(body), size)
+	}
+	return body
 }
 
 func TestRoutesRequireTrustedChatContext(t *testing.T) {
@@ -94,11 +114,14 @@ func TestFileAndMediaResponsesPreserveDispositionAndPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Status != http.StatusOK || string(response.Body) != "package main" {
-		t.Fatalf("download = %d %q", response.Status, response.Body)
+	if response.Status != http.StatusOK {
+		t.Fatalf("download status = %d", response.Status)
 	}
 	if disposition := response.Headers["Content-Disposition"][0]; !strings.Contains(disposition, "attachment") || !strings.Contains(disposition, "app.go") {
 		t.Fatalf("download disposition = %q", disposition)
+	}
+	if body := readStream(t, response); string(body) != "package main" {
+		t.Fatalf("download body = %q", body)
 	}
 
 	response, err = backend.Handle(request(root, http.MethodGet, "files/media", map[string][]string{"path": {"pixel.png"}}))
@@ -109,6 +132,9 @@ func TestFileAndMediaResponsesPreserveDispositionAndPolicy(t *testing.T) {
 		!strings.Contains(response.Headers["Content-Disposition"][0], "inline") ||
 		response.Headers["Content-Security-Policy"][0] == "" {
 		t.Fatalf("media response = %+v", response)
+	}
+	if body := readStream(t, response); string(body) != "png-data" {
+		t.Fatalf("media body = %q", body)
 	}
 
 	response, err = backend.Handle(request(root, http.MethodGet, "files/media", map[string][]string{"path": {"src/app.go"}}))
@@ -130,7 +156,8 @@ func TestFolderDownloadReturnsNamedZip(t *testing.T) {
 		!strings.Contains(response.Headers["Content-Disposition"][0], "src.zip") {
 		t.Fatalf("archive response = status %d headers %v body %s", response.Status, response.Headers, response.Body)
 	}
-	archive, err := zip.NewReader(bytes.NewReader(response.Body), int64(len(response.Body)))
+	body := readStream(t, response)
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
 		t.Fatal(err)
 	}

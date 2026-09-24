@@ -76,7 +76,7 @@ func TestStoreBlocksTraversalAndEscapingSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, relative := range []string{"../outside-secret.txt", "/etc/hosts", "escape"} {
-		if file, _, _, err := store.OpenFile(root, relative); err == nil {
+		if file, _, _, _, err := store.OpenFile(root, relative); err == nil {
 			_ = file.Close()
 			t.Fatalf("OpenFile(%q) escaped workspace", relative)
 		}
@@ -97,7 +97,7 @@ func TestStoreAllowsInWorkspaceSymlinkAndRejectsParentSwap(t *testing.T) {
 	if err := os.Symlink(filepath.Join(root, "src", "app.go"), filepath.Join(root, "alias.go")); err != nil {
 		t.Fatal(err)
 	}
-	file, _, _, err := NewStore().OpenFile(root, "alias.go")
+	file, _, size, _, err := NewStore().OpenFile(root, "alias.go")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +107,9 @@ func TestStoreAllowsInWorkspaceSymlinkAndRejectsParentSwap(t *testing.T) {
 	}
 	if string(content) != "package main" {
 		t.Fatalf("content = %q", content)
+	}
+	if size != int64(len(content)) {
+		t.Fatalf("size = %d, want %d", size, len(content))
 	}
 
 	checked := filepath.Join(root, "checked")
@@ -231,7 +234,7 @@ func TestOpenFileRejectsNamedPipeWithoutBlocking(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := awaitOperation(t, pipePath, func() error {
-		file, _, _, err := NewStore().OpenFile(root, "events.pipe")
+		file, _, _, _, err := NewStore().OpenFile(root, "events.pipe")
 		if file != nil {
 			_ = file.Close()
 		}

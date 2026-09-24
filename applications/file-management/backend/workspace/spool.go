@@ -25,6 +25,7 @@ type Spooler struct {
 
 type SpooledArchive struct {
 	file    *os.File
+	size    int64
 	release func()
 	once    sync.Once
 }
@@ -83,11 +84,20 @@ func (s *Spooler) Prepare(ctx context.Context, writeArchive func(io.Writer) erro
 	if _, err := temporary.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
+	info, err := temporary.Stat()
+	if err != nil {
+		return nil, err
+	}
 	prepared = true
-	return &SpooledArchive{file: temporary, release: s.release}, nil
+	return &SpooledArchive{file: temporary, size: info.Size(), release: s.release}, nil
 }
 
-func (a *SpooledArchive) Content() io.ReadSeeker { return a.file }
+func (a *SpooledArchive) Size() int64                     { return a.size }
+func (a *SpooledArchive) Content() io.ReadSeeker          { return a }
+func (a *SpooledArchive) Read(buffer []byte) (int, error) { return a.file.Read(buffer) }
+func (a *SpooledArchive) Seek(offset int64, whence int) (int64, error) {
+	return a.file.Seek(offset, whence)
+}
 
 func (a *SpooledArchive) Close() error {
 	var closeErr error

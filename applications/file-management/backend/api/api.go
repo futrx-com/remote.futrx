@@ -100,8 +100,7 @@ func (b *api) download(request applications.Request) applications.Response {
 	if err != nil {
 		return workspaceError(err)
 	}
-	defer file.Close()
-	return bufferedContent(file.Content(), file.Name, file.ModTime, "attachment", "")
+	return streamedContent(file, file.Size, file.Name, file.ModTime, "attachment", "")
 }
 
 func (b *api) media(request applications.Request) applications.Response {
@@ -113,8 +112,7 @@ func (b *api) media(request applications.Request) applications.Response {
 	if err != nil {
 		return workspaceError(err)
 	}
-	defer file.Close()
-	response = bufferedContent(file.Content(), file.Name, file.ModTime, "inline", file.ContentType)
+	response = streamedContent(file, file.Size, file.Name, file.ModTime, "inline", file.ContentType)
 	if response.Status == http.StatusOK {
 		response.Headers["Content-Security-Policy"] = []string{
 			"default-src 'none'; img-src 'self' data: blob:; media-src 'self' data: blob:; style-src 'unsafe-inline'",
@@ -150,8 +148,9 @@ func (b *api) downloadFolder(request applications.Request) applications.Response
 	if err != nil {
 		return workspaceError(err)
 	}
-	defer spooled.Close()
-	return bufferedContent(spooled.Content(), archive.Name, time.Time{}, "attachment", "application/zip")
+	return streamedContent(
+		spooled, spooled.Size(), archive.Name, time.Time{}, "attachment", "application/zip",
+	)
 }
 
 func chatWorkspace(request applications.Request) (string, applications.Response, bool) {
@@ -170,20 +169,14 @@ func queryValue(request applications.Request, name string) string {
 	return values[0]
 }
 
-// bufferedContent is the single compatibility seam for the current []byte
-// response contract. Replace this function with applications.Stream after the
-// seekable streaming SDK lands; routes and filesystem policy need no changes.
-func bufferedContent(
-	content io.ReadSeeker,
+func streamedContent(
+	content io.ReadSeekCloser,
+	size int64,
 	name string,
 	modTime time.Time,
 	disposition string,
 	contentType string,
 ) applications.Response {
-	body, err := io.ReadAll(content)
-	if err != nil {
-		return applications.Errorf(http.StatusInternalServerError, "read response content: %v", err)
-	}
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -191,10 +184,7 @@ func bufferedContent(
 		"Content-Type":        {contentType},
 		"Content-Disposition": {mime.FormatMediaType(disposition, map[string]string{"filename": name})},
 	}
-	if !modTime.IsZero() {
-		headers["Last-Modified"] = []string{modTime.UTC().Format(http.TimeFormat)}
-	}
-	return applications.Response{Status: http.StatusOK, Headers: headers, Body: body}
+	return applications.Stream(content, size, modTime, headers)
 }
 
 func workspaceError(err error) applications.Response {

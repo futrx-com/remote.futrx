@@ -44,6 +44,9 @@ func TestSpoolerBoundsConcurrencyAndCleansOnClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.Size() != int64(len("first")) {
+		t.Fatalf("spooled size = %d, want %d", first.Size(), len("first"))
+	}
 	firstPath := first.file.Name()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -63,11 +63,13 @@ func (s *Service) OpenFile(root, relativePath string) (*File, error) {
 	if relative == "" {
 		return nil, ErrInvalidPath
 	}
-	content, _, modTime, err := s.store.OpenFile(root, relative)
+	content, _, size, modTime, err := s.store.OpenFile(root, relative)
 	if err != nil {
 		return nil, ErrFileNotFound
 	}
-	return &File{Name: path.Base(relative), ModTime: modTime, content: content}, nil
+	return &File{
+		Name: path.Base(relative), Size: size, ModTime: modTime, content: content,
+	}, nil
 }
 
 func (s *Service) OpenMedia(root, relativePath string) (*File, error) {

@@ -43,7 +43,8 @@ resolve symlinks without allowing escapes, and refuse special files.
 - A ZIP may read at most 1 GiB of source data, contain at most 200,000 entries,
   and produce at most a 1 GiB spool file. Each install builds at most two ZIPs
   concurrently under its application data directory.
-- Backend calls time out after five minutes.
+- The five-minute backend timeout bounds opening a response and building a ZIP;
+  once its response stream is open, the HTTP request owns the transfer lifetime.
 
 ## Upgrade and cleanup
 
@@ -53,10 +54,11 @@ or install script. Its only persistent state is temporary ZIP data beneath the
 instance `DataDir`; completed and failed requests remove their spool files, and
 uninstall removes the instance data directory.
 
-The current buffered application-response contract means file, ZIP, and media
-bodies are materialized once after spooling before being returned to core. The
-backend keeps this translation in one helper so it can switch to the platform's
-seekable streaming response without changing its routes or workspace policy.
+File, ZIP, and media bodies use the platform's seekable response stream. Remote
+serves byte ranges and conditional requests and closes the application-owned
+reader when the transfer completes or the browser disconnects. Folder ZIPs are
+still built into a bounded spool file before a success response is opened, so a
+late archive error can be reported cleanly instead of truncating a `200` body.
 
 ## Package layout
 
