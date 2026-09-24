@@ -62,7 +62,7 @@ go build ./... && go vet ./...
 | `pkg/applications/rpc/stream_test.go` | bounded absolute reads, seek behavior, disconnect cleanup, and blocked-read cancellation across the response-stream RPC boundary |
 | `lifecycle/event_bus_test.go`, `application_event_bridge_test.go` | defensive payload copies and canonical version-1 core event envelopes |
 | `handlers/applications_backend_handler_test.go` | which headers cross the boundary, plus streamed `GET`, `HEAD`, ranges, conditionals, and cancellation |
-| `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, and spool cleanup |
+| `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, per-instance spool cleanup, and application-wide archive slots |
 | `applications/file-management/backend/api/api_test.go` | trusted chat-context requirement, route JSON, status mapping, dispositions, media policy, and ZIP responses |
 
 `applications` tests compile real backends with the Go toolchain, so they take

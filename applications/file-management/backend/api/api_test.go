@@ -31,10 +31,26 @@ func testBackend(t *testing.T) (*api, string) {
 		}
 	}
 	backend := New().(*api)
-	if err := backend.Init(applications.Instance{DataDir: t.TempDir()}); err != nil {
+	if err := backend.Init(applications.Instance{
+		DataDir:          t.TempDir(),
+		SharedRuntimeDir: t.TempDir(),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	return backend, root
+}
+
+func TestInitRequiresHostOwnedDirectories(t *testing.T) {
+	for name, instance := range map[string]applications.Instance{
+		"data":           {SharedRuntimeDir: t.TempDir()},
+		"shared runtime": {DataDir: t.TempDir()},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := New().Init(instance); err == nil {
+				t.Fatal("Init() succeeded without both host-owned directories")
+			}
+		})
+	}
 }
 
 func request(root, method, path string, query map[string][]string) applications.Request {
@@ -168,7 +184,7 @@ func TestFolderDownloadReturnsNamedZip(t *testing.T) {
 
 func TestFolderDownloadMapsSpoolLimitBeforeSuccess(t *testing.T) {
 	backend, root := testBackend(t)
-	spooler, err := appWorkspace.NewSpooler(t.TempDir(), 1, 4)
+	spooler, err := appWorkspace.NewSpooler(t.TempDir(), t.TempDir(), 1, 4)
 	if err != nil {
 		t.Fatal(err)
 	}

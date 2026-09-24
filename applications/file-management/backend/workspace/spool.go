@@ -3,10 +3,13 @@ package workspace
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
+	"time"
 )
 
 const (
@@ -14,25 +17,35 @@ const (
 	MaxConcurrentArchives = 2
 )
 
+const archiveSlotRetryInterval = 25 * time.Millisecond
+
 // Spooler bounds ZIP construction before any success response is returned.
-// Files live in the application's DataDir rather than the host temp directory,
-// so ownership and uninstall cleanup stay with this installed instance.
+// ZIP files live in the installed instance's DataDir, preserving per-instance
+// restart and uninstall cleanup. Slot locks live in the application's shared
+// runtime directory, so the concurrency and aggregate-spool limits cover every
+// global and project instance rather than resetting in each backend process.
 type Spooler struct {
-	directory string
-	slots     chan struct{}
-	maxBytes  int64
+	directory     string
+	lockDirectory string
+	maxConcurrent int
+	maxBytes      int64
 }
 
 type SpooledArchive struct {
 	file    *os.File
 	size    int64
-	release func()
+	release func() error
 	once    sync.Once
 }
 
-func NewSpooler(directory string, maxConcurrent int, maxBytes int64) (*Spooler, error) {
-	if maxConcurrent < 1 || maxBytes < 1 {
-		return nil, errors.New("invalid archive spool limits")
+func NewSpooler(
+	directory string,
+	sharedRuntimeDirectory string,
+	maxConcurrent int,
+	maxBytes int64,
+) (*Spooler, error) {
+	if directory == "" || sharedRuntimeDirectory == "" || maxConcurrent < 1 || maxBytes < 1 {
+		return nil, errors.New("invalid archive spool configuration")
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
@@ -43,31 +56,43 @@ func NewSpooler(directory string, maxConcurrent int, maxBytes int64) (*Spooler, 
 			_ = os.Remove(filepath.Join(directory, entry.Name()))
 		}
 	}
+	lockDirectory := filepath.Join(sharedRuntimeDirectory, "archive-spool")
+	if err := os.MkdirAll(lockDirectory, 0o700); err != nil {
+		return nil, err
+	}
 	return &Spooler{
-		directory: directory,
-		slots:     make(chan struct{}, maxConcurrent),
-		maxBytes:  maxBytes,
+		directory:     directory,
+		lockDirectory: lockDirectory,
+		maxConcurrent: maxConcurrent,
+		maxBytes:      maxBytes,
 	}, nil
 }
 
-func (s *Spooler) Prepare(ctx context.Context, writeArchive func(io.Writer) error) (*SpooledArchive, error) {
-	if err := s.acquire(ctx); err != nil {
+func (s *Spooler) Prepare(
+	ctx context.Context,
+	writeArchive func(io.Writer) error,
+) (archive *SpooledArchive, err error) {
+	slot, err := s.acquire(ctx)
+	if err != nil {
 		return nil, err
 	}
 	var temporary *os.File
-	prepared := false
 	defer func() {
-		if prepared {
+		if archive != nil {
 			return
 		}
+		var cleanupErr error
 		if temporary != nil {
-			_ = temporary.Close()
-			_ = os.Remove(temporary.Name())
+			cleanupErr = temporary.Close()
+			removeErr := os.Remove(temporary.Name())
+			if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				cleanupErr = errors.Join(cleanupErr, removeErr)
+			}
 		}
-		s.release()
+		err = errors.Join(err, cleanupErr, slot.release())
 	}()
 
-	temporary, err := os.CreateTemp(s.directory, "workspace-archive-*.zip")
+	temporary, err = os.CreateTemp(s.directory, "workspace-archive-*.zip")
 	if err != nil {
 		return nil, err
 	}
@@ -88,8 +113,8 @@ func (s *Spooler) Prepare(ctx context.Context, writeArchive func(io.Writer) erro
 	if err != nil {
 		return nil, err
 	}
-	prepared = true
-	return &SpooledArchive{file: temporary, size: info.Size(), release: s.release}, nil
+	archive = &SpooledArchive{file: temporary, size: info.Size(), release: slot.release}
+	return archive, nil
 }
 
 func (a *SpooledArchive) Size() int64                     { return a.size }
@@ -107,21 +132,60 @@ func (a *SpooledArchive) Close() error {
 		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			closeErr = errors.Join(closeErr, removeErr)
 		}
-		a.release()
+		closeErr = errors.Join(closeErr, a.release())
 	})
 	return closeErr
 }
 
-func (s *Spooler) acquire(ctx context.Context) error {
-	select {
-	case s.slots <- struct{}{}:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+type archiveSlot struct {
+	lock *os.File
+}
+
+func (s *Spooler) acquire(ctx context.Context) (*archiveSlot, error) {
+	ticker := time.NewTicker(archiveSlotRetryInterval)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		for index := 0; index < s.maxConcurrent; index++ {
+			lock, err := os.OpenFile(
+				filepath.Join(s.lockDirectory, fmt.Sprintf("slot-%d.lock", index)),
+				os.O_CREATE|os.O_RDWR,
+				0o600,
+			)
+			if err != nil {
+				return nil, err
+			}
+			err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+			if err == nil {
+				return &archiveSlot{lock: lock}, nil
+			}
+			if closeErr := lock.Close(); closeErr != nil {
+				return nil, closeErr
+			}
+			if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+				return nil, err
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
 	}
 }
 
-func (s *Spooler) release() { <-s.slots }
+func (s *archiveSlot) release() error {
+	if s == nil || s.lock == nil {
+		return nil
+	}
+	unlockErr := syscall.Flock(int(s.lock.Fd()), syscall.LOCK_UN)
+	closeErr := s.lock.Close()
+	s.lock = nil
+	return errors.Join(unlockErr, closeErr)
+}
 
 type boundedContextWriter struct {
 	ctx         context.Context

@@ -7,11 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSpoolerCapsOutputAndRemovesFailedFile(t *testing.T) {
 	directory := t.TempDir()
-	spooler, err := NewSpooler(directory, 1, 4)
+	spooler, err := NewSpooler(directory, t.TempDir(), 1, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,13 +31,20 @@ func TestSpoolerCapsOutputAndRemovesFailedFile(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if len(entries) != 0 || len(spooler.slots) != 0 {
-		t.Fatalf("failed spool leaked entries=%d slots=%d", len(entries), len(spooler.slots))
+	if len(entries) != 0 {
+		t.Fatalf("failed spool leaked %d entries", len(entries))
+	}
+	retry, err := spooler.Prepare(context.Background(), writePayload("1234"))
+	if err != nil {
+		t.Fatalf("failed spool did not release its shared slot: %v", err)
+	}
+	if err := retry.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestSpoolerBoundsConcurrencyAndCleansOnClose(t *testing.T) {
-	spooler, err := NewSpooler(t.TempDir(), 1, 16)
+	spooler, err := NewSpooler(t.TempDir(), t.TempDir(), 1, 16)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +90,7 @@ func TestNewSpoolerRemovesCrashLeftoversOnlyWithinItsDirectory(t *testing.T) {
 	if err := os.WriteFile(outside, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewSpooler(directory, 1, 16); err != nil {
+	if _, err := NewSpooler(directory, t.TempDir(), 1, 16); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(directory, "leftover.zip")); !errors.Is(err, os.ErrNotExist) {
@@ -90,6 +98,62 @@ func TestNewSpoolerRemovesCrashLeftoversOnlyWithinItsDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatalf("outside file was touched: %v", err)
+	}
+}
+
+func TestSpoolersShareArchiveSlotsAcrossApplicationInstances(t *testing.T) {
+	sharedRuntime := t.TempDir()
+	firstDirectory := t.TempDir()
+	secondDirectory := t.TempDir()
+	firstSpooler, err := NewSpooler(firstDirectory, sharedRuntime, 2, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondSpooler, err := NewSpooler(secondDirectory, sharedRuntime, 2, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := firstSpooler.Prepare(context.Background(), writePayload("first"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second, err := secondSpooler.Prepare(context.Background(), writePayload("second"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Millisecond)
+	defer cancel()
+	third, err := firstSpooler.Prepare(ctx, writePayload("third"))
+	if third != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("third shared archive = (%v, %v), want shared cap", third, err)
+	}
+	assertSpoolFileCount(t, firstDirectory, 1)
+	assertSpoolFileCount(t, secondDirectory, 1)
+
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	third, err = firstSpooler.Prepare(context.Background(), writePayload("third"))
+	if err != nil {
+		t.Fatalf("released shared slot was not reusable: %v", err)
+	}
+	if err := third.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertSpoolFileCount(t *testing.T, directory string, want int) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != want {
+		t.Fatalf("spool entries in %q = %d, want %d", directory, len(entries), want)
 	}
 }
 

@@ -71,14 +71,16 @@ func (b *backend) Handle(request applications.Request) (applications.Response, e
 	switch request.Path {
 	case "pid":
 		return applications.JSON(http.StatusOK, map[string]any{
-			"pid":      os.Getpid(),
-			"instance": b.instance.ID,
-			"project":  b.instance.ProjectID,
-			"env":      b.instance.Env,
-			"caller":   request.Caller.Email,
-			"admin":    request.Caller.IsAdmin,
-			"query":    request.QueryValue("q"),
-			"body":     string(request.Body),
+			"pid":              os.Getpid(),
+			"instance":         b.instance.ID,
+			"project":          b.instance.ProjectID,
+			"env":              b.instance.Env,
+			"dataDir":          b.instance.DataDir,
+			"sharedRuntimeDir": b.instance.SharedRuntimeDir,
+			"caller":           request.Caller.Email,
+			"admin":            request.Caller.IsAdmin,
+			"query":            request.QueryValue("q"),
+			"body":             string(request.Body),
 		}), nil
 	case "write":
 		path := filepath.Join(b.instance.DataDir, "kept.txt")
@@ -290,6 +292,72 @@ func TestHostCompilesAndServesABackend(t *testing.T) {
 	}
 }
 
+func TestHostProvidesIsolatedDataAndSharedApplicationRuntimeDirectories(t *testing.T) {
+	host := newTestHost(t, fakeCatalog{
+		"test-application":  sourceFS(testBackendSource),
+		"other-application": sourceFS(testBackendSource),
+	})
+	first := testInstance("test-application", "instance-directory-first")
+	second := testInstance("test-application", "instance-directory-second")
+	other := testInstance("other-application", "instance-directory-other")
+
+	firstDirectories := responseDirectories(t, call(t, host, first, applications.Request{Method: "GET", Path: "pid"}))
+	secondDirectories := responseDirectories(t, call(t, host, second, applications.Request{Method: "GET", Path: "pid"}))
+	otherDirectories := responseDirectories(t, call(t, host, other, applications.Request{Method: "GET", Path: "pid"}))
+
+	if firstDirectories.DataDir == secondDirectories.DataDir {
+		t.Fatalf("instances share DataDir %q", firstDirectories.DataDir)
+	}
+	if firstDirectories.SharedRuntimeDir != secondDirectories.SharedRuntimeDir {
+		t.Fatalf(
+			"same application runtime directories = %q, %q",
+			firstDirectories.SharedRuntimeDir,
+			secondDirectories.SharedRuntimeDir,
+		)
+	}
+	if firstDirectories.SharedRuntimeDir == otherDirectories.SharedRuntimeDir {
+		t.Fatalf("different applications share runtime directory %q", firstDirectories.SharedRuntimeDir)
+	}
+	for _, directory := range []string{
+		firstDirectories.DataDir,
+		secondDirectories.DataDir,
+		firstDirectories.SharedRuntimeDir,
+		otherDirectories.SharedRuntimeDir,
+	} {
+		info, err := os.Stat(directory)
+		if err != nil || !info.IsDir() {
+			t.Errorf("host directory %q = (%v, %v), want directory", directory, info, err)
+		}
+	}
+
+	host.Shutdown()
+	if _, err := os.Stat(host.sharedRuntimeRoot()); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("shared runtime root survived shutdown: %v", err)
+	}
+	for _, directory := range []string{firstDirectories.DataDir, secondDirectories.DataDir} {
+		if _, err := os.Stat(directory); err != nil {
+			t.Errorf("durable data directory %q removed on shutdown: %v", directory, err)
+		}
+	}
+}
+
+type backendDirectories struct {
+	DataDir          string `json:"dataDir"`
+	SharedRuntimeDir string `json:"sharedRuntimeDir"`
+}
+
+func responseDirectories(t *testing.T, response applications.Response) backendDirectories {
+	t.Helper()
+	var directories backendDirectories
+	if err := json.Unmarshal(response.Body, &directories); err != nil {
+		t.Fatalf("decode backend directories %q: %v", response.Body, err)
+	}
+	if directories.DataDir == "" || directories.SharedRuntimeDir == "" {
+		t.Fatalf("backend directories = %+v", directories)
+	}
+	return directories
+}
+
 func TestHostStreamsASeekableResponseWithoutBuffering(t *testing.T) {
 	host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
 	spec := testInstance("test-application", "instance-stream")
@@ -399,10 +467,17 @@ func TestHostInvalidatesOnlyProcessesFromTheReplacedApplication(t *testing.T) {
 
 	before := backendPID(t, call(t, host, replaced, applications.Request{Method: "GET", Path: "pid"}))
 	otherBefore := backendPID(t, call(t, host, other, applications.Request{Method: "GET", Path: "pid"}))
+	runtimeMarker := filepath.Join(host.sharedRuntimeDir(replaced.ApplicationID), "old-contract.lock")
+	if err := os.WriteFile(runtimeMarker, nil, 0o600); err != nil {
+		t.Fatalf("write runtime marker: %v", err)
+	}
 
 	host.InvalidateApplication(replaced.ApplicationID)
 	if current := host.lookup(replaced.ID); current != nil {
 		t.Fatal("invalidated process remains published by the host")
+	}
+	if _, err := os.Stat(runtimeMarker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalidated runtime marker survived: %v", err)
 	}
 	if current := host.lookup(other.ID); current == nil || !current.running() {
 		t.Fatal("unrelated application process was invalidated")

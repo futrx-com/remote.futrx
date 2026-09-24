@@ -46,8 +46,9 @@ without allowing escapes, and refuse special files.
 - One directory listing returns at most 10,000 entries.
 - Search returns at most 300 matches and visits at most 200,000 entries.
 - A ZIP may read at most 1 GiB of source data, contain at most 200,000 entries,
-  and produce at most a 1 GiB spool file. Each install builds at most two ZIPs
-  concurrently under its application data directory.
+  and produce at most a 1 GiB spool file. At most two ZIPs are building or
+  being transferred across all global and project installs on one server, so
+  active spool data stays at or below roughly 2 GiB in aggregate.
 - The five-minute backend timeout bounds opening a response and building a ZIP;
   once its response stream is open, the HTTP request owns the transfer lifetime.
 
@@ -57,7 +58,11 @@ Changing the manifest version makes installed copies reconverge on the new
 package. The application has no container resources, service, port, credentials,
 or install script. Its only persistent state is temporary ZIP data beneath the
 instance `DataDir`; completed and failed requests remove their spool files, and
-uninstall removes the instance data directory.
+uninstall removes the instance data directory. The backend holds one of two
+server-wide archive locks in the application's `SharedRuntimeDir` from the start
+of ZIP construction until the response stream closes. Process exit releases the
+lock automatically, and Remote removes shared runtime files during package
+replacement and server shutdown.
 
 File, ZIP, and media bodies use the platform's seekable response stream. Remote
 serves byte ranges and conditional requests and closes the application-owned

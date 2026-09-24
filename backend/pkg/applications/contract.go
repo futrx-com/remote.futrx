@@ -117,6 +117,12 @@ type Instance struct {
 	// write to. It survives restarts and is removed when the app is
 	// uninstalled.
 	DataDir string `json:"dataDir,omitempty"`
+	// SharedRuntimeDir is a host-owned directory shared by every running
+	// backend instance of this application. It is for transient coordination
+	// such as lock files, not durable state: Remote may remove it after all
+	// backend processes stop, during package replacement, or on server
+	// shutdown. Backends must tolerate stale files after an unclean exit.
+	SharedRuntimeDir string `json:"sharedRuntimeDir,omitempty"`
 }
 
 // Request is one call forwarded from the SPA.

@@ -229,6 +229,12 @@ is pruned on a successful build.
 state is not durable at all: the host restarts a backend lazily after a crash or
 a server restart, so anything that must survive belongs in `DataDir`.
 
+`SharedRuntimeDir` is different: all global and project backend processes for
+one application receive the same directory so they can coordinate with lock
+files or other disposable runtime state. Remote clears it during package
+replacement and normal server shutdown, and a crash can leave stale files.
+Never use it for data that must survive.
+
 ## The self-test reports a failure
 
 Each check names what it proves — see [10 — Fixtures](10-fixtures.md). Some

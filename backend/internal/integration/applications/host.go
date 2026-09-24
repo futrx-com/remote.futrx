@@ -44,8 +44,9 @@ type eventRuntimeBinder interface {
 //
 // The unit is the instance, not the application: an application installed globally and in
 // two projects is three processes, because each serves a different install
-// with its own environment, its own data directory, and its own crash
-// behaviour. They share one compiled binary.
+// with its own environment, durable data directory, and crash behaviour. They
+// share one compiled binary and one non-durable application runtime directory
+// for explicit cross-instance coordination.
 type Host struct {
 	root    string
 	catalog Catalog
@@ -70,7 +71,8 @@ type Options struct {
 }
 
 // New builds a backend host that keeps compiled binaries, generated modules,
-// and per-instance data under root.
+// per-instance data, and per-application shared runtime directories under
+// root.
 func New(root string, catalog Catalog, options Options) *Host {
 	return &Host{
 		root:    root,
@@ -191,6 +193,9 @@ func (h *Host) InvalidateApplication(applicationID string) {
 	for _, current := range invalidated {
 		current.stop()
 	}
+	if err := os.RemoveAll(h.sharedRuntimeDir(applicationID)); err != nil {
+		h.logger.Warn("remove invalidated application runtime directory", "application", applicationID, "error", err)
+	}
 }
 
 // Shutdown stops every running backend. The server calls it on the way out so
@@ -205,6 +210,9 @@ func (h *Host) Shutdown() {
 
 	for _, id := range ids {
 		_ = h.Stop(context.Background(), id)
+	}
+	if err := os.RemoveAll(h.sharedRuntimeRoot()); err != nil {
+		h.logger.Warn("remove application runtime directories", "error", err)
 	}
 }
 
@@ -293,6 +301,10 @@ func (h *Host) launch(
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create backend data directory: %w", err)
 	}
+	sharedRuntimeDir := h.sharedRuntimeDir(applicationID)
+	if err := os.MkdirAll(sharedRuntimeDir, 0o700); err != nil {
+		return nil, fmt.Errorf("create backend shared runtime directory: %w", err)
+	}
 
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: backendHandshake,
@@ -308,7 +320,7 @@ func (h *Host) launch(
 	}
 	connected := make(chan connectResult, 1)
 	go func() {
-		process, err := h.connect(client, instance, dataDir)
+		process, err := h.connect(client, instance, dataDir, sharedRuntimeDir)
 		connected <- connectResult{process: process, err: err}
 	}()
 
@@ -346,7 +358,12 @@ func (h *Host) launch(
 // connect completes the handshake, checks the contract version, and hands the
 // instance over. Every failure here kills the process rather than leaving a
 // half-initialized backend reachable.
-func (h *Host) connect(client *goplugin.Client, instance applications.Instance, dataDir string) (*backendProcess, error) {
+func (h *Host) connect(
+	client *goplugin.Client,
+	instance applications.Instance,
+	dataDir string,
+	sharedRuntimeDir string,
+) (*backendProcess, error) {
 	applicationID := instance.ApplicationID
 	protocol, err := client.Client()
 	if err != nil {
@@ -392,19 +409,26 @@ func (h *Host) connect(client *goplugin.Client, instance applications.Instance, 
 			return nil, fmt.Errorf("bind events for backend %s: %w", applicationID, err)
 		}
 	}
-	if err := backend.Init(instanceWithDataDir(instance, dataDir)); err != nil {
+	if err := backend.Init(instanceWithHostDirectories(instance, dataDir, sharedRuntimeDir)); err != nil {
 		return nil, fmt.Errorf("initialize backend %s: %w", applicationID, err)
 	}
 	descriptor.PublishesEvents = len(instance.Publishers) > 0
 	return &backendProcess{client: client, backend: backend, descriptor: descriptor}, nil
 }
 
-// instanceWithDataDir adds the host-owned directory to the instance before it
-// crosses the backend boundary. It carries the resolved environment, secrets
-// included: an application's backend needs the password its own install script
-// generated.
-func instanceWithDataDir(instance applications.Instance, dataDir string) applications.Instance {
+// instanceWithHostDirectories adds host-owned storage to the instance before
+// it crosses the backend boundary. DataDir belongs to one installed copy;
+// SharedRuntimeDir is common to every process of the same application and is
+// deliberately non-durable. The instance also carries the resolved
+// environment, secrets included: an application's backend needs the password
+// its own install script generated.
+func instanceWithHostDirectories(
+	instance applications.Instance,
+	dataDir string,
+	sharedRuntimeDir string,
+) applications.Instance {
 	instance.DataDir = dataDir
+	instance.SharedRuntimeDir = sharedRuntimeDir
 	return instance
 }
 
@@ -454,4 +478,12 @@ func (h *Host) kill(instanceID string) {
 
 func (h *Host) dataDir(instanceID string) string {
 	return filepath.Join(h.root, "data", instanceID)
+}
+
+func (h *Host) sharedRuntimeRoot() string {
+	return filepath.Join(h.root, "runtime")
+}
+
+func (h *Host) sharedRuntimeDir(applicationID string) string {
+	return filepath.Join(h.sharedRuntimeRoot(), applicationID)
 }

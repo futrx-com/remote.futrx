@@ -12,7 +12,7 @@ import (
 )
 
 // visitsFile is where the greeting counter lives inside the instance's
-// DataDir. That directory is the only storage a backend can rely on: the
+// DataDir. That directory is the only durable storage a backend can rely on: the
 // process is killed on stop, uninstall, and server restart, and restarted
 // lazily by the next call, so anything kept in memory is gone by then. The
 // counter surviving a restart is the whole point of the example.

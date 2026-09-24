@@ -50,8 +50,12 @@ func (b *api) Describe() (applications.Descriptor, error) {
 }
 
 func (b *api) Init(instance applications.Instance) error {
+	if instance.DataDir == "" || instance.SharedRuntimeDir == "" {
+		return fmt.Errorf("initialize archive spool: host data and shared runtime directories are required")
+	}
 	spooler, err := appWorkspace.NewSpooler(
 		filepath.Join(instance.DataDir, "spool"),
+		instance.SharedRuntimeDir,
 		appWorkspace.MaxConcurrentArchives,
 		appWorkspace.MaxArchiveBytes,
 	)

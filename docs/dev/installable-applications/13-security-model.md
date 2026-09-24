@@ -63,6 +63,8 @@ directory, and it is worth being explicit about it.
 - Read the instance's resolved environment, **including the secrets its own
   install script generated** — a database backend needs the password.
 - Keep state, in memory and in the per-instance `DataDir` the host gives it.
+- Coordinate with its own other installed instances through the non-durable
+  `SharedRuntimeDir` the host gives every process of that application.
 
 There is no sandbox around it, and none is implied. A backend is not
 less-trusted code running under supervision; it is server code with a process
@@ -130,8 +132,11 @@ does not reintroduce the mutable path.
   `backend-playground` shows the pattern — redact by caller.
 - **Does it `exec` anything built from a request?** Command injection here is
   command injection as root.
-- **Does it write outside `DataDir`?** `DataDir` is the storage the platform
-  manages and cleans up. Anything else is unmanaged state on the host.
+- **Does it write outside `DataDir` and `SharedRuntimeDir`?** `DataDir` is the
+  managed home for one instance's durable state. `SharedRuntimeDir` is managed
+  but non-durable and shared only with the same application's other backend
+  processes, so it is appropriate for locks and transient coordination, not
+  secrets or durable records. Anything else is unmanaged state on the host.
 - **Does it reach the network?** Same exfiltration surface as a `ui/`, with
   more to exfiltrate and no browser between it and the internet.
 

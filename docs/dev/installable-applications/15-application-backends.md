@@ -164,13 +164,19 @@ What `Init` receives, fixed for the process's lifetime:
 | `ContainerName`, `InternalPort`, `ExternalPort` | the container half, when the application has one |
 | `Env` | the install's resolved inputs, **including generated secrets** |
 | `DataDir` | a directory on the host this instance owns and may write to |
+| `SharedRuntimeDir` | a transient host directory shared by every backend process for this application |
 
 `Env` carries real passwords: a database application's backend needs the one its own
 `install.sh` generated. That is deliberate, and it is why what a backend does
 with them is a review question — see [13 — Security model](13-security-model.md).
 
 `DataDir` survives stop and start, and is deleted on uninstall. It is the only
-storage the platform gives a backend.
+place for durable backend state. `SharedRuntimeDir` is for cross-instance
+coordination such as process-safe lock files. It is common to global and project
+instances of the same application, isolated from other applications, and may be
+removed after processes stop, on package replacement, or during server shutdown.
+Backends must tolerate stale runtime files after an unclean exit and must not
+place durable state there.
 
 ### Application events
 
@@ -508,6 +514,7 @@ server.
   home/                         fallback HOME, and therefore module cache,
                                 when the service runs without one
   data/<instanceID>/            one instance's DataDir
+  runtime/<applicationID>/      that application's shared, non-durable runtime directory
 ```
 
 `home/` appears only when the server process has no `HOME` — a systemd unit
@@ -534,6 +541,13 @@ unusual.
 | Server restart | started again on the next call | kept |
 | Crash | replaced on the next call | kept |
 | Uploaded-package replacement | every old process is killed; the next call compiles the current package | kept |
+
+`SharedRuntimeDir` has process-oriented lifecycle instead: every instance of an
+application receives the same path, package replacement clears that
+application's directory after its processes exit, and server shutdown clears
+all shared runtime directories. Operating-system locks held by a backend are
+released automatically if its process exits. Contents may survive an unclean
+server exit, so initialization must treat them as disposable or stale.
 
 Stop is the useful one: it is how a user turns a backend off without losing
 what it stored.
