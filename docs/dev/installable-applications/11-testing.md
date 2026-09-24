@@ -62,6 +62,8 @@ go build ./... && go vet ./...
 | `pkg/applications/rpc/stream_test.go` | bounded absolute reads, seek behavior, disconnect cleanup, and blocked-read cancellation across the response-stream RPC boundary |
 | `lifecycle/event_bus_test.go`, `application_event_bridge_test.go` | defensive payload copies and canonical version-1 core event envelopes |
 | `handlers/applications_backend_handler_test.go` | which headers cross the boundary, plus streamed `GET`, `HEAD`, ranges, conditionals, and cancellation |
+| `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, and spool cleanup |
+| `applications/file-management/backend/api/api_test.go` | trusted chat-context requirement, route JSON, status mapping, dispositions, media policy, and ZIP responses |
 
 `applications` tests compile real backends with the Go toolchain, so they take
 tens of seconds on a cold cache. `-short` skips exactly those:
@@ -92,12 +94,20 @@ npm run build     # tsc -b + vite; type errors fail here
 | `config/extensions.test.ts` | slot names are unique, and every slot declares an icon appearance |
 | `app/extensions/extensionApi.test.ts` | frontend commands delegate to their core-owned surfaces |
 | `app/extensions/extensionBackend.test.ts` | which running backend a call resolves to, and the URL it builds |
+| `applications/file-management/ui/scripts/*.test.mjs` | browser state transitions and file click/category/formatting policy |
 
 Run one file directly while iterating:
 
 ```bash
 node --experimental-strip-types --test \
   src/state/stores/extensions/extensionStore.test.ts
+```
+
+From the repository root, application-owned JavaScript can be tested without
+the SPA build as well:
+
+```bash
+node --test applications/file-management/ui/scripts/*.test.mjs
 ```
 
 Note the repo convention: modules that node tests import use **explicit `.ts`

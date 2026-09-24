@@ -8,8 +8,10 @@ applications` in [`../catalog.go`](../catalog.go), a module of its own because
 any an administrator has uploaded as a `.zip` — same shape, same validator,
 stored outside the binary. See [Uploaded packages](../docs/dev/installable-applications/16-uploaded-packages.md).
 
-**One application ships here: [`hello-remote/`](hello-remote/)**, the worked example
-— every supported capability composed into one installable package.
+**Two applications ship here:** [`hello-remote/`](hello-remote/) is the worked
+example with every supported capability, while
+[`file-management/`](file-management/) is the product workspace browser built
+from a focused host backend and workspace-pane extension.
 Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
 repositories and reach a server as uploaded packages, so the catalog format can
 change here without a database application riding along in the same review.
@@ -160,10 +162,10 @@ child of the server process, with the server's privileges, and is handed the
 install's secrets. It deserves the same review as any change under
 `backend/internal/`. See [Security model](../docs/dev/installable-applications/13-security-model.md#backend-backends).
 
-## The example app
+## Built-in applications
 
-[`hello-remote/`](hello-remote/) is the one application this repository ships, and it
-is here to be installed. It deliberately carries every composable capability:
+[`hello-remote/`](hello-remote/) is the catalog's worked example. It deliberately
+carries every composable capability:
 custom infrastructure, a supervised service and port, health checking, host
 tools, container-built commands, a host backend, UI, and a project skill. Its
 manifest also fills every author-controlled model field. Installing it exercises
@@ -174,6 +176,12 @@ the feature works.
 Install it globally *and* in a project to watch one application run as two processes
 with two counters. Its [README](hello-remote/README.md) says what to look at
 and why.
+
+[`file-management/`](file-management/) is intentionally narrower: it has no
+container infrastructure and declares only a browser extension plus a host
+backend. Its pane uses core-authorized chat context to browse the workspace;
+its [README](file-management/README.md) documents behavior, security limits,
+verification, and cleanup.
 
 The larger developer fixtures described in [Fixtures](../docs/dev/installable-applications/10-fixtures.md) —
 `ui-playground`, `ui-sandbox`, `backend-playground` — are not in this

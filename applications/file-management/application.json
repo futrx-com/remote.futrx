@@ -1,0 +1,17 @@
+{
+  "id": "file-management",
+  "name": "File Management",
+  "description": "Browse, search, preview, and download files in an authorized chat workspace.",
+  "category": "development",
+  "version": "1.0.0",
+  "icon": "ui/assets/icon.svg",
+  "scopes": ["global", "project"],
+  "ui": {
+    "entry": "scripts/main.js",
+    "styles": ["style/file-management.css"]
+  },
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 300000
+  }
+}

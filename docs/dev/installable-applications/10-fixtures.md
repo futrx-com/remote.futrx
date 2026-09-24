@@ -1,8 +1,10 @@
 # 10 — Fixtures
 
-> **These fixture applications are not in this repository.** What ships here is one
-> worked example, [`hello-remote`](../../../applications/hello-remote/README.md), which is the
-> installable kitchen sink: every slot and frontend mechanism, a host backend,
+> **These fixture applications are not in this repository.** The built-in catalog
+> ships [`hello-remote`](../../../applications/hello-remote/README.md), the
+> installable kitchen sink, plus the focused
+> [`file-management`](../../../applications/file-management/README.md) product
+> application. Hello Remote covers every slot and frontend mechanism, a host backend,
 > container commands, a supervised service and port, a host tool, and a project
 > skill. The historical fixtures below remain useful as focused specifications
 > for developers working on one extension surface at a time.
