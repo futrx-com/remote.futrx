@@ -94,6 +94,7 @@ npm run build     # tsc -b + vite; type errors fail here
 | `config/extensions.test.ts` | slot names are unique, and every slot declares an icon appearance |
 | `app/extensions/extensionApi.test.ts` | frontend commands delegate to their core-owned surfaces |
 | `app/extensions/extensionBackend.test.ts` | which running backend a call resolves to, and the URL it builds |
+| `app/extensions/extensionPopup.test.ts` | popup cleanup and topmost-only Escape behavior with other surfaces |
 | `applications/file-management/ui/scripts/*.test.mjs` | browser state transitions and file click/category/formatting policy |
 
 Run one file directly while iterating:

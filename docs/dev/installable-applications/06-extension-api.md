@@ -256,6 +256,9 @@ handle.close() // close it yourself
 ```
 
 Use `mount` whenever the content needs wiring; use `html` for static markup.
+Escape closes only the frontmost dismissible surface. For example, if a popup
+opens the media viewer, the first Escape closes the viewer and leaves the
+popup in place; the next Escape closes the popup.
 
 ## `remote.views.load(name)`
 

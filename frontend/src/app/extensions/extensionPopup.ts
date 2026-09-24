@@ -2,6 +2,8 @@ import type {
   ExtensionPopupHandle,
   ExtensionPopupOptions,
 } from "../../models/extension";
+import { dismissStackService } from "../../services/platform/dismissStackService.ts";
+import { shortcutService } from "../../services/platform/shortcutService.ts";
 
 const OVERLAY_CLASS =
   "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4";
@@ -41,8 +43,11 @@ export function openExtensionPopup(
 
   let unmount: (() => void) | void;
   let closed = false;
+  const dismissClaim = dismissStackService.claim();
   const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") handle.close();
+    if (!shortcutService.isDismiss(event)) return;
+    if (!dismissStackService.owns(dismissClaim)) return;
+    handle.close();
   };
   const onOverlayClick = (event: MouseEvent) => {
     if (event.target === overlay) handle.close();
@@ -53,7 +58,8 @@ export function openExtensionPopup(
     close() {
       if (closed) return;
       closed = true;
-      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keydown", onKeyDown);
+      dismissStackService.release(dismissClaim);
       overlay.removeEventListener("click", onOverlayClick);
       try {
         if (typeof unmount === "function") unmount();
@@ -64,7 +70,10 @@ export function openExtensionPopup(
   };
 
   overlay.addEventListener("click", onOverlayClick);
-  document.addEventListener("keydown", onKeyDown);
+  // Hook-owned surfaces listen on window too. Registering every claim and its
+  // listener in the same order means only the newest owner can act before a
+  // close hands ownership back to the surface underneath.
+  window.addEventListener("keydown", onKeyDown);
   document.body.appendChild(overlay);
   unmount = options.mount?.(body);
   return handle;

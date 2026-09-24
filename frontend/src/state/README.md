@@ -27,6 +27,11 @@ window and `useDismissShortcut` puts one dismissible surface in front of the
 rest, and both are called from chat, workspace, projects and `ui/` alike. Keep
 it to that -- a hook about a domain has a domain folder.
 
+Imperative surfaces participate in the same ownership rule without a hook.
+The application popup claims `dismissStackService` directly and listens on the
+same `window` target, so a popup and a hook-owned media viewer dismiss one at a
+time in visual order.
+
 ## Pure functions are not a layer
 
 There used to be a fourth folder, `logic/`, holding the projectors, policies
