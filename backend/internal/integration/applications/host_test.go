@@ -550,6 +550,162 @@ func TestHostInvalidatesOnlyProcessesFromTheReplacedApplication(t *testing.T) {
 	}
 }
 
+func TestApplicationInvalidationWaitsForConcurrentTerminationBeforeRemovingSharedRuntime(t *testing.T) {
+	operations := []struct {
+		name string
+		run  func(*Host, string) error
+	}{
+		{name: "stop", run: func(host *Host, instanceID string) error {
+			return host.Stop(context.Background(), instanceID)
+		}},
+		{name: "remove", run: func(host *Host, instanceID string) error {
+			return host.Remove(context.Background(), instanceID)
+		}},
+	}
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
+			spec := testInstance("test-application", "instance-"+operation.name+"-invalidation")
+			call(t, host, spec, applications.Request{Method: "GET", Path: "pid"})
+
+			runtimeMarker := filepath.Join(host.sharedRuntimeDir(spec.ApplicationID), "active.lock")
+			if err := os.WriteFile(runtimeMarker, nil, 0o600); err != nil {
+				t.Fatalf("write runtime marker: %v", err)
+			}
+
+			terminationEntered := make(chan struct{})
+			allowTermination := make(chan struct{})
+			realTerminate := host.terminateProcess
+			host.terminateProcess = func(process *backendProcess) {
+				close(terminationEntered)
+				<-allowTermination
+				realTerminate(process)
+			}
+
+			terminationDone := make(chan error, 1)
+			go func() {
+				terminationDone <- operation.run(host, spec.ID)
+			}()
+			<-terminationEntered
+
+			// Stop/Remove has removed the process from the running map but must
+			// retain the application lifecycle boundary until termination completes.
+			// This deterministic assertion prevents invalidation from unlinking the
+			// shared lock files while the old process still uses them.
+			host.applicationChanges.mu.Lock()
+			applicationLock := host.applicationChanges.locks[spec.ApplicationID]
+			host.applicationChanges.mu.Unlock()
+			if applicationLock == nil {
+				close(allowTermination)
+				<-terminationDone
+				t.Fatal("termination did not create an application lifecycle lock")
+			}
+			if applicationLock.TryLock() {
+				applicationLock.Unlock()
+				close(allowTermination)
+				<-terminationDone
+				t.Fatal("application lifecycle lock was released before process termination")
+			}
+
+			invalidateDone := make(chan struct{})
+			go func() {
+				host.InvalidateApplication(spec.ApplicationID)
+				close(invalidateDone)
+			}()
+
+			if _, err := os.Stat(runtimeMarker); err != nil {
+				close(allowTermination)
+				<-terminationDone
+				<-invalidateDone
+				t.Fatalf("shared runtime marker removed before termination completed: %v", err)
+			}
+
+			close(allowTermination)
+			if err := <-terminationDone; err != nil {
+				t.Fatalf("%s: %v", operation.name, err)
+			}
+			<-invalidateDone
+			if _, err := os.Stat(runtimeMarker); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("shared runtime marker survived invalidation: %v", err)
+			}
+		})
+	}
+}
+
+func TestConcurrentLifecycleWaitsForApplicationInvalidationToFinishTermination(t *testing.T) {
+	operations := []struct {
+		name string
+		run  func(*Host, string) error
+	}{
+		{name: "stop", run: func(host *Host, instanceID string) error {
+			return host.Stop(context.Background(), instanceID)
+		}},
+		{name: "remove", run: func(host *Host, instanceID string) error {
+			return host.Remove(context.Background(), instanceID)
+		}},
+	}
+
+	for _, operation := range operations {
+		t.Run(operation.name, func(t *testing.T) {
+			host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
+			spec := testInstance("test-application", "instance-invalidation-before-"+operation.name)
+			call(t, host, spec, applications.Request{Method: "GET", Path: "pid"})
+
+			dataMarker := filepath.Join(host.dataDir(spec.ID), "state")
+			if err := os.WriteFile(dataMarker, nil, 0o600); err != nil {
+				t.Fatalf("write data marker: %v", err)
+			}
+
+			terminationEntered := make(chan struct{})
+			allowTermination := make(chan struct{})
+			realTerminate := host.terminateProcess
+			host.terminateProcess = func(process *backendProcess) {
+				close(terminationEntered)
+				<-allowTermination
+				realTerminate(process)
+			}
+
+			invalidateDone := make(chan struct{})
+			go func() {
+				host.InvalidateApplication(spec.ApplicationID)
+				close(invalidateDone)
+			}()
+			<-terminationEntered
+
+			lifecycleDone := make(chan error, 1)
+			go func() {
+				lifecycleDone <- operation.run(host, spec.ID)
+			}()
+
+			select {
+			case err := <-lifecycleDone:
+				close(allowTermination)
+				<-invalidateDone
+				t.Fatalf("%s returned before invalidation terminated the process: %v", operation.name, err)
+			case <-time.After(50 * time.Millisecond):
+			}
+			if _, err := os.Stat(dataMarker); err != nil {
+				close(allowTermination)
+				<-invalidateDone
+				<-lifecycleDone
+				t.Fatalf("data changed before process termination completed: %v", err)
+			}
+
+			close(allowTermination)
+			<-invalidateDone
+			if err := <-lifecycleDone; err != nil {
+				t.Fatalf("%s: %v", operation.name, err)
+			}
+			if operation.name == "remove" {
+				if _, err := os.Stat(dataMarker); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("data marker survived remove: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestLaunchCannotSurviveApplicationInvalidation(t *testing.T) {
 	host := newTestHost(t, fakeCatalog{"test-application": sourceFS(testBackendSource)})
 	spec := testInstance("test-application", "instance-stale-launch")

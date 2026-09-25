@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/rpc"
@@ -28,6 +29,12 @@ type responseStreamBroker interface {
 
 var _ applications.Backend = (*Client)(nil)
 var _ applications.EventSubscriber = (*Client)(nil)
+
+// ErrRequestWriteBlocked marks a Handle request that could not finish writing
+// to the backend before its context ended. The process host uses this signal to
+// retire the wedged transport; ordinary requests canceled after dispatch do
+// not carry it and keep sharing their healthy backend process.
+var ErrRequestWriteBlocked = errors.New("application RPC request write blocked")
 
 func (c *Client) Describe() (applications.Descriptor, error) {
 	var reply DescribeReply
@@ -62,6 +69,9 @@ func (c *Client) HandleContext(ctx context.Context, request applications.Request
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if err := ctx.Err(); err != nil {
+		return applications.Response{}, fmt.Errorf("handle: %w", err)
+	}
 	args := HandleArgs{RequestID: c.nextRequestID.Add(1), Request: request}
 	streamBroker, hasStreamBroker := c.broker.(responseStreamBroker)
 	if hasStreamBroker {
@@ -69,7 +79,46 @@ func (c *Client) HandleContext(ctx context.Context, request applications.Request
 		args.StreamBroker = true
 	}
 	reply := new(HandleReply)
-	call := c.client.Go("Plugin.Handle", args, reply, make(chan *rpc.Call, 1))
+	// net/rpc's nominally asynchronous Go method still encodes and writes the
+	// request synchronously. Start it separately so a backend that stops reading
+	// its socket cannot hold this caller past its context deadline. Closing the
+	// process transport during stop/uninstall releases a write that remains
+	// blocked after this method returns.
+	callReady := make(chan *rpc.Call, 1)
+	go func() {
+		callReady <- c.client.Go("Plugin.Handle", args, reply, make(chan *rpc.Call, 1))
+	}()
+
+	select {
+	case call := <-callReady:
+		return c.waitForHandle(ctx, call, args, reply, streamBroker, hasStreamBroker)
+	case <-ctx.Done():
+		// Prefer an already-written call if completion and the deadline became
+		// ready together. That remains ordinary cooperative cancellation and
+		// must not retire an otherwise healthy process.
+		select {
+		case call := <-callReady:
+			return c.cancelDispatchedHandle(ctx, call, args, reply, streamBroker, hasStreamBroker)
+		default:
+		}
+		c.cancelHandle(args.RequestID, ctx.Err())
+		go func() {
+			call := <-callReady
+			c.discardHandleResponse(call, args, reply, streamBroker, hasStreamBroker)
+		}()
+		return applications.Response{}, fmt.Errorf(
+			"handle: %w: %w", ErrRequestWriteBlocked, ctx.Err())
+	}
+}
+
+func (c *Client) waitForHandle(
+	ctx context.Context,
+	call *rpc.Call,
+	args HandleArgs,
+	reply *HandleReply,
+	streamBroker responseStreamBroker,
+	hasStreamBroker bool,
+) (applications.Response, error) {
 	select {
 	case completed := <-call.Done:
 		if completed.Error != nil {
@@ -77,17 +126,32 @@ func (c *Client) HandleContext(ctx context.Context, request applications.Request
 		}
 		return c.handleResponse(args, *reply, streamBroker, hasStreamBroker)
 	case <-ctx.Done():
-		// net/rpc supports concurrent calls on one connection. Go sends the
-		// cancellation request before returning, while the abandoned Handle
-		// reply is drained in the background so a late stream can still be
-		// accepted and closed.
-		c.client.Go("Plugin.Cancel", CancelArgs{
-			RequestID:        args.RequestID,
-			DeadlineExceeded: ctx.Err() == context.DeadlineExceeded,
-		}, new(CancelReply), nil)
-		go c.discardHandleResponse(call, args, reply, streamBroker, hasStreamBroker)
-		return applications.Response{}, fmt.Errorf("handle: %w", ctx.Err())
+		return c.cancelDispatchedHandle(ctx, call, args, reply, streamBroker, hasStreamBroker)
 	}
+}
+
+func (c *Client) cancelDispatchedHandle(
+	ctx context.Context,
+	call *rpc.Call,
+	args HandleArgs,
+	reply *HandleReply,
+	streamBroker responseStreamBroker,
+	hasStreamBroker bool,
+) (applications.Response, error) {
+	c.cancelHandle(args.RequestID, ctx.Err())
+	go c.discardHandleResponse(call, args, reply, streamBroker, hasStreamBroker)
+	return applications.Response{}, fmt.Errorf("handle: %w", ctx.Err())
+}
+
+func (c *Client) cancelHandle(requestID uint64, cause error) {
+	// Like Handle, net/rpc can block while Go writes a cancellation request.
+	// Cancellation is advisory, so never make the expired caller wait for that
+	// write. If the transport is wedged, stopping the process closes it and
+	// releases this goroutine as well.
+	go c.client.Go("Plugin.Cancel", CancelArgs{
+		RequestID:        requestID,
+		DeadlineExceeded: cause == context.DeadlineExceeded,
+	}, new(CancelReply), nil)
 }
 
 func (c *Client) handleResponse(

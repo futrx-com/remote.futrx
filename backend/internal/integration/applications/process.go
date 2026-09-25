@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-
-	goplugin "github.com/hashicorp/go-plugin"
+	"sync/atomic"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
+	applicationrpc "github.com/futrx-com/remote.futrx.com/pkg/applications/rpc"
 )
 
 // backendProcess is one live backend. Its fields are fixed after launch and the
@@ -18,9 +18,16 @@ type backendProcess struct {
 	binary        string
 	configuration [32]byte
 	generation    uint64
-	client        *goplugin.Client
+	client        processClient
 	backend       applications.Backend
 	descriptor    applications.Descriptor
+	unhealthy     atomic.Bool
+}
+
+type processClient interface {
+	Exited() bool
+	Kill()
+	ForceKill()
 }
 
 type backendCallResult struct {
@@ -33,11 +40,26 @@ type contextBackend interface {
 }
 
 func (p *backendProcess) running() bool {
-	return !p.client.Exited()
+	return !p.unhealthy.Load() && !p.client.Exited()
 }
 
 func (p *backendProcess) stop() {
+	p.unhealthy.Store(true)
 	p.client.Kill()
+}
+
+// stopAsync immediately removes a wedged process from consideration without
+// extending the request's deadline by go-plugin's graceful shutdown window.
+// The next call sees running=false and relaunches it; Stop/Remove may safely
+// call Kill concurrently because go-plugin supports repeated calls.
+func (p *backendProcess) stopAsync() {
+	if p.unhealthy.CompareAndSwap(false, true) {
+		// The transport has already failed its request deadline while writing.
+		// Kill the exact child immediately so both its data and control sockets
+		// close; go-plugin cleanup can then finish without holding this caller.
+		p.client.ForceKill()
+		go p.client.Kill()
+	}
 }
 
 // call enforces the service's timeout and, for the current RPC transport,
@@ -49,6 +71,10 @@ func (p *backendProcess) call(
 ) (applications.Response, error) {
 	if backend, ok := p.backend.(contextBackend); ok {
 		response, err := backend.HandleContext(ctx, request)
+		writeBlocked := errors.Is(err, applicationrpc.ErrRequestWriteBlocked)
+		if writeBlocked {
+			p.stopAsync()
+		}
 		if ctx.Err() != nil {
 			// Completion and cancellation can become ready together. If the
 			// transport handed us a stream while the caller's context ended,
@@ -56,7 +82,7 @@ func (p *backendProcess) call(
 			if content, _, _, streaming := response.ResponseStream(); streaming && content != nil {
 				_ = content.Close()
 			}
-			if !p.running() {
+			if !p.running() && !writeBlocked {
 				return applications.Response{}, errors.New("backend exited while handling the request")
 			}
 			return applications.Response{}, fmt.Errorf("backend call timed out: %w", ctx.Err())

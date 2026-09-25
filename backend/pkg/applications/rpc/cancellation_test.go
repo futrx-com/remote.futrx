@@ -3,7 +3,9 @@ package rpc
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/rpc"
 	"sync"
 	"testing"
 	"time"
@@ -134,6 +136,46 @@ func TestCancelAfterHandleFinishesIsNotRetained(t *testing.T) {
 	}
 }
 
+func TestCancellationRegistryCoalescesCompletionsBehindSlowRequest(t *testing.T) {
+	var requests requestCancellations
+	_, finishSlow := requests.begin(1)
+	defer finishSlow()
+
+	const completedRequests = 10_000
+	for id := uint64(2); id <= completedRequests+1; id++ {
+		_, finish := requests.begin(id)
+		finish()
+	}
+
+	requests.mu.Lock()
+	if got := len(requests.completed); got != 1 {
+		requests.mu.Unlock()
+		t.Fatalf("completed ranges = %d, want 1", got)
+	}
+	completed := requests.completed[0]
+	requests.mu.Unlock()
+	if completed != (requestIDRange{first: 2, last: completedRequests + 1}) {
+		t.Fatalf("completed range = %+v, want [2,%d]", completed, completedRequests+1)
+	}
+
+	// A late cancel inside the coalesced range must still be ignored, while a
+	// cancel for a request that has not begun must remain available to begin.
+	requests.cancel(completedRequests, context.DeadlineExceeded)
+	earlyID := uint64(completedRequests + 2)
+	requests.cancel(earlyID, context.DeadlineExceeded)
+	earlyContext, finishEarly := requests.begin(earlyID)
+	defer finishEarly()
+	if !errors.Is(context.Cause(earlyContext), context.DeadlineExceeded) {
+		t.Fatalf("early cancellation cause = %v, want deadline exceeded", context.Cause(earlyContext))
+	}
+
+	requests.mu.Lock()
+	defer requests.mu.Unlock()
+	if len(requests.pending) != 0 {
+		t.Fatalf("pending cancellations = %d, want 0", len(requests.pending))
+	}
+}
+
 func TestHandleContextCancelsOnlyItsOwnRPC(t *testing.T) {
 	backend := &cancellationBackend{
 		started: make(chan string, 2), observed: make(chan cancellationObservation, 2), release: make(chan struct{}),
@@ -200,4 +242,86 @@ func TestHandleContextCancelsOnlyItsOwnRPC(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("uncanceled RPC did not finish")
 	}
+}
+
+func TestHandleContextDeadlineDoesNotWaitForBlockedRPCWrite(t *testing.T) {
+	codec := newBlockingWriteClientCodec()
+	client := rpc.NewClientWithCodec(codec)
+	transport := &Client{client: client}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := transport.HandleContext(ctx, applications.Request{Path: "blocked-write"})
+		result <- err
+	}()
+
+	select {
+	case method := <-codec.writeStarted:
+		if method != "Plugin.Handle" {
+			t.Fatalf("first blocked write = %q, want Plugin.Handle", method)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Handle RPC did not begin its transport write")
+	}
+
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("HandleContext error = %v, want deadline exceeded", err)
+		}
+		if !errors.Is(err, ErrRequestWriteBlocked) {
+			t.Fatalf("HandleContext error = %v, want blocked-write marker", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("HandleContext waited for a blocked transport write after its deadline")
+	}
+
+	if err := client.Close(); err != nil {
+		t.Fatalf("close stalled client: %v", err)
+	}
+	select {
+	case <-codec.writeFinished:
+	case <-time.After(time.Second):
+		t.Fatal("closing the stalled client did not release its blocked writer")
+	}
+}
+
+type blockingWriteClientCodec struct {
+	writeStarted  chan string
+	writeFinished chan struct{}
+	closed        chan struct{}
+	closeOnce     sync.Once
+	finishOnce    sync.Once
+}
+
+func newBlockingWriteClientCodec() *blockingWriteClientCodec {
+	return &blockingWriteClientCodec{
+		writeStarted:  make(chan string, 1),
+		writeFinished: make(chan struct{}),
+		closed:        make(chan struct{}),
+	}
+}
+
+func (c *blockingWriteClientCodec) WriteRequest(request *rpc.Request, _ any) error {
+	select {
+	case c.writeStarted <- request.ServiceMethod:
+	default:
+	}
+	<-c.closed
+	c.finishOnce.Do(func() { close(c.writeFinished) })
+	return io.ErrClosedPipe
+}
+
+func (c *blockingWriteClientCodec) ReadResponseHeader(*rpc.Response) error {
+	<-c.closed
+	return io.EOF
+}
+
+func (*blockingWriteClientCodec) ReadResponseBody(any) error { return nil }
+
+func (c *blockingWriteClientCodec) Close() error {
+	c.closeOnce.Do(func() { close(c.closed) })
+	return nil
 }

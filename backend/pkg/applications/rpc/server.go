@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/rpc"
+	"sort"
 	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
@@ -99,7 +100,12 @@ type requestCancellations struct {
 	active           map[uint64]context.CancelCauseFunc
 	pending          map[uint64]error
 	completedThrough uint64
-	completed        map[uint64]struct{}
+	completed        []requestIDRange
+}
+
+type requestIDRange struct {
+	first uint64
+	last  uint64
 }
 
 func (r *requestCancellations) begin(id uint64) (context.Context, func()) {
@@ -134,7 +140,10 @@ func (r *requestCancellations) cancel(id uint64, cause error) {
 		r.mu.Unlock()
 		return
 	}
-	if _, ok := r.completed[id]; ok {
+	completedIndex := sort.Search(len(r.completed), func(index int) bool {
+		return r.completed[index].last >= id
+	})
+	if completedIndex < len(r.completed) && r.completed[completedIndex].first <= id {
 		r.mu.Unlock()
 		return
 	}
@@ -150,23 +159,57 @@ func (r *requestCancellations) finish(id uint64, cancel context.CancelCauseFunc)
 	r.mu.Lock()
 	delete(r.active, id)
 	delete(r.pending, id)
-	if id == r.completedThrough+1 {
-		r.completedThrough = id
-		for {
-			next := r.completedThrough + 1
-			if _, ok := r.completed[next]; !ok {
-				break
-			}
-			delete(r.completed, next)
-			r.completedThrough = next
-		}
-	} else if id > r.completedThrough {
-		if r.completed == nil {
-			r.completed = make(map[uint64]struct{})
-		}
-		r.completed[id] = struct{}{}
-	}
+	r.markCompleted(id)
 	r.mu.Unlock()
+}
+
+// markCompleted records out-of-order completions as coalesced ranges. A slow
+// low-numbered request must not make one registry entry accumulate for every
+// later request that finishes. Gaps between ranges correspond to requests
+// that are still active (or have not reached begin yet), so retained state is
+// bounded by the amount of actual concurrency rather than request history.
+// r.mu must be held by the caller.
+func (r *requestCancellations) markCompleted(id uint64) {
+	if id <= r.completedThrough {
+		return
+	}
+
+	position := sort.Search(len(r.completed), func(index int) bool {
+		return r.completed[index].first >= id
+	})
+	if position > 0 && r.completed[position-1].last >= id {
+		return
+	}
+	if position < len(r.completed) && r.completed[position].first == id {
+		return
+	}
+
+	joinsPrevious := position > 0 && consecutive(r.completed[position-1].last, id)
+	joinsNext := position < len(r.completed) && consecutive(id, r.completed[position].first)
+	switch {
+	case joinsPrevious && joinsNext:
+		r.completed[position-1].last = r.completed[position].last
+		copy(r.completed[position:], r.completed[position+1:])
+		r.completed = r.completed[:len(r.completed)-1]
+	case joinsPrevious:
+		r.completed[position-1].last = id
+	case joinsNext:
+		r.completed[position].first = id
+	default:
+		r.completed = append(r.completed, requestIDRange{})
+		copy(r.completed[position+1:], r.completed[position:])
+		r.completed[position] = requestIDRange{first: id, last: id}
+	}
+
+	for len(r.completed) > 0 && consecutive(r.completedThrough, r.completed[0].first) {
+		r.completedThrough = r.completed[0].last
+		copy(r.completed, r.completed[1:])
+		r.completed = r.completed[:len(r.completed)-1]
+	}
+}
+
+func consecutive(first uint64, second uint64) bool {
+	return first < ^uint64(0) && first+1 == second
 }
 
 func (s *server) BindEvents(args BindEventsArgs, reply *BindEventsReply) error {

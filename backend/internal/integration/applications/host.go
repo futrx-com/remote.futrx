@@ -62,6 +62,9 @@ type Host struct {
 	// generations prevent work built from a pre-replacement catalog snapshot
 	// from being launched after the application's source or manifest changes.
 	generations map[string]uint64
+	// terminateProcess is a seam for deterministic lifecycle concurrency tests.
+	// Production always binds it to backendProcess.stop.
+	terminateProcess func(*backendProcess)
 }
 
 // Options supplies process-host settings owned by the application edge.
@@ -74,7 +77,7 @@ type Options struct {
 // per-instance data, and per-application shared runtime directories under
 // root.
 func New(root string, catalog Catalog, options Options) *Host {
-	return &Host{
+	host := &Host{
 		root:    root,
 		catalog: catalog,
 		builder: NewBuilder(root, options.GoTool),
@@ -89,6 +92,8 @@ func New(root string, catalog Catalog, options Options) *Host {
 		running:            map[string]*backendProcess{},
 		generations:        map[string]uint64{},
 	}
+	host.terminateProcess = func(process *backendProcess) { process.stop() }
+	return host
 }
 
 var _ svc.BackendHost = (*Host)(nil)
@@ -141,7 +146,7 @@ func (h *Host) Notify(
 // Stop terminates an instance's backend, keeping its data directory so a later
 // start resumes with it.
 func (h *Host) Stop(_ context.Context, instanceID string) error {
-	unlock := h.launches.lock(instanceID)
+	unlock := h.lockInstanceLifecycle(instanceID)
 	defer unlock()
 	h.kill(instanceID)
 	return nil
@@ -157,7 +162,7 @@ func (h *Host) Stop(_ context.Context, instanceID string) error {
 // the uninstall would then delete the data directory of a live backend and
 // return, leaving that backend running with nothing left to address it by.
 func (h *Host) Remove(_ context.Context, instanceID string) error {
-	unlock := h.launches.lock(instanceID)
+	unlock := h.lockInstanceLifecycle(instanceID)
 	defer unlock()
 	h.kill(instanceID)
 	if err := os.RemoveAll(h.dataDir(instanceID)); err != nil {
@@ -181,18 +186,24 @@ func (h *Host) InvalidateApplication(applicationID string) {
 	h.mu.Lock()
 	h.generations[applicationID]++
 	var invalidated []*backendProcess
-	for instanceID, current := range h.running {
+	for _, current := range h.running {
 		if current.applicationID != applicationID {
 			continue
 		}
-		delete(h.running, instanceID)
 		invalidated = append(invalidated, current)
 	}
 	h.mu.Unlock()
 
 	for _, current := range invalidated {
-		current.stop()
+		h.terminateProcess(current)
 	}
+	h.mu.Lock()
+	for instanceID, current := range h.running {
+		if current.applicationID == applicationID {
+			delete(h.running, instanceID)
+		}
+	}
+	h.mu.Unlock()
 	if err := os.RemoveAll(h.sharedRuntimeDir(applicationID)); err != nil {
 		h.logger.Warn("remove invalidated application runtime directory", "application", applicationID, "error", err)
 	}
@@ -306,13 +317,15 @@ func (h *Host) launch(
 		return nil, fmt.Errorf("create backend shared runtime directory: %w", err)
 	}
 
+	command := exec.Command(binary)
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig: backendHandshake,
 		Plugins:         goplugin.PluginSet{backendName: &backendAdapter{}},
-		Cmd:             exec.Command(binary),
+		Cmd:             command,
 		Logger:          h.logger.Named(applicationID),
 		StartTimeout:    handshakeTimeout,
 	})
+	processClient := &pluginProcessClient{client: client, command: command}
 
 	type connectResult struct {
 		process *backendProcess
@@ -320,7 +333,7 @@ func (h *Host) launch(
 	}
 	connected := make(chan connectResult, 1)
 	go func() {
-		process, err := h.connect(client, instance, dataDir, sharedRuntimeDir)
+		process, err := h.connect(client, processClient, instance, dataDir, sharedRuntimeDir)
 		connected <- connectResult{process: process, err: err}
 	}()
 
@@ -360,6 +373,7 @@ func (h *Host) launch(
 // half-initialized backend reachable.
 func (h *Host) connect(
 	client *goplugin.Client,
+	processClient processClient,
 	instance applications.Instance,
 	dataDir string,
 	sharedRuntimeDir string,
@@ -413,7 +427,25 @@ func (h *Host) connect(
 		return nil, fmt.Errorf("initialize backend %s: %w", applicationID, err)
 	}
 	descriptor.PublishesEvents = len(instance.Publishers) > 0
-	return &backendProcess{client: client, backend: backend, descriptor: descriptor}, nil
+	return &backendProcess{client: processClient, backend: backend, descriptor: descriptor}, nil
+}
+
+// pluginProcessClient keeps the exact command used to launch the child so a
+// wedged RPC transport can be terminated without looking the process up again
+// by PID. Client.Kill then performs go-plugin's ordinary asynchronous cleanup.
+type pluginProcessClient struct {
+	client  *goplugin.Client
+	command *exec.Cmd
+}
+
+func (c *pluginProcessClient) Exited() bool { return c.client.Exited() }
+
+func (c *pluginProcessClient) Kill() { c.client.Kill() }
+
+func (c *pluginProcessClient) ForceKill() {
+	if c.command != nil && c.command.Process != nil {
+		_ = c.command.Process.Kill()
+	}
 }
 
 // instanceWithHostDirectories adds host-owned storage to the instance before
@@ -444,6 +476,41 @@ func (h *Host) snapshot(applicationID, instanceID string) (uint64, *backendProce
 	return h.generations[applicationID], h.running[instanceID]
 }
 
+// lockInstanceLifecycle serializes Stop and Remove with package invalidation
+// as well as with launches. The application id is process-owned rather than
+// supplied by the caller, so discovering it needs a short first hold of the
+// instance launch lock. The lock is then reacquired in the canonical
+// application-before-instance order used by ensure, and the process is
+// rechecked in case invalidation or replacement won the gap.
+//
+// Keeping the application boundary through process termination matters for
+// SharedRuntimeDir: invalidation must not remove and recreate that directory
+// while an old process still holds a lock on an unlinked inode.
+func (h *Host) lockInstanceLifecycle(instanceID string) func() {
+	for {
+		unlockInstance := h.launches.lock(instanceID)
+		current := h.lookup(instanceID)
+		if current == nil {
+			return unlockInstance
+		}
+		applicationID := current.applicationID
+		unlockInstance()
+
+		unlockApplication := h.applicationChanges.lock(applicationID)
+		unlockInstance = h.launches.lock(instanceID)
+		current = h.lookup(instanceID)
+		if current == nil || current.applicationID == applicationID {
+			return func() {
+				unlockInstance()
+				unlockApplication()
+			}
+		}
+
+		unlockInstance()
+		unlockApplication()
+	}
+}
+
 func processMatches(
 	current *backendProcess,
 	applicationID string,
@@ -472,7 +539,7 @@ func (h *Host) kill(instanceID string) {
 	h.mu.Unlock()
 
 	if current != nil {
-		current.stop()
+		h.terminateProcess(current)
 	}
 }
 
