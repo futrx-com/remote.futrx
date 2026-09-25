@@ -5,7 +5,7 @@ INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TEST_DIR"' EXIT
 CLI_PATH="$TEST_DIR/bin/remote"
-mkdir -p "$TEST_DIR/bin" "$TEST_DIR/elsewhere"
+mkdir -p "$TEST_DIR/elsewhere"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -14,20 +14,27 @@ install_cli() (
     # Stop before the step starts configuring systemd and the login profile.
     render_template() { exit 0; }
     install() {
-        local options=()
-        while [ "$#" -gt 2 ]; do
+        local arguments=()
+        while [ "$#" -gt 0 ]; do
             case "$1" in
                 -o|-g) shift 2 ;; # The test also runs as an unprivileged user.
-                *) options+=("$1"); shift ;;
+                /usr/local/bin) arguments+=("$TEST_DIR/bin"); shift ;;
+                /usr/local/bin/remote) arguments+=("$CLI_PATH"); shift ;;
+                *) arguments+=("$1"); shift ;;
             esac
         done
-        [ "$2" = /usr/local/bin/remote ] || fail "unexpected install destination: $2"
-        command install "${options[@]}" "$1" "$CLI_PATH"
+        command install "${arguments[@]}"
     }
     . "$INFRA_DIR/steps/04-backend-svc.sh"
+    step_04_backend_svc
 )
 
-# Exercise first installation and reinstallation with different settings.
+if grep -Fq '/dev/stdin' "$INFRA_DIR/steps/04-backend-svc.sh"; then
+    fail "remote CLI installation still depends on /dev/stdin"
+fi
+
+# Exercise installation into a missing directory and then reinstallation with
+# different settings.
 for name in normal 'custom path '\''$(exit 99)'; do
     INSTALL_DIR="$TEST_DIR/$name"
     HOSTNAME="remote.example.com"

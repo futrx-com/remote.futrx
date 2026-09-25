@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
@@ -23,6 +24,16 @@ func (p *Provider) buildCmd(
 	args []string,
 	emit func(agent.Event),
 ) (*exec.Cmd, string, error) {
+	return p.buildCmdForAccount(ctx, req, args, emit, nil)
+}
+
+func (p *Provider) buildCmdForAccount(
+	ctx context.Context,
+	req agent.RunRequest,
+	args []string,
+	emit func(agent.Event),
+	run *accountRun,
+) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
 	if cwd == "" {
 		cwd = os.Getenv("HOME")
@@ -32,41 +43,64 @@ func (p *Provider) buildCmd(
 	}
 
 	if req.ProjectID == "" || p.projectPreparer == nil {
-		if err := ensureHostSubscriptionAuth(); err != nil {
+		authPath := codexCredentialPath()
+		env := codexEnv(os.Environ())
+		if run != nil {
+			authPath = filepath.Join(run.hostHome, "auth.json")
+			env = isolatedCodexAuthEnvFor(os.Environ(), run.hostHome)
+		}
+		if err := ensureSubscriptionAuth(authPath); err != nil {
 			return nil, "", err
 		}
 		// The app-server process must outlive request cancellation long enough for
 		// runAppServer to send turn/interrupt and receive the terminal status.
 		cmd := exec.CommandContext(context.WithoutCancel(ctx), "codex", args...)
 		cmd.Dir = cwd
-		cmd.Env = agent.WithRuntimeEnvironment(codexEnv(os.Environ()), req.RuntimeEnv)
+		cmd.Env = agent.WithRuntimeEnvironment(env, req.RuntimeEnv)
 		return cmd, "", nil
 	}
 
+	var credentials *provisioning.CredentialSpec
+	if run != nil {
+		value := run.credentials.Clone()
+		credentials = &value
+	}
 	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
 		ProjectID:           agent.ProjectID(req.ProjectID),
 		ConversationID:      req.ConversationID,
 		EnableBrowser:       req.EnableBrowser,
 		EnableScheduleTools: req.EnableScheduleTools,
+		Credentials:         credentials,
 	}, emit)
 	if err != nil {
 		return nil, "", err
 	}
+	prefixEnvironment := []string{"HOME=/root", "CODEX_HOME=/root/.codex"}
+	binary := p.profile.CLI.Binary
+	arguments := args
+	if run != nil {
+		prefixEnvironment = []string{"HOME=" + filepath.Dir(run.containerHome), "CODEX_HOME=" + run.containerHome}
+		binary = "sh"
+		arguments = codexAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
+	}
 	cmd := agentruntime.BuildContainerCommand(context.WithoutCancel(ctx), agentruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
-		PrefixEnvironment:  []string{"HOME=/root", "CODEX_HOME=/root/.codex"},
+		PrefixEnvironment:  prefixEnvironment,
 		Secrets:            project.Secrets,
 		ExcludedSecrets:    []string{"OPENAI_API_KEY"},
 		SuffixEnvironment:  []string{"OPENAI_API_KEY="},
 		RuntimeEnvironment: req.RuntimeEnv,
-		Binary:             p.profile.CLI.Binary,
-		Arguments:          args,
+		Binary:             binary,
+		Arguments:          arguments,
 	})
 	return cmd, project.ContainerName, nil
 }
 
 func ensureHostSubscriptionAuth() error {
-	path := filepath.Join(hostCodexHome(), "auth.json")
+	return ensureSubscriptionAuth(codexCredentialPath())
+}
+
+func ensureSubscriptionAuth(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
@@ -107,14 +141,4 @@ func codexEnv(base []string) []string {
 		return append(out, "CODEX_HOME="+home+"/.codex")
 	}
 	return out
-}
-
-func hostCodexHome() string {
-	if v := os.Getenv("CODEX_HOME"); v != "" {
-		return v
-	}
-	if home := os.Getenv("HOME"); home != "" {
-		return filepath.Join(home, ".codex")
-	}
-	return "/root/.codex"
 }

@@ -7,6 +7,7 @@
 #   - $INFRA_DIR, $HOSTNAME, $HOSTNAME_RE, $SERVICE_PORT
 set -euo pipefail
 
+step_03_caddy() {
 log "Rendering /etc/caddy/Caddyfile for $HOSTNAME"
 # Render to a temp file first, validate, then atomically replace. This way a
 # bad template doesn't blow away a working live config.
@@ -42,3 +43,4 @@ elif [ "${CADDYFILE_CHANGED:-0}" = "1" ]; then
 else
     ok "Caddy already running with current config"
 fi
+}

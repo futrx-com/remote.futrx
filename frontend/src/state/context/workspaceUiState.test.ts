@@ -10,6 +10,7 @@ test("preserves workspace UI transitions", () => {
     sidebarOpen: false,
     createProjectOpen: false,
     view: "chat",
+    settingsTab: "appearance",
   });
 
   const modalOpen = workspaceUiState.reduce(open, { type: "open-create-project" });
@@ -18,4 +19,19 @@ test("preserves workspace UI transitions", () => {
     workspaceUiState.reduce(modalOpen, { type: "close-create-project" }).createProjectOpen,
     false
   );
+});
+
+test("restores chat and selected settings tab from browser history", () => {
+  const chat = workspaceUiState.reduce(workspaceUiState.createInitial("abcdef12"), {
+    type: "restore-route", view: "settings", chatId: null, tab: "notifications",
+  });
+  assert.equal(chat.view, "settings");
+  assert.equal(chat.settingsTab, "notifications");
+  assert.equal(chat.activeChatId, "abcdef12");
+
+  const restored = workspaceUiState.reduce(chat, {
+    type: "restore-route", view: "chat", chatId: "deadbeef", tab: "appearance",
+  });
+  assert.equal(restored.view, "chat");
+  assert.equal(restored.activeChatId, "deadbeef");
 });

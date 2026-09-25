@@ -15,17 +15,21 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
+	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostinfo"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/tmuxcli"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
+	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
@@ -44,11 +48,14 @@ func main() {
 	// follow dependency direction from configuration and outbound adapters to
 	// application policy, inbound transport, and process-owned runtime work.
 
-	// Configuration and composition inputs: load process settings, choose the
-	// executable mode, and validate values shared by the layers composed below.
-	ctx := context.Background()
+	////////////////////////////////////////
+	// Configuration
+	////////////////////////////////////////
+	ctx, cancel := context.WithCancel(context.Background())
 	cfg := config.Load()
+
 	if runCLICommand(ctx, cfg, os.Args) {
+		cancel()
 		return
 	}
 	publicHostname, err := config.PublicHostname(cfg.BaseURL)
@@ -56,36 +63,89 @@ func main() {
 		log.Fatalf("configure public hostname: %v", err)
 	}
 
-	// Outbound integrations and container composition: bind compiled agent
-	// providers and LXD-backed capabilities behind application-facing contracts.
+	////////////////////////////////////////
+	// Container and workspace capabilities
+	////////////////////////////////////////
 	agentModules, err := config.NewAgentModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
+	// Uploaded application packages live in the server's state directory, not
+	// in the binary and not in the checkout. That is what makes them survive an
+	// update: updating replaces the program and its built-in catalog, and never
+	// touches this directory or the instances installed from it.
+	appPackages, err := containerapplications.NewPackageStore(
+		filepath.Join(cfg.DataDir, "app-packages"),
+	)
+	if err != nil {
+		log.Fatalf("open uploaded application packages: %v", err)
+	}
+	appRegistry, err := containerapplications.NewRegistry(
+		containerapplications.EmbeddedCatalog(),
+		appPackages,
+	)
+	if err != nil {
+		log.Fatalf("load application catalog: %v", err)
+	}
+	// This dynamic bus is the one process-wide boundary shared by core lifecycle
+	// publishers and manifest-declared application publishers/subscribers.
+	applicationEvents := lifecycle.NewEventBus(ctx)
+	// Application backends are compiled from the catalog's embedded Go source and
+	// run as child processes. Their binaries and per-instance data live beside
+	// the rest of the server's state so an uninstall leaves nothing behind.
+	appBackends := applicationbackends.New(
+		filepath.Join(cfg.DataDir, "applications"),
+		appRegistry,
+		applicationbackends.Options{
+			GoTool: cfg.Applications.GoTool,
+			Events: applicationEvents,
+		},
+	)
+	// Service-owned workers are closed after construction below. These defers
+	// then cancel the shared lifecycle, wait for dynamic dispatch, and finally
+	// stop child backends. Defers run in last-in, first-out order.
+	defer appBackends.Shutdown()
+	defer applicationEvents.Close()
+	defer cancel()
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
 		agentModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:       appRegistry,
+			DataDir:           cfg.DataDir,
 		},
 	)
 
-	// Persistence adapters: open file-backed repositories and the disposable,
-	// durable indexes they own.
+	////////////////////////////////////////
+	// Persistence
+	////////////////////////////////////////
 	storeSet, err := stores.New(cfg.DataDir)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}
 
-	// Application services and startup reconciliation: compose policy from
-	// persistence contracts and outbound capabilities, then initialize it.
+	////////////////////////////////////////
+	// Application services
+	////////////////////////////////////////
 	maintenanceGuard := servicemaintenance.New(cfg.DataDir)
+
+	// Lifecycle publishers are process-wide. Producers receive only the
+	// publishing capability declared by their own service contract.
+	updateLifecycle := lifecycle.NewUpdatePublisher()
+	applicationLifecycle := lifecycle.NewApplicationPublisher()
+	applicationEventBridge := lifecycle.NewApplicationEventBridge(applicationEvents)
+	unsubscribeApplicationCatalog := applicationLifecycle.SubscribeCatalog(applicationEventBridge)
+	defer unsubscribeApplicationCatalog()
+	unsubscribeApplicationInstances := applicationLifecycle.SubscribeInstances(applicationEventBridge)
+	defer unsubscribeApplicationInstances()
 	selfUpdateService := serviceselfupdate.New(
 		version.Version,
 		cfg.InstallDir,
 		cfg.DataDir,
 		updatecli.New(),
+		updateLifecycle,
 	)
 
 	tmuxClient := tmuxcli.New()
@@ -109,6 +169,7 @@ func main() {
 		AgentContainers:   containerStack.AgentDependencies(),
 		AgentModules:      agentModules,
 		AgentAPIKeys:      storeSet.AgentAPIKeys,
+		AgentAccounts:     storeSet.AgentAccounts,
 		AgentOptions: service.AgentOptions{
 			CapabilityTimeout:          cfg.Agent.CapabilityTimeout,
 			CapabilityCacheTTL:         cfg.Agent.CapabilityCacheTTL,
@@ -130,10 +191,28 @@ func main() {
 			MaxConcurrentRuns:  cfg.Schedule.MaxConcurrentRuns,
 			MaxTasksPerProject: cfg.Schedule.MaxTasksPerProject,
 		},
-		PromptStartGate: maintenanceGuard,
+		AppStore:             storeSet.Applications,
+		AppRegistry:          appRegistry,
+		AppInstaller:         containerStack.AppInstaller,
+		AppPorts:             containerStack.AppPorts,
+		AppBackends:          appBackends,
+		AppPackages:          appRegistry,
+		ApplicationLifecycle: applicationLifecycle,
+		ApplicationEvents:    applicationEvents,
+		PromptStartGate:      maintenanceGuard,
 	})
 	if err != nil {
 		log.Fatalf("init services: %v", err)
+	}
+	// This defer is registered after the bus/host defers above, so routing fully
+	// unsubscribes and exits before the bus closes and backend children stop.
+	if serviceSet.Applications != nil {
+		defer serviceSet.Applications.Close()
+	}
+	// Terminal self-update events are reconciled from disk so a backend
+	// replacement can deliver the completion started by its predecessor.
+	if err := selfUpdateService.StartLifecycleReconciler(ctx); err != nil {
+		log.Printf("self-update: lifecycle reconcile warning: %v", err)
 	}
 	log.Printf(
 		"auth: local admin enabled; Google OAuth configured=%t; BASE_URL=%s",
@@ -150,9 +229,9 @@ func main() {
 		log.Printf("services: reconcile warning: %v", err)
 	}
 
-	// Inbound delivery and transport adapters: prepare embedded assets and
-	// delivery-facing collaborators, then bind application services to HTTP and
-	// WebSocket endpoints.
+	////////////////////////////////////////
+	// HTTP transport
+	////////////////////////////////////////
 	static, err := fs.Sub(remote.PublicFS, "public")
 	if err != nil {
 		log.Fatal(err)
@@ -183,8 +262,9 @@ func main() {
 		log.Fatalf("init http handler: %v", err)
 	}
 
-	// Runtime lifecycle: launch process-owned background work and start the
-	// HTTP listener. Background scheduling stays at this composition boundary.
+	////////////////////////////////////////
+	// Process runtime
+	////////////////////////////////////////
 	address := cfg.Addr()
 	server := transport.NewHTTPServer(address, handler)
 	startChatIndexWarmup(

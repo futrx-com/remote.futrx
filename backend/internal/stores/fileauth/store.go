@@ -13,10 +13,19 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
 
-const agentAPIKeysFile = "agent-api-keys.json"
+const (
+	agentAPIKeysFile  = "agent-api-keys.json"
+	agentAccountsFile = "agent-accounts.json"
+)
+
+type agentAccountsDocument struct {
+	Version   int                             `json:"version"`
+	Providers map[string]agentauth.AccountSet `json:"providers"`
+}
 
 type Store struct {
 	dataDir string
@@ -152,6 +161,64 @@ func (s *Store) agentAPIKeysLocked() (map[string]string, error) {
 		return nil, fmt.Errorf("parse %s: %w", agentAPIKeysFile, err)
 	}
 	return keys, nil
+}
+
+func (s *Store) AgentAccounts(ctx context.Context, provider agent.ProviderID) (agentauth.AccountSet, error) {
+	select {
+	case <-ctx.Done():
+		return agentauth.AccountSet{}, ctx.Err()
+	default:
+	}
+	if provider == "" {
+		return agentauth.AccountSet{}, errors.New("agent provider is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	document, err := s.agentAccountsLocked()
+	if err != nil {
+		return agentauth.AccountSet{}, err
+	}
+	return document.Providers[string(provider)].Clone(), nil
+}
+
+func (s *Store) SaveAgentAccounts(ctx context.Context, provider agent.ProviderID, accounts agentauth.AccountSet) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if provider == "" {
+		return errors.New("agent provider is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	document, err := s.agentAccountsLocked()
+	if err != nil {
+		return err
+	}
+	document.Providers[string(provider)] = accounts.Clone()
+	return s.writeJSONLocked(agentAccountsFile, document)
+}
+
+func (s *Store) agentAccountsLocked() (agentAccountsDocument, error) {
+	document := agentAccountsDocument{Version: 1, Providers: make(map[string]agentauth.AccountSet)}
+	data, err := os.ReadFile(filepath.Join(s.dataDir, agentAccountsFile))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return document, nil
+		}
+		return agentAccountsDocument{}, fmt.Errorf("read %s: %w", agentAccountsFile, err)
+	}
+	if err := json.Unmarshal(data, &document); err != nil {
+		return agentAccountsDocument{}, fmt.Errorf("parse %s: %w", agentAccountsFile, err)
+	}
+	if document.Version != 1 {
+		return agentAccountsDocument{}, fmt.Errorf("parse %s: unsupported version %d", agentAccountsFile, document.Version)
+	}
+	if document.Providers == nil {
+		document.Providers = make(map[string]agentauth.AccountSet)
+	}
+	return document, nil
 }
 
 func (s *Store) LocalAdmin(ctx context.Context) (*serviceauth.LocalAdminCredential, error) {

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
@@ -36,9 +37,10 @@ type LoginSnapshot struct {
 // Snapshot is the stable auth shape consumed by provider-neutral clients.
 // Raw provider status remains available on the legacy routes.
 type Snapshot struct {
-	Authenticated bool          `json:"authenticated"`
-	Warning       string        `json:"warning,omitempty"`
-	Login         LoginSnapshot `json:"login"`
+	Authenticated bool              `json:"authenticated"`
+	Warning       string            `json:"warning,omitempty"`
+	Login         LoginSnapshot     `json:"login"`
+	Accounts      *AccountsSnapshot `json:"accounts,omitempty"`
 }
 
 // Binding is the transport-neutral view of one configured agent auth caller.
@@ -53,6 +55,7 @@ type Binding struct {
 	snapshot      func() Snapshot
 	snapshotSub   func() Subscription
 	warning       func() string
+	accounts      AccountController
 
 	startCode        func(context.Context) (CodeStartResult, error)
 	submitCode       func(context.Context, string) error
@@ -60,6 +63,7 @@ type Binding struct {
 	isCodeInputError func(error) bool
 	startDevice      func(context.Context) (DeviceState, error)
 	setAPIKey        func(context.Context, string) error
+	setAPIKeyAccount func(context.Context, string, string, string) error
 	deleteAPIKey     func(context.Context) error
 }
 
@@ -147,7 +151,11 @@ func NewAPIKeyBinding(id agent.ProviderID, service *APIKeyService) Binding {
 	}
 	binding.snapshotSub = binding.subscribe
 	binding.setAPIKey = service.Set
+	binding.setAPIKeyAccount = service.SetAccount
 	binding.deleteAPIKey = service.Delete
+	if service.AccountsEnabled() {
+		binding.accounts = service
+	}
 	return binding
 }
 
@@ -155,6 +163,12 @@ func NewAPIKeyBinding(id agent.ProviderID, service *APIKeyService) Binding {
 // snapshot without leaking the provider's raw status shape to clients.
 func (b Binding) WithWarning(warning func() string) Binding {
 	b.warning = warning
+	return b
+}
+
+// WithAccounts attaches the provider's optional multi-account capability.
+func (b Binding) WithAccounts(accounts AccountController) Binding {
+	b.accounts = accounts
 	return b
 }
 
@@ -183,7 +197,41 @@ func (b Binding) Snapshot() Snapshot {
 	if b.warning != nil {
 		snapshot.Warning = b.warning()
 	}
+	if b.accounts != nil {
+		accounts := b.accounts.AccountsSnapshot()
+		snapshot.Accounts = &accounts
+	}
 	return snapshot
+}
+
+func (b Binding) AccountsAvailable() bool { return b.accounts != nil }
+
+func (b Binding) ImportCurrentAccount(ctx context.Context, label string) error {
+	if b.accounts == nil {
+		return ErrUnsupportedFlow
+	}
+	return b.accounts.ImportCurrent(ctx, label)
+}
+
+func (b Binding) StartAccountLogin(ctx context.Context, label, accountID string) (LoginSnapshot, error) {
+	if b.accounts == nil {
+		return LoginSnapshot{}, ErrUnsupportedFlow
+	}
+	return b.accounts.StartAccountLogin(ctx, label, accountID)
+}
+
+func (b Binding) ActivateAccount(ctx context.Context, accountID string) error {
+	if b.accounts == nil {
+		return ErrUnsupportedFlow
+	}
+	return b.accounts.ActivateAccount(ctx, accountID)
+}
+
+func (b Binding) DeleteAccount(ctx context.Context, accountID string) error {
+	if b.accounts == nil {
+		return ErrUnsupportedFlow
+	}
+	return b.accounts.DeleteAccount(ctx, accountID)
 }
 
 // Subscribe returns a type-erased view over the caller's original status
@@ -252,6 +300,14 @@ func (b Binding) SetAPIKey(ctx context.Context, key string) error {
 		return ErrUnsupportedFlow
 	}
 	return b.setAPIKey(ctx, key)
+}
+
+func (b Binding) SetAPIKeyAccount(ctx context.Context, label, accountID, key string) error {
+	if b.setAPIKeyAccount == nil || !b.AccountsAvailable() ||
+		(strings.TrimSpace(label) == "" && strings.TrimSpace(accountID) == "") {
+		return b.SetAPIKey(ctx, key)
+	}
+	return b.setAPIKeyAccount(ctx, label, accountID, key)
 }
 
 func (b Binding) DeleteAPIKey(ctx context.Context) error {

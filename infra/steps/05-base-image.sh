@@ -11,7 +11,8 @@
 #   - $INSTALL_DIR  (where the repo lives)
 set -euo pipefail
 
-BASE_IMAGE_ALIAS="futrx-remote-dev-base"
+step_05_base_image() {
+BASE_IMAGE_ALIAS="${FUTRX_DEFAULT_BASE_IMAGE:-futrx-remote-dev-base}"
 
 log "Base image: $BASE_IMAGE_ALIAS"
 
@@ -48,3 +49,4 @@ log "Running cmd/build-base-image (the first build can take up to 10 minutes)"
     go run ./cmd/build-base-image "${CLI_ARGS[@]}"
 )
 ok "$BASE_IMAGE_ALIAS published"
+}

@@ -111,6 +111,7 @@ func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
 		out.Usage = ev.Usage
 	case agent.EventRunCompleted:
 		out.Type = "complete"
+		out.NotificationSummary = ev.NotificationSummary
 		// Persist the provider per turn. A chat can switch agents, so its current
 		// metadata is not sufficient for an offline usage-ledger rebuild.
 		out.Provider = servicechat.Provider(ev.Provider)

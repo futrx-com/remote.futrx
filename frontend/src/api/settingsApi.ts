@@ -55,6 +55,9 @@ function normalizeChatSettings(
     provider: typeof provider === "string" && provider.length > 0
       ? provider
       : defaults.provider,
+    accountId: typeof settings?.accountId === "string"
+      ? settings.accountId.trim()
+      : defaults.accountId,
     model: typeof settings?.model === "string" ? settings.model : defaults.model,
     mode: typeof mode === "string" && mode.length > 0 ? mode : defaults.mode,
     reasoningEffort: typeof reasoningEffort === "string"

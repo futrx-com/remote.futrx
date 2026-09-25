@@ -74,6 +74,12 @@ func (r runState) writeRecord(record runRecord) error {
 	return writeJSONFile(r.runPath(), record)
 }
 
+func (r runState) readRecord() (runRecord, error) {
+	var record runRecord
+	err := readJSONFile(r.runPath(), &record)
+	return record, err
+}
+
 // status reconstructs the last run from disk: the done marker wins, a live
 // PID means running, and a dead PID without a marker means the run crashed
 // before it could report.
@@ -84,7 +90,7 @@ func (r runState) status(processAlive func(int) bool) *RunStatus {
 	}
 	logText, logUpdatedAt := readLog(r.logPath(), logTailBytes)
 	status := &RunStatus{
-		State:        "running",
+		State:        RunStateRunning,
 		Target:       record.Target,
 		UpdateKind:   record.UpdateKind,
 		StartedAt:    record.StartedAt,
@@ -102,12 +108,12 @@ func (r runState) status(processAlive func(int) bool) *RunStatus {
 		status.FinishedAt = done.FinishedAt
 		status.ExitCode = &done.ExitCode
 		if done.ExitCode == 0 {
-			status.State = "succeeded"
+			status.State = RunStateSucceeded
 		} else {
-			status.State = "failed"
+			status.State = RunStateFailed
 		}
 	case !processAlive(record.PID):
-		status.State = "failed"
+		status.State = RunStateFailed
 		status.Log += "\n(updater process exited without reporting a result)"
 	}
 	return status

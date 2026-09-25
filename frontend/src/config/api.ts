@@ -3,6 +3,7 @@ export const API_RESPONSE_STATUS = {
   unauthorized: 401,
   notFound: 404,
   conflict: 409,
+  serviceUnavailable: 503,
 } as const;
 
 export const DEFAULT_CHAT_HISTORY_COMMIT_LIMIT = 100;

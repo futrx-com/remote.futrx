@@ -21,6 +21,7 @@ class ChatPreferenceState {
       // preference fields over the one-time detail fetch so a selection made
       // on another browser is reflected while this chat remains open.
       provider: chat.provider || baseMeta.provider || defaults.provider,
+      accountId: chat.accountId ?? baseMeta.accountId ?? "",
       model: chat.model ?? baseMeta.model ?? defaults.model,
       mode: chat.mode || baseMeta.mode || defaults.mode,
       reasoningEffort:

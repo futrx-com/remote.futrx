@@ -37,6 +37,11 @@ The application does not use an external database service. Durable metadata is s
 ```
 
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
+When a chat selects a saved Claude or Codex account, its run uses a stable
+`run-accounts/<scope>` subdirectory inside that provider home. The scope is a
+hash of account, project, and chat identifiers, so concurrent chats do not
+share credential or session files. Shared instructions, settings, and skills
+remain linked from the canonical provider home.
 
 ## Entity relationships
 
@@ -168,7 +173,8 @@ Project metadata and workspaces are separate:
 | --- | --- |
 | `local-admin.json` | Local administrator email and password hash |
 | `oauth.json` | Google OAuth client ID and secret |
-| `agent-api-keys.json` | Host-managed provider API keys, including MiniMax's Token Plan subscription key; mode `0600` |
+| `agent-api-keys.json` | Legacy singleton provider API keys; MiniMax entries are migrated into named accounts; mode `0600` |
+| `agent-accounts.json` | Saved Claude/Codex subscription credentials and MiniMax Token Plan keys, grouped by provider with an active/default account ID; mode `0600`; credentials are never returned by the API |
 | `session.key` | Random key used to sign platform sessions |
 | `users.json` | Registered emails, roles, inviter, and timestamps |
 | `user-settings/sha256-*.json` | Theme and default chat provider/model/mode/reasoning/tier |
@@ -195,7 +201,7 @@ flowchart TD
 
 | State | Lifetime |
 | --- | --- |
-| Authentication and user settings | Preact context; reloaded from HTTP after page reload |
+| Authentication and user settings | Preact context; reloaded from HTTP after page reload. Host-chat and project-chat preferences each retain the last provider/account/model selection. |
 | Agent auth registry | Ordered `GET /api/agent-auth` snapshot in `AuthContext`, updated by one normalized WebSocket per managed provider |
 | Projects and chat summaries | Workspace WebSocket; server is authoritative. A chat created or forked from this client is seeded into the list on the create response so the new selection holds until its `chat.upsert` arrives |
 | Active view, selected chat, sidebar open state | In-memory reducer |

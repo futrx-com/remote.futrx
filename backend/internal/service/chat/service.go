@@ -138,6 +138,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 	meta, err := s.repo.Create(ctx, Meta{
 		Title:           title,
 		Provider:        provider,
+		AccountID:       strings.TrimSpace(in.AccountID),
 		TmuxSession:     in.TmuxSession,
 		Cwd:             cwd,
 		Model:           in.Model,
@@ -192,6 +193,7 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	forkMeta := Meta{
 		Title:           title + " (fork)",
 		Provider:        src.Provider,
+		AccountID:       src.AccountID,
 		Sessions:        sessions,
 		Cwd:             src.Cwd,
 		Model:           src.Model,
@@ -257,8 +259,21 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		if in.Provider != nil {
 			if nextProvider != m.Provider {
 				m.SelectedSkills = nil
+				m.AccountID = ""
 			}
 			m.Provider = nextProvider
+		}
+		if in.AccountID != nil {
+			nextAccountID := strings.TrimSpace(*in.AccountID)
+			if nextAccountID != m.AccountID {
+				// Provider sessions can be account-bound. Keep the visible chat
+				// history, but start a fresh provider session after any account
+				// selection change, including pinning an account after using the
+				// provider default implicitly.
+				m.SetSessionID(m.Provider, "")
+				m.ForkPending = false
+			}
+			m.AccountID = nextAccountID
 		}
 		if in.Model != nil {
 			m.Model = *in.Model

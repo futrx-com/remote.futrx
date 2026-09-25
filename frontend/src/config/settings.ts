@@ -4,6 +4,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   appearance: { theme: "system" },
   chat: {
     provider: "codex",
+    accountId: "",
     model: "",
     mode: "default",
     reasoningEffort: "",
@@ -13,6 +14,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   },
   projectChat: {
     provider: "codex",
+    accountId: "",
     model: "",
     mode: "default",
     reasoningEffort: "",

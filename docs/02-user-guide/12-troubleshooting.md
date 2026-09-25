@@ -138,11 +138,11 @@ provider triggers.
 
 MiniMax is available only in project chats and requires a Token Plan
 subscription. Open **Settings → Agents**, choose the MiniMax sign-in action,
-follow the Token Plan link if needed, and save the `sk-cp-…` subscription key.
+follow the Token Plan link if needed, and save a named `sk-cp-…` subscription key.
 Standard pay-as-you-go API keys are rejected. The locked MiniMax row then moves
 from **Sign in to use** to **Connected**, and its model list becomes available.
 If MiniMax rejects the subscription key, the form remains open and the existing
-supported key, if any, remains active.
+saved accounts, if any, remain unchanged.
 
 ### Antigravity says it is not signed in
 

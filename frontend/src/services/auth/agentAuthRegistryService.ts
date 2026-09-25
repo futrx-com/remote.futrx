@@ -40,7 +40,8 @@ class AgentAuthRegistryService {
         const completion = entry.status.login.completed
           ? String(entry.status.login.startedAt || "completed")
           : "";
-        return `${entry.provider}:${entry.status.authenticated ? "1" : "0"}:${completion}`;
+        const activeAccount = entry.status.accounts?.activeAccountId || "";
+        return `${entry.provider}:${entry.status.authenticated ? "1" : "0"}:${activeAccount}:${completion}`;
       })
       .join("|");
   }

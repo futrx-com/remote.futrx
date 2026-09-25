@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
@@ -55,6 +56,16 @@ func (p *Provider) buildCmd(
 	args []string,
 	emit func(agent.Event),
 ) (*exec.Cmd, string, error) {
+	return p.buildCmdForAccount(ctx, req, args, emit, nil)
+}
+
+func (p *Provider) buildCmdForAccount(
+	ctx context.Context,
+	req agent.RunRequest,
+	args []string,
+	emit func(agent.Event),
+	run *accountRun,
+) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
 	if cwd == "" {
 		cwd = os.Getenv("HOME")
@@ -68,28 +79,52 @@ func (p *Provider) buildCmd(
 		cmd.Dir = cwd
 		// IS_SANDBOX=1 lets `claude --dangerously-skip-permissions` run under
 		// uid 0. The box is single-user and the UI is auto-approve.
-		cmd.Env = append(os.Environ(), "IS_SANDBOX=1")
+		env := os.Environ()
+		if run != nil {
+			env = isolatedClaudeAuthEnvFor(env, run.hostHome)
+		}
+		cmd.Env = append(env, "IS_SANDBOX=1")
 		cmd.Env = agent.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
 		cmd.Stdin = strings.NewReader(req.Prompt)
 		return cmd, "", nil
 	}
 
+	var credentials *provisioning.CredentialSpec
+	if run != nil {
+		value := run.credentials.Clone()
+		credentials = &value
+	}
 	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
 		ProjectID:           agent.ProjectID(req.ProjectID),
 		ConversationID:      req.ConversationID,
 		EnableBrowser:       req.EnableBrowser,
 		EnableScheduleTools: req.EnableScheduleTools,
+		Credentials:         credentials,
 	}, emit)
 	if err != nil {
 		return nil, "", err
 	}
+	prefixEnvironment := []string{"IS_SANDBOX=1", "HOME=/root"}
+	var excludedSecrets []string
+	var suffixEnvironment []string
+	binary := p.profile.CLI.Binary
+	arguments := args
+	if run != nil {
+		prefixEnvironment = append(prefixEnvironment, "CLAUDE_CONFIG_DIR="+run.containerHome)
+		excludedSecrets = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
+		suffixEnvironment = []string{"ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN="}
+		binary = "sh"
+		arguments = claudeAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
+	}
 	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
-		PrefixEnvironment:  []string{"IS_SANDBOX=1", "HOME=/root"},
+		PrefixEnvironment:  prefixEnvironment,
 		Secrets:            project.Secrets,
+		ExcludedSecrets:    excludedSecrets,
+		SuffixEnvironment:  suffixEnvironment,
 		RuntimeEnvironment: req.RuntimeEnv,
-		Binary:             p.profile.CLI.Binary,
-		Arguments:          args,
+		Binary:             binary,
+		Arguments:          arguments,
 	})
 	cmd.Stdin = strings.NewReader(req.Prompt)
 	return cmd, project.ContainerName, nil

@@ -71,10 +71,23 @@ func (Client) StartUpdater(launch serviceselfupdate.UpdaterLaunch) (int, error) 
 	defer logFile.Close()
 
 	// Values reach the script as positional parameters, never by string
-	// interpolation.
-	const script = `case "$4" in
+	// interpolation. Infrastructure updates select the requested tag before
+	// executing its entrypoint, so a broken updater left in the current checkout
+	// cannot prevent a fixed release from recovering the installation.
+	const script = `run_infrastructure() {
+install_dir="$1"
+target="$2"
+git -C "$install_dir" fetch --quiet --tags origin || return
+target_commit="$(git -C "$install_dir" rev-parse --verify --quiet "refs/tags/${target}^{commit}")" || return
+git -C "$install_dir" reset --hard "$target_commit" || return
+FUTRX_INSTALL_DIR="$install_dir" \
+FUTRX_LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}" \
+FUTRX_UPDATE_REEXECED=1 \
+bash "$install_dir/infra/update.sh" "--ref=$target"
+}
+case "$4" in
 application) FUTRX_INSTALL_DIR="$1" bash "$1/infra/deploy-app.sh" "--ref=$2" ;;
-infrastructure) FUTRX_INSTALL_DIR="$1" bash "$1/infra/update.sh" "--ref=$2" ;;
+infrastructure) run_infrastructure "$1" "$2" ;;
 *) echo "unknown update kind: $4" >&2; exit 2 ;;
 esac
 status=$?

@@ -14,6 +14,7 @@ export function WriteCall({ input, output, outputExpanded, status, isError }: Om
       badge={`${content.split("\n").length} lines`}
       status={status}
       isError={isError}
+      revealSignal={outputExpanded}
     >
       <CodeBlock text={truncate(content, 8000)} />
       {output && (isError || outputExpanded) ? (

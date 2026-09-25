@@ -79,9 +79,14 @@ async function handlePush(event) {
   if (payload.chatId && (await isChatOnScreen(payload.chatId))) return;
 
   const urgent = payload.kind === "question";
+  const tag = payload.tag || "remote-futrx";
+  // The tag should make the new notification replace the old one, but iOS
+  // ignores it and stacks them. Closing the old ones first gives every
+  // platform the same one-entry-per-chat tray.
+  await closeNotifications(tag);
   await self.registration.showNotification(payload.title || "remote.futrx", {
     body: payload.body || "",
-    tag: payload.tag || "remote-futrx",
+    tag,
     icon: ICON,
     badge: BADGE,
     data: { chatId: payload.chatId || null, kind: payload.kind || null },
@@ -94,31 +99,48 @@ async function handlePush(event) {
   });
 }
 
+async function closeNotifications(tag) {
+  try {
+    const shown = await self.registration.getNotifications({ tag });
+    for (const notification of shown) notification.close();
+  } catch {
+    // Worst case the old entry stays in the tray next to the new one.
+  }
+}
+
 async function subscriptionBelongsToCurrentAccount() {
   const subscription = await self.registration.pushManager.getSubscription();
   if (!subscription) return false;
 
+  const ownership = await endpointOwnership(subscription.endpoint);
+  if (ownership === "owned") return true;
+  // A definite "this endpoint is not yours": it belongs to whoever used this
+  // browser before, so the current session must not keep it alive. An
+  // unanswerable check is not that verdict — a missing session or a backend
+  // still coming back up after an update only costs this one notification.
+  if (ownership === "foreign") await subscription.unsubscribe();
+  return false;
+}
+
+// Who owns one endpoint, in the same three words the app uses:
+// "owned" | "foreign" | "unverified". Keeping one vocabulary on both sides of
+// the origin matters, because the two act on the same verdicts — and
+// "unverified" means nothing is displayed and nothing is discarded.
+async function endpointOwnership(endpoint) {
   try {
     const response = await fetch("/api/push/subscriptions/status", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ endpoint: subscription.endpoint }),
+      body: JSON.stringify({ endpoint }),
     });
-    if (response.status === 401) {
-      await subscription.unsubscribe();
-      return false;
-    }
-    if (!response.ok) return false;
-
+    if (!response.ok) return "unverified";
     const status = await response.json();
-    if (status.owned === true) return true;
-    await subscription.unsubscribe();
-    return false;
+    return status.owned === true ? "owned" : "foreign";
   } catch {
     // A transient server failure may cost one notification, but must never
     // reveal an alert before account ownership can be proven.
-    return false;
+    return "unverified";
   }
 }
 
@@ -163,24 +185,86 @@ function askClient(client, message) {
   });
 }
 
+// Push services retire endpoints on their own schedule — after a long idle
+// period, or when the browser rotates its registration. This event is the only
+// notice a device gets, and without a replacement the user simply stops
+// receiving notifications and reads that as having lost permission.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(resubscribe(event));
+});
+
+// Only the account that owned the retired endpoint is re-registered. A browser
+// subscription belongs to the whole origin, so on a shared browser this worker
+// must not sign whoever is currently logged in up for notifications they never
+// asked for; the app restores those from its own record of the opt-in.
+async function resubscribe(event) {
+  const retired = event.oldSubscription;
+  const key = retired && retired.options && retired.options.applicationServerKey;
+  if (!retired || !key) return;
+
+  try {
+    if ((await endpointOwnership(retired.endpoint)) !== "owned") return;
+
+    const replacement =
+      event.newSubscription ||
+      (await self.registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: key,
+      }));
+    if (replacement.endpoint === retired.endpoint) return;
+
+    await fetch("/api/push/subscriptions", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(replacement.toJSON()),
+    });
+    // Drop the retired endpoint: it is unreachable, and a device that rotates
+    // repeatedly would otherwise fill this account's registration slots.
+    await fetch("/api/push/subscriptions", {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: retired.endpoint }),
+    });
+  } catch {
+    // Nothing more the worker can do while offline or signed out. The app
+    // restores the registration the next time it starts.
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(openChat(event.notification.data && event.notification.data.chatId));
 });
 
 async function openChat(chatId) {
+  const path = chatId ? `/chats/${encodeURIComponent(chatId)}` : "/";
   const windows = await self.clients.matchAll({
     type: "window",
     includeUncontrolled: true,
   });
-  for (const client of windows) {
-    if (new URL(client.url).origin !== self.location.origin) continue;
-    // Focus first: some browsers ignore a postMessage-driven view change in
-    // a window that never came forward.
+  const sameOrigin = windows.filter((client) => new URL(client.url).origin === self.location.origin);
+  const alreadyOnChat = sameOrigin.find((client) => new URL(client.url).pathname === path);
+  if (alreadyOnChat && "focus" in alreadyOnChat) {
+    await alreadyOnChat.focus();
+    return;
+  }
+  for (const client of sameOrigin) {
+    try {
+      if ("navigate" in client) {
+        const navigated = await client.navigate(path);
+        if (navigated) {
+          if ("focus" in navigated) await navigated.focus();
+          return;
+        }
+      }
+    } catch {
+      // Some installed browsers cannot navigate an existing client.
+    }
     if ("focus" in client) await client.focus();
     client.postMessage({ type: "open-chat", chatId: chatId || null });
     return;
   }
-  // Cold start: the app reads ?chat= on boot and opens straight into it.
-  await self.clients.openWindow(chatId ? `/?chat=${encodeURIComponent(chatId)}` : "/");
+  await self.clients.openWindow(path);
 }

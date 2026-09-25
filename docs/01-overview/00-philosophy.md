@@ -389,7 +389,7 @@ Remote has four credential classes, each with a different scope:
 | Credential class | Scope | Current behavior |
 | --- | --- | --- |
 | Platform session | User and Remote control plane | Kept in secure HTTP-only cookies and stripped before requests enter project-controlled apps and IDEs |
-| Agent-provider identity | Host-wide for Claude, Codex, Kimi, and the MiniMax Token Plan subscription key; supported project runtime for Antigravity | Claude, Codex, and Kimi are connected by an administrator and synchronized bidirectionally with project state. The write-only MiniMax subscription key is stored by the control plane and injected only into MiniMax runs, while Codex-harness state stays in each project's mounted MiniMax home. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
+| Agent-provider identity | Host-wide for Claude, Codex, Kimi, and named MiniMax Token Plan subscription keys; supported project runtime for Antigravity | Claude, Codex, and Kimi are connected by an administrator and synchronized bidirectionally with project state. Write-only MiniMax subscription keys are stored as named accounts by the control plane; the chat-selected key is injected only into that MiniMax run, while Codex-harness state stays in each project's mounted MiniMax home. Remote's Antigravity UI flow authenticates inside each project and its mounted provider state survives container replacement; operator-prepared host `agy` state can still be used by loose chats outside that flow |
 | Project secret | One project | Stored in a host file with mode `0600` but without application-level encryption; passed to agent runs, persisted as container environment when single-line, and mirrored into the managed `.env` file |
 | Browser-session identity | One project browser profile | Created through human login and persisted with the project so the agent can use the authenticated session |
 
@@ -398,8 +398,8 @@ Project secrets are **agent-readable authority**. They are not hidden capabiliti
 Host-managed provider identities cross a wider boundary. Because their provider
 homes are writable and selected credential files synchronize back to the host,
 project code can potentially mutate authentication state later used by the
-fleet and other projects. MiniMax's installation-wide key also crosses project
-boundaries: Remote injects it into each MiniMax run, where that process can
+fleet and other projects. MiniMax's installation-wide named keys also cross project
+boundaries: Remote injects the chat-selected key into each MiniMax run, where that process can
 read it even though the Settings API never returns it.
 
 Likewise, a persistent authenticated browser is deliberately powerful. Web content may be hostile, prompt injection can influence the agent, and a logged-in session can perform external actions. Human confirmation rules in the browser skill are an agent policy; they are not a universal transaction gate enforced by the platform.

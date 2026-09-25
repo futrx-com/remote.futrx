@@ -19,7 +19,7 @@ func TestDefaultSettingsUseCodexChatDefaults(t *testing.T) {
 	if settings.Chat.Mode != ChatModeDefault {
 		t.Fatalf("expected provider default mode, got %q", settings.Chat.Mode)
 	}
-	if settings.Chat.Model != "" || settings.Chat.ReasoningEffort != "" {
+	if settings.Chat.AccountID != "" || settings.Chat.Model != "" || settings.Chat.ReasoningEffort != "" {
 		t.Fatalf("expected auto model and reasoning effort, got %+v", settings.Chat)
 	}
 	if settings.Chat.ApprovalPolicy != "on-request" || settings.Chat.SandboxPolicy != "workspaceWrite" {
@@ -34,6 +34,7 @@ func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
 		"minimax": {agentmodule.ScopeProject: true},
 	}))
 	provider := ChatProviderMiniMax
+	accountID := "minimax-work"
 	model := "MiniMax-M3"
 	approvalPolicy := ApprovalPolicy("never")
 	sandboxPolicy := SandboxPolicy("readOnly")
@@ -41,6 +42,7 @@ func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
 	settings, err := service.Update(context.Background(), "sub:user", UpdateInput{
 		ProjectChat: &ChatUpdate{
 			Provider:       &provider,
+			AccountID:      &accountID,
 			Model:          &model,
 			ApprovalPolicy: &approvalPolicy,
 			SandboxPolicy:  &sandboxPolicy,
@@ -49,7 +51,8 @@ func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.ProjectChat.Provider != ChatProviderMiniMax || settings.ProjectChat.Model != model {
+	if settings.ProjectChat.Provider != ChatProviderMiniMax ||
+		settings.ProjectChat.AccountID != accountID || settings.ProjectChat.Model != model {
 		t.Fatalf("unexpected project chat settings: %+v", settings.ProjectChat)
 	}
 	if settings.ProjectChat.ApprovalPolicy != approvalPolicy ||
@@ -71,6 +74,7 @@ func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
 func TestGetMigratesLegacyChatPreferenceToProjectScope(t *testing.T) {
 	legacy := DefaultSettings()
 	legacy.Chat.Provider = ChatProviderKimi
+	legacy.Chat.AccountID = "kimi-personal"
 	legacy.Chat.Model = "kimi-model"
 	legacy.ProjectChat = Chat{}
 	repo := &memoryRepo{settings: legacy, exists: true}
@@ -83,7 +87,8 @@ func TestGetMigratesLegacyChatPreferenceToProjectScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.ProjectChat.Provider != ChatProviderKimi || settings.ProjectChat.Model != "kimi-model" {
+	if settings.ProjectChat.Provider != ChatProviderKimi ||
+		settings.ProjectChat.AccountID != "kimi-personal" || settings.ProjectChat.Model != "kimi-model" {
 		t.Fatalf("legacy project preference was not preserved: %+v", settings.ProjectChat)
 	}
 }
@@ -92,6 +97,7 @@ func TestUpdatePersistsChatPreferences(t *testing.T) {
 	repo := &memoryRepo{}
 	service := New(repo)
 	provider := ChatProviderClaude
+	accountID := " claude-work "
 	model := " sonnet "
 	mode := ChatModePlan
 	effort := ReasoningEffortHigh
@@ -99,6 +105,7 @@ func TestUpdatePersistsChatPreferences(t *testing.T) {
 	settings, err := service.Update(context.Background(), "sub:user", UpdateInput{
 		Chat: &ChatUpdate{
 			Provider:        &provider,
+			AccountID:       &accountID,
 			Model:           &model,
 			Mode:            &mode,
 			ReasoningEffort: &effort,
@@ -107,11 +114,30 @@ func TestUpdatePersistsChatPreferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Chat.Provider != ChatProviderClaude || settings.Chat.Model != "sonnet" || settings.Chat.Mode != ChatModePlan || settings.Chat.ReasoningEffort != ReasoningEffortHigh {
+	if settings.Chat.Provider != ChatProviderClaude || settings.Chat.AccountID != "claude-work" ||
+		settings.Chat.Model != "sonnet" || settings.Chat.Mode != ChatModePlan ||
+		settings.Chat.ReasoningEffort != ReasoningEffortHigh {
 		t.Fatalf("unexpected chat settings: %+v", settings.Chat)
 	}
 	if !repo.saved {
 		t.Fatal("expected settings to be saved")
+	}
+}
+
+func TestUpdateClearsAnOldProvidersAccountWhenAnOlderClientChangesProvider(t *testing.T) {
+	stored := DefaultSettings()
+	stored.Chat.AccountID = "codex-work"
+	repo := &memoryRepo{settings: stored, exists: true}
+	provider := ChatProviderClaude
+
+	settings, err := New(repo).Update(context.Background(), "sub:user", UpdateInput{
+		Chat: &ChatUpdate{Provider: &provider},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.Chat.Provider != ChatProviderClaude || settings.Chat.AccountID != "" {
+		t.Fatalf("provider-only update retained another provider's account: %+v", settings.Chat)
 	}
 }
 

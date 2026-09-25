@@ -4,3 +4,8 @@ export const PUSH_SERVICE_WORKER = {
 } as const;
 
 export const PUSH_PRESENCE_HEARTBEAT_MS = 20_000;
+
+/** The tag the server gives every notification from one chat. */
+export function chatNotificationTag(chatId: string): string {
+  return `chat:${chatId}`;
+}

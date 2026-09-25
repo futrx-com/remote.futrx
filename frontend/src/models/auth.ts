@@ -41,6 +41,21 @@ export interface AgentAuthSnapshot {
   authenticated: boolean;
   warning?: string;
   login: AgentAuthLoginSnapshot;
+  accounts?: AgentAuthAccountsSnapshot;
+}
+
+export interface AgentAuthAccount {
+  id: string;
+  label: string;
+  email?: string;
+  planType?: string;
+  validatedAt?: string;
+  active: boolean;
+}
+
+export interface AgentAuthAccountsSnapshot {
+  activeAccountId?: string;
+  items: AgentAuthAccount[];
 }
 
 export interface AgentAuthProvider {

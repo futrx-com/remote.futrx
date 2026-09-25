@@ -418,8 +418,13 @@ func (rnr *Service) runPromptAs(
 	}
 
 	run := func(runPrompt, runResumeID string) error {
-		return provider.Run(ctx, agent.RunRequest{
+		relay := runEventRelay{
+			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
+			ledger: ledger, emit: emit,
+		}
+		runErr := provider.Run(ctx, agent.RunRequest{
 			Provider:       providerID,
+			AccountID:      meta.AccountID,
 			ConversationID: string(id),
 			Prompt:         runPrompt,
 			Cwd:            cwd,
@@ -438,12 +443,9 @@ func (rnr *Service) runPromptAs(
 			EnableScheduleTools:  enableScheduleTools,
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
-		}, func(ev agent.Event) {
-			ev = withDefaultProvider(ev, providerID)
-			rnr.emitAgentEvent(ctx, id, ev, emit)
-			rnr.recordRunUsage(ctx, ledger, ev)
-			rnr.recordQuota(ctx, ev)
-		})
+		}, relay.forward)
+		relay.finish()
+		return runErr
 	}
 
 	err = run(effectivePrompt, resumeID)

@@ -12,6 +12,7 @@ export function GenericCall({ name, input, output, outputExpanded, status, isErr
       label={<span class="text-ink-300">{name}</span>}
       status={status}
       isError={isError}
+      revealSignal={outputExpanded}
     >
       <div class="divide-y divide-ink-500">
         {input && Object.keys(input).length > 0 && (

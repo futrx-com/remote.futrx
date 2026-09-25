@@ -40,6 +40,63 @@
 
 set -euo pipefail
 
+remote_replace_process() {
+    exec "$@"
+}
+
+remote_exec_selected_installer() {
+    local installer_path="$1"
+    shift
+
+    # The selected checkout must receive the original installer state, but
+    # credentials must not be replayed in its command line. Move the two
+    # sensitive values through an inherited anonymous file descriptor and
+    # forward only non-sensitive arguments.
+    local github_token="${GITHUB_TOKEN:-}"
+    local google_client_secret="${GOOGLE_CLIENT_SECRET:-}"
+    local arg
+    local -a forwarded_args=()
+    for arg in "$@"; do
+        case "$arg" in
+            --github-token=*)         github_token="${arg#*=}" ;;
+            --google-client-secret=*) google_client_secret="${arg#*=}" ;;
+            *)                        forwarded_args+=("$arg") ;;
+        esac
+    done
+
+    local secrets_fd
+    exec {secrets_fd}< <(printf '%s\0%s\0' "$github_token" "$google_client_secret")
+
+    # Do not accidentally inherit environment-provided credentials alongside
+    # the descriptor. The selected installer consumes and closes the descriptor
+    # before spawning any child processes.
+    unset GITHUB_TOKEN GOOGLE_CLIENT_SECRET
+    FUTRX_INSTALL_REEXEC_SECRETS_FD="$secrets_fd" \
+        remote_replace_process bash "$installer_path" "${forwarded_args[@]}"
+}
+
+remote_receive_reexec_secrets() {
+    local secrets_fd="${FUTRX_INSTALL_REEXEC_SECRETS_FD:-}"
+    FUTRX_INSTALL_REEXEC_HAS_SECRETS=0
+    if [ -z "$secrets_fd" ]; then
+        return 0
+    fi
+    if ! [[ "$secrets_fd" =~ ^[1-9][0-9]*$ ]] || (( 10#$secrets_fd < 10 )); then
+        echo "invalid installer credential descriptor" >&2
+        exit 1
+    fi
+
+    if ! IFS= read -r -d '' FUTRX_INSTALL_REEXEC_GITHUB_TOKEN <&"$secrets_fd" ||
+       ! IFS= read -r -d '' FUTRX_INSTALL_REEXEC_GOOGLE_CLIENT_SECRET <&"$secrets_fd"; then
+        echo "could not receive installer credentials from selected checkout" >&2
+        exit 1
+    fi
+    exec {secrets_fd}<&-
+    unset FUTRX_INSTALL_REEXEC_SECRETS_FD
+    FUTRX_INSTALL_REEXEC_HAS_SECRETS=1
+}
+
+remote_self_bootstrap() {
 # ───────────────── self-bootstrap (curl|bash mode) ─────────────────
 # When piped from curl, BASH_SOURCE points at /dev/stdin and there are no
 # sibling steps/ or templates/. Install git, clone the repo to the canonical
@@ -103,7 +160,7 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
                 git -C "$LEGACY_TARGET" reset --hard origin/main
             fi
             export FUTRX_INSTALL_CHECKOUT_SELECTED=1
-            exec bash "$LEGACY_TARGET/infra/install.sh" "$@"
+            remote_exec_selected_installer "$LEGACY_TARGET/infra/install.sh" "$@"
         fi
     fi
 
@@ -148,22 +205,12 @@ if [ -z "$INFRA_DIR_PROBE" ] || [ ! -d "${INFRA_DIR_PROBE}/steps" ]; then
     fi
 
     export FUTRX_INSTALL_CHECKOUT_SELECTED=1
-    exec bash "$TARGET/infra/install.sh" "$@"
+    remote_exec_selected_installer "$TARGET/infra/install.sh" "$@"
 fi
+}
 
+remote_parse_install_arguments() {
 # ───────────────── args ─────────────────
-# INFRA_DIR resolves before argument parsing so the shared helpers below
-# (and every validation gate) come from lib/common.sh. The curl|bash
-# bootstrap block above intentionally stays self-contained instead.
-INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-# shellcheck source=lib/common.sh
-. "$INFRA_DIR/lib/common.sh"
-HOSTNAME=""
-SKIP_DNS_CHECK=0
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-TARGET_REF=""
 for a in "$@"; do
     case "$a" in
         --skip-dns-check)         SKIP_DNS_CHECK=1 ;;
@@ -195,20 +242,37 @@ if printf '%s' "$HOSTNAME" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^\[.*\]$'; 
     echo "  Let's Encrypt cannot issue certs for IPs and your site will lose TLS." >&2
     exit 1
 fi
-require_root "this installer"
+}
 
-export HOSTNAME GITHUB_TOKEN GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET
-if [ -n "$TARGET_REF" ]; then
-    export FUTRX_CHECKOUT_REF="$TARGET_REF"
+remote_load_configuration() {
+HOSTNAME=""
+SKIP_DNS_CHECK=0
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+if [ "${FUTRX_INSTALL_REEXEC_HAS_SECRETS:-0}" = "1" ]; then
+    GITHUB_TOKEN="$FUTRX_INSTALL_REEXEC_GITHUB_TOKEN"
+    GOOGLE_CLIENT_SECRET="$FUTRX_INSTALL_REEXEC_GOOGLE_CLIENT_SECRET"
 fi
+unset FUTRX_INSTALL_REEXEC_HAS_SECRETS
+unset FUTRX_INSTALL_REEXEC_GITHUB_TOKEN FUTRX_INSTALL_REEXEC_GOOGLE_CLIENT_SECRET
+TARGET_REF=""
+# INFRA_DIR resolves before argument parsing so the shared helpers below
+# (and every validation gate) come from lib/common.sh. The curl|bash
+# bootstrap block above intentionally stays self-contained instead.
+INFRA_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+# shellcheck source=lib/common.sh
+. "$INFRA_DIR/lib/common.sh"
+# shellcheck source=lib/../config/defaults.sh
+. "$INFRA_DIR/config/defaults.sh"
 
 # ───────────────── globals ─────────────────
 # INFRA_DIR was resolved before argument parsing (see above) so the shared
 # helpers are available to every validation gate.
-INSTALL_DIR="${FUTRX_INSTALL_DIR:-/opt/remote.futrx}"
-LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}"
-REPO_URL="https://github.com/futrx-com/remote.futrx.git"
-SERVICE_PORT="${SERVICE_PORT:-7682}"
+INSTALL_DIR="${FUTRX_INSTALL_DIR:-$FUTRX_DEFAULT_INSTALL_DIR}"
+LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-$FUTRX_DEFAULT_LEGACY_INSTALL_DIR}"
+REPO_URL="$FUTRX_REPOSITORY_URL"
+SERVICE_PORT="${SERVICE_PORT:-$FUTRX_DEFAULT_SERVICE_PORT}"
 HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"
 HOST_CLI_BIN_DIR="$HOST_CLI_PREFIX/bin"
 
@@ -217,11 +281,7 @@ HOST_CLI_BIN_DIR="$HOST_CLI_PREFIX/bin"
 # manually installed binaries cannot shadow Remote's pinned toolchain.
 PATH="$HOST_CLI_BIN_DIR:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
-# Escape dots in HOSTNAME for Caddy regex (dots match any char in regex; we
-# want literal matches).
-HOSTNAME_RE="$(printf '%s' "$HOSTNAME" | sed 's/\./\\./g')"
-
-export INFRA_DIR INSTALL_DIR LEGACY_INSTALL_DIR REPO_URL SERVICE_PORT HOSTNAME_RE
+export INFRA_DIR INSTALL_DIR LEGACY_INSTALL_DIR REPO_URL SERVICE_PORT
 export HOST_CLI_PREFIX HOST_CLI_BIN_DIR PATH
 
 # ───────────────── helpers (sourced by steps) ─────────────────
@@ -239,7 +299,23 @@ render_template() {
         < "$tmpl" > "$dest"
 }
 export -f render_template
+}
 
+remote_finalize_install_configuration() {
+if [ -n "$TARGET_REF" ]; then
+    export FUTRX_CHECKOUT_REF="$TARGET_REF"
+fi
+
+# These values depend on parsed arguments. Finalize and export them only after
+# remote_parse_install_arguments has populated HOSTNAME and TARGET_REF.
+# Escape dots in HOSTNAME for Caddy regex (dots match any char in regex; we
+# want literal matches).
+HOSTNAME_RE="$(printf '%s' "$HOSTNAME" | sed 's/\./\\./g')"
+
+export HOSTNAME HOSTNAME_RE
+}
+
+remote_migrate_legacy_install() {
 # ───────────────── pre-rename installation migration ─────────────────
 # shellcheck source=lib/install-migration.sh
 . "$INFRA_DIR/lib/install-migration.sh"
@@ -248,13 +324,18 @@ if [ "$FUTRX_INSTALL_PATH_MIGRATED" -eq 1 ]; then
     INFRA_DIR="$INSTALL_DIR/infra"
     export INFRA_DIR
 fi
+}
 
+remote_select_checkout() {
 # ───────────────── select checkout and re-exec ─────────────────
 # This precedes every version/catalog consumer so direct installer reruns are
 # as commit-consistent as update.sh.
 # shellcheck source=steps/00-checkout.sh
 . "$INFRA_DIR/steps/00-checkout.sh"
+step_00_checkout "$@"
+}
 
+remote_validate_host() {
 # ───────────────── optional Google user authentication ─────────────────
 # The administrator always claims the server with a local email/password.
 # Google OAuth is only for invited users and may be configured later in the UI.
@@ -312,23 +393,34 @@ if [ "$SKIP_DNS_CHECK" -eq 0 ]; then
         ok "$HOSTNAME → $SERVER_IP (matches this server)"
     fi
 fi
+}
 
+remote_converge_host() {
 # ───────────────── run the convergence steps ─────────────────
 # shellcheck source=steps/01-host-deps.sh
 . "$INFRA_DIR/steps/01-host-deps.sh"
+step_01_host_deps
 # shellcheck source=steps/02-app.sh
 . "$INFRA_DIR/steps/02-app.sh"
+step_02_app
 # shellcheck source=steps/03-caddy.sh
 . "$INFRA_DIR/steps/03-caddy.sh"
+step_03_caddy
 # shellcheck source=steps/04-backend-svc.sh
 . "$INFRA_DIR/steps/04-backend-svc.sh"
+step_04_backend_svc
 # shellcheck source=steps/05-base-image.sh
 . "$INFRA_DIR/steps/05-base-image.sh"
+step_05_base_image
 # shellcheck source=steps/06-ssh-hardening.sh
 . "$INFRA_DIR/steps/06-ssh-hardening.sh"
+step_06_ssh_hardening
 # shellcheck source=steps/07-lxc-ipv4-heal.sh
 . "$INFRA_DIR/steps/07-lxc-ipv4-heal.sh"
+step_07_lxc_ipv4_heal
+}
 
+remote_print_install_summary() {
 # ───────────────── summary ─────────────────
 cat <<EOF
 
@@ -362,3 +454,27 @@ cat <<EOF
 ═══════════════════════════════════════════════════════════════
 
 EOF
+}
+
+main() {
+    remote_receive_reexec_secrets
+    remote_self_bootstrap "$@"
+    remote_load_configuration
+    remote_parse_install_arguments "$@"
+    remote_finalize_install_configuration
+    require_root "this installer"
+    remote_migrate_legacy_install
+    remote_select_checkout "$@"
+    remote_validate_host
+    remote_converge_host
+    remote_print_install_summary
+}
+
+
+# Sourced (e.g. by tests) - definitions only. Note the guard
+# defaults to *executing*: BASH_SOURCE is unset when bash reads
+# from stdin (`bash -s`), which must still run (curl|bash mode).
+if [[ -n "${BASH_SOURCE[0]:-}" ]] && [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+main "$@"

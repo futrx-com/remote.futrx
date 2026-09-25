@@ -1,5 +1,14 @@
 # Sandbox: remote.futrx
 
+## Completion notification
+
+At the end of every completed turn, including a scheduled run, append one short
+plain-text sentence inside `<notification_summary>...</notification_summary>`.
+Describe the concrete work done or result, in at most 200 characters. Put it
+after the user-facing answer. Remote removes this block from the chat and uses
+it only as the body of a push notification. Do not put secrets in it. If the
+turn is asking the user a question or has no completed result, omit the block.
+
 You're running inside an unprivileged LXC container, one per project,
 spawned by [remote.futrx](https://{{PUBLIC_HOSTNAME}}). Other projects do
 not share this filesystem or process namespace: fresh `apt` installs,

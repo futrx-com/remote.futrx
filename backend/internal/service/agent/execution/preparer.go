@@ -99,13 +99,17 @@ func (p *Preparer) prepareContainer(
 	if err := p.containers.CLI.Ensure(ctx, containerName, p.options.Profile.CLI); err != nil {
 		return fmt.Errorf("%s: %w", p.cliErrorOperation(), err)
 	}
-	if !p.options.Profile.Credentials.Empty() {
+	profile := p.options.Profile.Clone()
+	if request.Credentials != nil {
+		profile.Credentials = request.Credentials.Clone()
+	}
+	if !profile.Credentials.Empty() {
 		if p.options.BeforeCredentials != nil {
-			if err := p.options.BeforeCredentials(p.options.Profile.Clone()); err != nil {
+			if err := p.options.BeforeCredentials(profile.Clone()); err != nil {
 				return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 			}
 		}
-		if err := p.containers.Credentials.Ensure(ctx, containerName, p.options.Profile.Credentials); err != nil {
+		if err := p.containers.Credentials.Ensure(ctx, containerName, profile.Credentials); err != nil {
 			return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 		}
 	}

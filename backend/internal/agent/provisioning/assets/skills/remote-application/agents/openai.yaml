@@ -1,0 +1,4 @@
+interface:
+  display_name: "Remote Application"
+  short_description: "Build installable Remote applications from scratch"
+  default_prompt: "Use $remote-application to build a Remote application from my requirements."

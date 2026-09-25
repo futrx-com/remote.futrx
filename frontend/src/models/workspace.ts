@@ -29,12 +29,17 @@ export interface WorkspaceStoreActions {
 
 export type WorkspaceView = "chat" | "settings" | "project-containers";
 
+export type SettingsTab =
+  | "appearance" | "notifications" | "agents" | "users" | "security"
+  | "applications" | "updates" | "info" | "usage";
+
 export interface WorkspaceUiState {
   activeChatId: string | null;
   containerProjectId: string | null;
   sidebarOpen: boolean;
   createProjectOpen: boolean;
   view: WorkspaceView;
+  settingsTab: SettingsTab;
 }
 
 export type WorkspaceUiAction =
@@ -45,6 +50,8 @@ export type WorkspaceUiAction =
   | { type: "close-create-project" }
   | { type: "show-chat" }
   | { type: "show-settings" }
+  | { type: "select-settings-tab"; tab: SettingsTab }
+  | { type: "restore-route"; view: "chat" | "settings"; chatId: string | null; tab: SettingsTab }
   | { type: "show-project-containers"; projectId: string | null };
 
 export type DropPosition = "before" | "after";

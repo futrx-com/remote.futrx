@@ -335,7 +335,7 @@ Replace `remote.example.com` with the hostname you set up above. The installer d
    stranger who finds the URL cannot claim the server before you do.
 3. Open **Settings → Agents** and connect Codex, Claude Code, or Kimi.
 4. Select **New project**.
-5. To use MiniMax, open **Settings → Agents**, choose the MiniMax sign-in action, and save a Token Plan subscription key. Pay-as-you-go MiniMax API keys are not supported.
+5. To use MiniMax, open **Settings → Agents**, add a named MiniMax account, and save its Token Plan subscription key. Pay-as-you-go MiniMax API keys are not supported.
 6. Start a chat and describe what you want in normal language.
 
 Remote will show the agent's progress. When the work is ready, review it in the chat, IDE, terminal, file manager, Git history, or live preview.

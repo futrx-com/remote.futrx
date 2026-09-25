@@ -1,6 +1,10 @@
 package agent
 
-import "context"
+import (
+	"context"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+)
 
 // ProjectWorkspacePath is the stable mount point for a project's workspace
 // inside its execution container. Host-side project paths must never be sent
@@ -46,6 +50,10 @@ type ProjectPreparationRequest struct {
 	ConversationID      string
 	EnableBrowser       bool
 	EnableScheduleTools bool
+	// Credentials overrides the provider profile's canonical credential
+	// locations for this run. Account-aware providers use it to seed a private
+	// per-chat home instead of changing one shared container login.
+	Credentials *provisioning.CredentialSpec
 }
 
 // PreparedProject is the stable container target and environment policy

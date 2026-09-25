@@ -1,7 +1,9 @@
 package codex
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentexecution "github.com/futrx-com/remote.futrx.com/internal/service/agent/execution"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -49,6 +52,43 @@ func TestFactoryDeclaresCodexHarnessExecutionPolicies(t *testing.T) {
 	}
 }
 
+func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	for _, tc := range []struct {
+		name  string
+		vault *agentauth.AccountVault
+	}{
+		{"without a vault", nil},
+		{"with a vault", agentauth.NewAccountVault(&memoryAccountStore{})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			factory, err := NewFactory()
+			if err != nil {
+				t.Fatal(err)
+			}
+			catalog, err := agentmodule.NewCatalog(factory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			runtime, err := catalog.Build(agentmodule.BuildDependencies{Accounts: tc.vault, CredentialSyncTimeout: time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, ok := runtime.AuthBinding(agent.ProviderCodex)
+			if !ok {
+				t.Fatal("Codex has no auth binding")
+			}
+			want := tc.vault != nil
+			if binding.AccountsAvailable() != want || (binding.Snapshot().Accounts != nil) != want {
+				t.Fatalf("accounts available = %v, want %v", binding.AccountsAvailable(), want)
+			}
+			if provider := runtime.Lookup(agent.ProviderCodex).(*Provider); (provider.accounts != nil) != want {
+				t.Fatalf("provider accounts = %v, want attached %v", provider.accounts, want)
+			}
+		})
+	}
+}
+
 func TestArgsUseCodexAppServer(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
 	args := provider.args(agent.RunRequest{Model: "gpt-5.5 [fast]"})
@@ -72,6 +112,22 @@ func TestCodexEnvStripsOpenAIAPIKey(t *testing.T) {
 	}
 	if !slices.Contains(env, "CODEX_HOME=/root/.codex") {
 		t.Fatalf("CODEX_HOME missing from env: %#v", env)
+	}
+}
+
+func TestCodexAuthEnvForOverridesInheritedCredentialHome(t *testing.T) {
+	env := codexAuthEnvFor([]string{
+		"HOME=/root",
+		"CODEX_HOME=/root/.codex",
+		"OPENAI_API_KEY=sk-test",
+	}, "/tmp/isolated-codex")
+	if slices.Contains(env, "CODEX_HOME=/root/.codex") || !slices.Contains(env, "CODEX_HOME=/tmp/isolated-codex") {
+		t.Fatalf("isolated auth env = %#v", env)
+	}
+	for _, item := range env {
+		if strings.HasPrefix(item, "OPENAI_API_KEY=") {
+			t.Fatalf("OPENAI_API_KEY leaked into isolated auth env: %#v", env)
+		}
 	}
 }
 
@@ -276,6 +332,143 @@ func TestBuildCmdReconcilesContainerEvenWhenCachedStatusIsRunning(t *testing.T) 
 	}
 }
 
+// A project container can write any login into its isolated auth.json. Only a
+// refreshed login for the selected account may reach the vault, and the
+// canonical host login is never changed by the run.
+func TestContainerRunKeepsOnlyTheActiveAccountsLogin(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	hostPath := filepath.Join(codexHome, "auth.json")
+	installFakeContainerAppServer(t)
+	saved := codexTestCredential("personal", "saved")
+	writeCodexHostCredential(t, hostPath, saved)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "personal",
+		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
+	}}
+	auth := newTestAuth(t, store)
+	var validated []string
+	auth.credentials.validate = func(_ context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+		validated = append(validated, string(credential))
+		// Validation refreshes the login through the Codex app server.
+		refreshed := bytes.Replace(credential, []byte(`"access_token":"`), []byte(`"access_token":"validated-`), 1)
+		return agentauth.ValidatedAccount{Email: "personal@example.test", PlanType: "plus", Credential: refreshed}, nil
+	}
+
+	project := agent.Project{ID: agent.ProjectID("abcd"), ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	credentials := &fakeCodexCredentials{}
+	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(credentials, &fakeCodexBrowser{}))
+	provider.accounts = auth.accounts
+	run := func(synced json.RawMessage) {
+		t.Helper()
+		credentials.synced = synced
+		err := provider.Run(context.Background(), agent.RunRequest{
+			ProjectID: string(project.ID), ConversationID: "chat-1", Prompt: "hello",
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	requireSaved := func(want json.RawMessage) {
+		t.Helper()
+		accounts := store.saved()
+		if len(accounts.Accounts) != 1 || accounts.ActiveAccountID != "personal" ||
+			string(accounts.Accounts[0].Credential) != string(want) {
+			t.Fatalf("saved accounts = %#v, want credential %s", accounts, want)
+		}
+	}
+
+	run(codexTestCredential("intruder", "intruder"))
+	requireSaved(saved)
+	requireCodexHostCredential(t, hostPath, saved)
+
+	// Copying back an API-key login fails the sync, but the login it left
+	// on the host is still replaced.
+	run(json.RawMessage(`{"auth_mode":"apikey","OPENAI_API_KEY":"sk-test"}`))
+	requireSaved(saved)
+	requireCodexHostCredential(t, hostPath, saved)
+	if len(validated) != 0 {
+		t.Fatalf("logins for other accounts were validated: %q", validated)
+	}
+
+	rotated := codexTestCredential("personal", "rotated")
+	run(rotated)
+	want := codexTestCredential("personal", "validated-rotated")
+	if len(validated) != 1 || validated[0] != string(rotated) {
+		t.Fatalf("validated logins = %q, want the rotated login", validated)
+	}
+	requireSaved(want)
+	requireCodexHostCredential(t, hostPath, saved)
+}
+
+func TestAccountRunHomesSeparateChats(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	saved := agentauth.RunCredential{AccountID: "personal", Credential: codexTestCredential("personal", "token")}
+	first, err := newAccountRun(agent.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newAccountRun(agent.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.hostHome == second.hostHome || first.containerHome == second.containerHome {
+		t.Fatalf("chat account homes overlap: first %#v, second %#v", first, second)
+	}
+	requireCodexHostCredential(t, filepath.Join(first.hostHome, "auth.json"), saved.Credential)
+	requireCodexHostCredential(t, filepath.Join(second.hostHome, "auth.json"), saved.Credential)
+}
+
+func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	project := agent.Project{ID: "project", ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	credentials := &fakeCodexCredentials{}
+	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(credentials, &fakeCodexBrowser{}))
+	req := agent.RunRequest{ProjectID: string(project.ID), ConversationID: "chat-one"}
+	run, err := newAccountRun(req, agentauth.RunCredential{
+		AccountID: "personal", Credential: codexTestCredential("personal", "token"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd, _, err := provider.buildCmdForAccount(context.Background(), req, provider.args(req), nil, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if credentials.ensured.ContainerDir != run.containerHome ||
+		credentials.ensured.Files[0].ContainerPath != filepath.Join(run.containerHome, "auth.json") {
+		t.Fatalf("prepared credential spec = %#v, run = %#v", credentials.ensured, run)
+	}
+	requireCodexArgPair(t, cmd.Args, "--env", "CODEX_HOME="+run.containerHome)
+	if !slices.Contains(cmd.Args, codexAccountCommand) {
+		t.Fatalf("container command does not initialize the private account home: %#v", cmd.Args)
+	}
+}
+
+// installFakeContainerAppServer puts an lxc command first on PATH that ignores
+// its arguments and completes one Codex app-server turn.
+func installFakeContainerAppServer(t *testing.T) {
+	t.Helper()
+	binDir := t.TempDir()
+	script := `#!/bin/sh
+while IFS= read -r line; do
+  case "$line" in
+    *'"id":1'*) printf '%s\n' '{"id":1,"result":{}}' ;;
+    *'"id":2'*) printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-1"},"model":"gpt-test"}}' ;;
+    *'"id":3'*)
+      printf '%s\n' '{"id":3,"result":{"turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
+      exit 0
+      ;;
+  esac
+done
+`
+	if err := os.WriteFile(filepath.Join(binDir, "lxc"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 type fakeCodexProjects struct {
 	project    agent.Project
 	startCalls *int
@@ -303,15 +496,23 @@ func (fakeCodexCLI) Ensure(context.Context, string, provisioning.CLISpec) error 
 
 type fakeCodexCredentials struct {
 	ensureCalls int
+	ensured     provisioning.CredentialSpec
+	// synced, when set, is the login a run copies back from the container
+	// over the host credential.
+	synced json.RawMessage
 }
 
-func (f *fakeCodexCredentials) Ensure(context.Context, string, provisioning.CredentialSpec) error {
+func (f *fakeCodexCredentials) Ensure(_ context.Context, _ string, spec provisioning.CredentialSpec) error {
 	f.ensureCalls++
+	f.ensured = spec.Clone()
 	return nil
 }
 
-func (f *fakeCodexCredentials) SyncFromContainer(context.Context, string, provisioning.CredentialSpec) error {
-	return nil
+func (f *fakeCodexCredentials) SyncFromContainer(_ context.Context, _ string, spec provisioning.CredentialSpec) error {
+	if f.synced == nil {
+		return nil
+	}
+	return agentauth.WriteCredentialFile(spec.Files[0].HostPath, f.synced)
 }
 
 type fakeCodexWorkspace struct{}

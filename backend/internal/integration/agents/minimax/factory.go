@@ -42,6 +42,9 @@ func NewFactory() (agentmodule.Factory, error) {
 		if err != nil {
 			return agentmodule.Components{}, err
 		}
+		if err := apiKeys.EnableAccounts(context.Background(), deps.Accounts, configconstants.MiniMaxLabel); err != nil {
+			return agentmodule.Components{}, err
+		}
 		binding := agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys)
 		return agentmodule.Components{
 			Provider: newProvider(

@@ -146,6 +146,29 @@ func TestAgentAuthMutationRoutesRemainPostOnly(t *testing.T) {
 	}
 }
 
+func TestAgentAccountRoutesExposeOnlyRedactedMetadata(t *testing.T) {
+	handler := newTestAgentAuthHandler()
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	for _, provider := range []string{"claude", "codex"} {
+		t.Run(provider, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			mux.ServeHTTP(rec, httptest.NewRequest(
+				http.MethodPost,
+				"/api/"+provider+"/accounts/activate",
+				strings.NewReader(`{"accountId":"second"}`),
+			))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("activate response = %d %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), "secret") || !strings.Contains(rec.Body.String(), `"activeAccountId":"second"`) {
+				t.Fatalf("activate response = %s", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestAgentAuthAPIKeyRouteSavesAndDeletesWithoutReturningCredential(t *testing.T) {
 	handler := newTestAgentAuthHandler()
 	mux := http.NewServeMux()
@@ -280,13 +303,13 @@ func TestAgentAuthOperationalErrorsAndCancelShape(t *testing.T) {
 	}{
 		{
 			path: "/api/claude/login/start",
-			want: http.StatusInternalServerError,
-			body: `{"error":"claude CLI not found on PATH - install it first"}` + "\n",
+			want: http.StatusBadRequest,
+			body: `{"error":"account label is required; use the saved-account login flow"}` + "\n",
 		},
 		{
 			path: "/api/codex/login/device",
-			want: http.StatusInternalServerError,
-			body: `{"error":"codex CLI not found on PATH - install it first"}` + "\n",
+			want: http.StatusBadRequest,
+			body: `{"error":"account label is required; use the saved-account login flow"}` + "\n",
 		},
 		{
 			path: "/api/kimi/login/device",
@@ -338,13 +361,39 @@ func newTestAgentAuthHandler() *AgentAuthHandler {
 		panic(err)
 	}
 
+	savedAccounts := func() *agentAuthMemoryAccounts {
+		return &agentAuthMemoryAccounts{
+			snapshot: agentauth.AccountsSnapshot{Items: []agentauth.Account{
+				{ID: "first", Label: "First", Active: true},
+				{ID: "second", Label: "Second"},
+			}, ActiveAccountID: "first"},
+		}
+	}
+	claudeBinding := agentauth.NewCodeBinding(agent.ProviderClaude, code).WithAccounts(savedAccounts())
+	codexBinding := agentauth.NewDeviceBinding(agent.ProviderCodex, device("codex CLI not found on PATH - install it first")).WithAccounts(savedAccounts())
 	return NewAgentAuthHandler([]agentauth.Binding{
-		agentauth.NewCodeBinding(agent.ProviderClaude, code),
-		agentauth.NewDeviceBinding(agent.ProviderCodex, device("codex CLI not found on PATH - install it first")),
+		claudeBinding,
+		codexBinding,
 		agentauth.NewDeviceBinding(agent.ProviderKimi, device("kimi CLI not found on PATH - install it first")),
 		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
 	}, nil)
 }
+
+type agentAuthMemoryAccounts struct{ snapshot agentauth.AccountsSnapshot }
+
+func (s *agentAuthMemoryAccounts) AccountsSnapshot() agentauth.AccountsSnapshot { return s.snapshot }
+func (s *agentAuthMemoryAccounts) ImportCurrent(context.Context, string) error  { return nil }
+func (s *agentAuthMemoryAccounts) StartAccountLogin(context.Context, string, string) (agentauth.LoginSnapshot, error) {
+	return agentauth.LoginSnapshot{}, nil
+}
+func (s *agentAuthMemoryAccounts) ActivateAccount(_ context.Context, id string) error {
+	s.snapshot.ActiveAccountID = id
+	for index := range s.snapshot.Items {
+		s.snapshot.Items[index].Active = s.snapshot.Items[index].ID == id
+	}
+	return nil
+}
+func (s *agentAuthMemoryAccounts) DeleteAccount(context.Context, string) error { return nil }
 
 type agentAuthMemoryKeyStore struct {
 	keys map[agent.ProviderID]string

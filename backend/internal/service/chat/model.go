@@ -25,6 +25,7 @@ type Meta struct {
 	ID                   ID         `json:"id"`
 	Title                string     `json:"title"`
 	Provider             Provider   `json:"provider,omitempty"`
+	AccountID            string     `json:"accountId,omitempty"`
 	Sessions             SessionIDs `json:"sessions,omitempty"`
 	ClaudeSessionID      string     `json:"claudeSessionId,omitempty"`
 	CodexSessionID       string     `json:"codexSessionId,omitempty"`
@@ -80,7 +81,10 @@ type Event struct {
 	Provider             Provider        `json:"provider,omitempty"`
 	Usage                json.RawMessage `json:"usage,omitempty"`
 	Message              string          `json:"message,omitempty"`
-	Running              bool            `json:"running,omitempty"`
+	// NotificationSummary is transient notification metadata. It is neither
+	// written to the event log nor exposed in the chat event wire format.
+	NotificationSummary string `json:"-"`
+	Running             bool   `json:"running,omitempty"`
 	// ScheduledTaskID marks events produced by a scheduled run rather than an
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
@@ -270,6 +274,7 @@ type CreateInput struct {
 	TmuxSession     string     `json:"tmuxSession,omitempty"`
 	Cwd             string     `json:"cwd,omitempty"`
 	Provider        Provider   `json:"provider,omitempty"`
+	AccountID       string     `json:"accountId,omitempty"`
 	Model           string     `json:"model,omitempty"`
 	Mode            string     `json:"mode,omitempty"`
 	ReasoningEffort string     `json:"reasoningEffort,omitempty"`
@@ -284,6 +289,7 @@ type UpdateInput struct {
 	Title           *string     `json:"title,omitempty"`
 	Cwd             *string     `json:"cwd,omitempty"`
 	Provider        *Provider   `json:"provider,omitempty"`
+	AccountID       *string     `json:"accountId,omitempty"`
 	Model           *string     `json:"model,omitempty"`
 	Mode            *string     `json:"mode,omitempty"`
 	ReasoningEffort *string     `json:"reasoningEffort,omitempty"`

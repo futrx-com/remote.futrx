@@ -43,7 +43,7 @@ is ready immediately and opens the gate without presenting a sign-in action.
 
 MiniMax and Antigravity are also available in project chats, but neither
 satisfies the initial provider gate. First connect Claude, Codex, or Kimi.
-You can then save the installation-wide MiniMax Token Plan subscription key in **Settings →
+You can then save one or more named MiniMax Token Plan subscription keys in **Settings →
 Agents**, or sign in to Antigravity from a project's Terminal and choose
 **Refresh models** in the chat picker.
 

@@ -107,8 +107,8 @@ func TestListSkillsUsesAgentsAsProjectSourceOfTruth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("expected canonical, legacy fallback, and scheduled task skills, got %#v", got)
+	if len(got) != 4 {
+		t.Fatalf("expected canonical, legacy fallback, and Remote default skills, got %#v", got)
 	}
 	if got[0].Command != "custom" || got[0].Name != "Custom Skill" {
 		t.Fatalf("canonical skill should win duplicates, got %#v", got[0])
@@ -116,8 +116,11 @@ func TestListSkillsUsesAgentsAsProjectSourceOfTruth(t *testing.T) {
 	if got[1].Command != "legacy" {
 		t.Fatalf("expected legacy fallback skill, got %#v", got[1])
 	}
-	if got[2].Command != "scheduled-tasks" || got[2].Source != "remote" {
-		t.Fatalf("expected the built-in scheduled task skill, got %#v", got[2])
+	if got[2].Command != "remote-application" || got[2].Source != "remote" {
+		t.Fatalf("expected the built-in Remote application skill, got %#v", got[2])
+	}
+	if got[3].Command != "scheduled-tasks" || got[3].Source != "remote" {
+		t.Fatalf("expected the built-in scheduled task skill, got %#v", got[3])
 	}
 }
 
@@ -130,11 +133,32 @@ func TestListSkillsDoesNotDuplicateProjectScheduledTaskSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
+	if len(got) != 2 {
 		t.Fatalf("expected the project skill to suppress the built-in fallback, got %#v", got)
 	}
-	if got[0].Name != "Workspace Scheduled Tasks" || got[0].Source != "project" {
-		t.Fatalf("expected the project-defined skill, got %#v", got[0])
+	if got[1].Name != "Workspace Scheduled Tasks" || got[1].Source != "project" {
+		t.Fatalf("expected the project-defined skill, got %#v", got[1])
+	}
+}
+
+func TestListSkillsKeepsProvisionedDefaultSkillRemoteOwned(t *testing.T) {
+	workspace := t.TempDir()
+	writeSkill(t, filepath.Join(workspace, ".agents", "skills", "remote-application", "SKILL.md"), `---
+name: remote-application
+description: Build a Remote application.
+---
+`)
+
+	service := NewWithSkillHomes("", t.TempDir(), t.TempDir())
+	got, err := service.List(context.Background(), ProviderCodex, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected one default skill and scheduled tasks, got %#v", got)
+	}
+	if got[0].Command != "remote-application" || got[0].Source != "remote" {
+		t.Fatalf("provisioned default skill = %#v, want remote-owned", got[0])
 	}
 }
 
@@ -208,7 +232,7 @@ func TestListUsesFutureProviderSkillAndScopeDeclaration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].Command != "compatible" || got[1].Command != "future" {
+	if len(got) != 3 || got[0].Command != "compatible" || got[1].Command != "future" || got[2].Command != "remote-application" {
 		t.Fatalf("future project skills = %#v", got)
 	}
 	if _, err := service.List(context.Background(), "future-agent", ""); !errors.Is(err, ErrInvalidProvider) {

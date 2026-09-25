@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -45,8 +46,9 @@ func WithProviderCatalog(providers ProviderCatalog) Option {
 }
 
 type rootSpec struct {
-	path   string
-	source string
+	path           string
+	source         string
+	remoteCommands map[string]bool
 }
 
 func New(options ...Option) *Service {
@@ -99,9 +101,15 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	// .agents/skills is the project source of truth. The provider-specific
 	// paths are legacy compatibility fallbacks and are deduped below.
 	if projectWorkspace != "" {
-		for _, root := range s.projectRoots(projectWorkspace, string(provider)) {
+		defaults, remoteCommands := defaultProjectSkills(provider)
+		for _, root := range s.projectRoots(projectWorkspace, string(provider), remoteCommands) {
 			if err := collectSkills(ctx, provider, root, &skills); err != nil {
 				return nil, err
+			}
+		}
+		for _, skill := range defaults {
+			if !hasSkillCommand(skills, skill.Command) {
+				skills = append(skills, skill)
 			}
 		}
 		scheduledTools := s.providers == nil || descriptor.Features.ScheduledTools
@@ -174,8 +182,12 @@ func (s *Service) roots(provider Provider) []rootSpec {
 	return roots
 }
 
-func (s *Service) projectRoots(projectWorkspace, provider string) []rootSpec {
-	roots := []rootSpec{{path: filepath.Join(projectWorkspace, ".agents", "skills"), source: "project"}}
+func (s *Service) projectRoots(projectWorkspace, provider string, remoteCommands map[string]bool) []rootSpec {
+	roots := []rootSpec{{
+		path:           filepath.Join(projectWorkspace, ".agents", "skills"),
+		source:         "project",
+		remoteCommands: remoteCommands,
+	}}
 	if s.providers == nil {
 		return append(roots,
 			rootSpec{path: filepath.Join(projectWorkspace, ".claude", "skills"), source: "project"},
@@ -259,10 +271,38 @@ func collectSkills(ctx context.Context, provider Provider, root rootSpec, out *[
 			return nil
 		}
 		skill.Provider = provider
-		skill.Source = sourceForPath(root, path)
+		skill.Source = sourceForPath(root, path, skill.Command)
 		*out = append(*out, skill)
 		return nil
 	})
+}
+
+func defaultProjectSkills(provider Provider) ([]Skill, map[string]bool) {
+	defaults := provisioning.DefaultSkills()
+	skills := make([]Skill, 0, len(defaults))
+	commands := make(map[string]bool, len(defaults))
+	for _, defaultSkill := range defaults {
+		command := strings.TrimSpace(defaultSkill.Command)
+		if command == "" {
+			continue
+		}
+		var metadata Skill
+		for _, asset := range defaultSkill.Assets {
+			if asset.Path == skillFileName {
+				metadata = parseSkillMetadata(asset.Content)
+				break
+			}
+		}
+		if strings.TrimSpace(metadata.Name) == "" {
+			metadata.Name = command
+		}
+		metadata.Command = command
+		metadata.Provider = provider
+		metadata.Source = "remote"
+		skills = append(skills, metadata)
+		commands[strings.ToLower(command)] = true
+	}
+	return skills, commands
 }
 
 func readSkillFile(path string) (Skill, error) {
@@ -327,10 +367,14 @@ func cleanYAMLScalar(value string) string {
 	return strings.TrimSpace(value)
 }
 
-func sourceForPath(root rootSpec, path string) string {
-	rel, err := filepath.Rel(root.path, path)
+func sourceForPath(root rootSpec, skillPath, command string) string {
+	rel, err := filepath.Rel(root.path, skillPath)
 	if err != nil {
 		return root.source
+	}
+	if root.remoteCommands[strings.ToLower(strings.TrimSpace(command))] &&
+		filepath.Clean(rel) == filepath.Join(command, skillFileName) {
+		return "remote"
 	}
 	if strings.HasPrefix(rel, ".system"+string(filepath.Separator)) {
 		return "system"

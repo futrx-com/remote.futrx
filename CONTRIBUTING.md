@@ -22,12 +22,13 @@ This appends a `Signed-off-by: Your Name <your@email>` line to the commit messag
 | --- | --- |
 | `backend/` | Go backend: HTTP/WebSocket transport, services, file-backed stores, LXD/Git/tmux integrations, and compiled-in agent modules |
 | `frontend/` | Preact + Vite SPA. The production build is written to `backend/public/` and embedded into the Go binary via `go:embed` |
+| `applications/` | Catalog of one-click installable apps, embedded into the backend binary; each directory is an `application.json`, an `install.sh`, and an optional `ui/` extension and `backend/` Go backend |
 | `infra/` | Installer, updater, systemd/Caddy templates, base-image tooling, and shell test suite |
 | `docs/` | Architecture and subsystem deep-dives — start with `docs/01-overview/01-system-overview.md` |
 
 ## Adding an agent integration
 
-Agents are explicit compiled-in modules, not runtime plugins. Each provider
+Agents are explicit compiled-in modules, not runtime backends. Each provider
 owns one validated factory declaration that binds its static descriptor,
 provisioning profile, and project-preparation policy to fresh runtime and
 authentication components. The generic factory constructs shared project
@@ -43,11 +44,50 @@ event-parsing, provisioning, frontend, testing, and release flow. Its
 [adding-an-agent checklist](docs/dev/agents/07-adding-an-agent.md) is the source
 of truth for new integrations.
 
+## Adding an installable app, UI extension, or application backend
+
+Installable apps ("Applications") are data, not code: one directory under
+`applications/` at the repository root with an `application.json`, an `install.sh`, and —
+optionally — a `ui/` directory. The catalog is embedded into the binary, so
+adding an app is a directory plus a rebuild; no registration step.
+
+`ui/` is what makes an application a backend rather than just a service: its
+`scripts/main.js` runs in every signed-in browser and can contribute buttons,
+panels, and popups to defined slots in the SPA. That is the path for a feature
+that needs both something installed in the container and something added to the
+interface — say, an alternative editor with a launcher button.
+
+`backend/` is the third half, and the one that makes "everything is a backend"
+achievable: a directory of Go source that the server compiles and runs as a
+child process over [hashicorp/go-plugin](https://github.com/hashicorp/go-plugin),
+reachable from the application's own `ui/` through `remote.backend.call(...)`. An
+application can therefore add a server-side feature — not only a button that calls an
+endpoint someone else had to write.
+
+Both halves are code, and neither is sandboxed:
+
+- Extension code runs on the main origin with the SPA's privileges and reaches
+  the API as the signed-in user, so a `ui/` directory gets the same review as
+  any other frontend change here.
+- Application backend code runs as a child of the server process, with the server's
+  privileges, and is handed the install's secrets, so a `backend/` directory
+  gets the same review as any change under `backend/internal/`.
+
+Read [`applications/README.md`](applications/README.md) for the
+`application.json` schema, the install-script contract, the extension API, and the
+slot list. [`applications/hello-remote/`](applications/hello-remote/)
+is the worked example for both halves — a `ui/` and the `backend/` it calls —
+and real apps live in their own repositories rather than here. The full backend
+contract is
+[`docs/dev/installable-applications/15-application-backends.md`](docs/dev/installable-applications/15-application-backends.md).
+
 ## Development setup
 
 ### Prerequisites
 
-- **Go** 1.25+ (see `backend/go.mod`)
+- **Go** 1.25+ (see `backend/go.mod`). Also required *at runtime* on any server
+  that installs an application shipping a `backend/` directory, because backend source
+  is compiled on the host.
 - **Node.js** 22.14+ (matches CI)
 - **Linux with LXD** — only for running the full stack. Project workspaces are LXD containers, so the complete application only runs on a Linux host with LXD installed. Backend and frontend unit tests, builds, and most development run fine on macOS or any platform without LXD.
 
@@ -55,6 +95,15 @@ of truth for new integrations.
 
 ```bash
 cd backend
+go build ./...
+go test ./...
+```
+
+The application catalog is a second Go module, rooted at the repository root, so
+`./...` in `backend/` does not reach an application's `backend/` source. Build and test
+it from the repository root:
+
+```bash
 go build ./...
 go test ./...
 ```

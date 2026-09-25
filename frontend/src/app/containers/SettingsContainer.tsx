@@ -12,21 +12,31 @@ import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
 import { useUsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { usageApi } from "../../api/usageApi";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
+import { extensionHost } from "../extensions/extensionHost";
 
 export function SettingsContainer({
   onBack,
   onHamburger,
+  activeTab,
+  onTabChange,
 }: {
   onBack: () => void;
   onHamburger: () => void;
+  activeTab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
 }) {
   const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
   const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
   const security = useSecuritySettings(activeTab === "security");
+  const applications = useGlobalApplications({
+    enabled: activeTab === "applications" && auth.isAdmin,
+    managesPackages: auth.isAdmin,
+    onApplicationsSettled: extensionHost.sync,
+  });
   const usageDashboard = useUsageDashboard(activeTab === "usage");
   const [usageRebuilding, setUsageRebuilding] = useState(false);
   const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
@@ -48,7 +58,10 @@ export function SettingsContainer({
       setUsageRebuilding(false);
     }
   }, [usageDashboard]);
-  const push = usePushNotifications(activeTab === "notifications");
+  const push = usePushNotifications(
+    activeTab === "notifications",
+    auth.email || auth.adminEmail
+  );
 
   return (
     <SettingsPage
@@ -78,12 +91,13 @@ export function SettingsContainer({
       push={push}
       onBack={onBack}
       onHamburger={onHamburger}
-      onTabChange={setActiveTab}
+      onTabChange={onTabChange}
       onRefreshServerInfo={serverInfo.refresh}
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
+      applications={applications}
     />
   );
 }

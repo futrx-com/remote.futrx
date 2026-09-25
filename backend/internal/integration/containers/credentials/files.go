@@ -120,9 +120,11 @@ func (s *fileSynchronizer) pushIfNewer(ctx context.Context, file provisioning.Cr
 	}
 
 	shouldPush := true
-	if out, err := s.runner.Run(ctx, "exec", containerName, "--", "stat", "-c", "%Y", file.ContainerPath); err == nil {
-		if containerUnix, parseErr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); parseErr == nil {
-			shouldPush = hostInfo.ModTime().Unix() > containerUnix
+	if !file.HostAuthoritative {
+		if out, err := s.runner.Run(ctx, "exec", containerName, "--", "stat", "-c", "%Y", file.ContainerPath); err == nil {
+			if containerUnix, parseErr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); parseErr == nil {
+				shouldPush = hostInfo.ModTime().Unix() > containerUnix
+			}
 		}
 	}
 	if !shouldPush {

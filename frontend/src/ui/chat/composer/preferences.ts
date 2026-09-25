@@ -9,6 +9,7 @@ import type {
 
 export interface ComposerPreferences {
   provider: ChatProvider;
+  accountId: string;
   model: string;
   mode: ChatMode;
   reasoningEffort: ReasoningEffort;
@@ -18,7 +19,7 @@ export interface ComposerPreferences {
 }
 
 export interface ComposerPreferenceActions {
-  changeAgent: (provider: ChatProvider, model: string) => void;
+  changeAgent: (provider: ChatProvider, accountId: string, model: string) => void;
   changeMode: (mode: ChatMode, modelPreset?: string, reasoningPreset?: string) => void;
   changeReasoningEffort: (reasoningEffort: ReasoningEffort) => void;
   changeServiceTier: (serviceTier: ServiceTier) => void;

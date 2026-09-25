@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   backend:
-    name: backend (go vet/test/build)
+    name: backend + application catalog (go vet/test/build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -24,7 +24,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
-          cache-dependency-path: backend/go.sum
+          cache-dependency-path: |
+            backend/go.sum
+            go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -39,9 +41,10 @@ jobs:
           npm ci
           npm run build
       - name: Check gofmt
+        working-directory: .
         run: |
           set -euo pipefail
-          unformatted="$(gofmt -l .)"
+          unformatted="$(gofmt -l backend catalog.go applications)"
           if [ -n "$unformatted" ]; then
             echo "unformatted Go files:"
             echo "$unformatted"
@@ -52,6 +55,18 @@ jobs:
       - name: Go test
         run: go test ./...
       - name: Go build
+        run: go build ./...
+      # applications/ and every application's backend/ source live in the catalog module at
+      # the repository root, which backend's ./... never reaches. Without these
+      # steps an application whose backend stopped compiling would reach a release.
+      - name: Go vet (application catalog)
+        working-directory: .
+        run: go vet ./...
+      - name: Go test (application catalog)
+        working-directory: .
+        run: go test ./...
+      - name: Go build (application catalog)
+        working-directory: .
         run: go build ./...
 
   frontend:
@@ -93,5 +108,6 @@ jobs:
           bash infra/tests/swap-provision-test.sh
           bash infra/tests/release-version-test.sh
           bash infra/tests/deploy-app-script-test.sh
+          bash infra/tests/release-entrypoints-test.sh
           bash infra/tests/qa-scripts-test.sh
           bash .github/scripts/classify-release-test.sh

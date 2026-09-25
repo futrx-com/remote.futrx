@@ -69,6 +69,20 @@ func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 				h.handleAPIKey(binding, w, r)
 			})
 		}
+		if binding.AccountsAvailable() {
+			mux.HandleFunc(prefix+"/accounts/import", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAccountImport(binding, w, r)
+			})
+			mux.HandleFunc(prefix+"/accounts/login", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAccountLoginStart(binding, w, r)
+			})
+			mux.HandleFunc(prefix+"/accounts/activate", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAccountActivate(binding, w, r)
+			})
+			mux.HandleFunc(prefix+"/accounts", func(w http.ResponseWriter, r *http.Request) {
+				h.handleAccountDelete(binding, w, r)
+			})
+		}
 	}
 }
 
@@ -154,6 +168,10 @@ func (h *AgentAuthHandler) handleCodeStart(binding agentauth.Binding, w http.Res
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
+	if binding.AccountsAvailable() {
+		httptransport.SendErr(w, http.StatusBadRequest, "account label is required; use the saved-account login flow")
+		return
+	}
 
 	result, err := binding.StartCode(r.Context())
 	if err != nil {
@@ -205,6 +223,10 @@ func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.R
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
+	if binding.AccountsAvailable() {
+		httptransport.SendErr(w, http.StatusBadRequest, "account label is required; use the saved-account login flow")
+		return
+	}
 	state, err := binding.StartDevice(r.Context())
 	if err != nil {
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
@@ -227,23 +249,119 @@ func (h *AgentAuthHandler) handleAPIKey(binding agentauth.Binding, w http.Respon
 		err = binding.DeleteAPIKey(r.Context())
 	} else {
 		var body struct {
-			APIKey string `json:"apiKey"`
+			APIKey    string `json:"apiKey"`
+			Label     string `json:"label"`
+			AccountID string `json:"accountId"`
 		}
 		if decodeErr := readJSONBody(r, &body); decodeErr != nil {
 			httptransport.SendErr(w, http.StatusBadRequest, decodeErr.Error())
 			return
 		}
-		err = binding.SetAPIKey(r.Context(), body.APIKey)
+		err = binding.SetAPIKeyAccount(r.Context(), body.Label, body.AccountID, body.APIKey)
 	}
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, agentauth.ErrAPIKeyRequired) || errors.Is(err, agentauth.ErrAPIKeyRejected) {
+		if errors.Is(err, agentauth.ErrAPIKeyRequired) || errors.Is(err, agentauth.ErrAPIKeyRejected) ||
+			errors.Is(err, agentauth.ErrAccountLabelRequired) || errors.Is(err, agentauth.ErrAccountLabelInvalid) ||
+			errors.Is(err, agentauth.ErrAccountLabelConflict) || errors.Is(err, agentauth.ErrAccountNotFound) {
 			status = http.StatusBadRequest
 		}
 		httptransport.SendErr(w, status, err.Error())
 		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
+}
+
+func (h *AgentAuthHandler) handleAccountImport(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if !h.requireMutationAccess(w, r) {
+		return
+	}
+	var body struct {
+		Label string `json:"label"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := binding.ImportCurrentAccount(r.Context(), body.Label); err != nil {
+		h.sendAccountError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
+}
+
+func (h *AgentAuthHandler) handleAccountLoginStart(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if !h.requireMutationAccess(w, r) {
+		return
+	}
+	var body struct {
+		Label     string `json:"label"`
+		AccountID string `json:"accountId"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	state, err := binding.StartAccountLogin(r.Context(), body.Label, body.AccountID)
+	if err != nil {
+		h.sendAccountError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, state)
+}
+
+func (h *AgentAuthHandler) handleAccountActivate(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if !h.requireMutationAccess(w, r) {
+		return
+	}
+	var body struct {
+		AccountID string `json:"accountId"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := binding.ActivateAccount(r.Context(), body.AccountID); err != nil {
+		h.sendAccountError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
+}
+
+func (h *AgentAuthHandler) handleAccountDelete(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !h.requireAdminAccess(w, r) {
+		return
+	}
+	var body struct {
+		AccountID string `json:"accountId"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := binding.DeleteAccount(r.Context(), body.AccountID); err != nil {
+		h.sendAccountError(w, err)
+		return
+	}
+	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
+}
+
+func (h *AgentAuthHandler) sendAccountError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	switch {
+	case errors.Is(err, agentauth.ErrAccountLabelRequired), errors.Is(err, agentauth.ErrAccountLabelInvalid), errors.Is(err, agentauth.ErrAccountLabelConflict):
+		status = http.StatusBadRequest
+	case errors.Is(err, agentauth.ErrAccountNotFound):
+		status = http.StatusNotFound
+	case errors.Is(err, agentauth.ErrAccountInUse), errors.Is(err, agentauth.ErrActiveAccountDelete),
+		errors.Is(err, agentauth.ErrAccountLoginInProgress), errors.Is(err, agentauth.ErrAccountIdentityMismatch):
+		status = http.StatusConflict
+	}
+	httptransport.SendErr(w, status, err.Error())
 }
 
 func (h *AgentAuthHandler) requireMutationAccess(w http.ResponseWriter, r *http.Request) bool {

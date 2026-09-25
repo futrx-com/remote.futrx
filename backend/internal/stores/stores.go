@@ -6,6 +6,7 @@ import (
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
+	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -16,6 +17,7 @@ import (
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileagentquota"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplications"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
@@ -68,10 +70,12 @@ type Stores struct {
 	UserSettings    serviceusersettings.Repository
 	TwoFactor       serviceauth.TwoFactorStore
 	SessionRegistry serviceauth.SessionRegistryStore
+	Applications    serviceapplications.Store
 	Push            PushStore
 	Usage           serviceusage.Repository
 	AgentAPIKeys    agentauth.APIKeyStore
 	AgentQuota      agentquota.Repository
+	AgentAccounts   agentauth.AccountStore
 	ProjectShares   serviceshare.Repository
 }
 
@@ -139,6 +143,10 @@ func New(dataDir string) (Stores, error) {
 	if err != nil {
 		return Stores{}, fmt.Errorf("init usage store: %w", err)
 	}
+	applications, err := fileapplications.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init applications store: %w", err)
+	}
 
 	agentQuota, err := fileagentquota.New(dataDir)
 	if err != nil {
@@ -163,10 +171,12 @@ func New(dataDir string) (Stores, error) {
 		UserSettings:    userSettings,
 		TwoFactor:       twoFactor,
 		SessionRegistry: sessionRegistry,
+		Applications:    applications,
 		Push:            push,
 		Usage:           usage,
 		AgentAPIKeys:    authStore,
 		AgentQuota:      agentQuota,
+		AgentAccounts:   authStore,
 		ProjectShares:   projectShares,
 	}, nil
 }

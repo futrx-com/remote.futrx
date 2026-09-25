@@ -19,3 +19,11 @@ type HostClient interface {
 	StartUpdater(launch UpdaterLaunch) (int, error)
 	ProcessAlive(pid int) bool
 }
+
+// UpdateLifecyclePublisher is the lifecycle notification capability used by
+// the self-update workflow. The concrete publisher is supplied at composition.
+type UpdateLifecyclePublisher interface {
+	PublishUpdateStarted(ctx context.Context, target, kind, startedBy string)
+	PublishUpdateSucceeded(ctx context.Context, target, kind, startedBy string)
+	PublishUpdateFailed(ctx context.Context, target, kind, startedBy string)
+}

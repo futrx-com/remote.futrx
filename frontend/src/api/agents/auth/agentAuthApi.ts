@@ -64,17 +64,49 @@ export const agentAuthApi = {
     };
   },
 
-  saveAPIKey: (provider: string, apiKey: string) =>
+  saveAPIKey: (provider: string, apiKey: string, label?: string, accountId?: string) =>
     requestJson<AgentAuthSnapshot>(
       "POST",
       API_ROUTES.agentAuth.apiKey(provider),
-      { apiKey },
+      { apiKey, label, accountId },
     ),
 
   deleteAPIKey: (provider: string) =>
     requestJson<AgentAuthSnapshot>(
       "DELETE",
       API_ROUTES.agentAuth.apiKey(provider),
+    ),
+
+  importAccount: (provider: string, label: string) =>
+    requestJson<AgentAuthSnapshot>(
+      "POST",
+      API_ROUTES.agentAuth.importAccount(provider),
+      { label },
+    ),
+
+  startAccountLogin: (
+    provider: string,
+    label: string,
+    accountId?: string,
+  ) =>
+    requestJson<AgentAuthLoginSnapshot>(
+      "POST",
+      API_ROUTES.agentAuth.startAccountLogin(provider),
+      { label, accountId },
+    ),
+
+  activateAccount: (provider: string, accountId: string) =>
+    requestJson<AgentAuthSnapshot>(
+      "POST",
+      API_ROUTES.agentAuth.activateAccount(provider),
+      { accountId },
+    ),
+
+  deleteAccount: (provider: string, accountId: string) =>
+    requestJson<AgentAuthSnapshot>(
+      "DELETE",
+      API_ROUTES.agentAuth.accounts(provider),
+      { accountId },
     ),
 
   subscribe: (

@@ -88,6 +88,28 @@ func TestPreparerPreservesStrictSkillLinkPolicy(t *testing.T) {
 	}
 }
 
+func TestPreparerUsesRunCredentialOverride(t *testing.T) {
+	recorder := &preparationRecorder{}
+	preparer := New(
+		preparationProjects{recorder: recorder},
+		preparationDependencies(recorder),
+		Options{Provider: "future-agent", Profile: preparationTestProfile()},
+	)
+	override := provisioning.CredentialSpec{
+		Name: "isolated-account", HostDir: "/host/run", ContainerDir: "/root/.future/run",
+		Files: []provisioning.CredentialFile{{HostPath: "/host/run/auth.json", ContainerPath: "/root/.future/run/auth.json"}},
+	}
+	_, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
+		ProjectID: "project-id", Credentials: &override,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorder.credentials.Name != "isolated-account" || recorder.credentials.ContainerDir != "/root/.future/run" {
+		t.Fatalf("prepared credentials = %#v", recorder.credentials)
+	}
+}
+
 func TestPreparerRuntimeAssetFailurePreservesErrorAndShortCircuits(t *testing.T) {
 	recorder := &preparationRecorder{runtimeAssetError: errors.New("publish failed")}
 	preparer := New(
@@ -118,6 +140,7 @@ type preparationRecorder struct {
 	runtimeAssetError     error
 	runtimeAssetContainer string
 	runtimeAssets         []provisioning.RuntimeAsset
+	credentials           provisioning.CredentialSpec
 }
 
 type preparationProjects struct{ recorder *preparationRecorder }
@@ -146,8 +169,9 @@ func (p preparationCLI) Ensure(_ context.Context, _ string, spec provisioning.CL
 
 type preparationCredentials struct{ recorder *preparationRecorder }
 
-func (p preparationCredentials) Ensure(context.Context, string, provisioning.CredentialSpec) error {
+func (p preparationCredentials) Ensure(_ context.Context, _ string, spec provisioning.CredentialSpec) error {
 	p.recorder.calls = append(p.recorder.calls, "credentials")
+	p.recorder.credentials = spec
 	return nil
 }
 

@@ -103,6 +103,7 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 		ID:        "aabbcc11",
 		Title:     "watch deploy",
 		Provider:  servicechat.ProviderCodex,
+		AccountID: "work-account",
 		Cwd:       t.TempDir(),
 		ProjectID: "project-1",
 		SelectedSkills: []servicechat.SkillRef{{
@@ -167,6 +168,9 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 		t.Fatalf("issuer request = %#v", issued)
 	}
 	request := provider.request(t, 0)
+	if request.AccountID != "work-account" {
+		t.Fatalf("run account = %q, want work-account", request.AccountID)
+	}
 	if !request.EnableScheduleTools {
 		t.Fatal("scheduled-tasks skill did not enable schedule tools")
 	}

@@ -54,7 +54,7 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | POST | `/api/{provider}/login/code` | Submit a managed authorization code; currently Claude; admin only |
 | POST | `/api/{provider}/login/cancel` | Cancel a managed authorization-code flow; currently Claude; admin only |
 | POST | `/api/{provider}/login/device` | Start a managed device flow; currently Codex and Kimi; admin only |
-| POST | `/api/{provider}/login/api-key` | Validate and save a managed provider API key; currently MiniMax; admin only; response never includes the key |
+| POST | `/api/{provider}/login/api-key` | Validate and save a managed provider API key; currently MiniMax; optional `{label, accountId}` creates or reconnects a named account; admin only; response never includes the key |
 | DELETE | `/api/{provider}/login/api-key` | Remove a managed provider API key; currently MiniMax; admin only |
 | GET | `/api/agent-capabilities[?projectId=<id>&refresh=1]` | Discover normalized provider/model controls on the host or in an accessible project; `refresh=1` bypasses the current backend cache entry |
 | GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
@@ -73,7 +73,8 @@ contains `provider`, `label`, optional `default`, `executionScopes`, an
 `satisfiesAccessGate`, and optional API-key creation metadata), and a normalized `status` object. Status contains
 `authenticated`, an optional warning, and one login shape shared by managed
 code/device flows (`active`, URL, optional code/timestamps/completion/error).
-Managed API-key status contains only the configured boolean.
+Managed API-key status contains only the configured boolean plus the same
+redacted account metadata when named keys are enabled.
 No-auth modules report authenticated immediately. External modules publish
 their instructions but no managed status stream or mutation controls.
 

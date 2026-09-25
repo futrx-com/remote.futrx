@@ -1,5 +1,6 @@
 import type { ChatProvider, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
+import type { AgentAuthProvider } from "../../../models/auth";
 import type {
   ComposerModelOption,
   ComposerProviderOption,
@@ -11,6 +12,8 @@ export function ComposerAgentControls({
   projectId,
   model,
   provider,
+  accountId,
+  authProviders,
   streaming,
   providerOptions,
   modelOptions,
@@ -27,6 +30,8 @@ export function ComposerAgentControls({
   projectId?: string;
   model: string;
   provider: ChatProvider;
+  accountId: string;
+  authProviders: readonly AgentAuthProvider[];
   streaming: boolean;
   providerOptions: readonly ComposerProviderOption[];
   modelOptions: readonly ComposerModelOption[];
@@ -37,7 +42,7 @@ export function ComposerAgentControls({
   providerLabel: string;
   skillsEnabled: boolean;
   onSelectSkill: (skill: RegisteredSkill) => void;
-  onAgentChange: (provider: ChatProvider, model: string) => void;
+  onAgentChange: (provider: ChatProvider, accountId: string, model: string) => void;
   onRefreshModels: () => Promise<void>;
 }) {
   const selectedCount = selectedSkills.length;
@@ -45,7 +50,9 @@ export function ComposerAgentControls({
     <div class="codex-composer-agent-controls flex min-w-0 flex-wrap items-center gap-1">
       <ComposerAgentPicker
         provider={provider}
+        accountId={accountId}
         model={model}
+        authProviders={authProviders}
         streaming={streaming}
         providerOptions={providerOptions}
         modelOptions={modelOptions}

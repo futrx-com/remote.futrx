@@ -105,6 +105,43 @@ assert_output "$output" "kind=infrastructure"
 assert_output "$output" "label=Infrastructure"
 assert_output "$output" "previous=0.3.9"
 
+# 0.16.1 is the narrowly scoped recovery patch for the release entrypoints
+# broken in 0.16.0. It stays application-classified for healthy
+# 0.16.0 hosts, while older hosts classify the cross-minor update themselves.
+commit_file README.md 0.16.0 release-0.16.0
+git -C "$TEST_REPO" tag 0.16.0
+commit_file infra/install.sh fixed-installer hotfix-installer
+commit_file infra/update.sh fixed-updater hotfix-updater
+commit_file infra/steps/00-checkout.sh fixed-checkout-reexec hotfix-checkout-reexec
+hotfix_commit="$(git -C "$TEST_REPO" rev-parse HEAD)"
+git -C "$TEST_REPO" tag 0.16.1
+output="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.16.1)"
+assert_output "$output" "kind=application"
+assert_output "$output" "label=Application"
+assert_output "$output" "previous=0.16.0"
+
+# Any additional protected file still makes that exact release unsafe.
+git -C "$TEST_REPO" tag -d 0.16.1 >/dev/null
+commit_file infra/versions.env changed-pin unsafe-extra-change
+git -C "$TEST_REPO" tag 0.16.1
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.16.1 2>&1)"; then
+    fail "0.16.1 recovery exception accepted an unrelated protected change"
+fi
+grep -Fq "infra/versions.env" <<<"$error" || \
+    fail "0.16.1 recovery rejection did not identify the extra protected path"
+
+# The exception ends at 0.16.1; future updater changes require a minor bump.
+git -C "$TEST_REPO" tag -d 0.16.1 >/dev/null
+git -C "$TEST_REPO" reset --hard -q "$hotfix_commit"
+git -C "$TEST_REPO" tag 0.16.1
+commit_file infra/update.sh future-updater future-protected-change
+git -C "$TEST_REPO" tag 0.16.2
+if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.16.2 2>&1)"; then
+    fail "0.16.1 recovery exception leaked into a later patch release"
+fi
+grep -Fq "infra/update.sh" <<<"$error" || \
+    fail "later patch rejection did not identify the updater change"
+
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.4 2>&1)"; then
     fail "malformed release tag was accepted"
 fi

@@ -30,16 +30,18 @@ func newNotificationDispatcher(repo Repository, sender Sender) notificationDispa
 	return notificationDispatcher{repo: repo, sender: sender, now: time.Now}
 }
 
+// notify reports how many devices accepted the notification.
 func (d *notificationDispatcher) notify(
 	ctx context.Context,
 	recipients []string,
 	notification Notification,
-) {
+) int {
 	payload, err := json.Marshal(notification)
 	if err != nil {
 		log.Printf("push: encode notification: %v", err)
-		return
+		return 0
 	}
+	delivered := 0
 
 	for _, email := range dedupeEmails(recipients) {
 		subscriptions, err := d.repo.List(ctx, email)
@@ -48,18 +50,28 @@ func (d *notificationDispatcher) notify(
 			continue
 		}
 		for _, subscription := range subscriptions {
-			d.deliver(ctx, email, subscription, payload, notification.Urgent)
+			if d.deliver(ctx, email, subscription, payload, notification.Urgent) {
+				delivered++
+			}
 		}
 	}
+	return delivered
 }
 
-func (d *notificationDispatcher) notifyAsync(recipients []string, notification Notification) {
+func (d *notificationDispatcher) notifyAsync(
+	recipients []string,
+	notification Notification,
+	done func(delivered int),
+) {
 	d.wg.Add(1)
 	go func() {
 		defer d.wg.Done()
 		ctx, cancel := context.WithTimeout(context.Background(), deliveryTimeout)
 		defer cancel()
-		d.notify(ctx, recipients, notification)
+		delivered := d.notify(ctx, recipients, notification)
+		if done != nil {
+			done(delivered)
+		}
 	}()
 }
 
@@ -73,7 +85,7 @@ func (d *notificationDispatcher) deliver(
 	subscription Subscription,
 	payload []byte,
 	urgent bool,
-) {
+) bool {
 	err := d.sender.Send(ctx, subscription, payload, urgent)
 	switch {
 	case err == nil:
@@ -81,6 +93,7 @@ func (d *notificationDispatcher) deliver(
 		if saveErr := d.repo.Save(ctx, email, subscription); saveErr != nil {
 			log.Printf("push: record delivery: %v", saveErr)
 		}
+		return true
 	case errors.Is(err, ErrGone):
 		// The browser dropped this registration. Forget it so the next
 		// fan-out is not slowed down by a dead endpoint.
@@ -90,6 +103,7 @@ func (d *notificationDispatcher) deliver(
 	default:
 		log.Printf("push: deliver to %s: %v", endpointHost(subscription.Endpoint), err)
 	}
+	return false
 }
 
 func dedupeEmails(emails []string) []string {

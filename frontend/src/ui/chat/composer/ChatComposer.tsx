@@ -6,10 +6,13 @@ import type { RegisteredSkill } from "../../../models/skill";
 import type { Attachment } from "../../../models/upload";
 import { commandPaletteState } from "../../../state/hooks/chat/commandPaletteState";
 import { useComposerAgentCapabilities } from "../../../state/hooks/chat/useComposerAgentCapabilities";
+import { useAuthContext } from "../../../state/context/AuthContext";
 import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
 import { CommandPalette, type CommandPaletteHandle } from "./CommandPalette";
+import { ExtensionSlot } from "../../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { ComposerAgentControls } from "./ComposerAgentControls";
 import { ComposerDropOverlay } from "./ComposerDropOverlay";
 import { ComposerExecutionControls } from "./ComposerExecutionControls";
@@ -68,6 +71,7 @@ export function ChatComposer({
   onSelectSkill,
   onRemoveSelectedSkill,
 }: ChatComposerProps) {
+  const { agentAuth } = useAuthContext();
   const capabilityState = useComposerAgentCapabilities({
     projectId,
     provider: preferences.provider,
@@ -102,7 +106,14 @@ export function ChatComposer({
   const modelLabel = modelOptions.find(
     (option) => option.value === preferences.model,
   )?.label || modelShortLabel(preferences.model);
-  const settingsSummary = `${providerLabel} · ${modelLabel}`;
+  const providerAccounts = agentAuth.providers.find(
+    (entry) => entry.provider === preferences.provider,
+  )?.status.accounts;
+  const effectiveAccountId = preferences.accountId || providerAccounts?.activeAccountId || "";
+  const accountLabel = providerAccounts?.items.find(
+    (account) => account.id === effectiveAccountId,
+  )?.label;
+  const settingsSummary = [providerLabel, accountLabel, modelLabel].filter(Boolean).join(" · ");
   const skillsEnabled = capabilityState.providerCapabilities?.features?.skills !== "none";
 	const selectedModelCapability = capabilityState.providerCapabilities?.models.find(
 		(item) => item.id === preferences.model,
@@ -185,11 +196,20 @@ export function ChatComposer({
               onFilesSelected={onFilesSelected}
             />
 
+            {/* Outside the md-only wrapper below, so a contributed action is
+                reachable on a phone too. */}
+            <ExtensionSlot
+              name={EXTENSION_SLOTS.composerActions}
+              projectId={projectId}
+            />
+
             <div class="hidden min-w-0 flex-1 items-center gap-1.5 md:flex">
               <ComposerAgentControls
                 projectId={projectId}
                 model={preferences.model}
                 provider={preferences.provider}
+                accountId={preferences.accountId}
+                authProviders={agentAuth.providers}
                 streaming={streaming}
                 providerOptions={providerOptions}
                 modelOptions={modelOptions}
@@ -253,12 +273,14 @@ export function ChatComposer({
             aria-label="Composer settings"
           >
             <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
-              Agent and model
+              Provider, account, and model
             </div>
             <ComposerAgentControls
               projectId={projectId}
               model={preferences.model}
               provider={preferences.provider}
+              accountId={preferences.accountId}
+              authProviders={agentAuth.providers}
               streaming={streaming}
               providerOptions={providerOptions}
               modelOptions={modelOptions}

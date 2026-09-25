@@ -1,6 +1,8 @@
 package service
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -75,51 +77,68 @@ func TestNotificationKindSelectsOnlyEventsWorthInterrupting(t *testing.T) {
 	}
 }
 
-func TestNotificationTextLeadsWithTheActionAndNamesTheChat(t *testing.T) {
-	meta := servicechat.Meta{Title: "Fix the flaky upload test"}
+func TestNotificationTextUsesProjectTitleAndResult(t *testing.T) {
+	projectName := "Upload project"
 
-	title, body := notificationText(servicepush.KindQuestion, meta, servicechat.Event{})
-	if title != "The agent is asking a question" || body != meta.Title {
+	title, body := notificationText(servicepush.KindQuestion, projectName, servicechat.Event{})
+	if title != "Upload project - Agent needs your answer" || body != "Open the chat to answer the question." {
 		t.Fatalf("question = %q / %q", title, body)
 	}
 
-	title, body = notificationText(servicepush.KindError, meta, servicechat.Event{
+	title, body = notificationText(servicepush.KindError, projectName, servicechat.Event{
 		Type:    "error",
 		Message: "claude exit: status 1",
 	})
-	if title != "Run failed" || body != "Fix the flaky upload test — claude exit: status 1" {
+	if title != "Upload project - Agent encountered an error" || body != "claude exit: status 1" {
 		t.Fatalf("error = %q / %q", title, body)
 	}
 
-	title, _ = notificationText(servicepush.KindScheduled, meta, servicechat.Event{Type: "error"})
-	if title != "Scheduled task failed" {
-		t.Fatalf("scheduled failure title = %q", title)
+	title, body = notificationText(servicepush.KindScheduled, projectName, servicechat.Event{Type: "error"})
+	if title != "Upload project - Agent encountered an error" || body != "Open the chat to review the error." {
+		t.Fatalf("scheduled failure = %q / %q", title, body)
 	}
-	title, _ = notificationText(servicepush.KindScheduled, meta, servicechat.Event{Type: "complete"})
-	if title != "Scheduled task finished" {
-		t.Fatalf("scheduled success title = %q", title)
-	}
-}
-
-func TestNotificationTextFallsBackForAnUntitledChat(t *testing.T) {
-	_, body := notificationText(servicepush.KindComplete, servicechat.Meta{Title: "   "}, servicechat.Event{})
-	if body != "Untitled chat" {
-		t.Fatalf("body = %q", body)
+	title, body = notificationText(servicepush.KindScheduled, projectName, servicechat.Event{Type: "complete", NotificationSummary: "Fixed the upload test"})
+	if title != "Upload project - Agent finished" || body != "Fixed the upload test" {
+		t.Fatalf("scheduled success = %q / %q", title, body)
 	}
 }
 
-func TestWithDetailFlattensAndTruncatesAgentOutput(t *testing.T) {
+func TestNotificationTextFallsBackWithoutSummaryOrProject(t *testing.T) {
+	title, body := notificationText(servicepush.KindComplete, "   ", servicechat.Event{})
+	if title != "Remote - Agent finished" || body != "Open the chat to see the result." {
+		t.Fatalf("notification = %q / %q", title, body)
+	}
+}
+
+func TestNotificationPayloadStaysSmallWithLongUnicodeNames(t *testing.T) {
+	title, body := notificationText(servicepush.KindComplete,
+		strings.Repeat("世界", 100),
+		servicechat.Event{NotificationSummary: strings.Repeat("🌍", 200)},
+	)
+	payload, err := json.Marshal(servicepush.Notification{
+		Kind: servicepush.KindComplete, Title: title, Body: body,
+		ChatID: "abcdef12", Tag: "chat:abcdef12",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload) > 600 {
+		t.Fatalf("push payload is %d bytes", len(payload))
+	}
+}
+
+func TestErrorBodyFlattensAndTruncatesAgentOutput(t *testing.T) {
 	long := ""
 	for len(long) < 200 {
 		long += "error "
 	}
-	got := withDetail("Chat", "line one\nline two")
-	if got != "Chat — line one line two" {
+	got := errorBody("line one\nline two")
+	if got != "line one line two" {
 		t.Fatalf("got %q", got)
 	}
 	// The body has to survive an encrypted push payload, so it is bounded.
-	if got := withDetail("Chat", long); len([]rune(got)) > 160 {
-		t.Fatalf("detail was not truncated: %d runes", len([]rune(got)))
+	if got := errorBody(long); len([]byte(got)) > 180 {
+		t.Fatalf("detail was not truncated: %d bytes", len(got))
 	}
 }
 

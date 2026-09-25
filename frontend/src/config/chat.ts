@@ -17,10 +17,42 @@ export const APPROVAL_POLICY_OPTIONS: readonly {
 export const SANDBOX_POLICY_OPTIONS: readonly {
   value: SandboxPolicy;
   label: string;
+  description: string;
+  details: readonly string[];
 }[] = [
-  { value: "workspaceWrite", label: "Workspace write" },
-  { value: "readOnly", label: "Read only" },
-  { value: "dangerFullAccess", label: "Full access" },
+  {
+    value: "workspaceWrite",
+    label: "Workspace write",
+    description: "Edit project files and run commands without internet access.",
+    details: [
+      "Read files throughout the container",
+      "Create, edit, and delete files in the project workspace",
+      "Run commands, but without internet access",
+      "Cannot change system files or install system packages",
+    ],
+  },
+  {
+    value: "readOnly",
+    label: "Read only",
+    description: "Inspect files and run safe commands without making changes.",
+    details: [
+      "Read and inspect files throughout the container",
+      "Run commands that do not change files",
+      "No internet access",
+      "Cannot create, edit, or delete files",
+    ],
+  },
+  {
+    value: "dangerFullAccess",
+    label: "Full access",
+    description: "Use the internet and make unrestricted changes in the container.",
+    details: [
+      "Read, create, edit, and delete files anywhere in the container",
+      "Run commands without filesystem restrictions",
+      "Access the internet and external services",
+      "Install packages and change system configuration",
+    ],
+  },
 ];
 
 export function modelShortLabel(model?: string): string {
@@ -48,6 +80,17 @@ export const CHAT_UPLOAD_PATHS = {
   /** The stable root a project chat's uploads hang off, whatever its live cwd. */
   projectRoot: "/workspace",
 } as const;
+
+/**
+ * How long the composer waits for an extension's claim on a finished
+ * attachment before giving up on it.
+ *
+ * A claim backed by a backend call is already bounded by the backend host, so a
+ * well-behaved one settles far inside this. The bound is for the one that
+ * does not: an extension whose promise never settles would otherwise leave
+ * send disabled for the rest of the session.
+ */
+export const ATTACHMENT_CLAIM_TIMEOUT_MS = 5 * 60_000;
 
 /** Keep a find-in-chat match this far from the scroller's edges when revealing it. */
 export const CHAT_FIND_REVEAL_MARGIN = 80;

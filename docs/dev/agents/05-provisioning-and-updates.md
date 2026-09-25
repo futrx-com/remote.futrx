@@ -243,7 +243,8 @@ optional post-success pull-back.
 For fixed files it first removes declared legacy credential devices, then
 validates all required host files before creating the provider directory or
 pushing files. It creates that directory with mode `0700` and pushes a host
-file only when it is newer than the container copy. Optional missing files are
+file only when it is newer than the container copy, unless the file is
+`HostAuthoritative`, in which case the host file is pushed before every run. Optional missing files are
 skipped. Pull-required files must exist after a successful run; pulled files
 are stored with mode `0600`.
 
@@ -255,8 +256,8 @@ already exists.
 
 | Provider | Current credential policy |
 | --- | --- |
-| Claude | Seeds `/root/.claude.json` (required) and optional `/root/.claude/.credentials.json`; both relevant credential forms can be pulled back. Launch seeding is enabled. |
-| Codex | Seeds and pulls `/root/.codex/auth.json`; explicitly detected API-key mode in the host record is rejected, and subscription auth is the intended flow. A newer project-local record is not pre-inspected, and the current readiness check also accepts an `unknown` mode, as documented in [Authentication and access](04-authentication-and-access.md#current-provider-behavior). Launch seeding is enabled. |
+| Claude | Seeds `/root/.claude.json` (required) and optional `/root/.claude/.credentials.json` from the resolved host paths (`CLAUDE_CONFIG_DIR` when set); both relevant credential forms can be pulled back, and a pulled login reaches the [saved-account vault](04-authentication-and-access.md#saved-accounts) only after validation. Launch seeding is enabled. |
+| Codex | Seeds and pulls `auth.json` from the resolved host Codex home (`CODEX_HOME`, the Snap data directory, or `~/.codex`); explicitly detected API-key mode in the host record is rejected, and subscription auth is the intended flow. The file is host-authoritative, so the selected [saved account](04-authentication-and-access.md#saved-accounts) replaces the project copy before every run. Launch seeding is enabled. |
 | Kimi | Synchronizes regular files under `.kimi-code/credentials`; container-only login is allowed, launch seeding is disabled, and host-empty state remains project-local. |
 | Antigravity | Declares no credential transfer because the CLI has no stable documented token subpath. Its project-local login/state survives through the persistent directory. |
 

@@ -103,7 +103,10 @@ type NativeEnvelope struct {
 // RunRequest is provider-neutral. Provider adapters translate it into the
 // concrete CLI flags and runtime setup required by Claude Code, Codex, etc.
 type RunRequest struct {
-	Provider       ProviderID
+	Provider ProviderID
+	// AccountID selects a saved provider account for this run. An empty value
+	// keeps the provider's current active account for backwards compatibility.
+	AccountID      string
 	ConversationID string
 	Prompt         string
 	Cwd            string
@@ -151,12 +154,15 @@ type Event struct {
 	Data           json.RawMessage `json:"data,omitempty"`
 	Usage          json.RawMessage `json:"usage,omitempty"`
 	Raw            json.RawMessage `json:"raw,omitempty"`
+	Native         *NativeEnvelope `json:"native,omitempty"`
+	InteractionID  string          `json:"interactionId,omitempty"`
+	Status         string          `json:"status,omitempty"`
 
 	// Quota is set only on EventQuotaUpdated.
-	Quota         *Quota          `json:"quota,omitempty"`
-	Native        *NativeEnvelope `json:"native,omitempty"`
-	InteractionID string          `json:"interactionId,omitempty"`
-	Status        string          `json:"status,omitempty"`
+	Quota *Quota `json:"quota,omitempty"`
+
+	// NotificationSummary is an internal completion hint, never provider input.
+	NotificationSummary string `json:"-"`
 }
 
 type CapabilityProvider interface {

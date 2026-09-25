@@ -2,12 +2,15 @@ package claude
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -15,6 +18,13 @@ func newTestProvider(
 	projects agent.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
+	return newTestRuntime(agentmodule.BuildDependencies{
+		Projects:   projects,
+		Containers: dependencies,
+	}).Lookup(agent.ProviderClaude).(*Provider)
+}
+
+func newTestRuntime(dependencies agentmodule.BuildDependencies) *agentmodule.Runtime {
 	factory, err := NewFactory()
 	if err != nil {
 		panic(err)
@@ -23,15 +33,116 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{
-		Projects:              projects,
-		Containers:            dependencies,
-		CredentialSyncTimeout: 30 * time.Second,
-	})
+	dependencies.CredentialSyncTimeout = 30 * time.Second
+	runtime, err := catalog.Build(dependencies)
 	if err != nil {
 		panic(err)
 	}
-	return runtime.Lookup(agent.ProviderClaude).(*Provider)
+	return runtime
+}
+
+// A nil vault must leave the binding without saved accounts rather than
+// attaching a nil *AccountService that reads as available.
+func TestFactoryOffersSavedAccountsOnlyWithAVault(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	for _, test := range []struct {
+		vault *agentauth.AccountVault
+		want  bool
+	}{
+		{vault: nil, want: false},
+		{vault: agentauth.NewAccountVault(&memoryAccountStore{}), want: true},
+	} {
+		runtime := newTestRuntime(agentmodule.BuildDependencies{Accounts: test.vault})
+		binding, ok := runtime.AuthBinding(agent.ProviderClaude)
+		if !ok || binding.AccountsAvailable() != test.want {
+			t.Fatalf("vault %v: accounts available = %v, want %v", test.vault != nil, binding.AccountsAvailable(), test.want)
+		}
+		if provider := runtime.Lookup(agent.ProviderClaude).(*Provider); (provider.accounts != nil) != test.want {
+			t.Fatalf("vault %v: provider accounts = %v", test.vault != nil, provider.accounts)
+		}
+	}
+}
+
+// A run may leave any Claude login in its isolated account home. Only a login
+// for the selected account is validated and saved; another account never
+// changes either the vault or the canonical host login.
+func TestRunSavesOnlyTheActiveAccountsRefreshedLogin(t *testing.T) {
+	installFakeClaude(t, `
+case "$1" in
+auth)
+  printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}' ;;
+-p)
+  printf '{"claudeAiOauth":{"refreshToken":"%s"},"mcpOAuth":{"server":"kept"}}' "$FAKE_CLAUDE_TOKEN" > "$CLAUDE_CONFIG_DIR/.credentials.json"
+  printf '{"oauthAccount":{"accountUuid":"uuid-%s","emailAddress":"%s@example.test"}}' "$FAKE_CLAUDE_ACCOUNT" "$FAKE_CLAUDE_ACCOUNT" > "$CLAUDE_CONFIG_DIR/.claude.json" ;;
+esac
+`)
+	host := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", host)
+	writeHostFiles(t, host,
+		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
+		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
+	)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "one",
+		Accounts: []agentauth.AccountRecord{
+			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
+		},
+	}}
+	provider := newTestRuntime(agentmodule.BuildDependencies{
+		Accounts: agentauth.NewAccountVault(store),
+	}).Lookup(agent.ProviderClaude).(*Provider)
+	run := func(token, account string) {
+		t.Helper()
+		t.Setenv("FAKE_CLAUDE_TOKEN", token)
+		t.Setenv("FAKE_CLAUDE_ACCOUNT", account)
+		if err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, nil); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	}
+
+	run("refreshed", "one")
+	if saved := string(store.accounts.Accounts[0].Credential); !strings.Contains(saved, `"refreshed"`) {
+		t.Fatalf("refreshed login for the active account was not saved: %s", saved)
+	}
+
+	run("intruder", "other")
+	if saved := string(store.accounts.Accounts[0].Credential); !strings.Contains(saved, `"refreshed"`) || strings.Contains(saved, "intruder") {
+		t.Fatalf("another account's login changed the vault: %s", saved)
+	}
+	credentials := readFile(t, filepath.Join(host, ".credentials.json"))
+	config := readFile(t, filepath.Join(host, ".claude.json"))
+	if !strings.Contains(credentials, `"saved"`) || strings.Contains(credentials, "refreshed") ||
+		strings.Contains(credentials, "intruder") || !strings.Contains(config, "uuid-one") {
+		t.Fatalf("canonical host login changed: credentials = %s, config = %s", credentials, config)
+	}
+}
+
+func TestAccountRunHomesSeparateChats(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	saved := agentauth.RunCredential{
+		AccountID:  "one",
+		Credential: testClaudeCredential("saved", "uuid-one", "one@example.test"),
+	}
+	first, err := newAccountRun(agent.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newAccountRun(agent.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.hostHome == second.hostHome || first.containerHome == second.containerHome {
+		t.Fatalf("chat account homes overlap: first %#v, second %#v", first, second)
+	}
+	for _, run := range []*accountRun{first, second} {
+		credential, err := run.hostCredential()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if accountIdentity(credential)["account"] != "uuid-one" {
+			t.Fatalf("isolated credential = %s", credential)
+		}
+	}
 }
 
 func TestArgsUseDesktopLikeClaudeHeadlessMode(t *testing.T) {
