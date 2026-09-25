@@ -22,7 +22,15 @@ export function MessageBlock({
   onRewind?: (t: number, text: string) => void;
 }) {
   if (block.type === "user") {
-    return <UserMessage text={block.text} t={block.t} onRewind={onRewind} />;
+    return (
+      <UserMessage
+        text={block.text}
+        t={block.t}
+        chatId={chatId}
+        cwd={cwd}
+        onRewind={onRewind}
+      />
+    );
   }
 
   if (block.type === "error") {

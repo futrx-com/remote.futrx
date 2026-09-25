@@ -4,6 +4,8 @@ import { highlightCode } from "./highlight";
 import { renderInline } from "./inlineParser";
 import type { MarkdownBlock } from "./types";
 import { getTextAlignClass, isRtlText } from "./bidi";
+import { isMermaidLanguage } from "./mermaidBlock";
+import { MermaidBlock } from "./MermaidBlock";
 
 export function Markdown({ children, chatId, cwd }: { children: string; chatId?: string; cwd?: string }) {
   const docIsRtl = isRtlText(children);
@@ -52,6 +54,12 @@ function renderParagraph(text: string, key: string, context: MarkdownRenderConte
 }
 
 function renderCode(block: Extract<MarkdownBlock, { type: "code" }>, key: string) {
+  // Mermaid blocks opt out of the standard code renderer and render as a live
+  // diagram instead. Keeping the gate inside renderCode means the inline lexer
+  // never needs to learn about mermaid.
+  if (isMermaidLanguage(block.lang)) {
+    return <MermaidBlock key={key} source={block.text} idHint={block.lang} />;
+  }
   return (
     <div key={key} dir="ltr" class="relative my-3 rounded-lg border border-line bg-surface overflow-hidden text-left">
       {block.lang && (

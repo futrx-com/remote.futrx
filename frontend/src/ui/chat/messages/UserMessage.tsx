@@ -1,17 +1,33 @@
+import { useMemo } from "preact/hooks";
 import { RotateCcw } from "../../primitives/icons";
+import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
 import { getTextAlignClass, getTextDirection } from "../markdown/bidi";
+import { AttachmentPreviews } from "./AttachmentPreviews";
 
 export function UserMessage({
   text,
   t,
+  chatId,
+  cwd,
   onRewind,
 }: {
   text: string;
   t: number;
+  chatId?: string;
+  cwd?: string;
   onRewind?: (t: number, text: string) => void;
 }) {
-  const dir = getTextDirection(text);
-  const align = getTextAlignClass(text);
+  // Strip the composer-injected "Attached files:" list and render the
+  // uploads as preview chips instead of leaking the raw paths into the
+  // message bubble. Older messages (no chatId) keep their raw text.
+  const { message, paths } = useMemo(
+    () => chatAttachmentService.parseAttachedPaths(text),
+    [text],
+  );
+  const hasAttachments = paths.length > 0;
+  const dir = getTextDirection(hasAttachments ? message : text);
+  const align = getTextAlignClass(hasAttachments ? message : text);
+  const displayText = hasAttachments ? message : text;
 
   return (
     <div class="group flex min-w-0 justify-end">
@@ -23,8 +39,11 @@ export function UserMessage({
                     whitespace-pre-wrap break-words [overflow-wrap:anywhere] ${align}`}
           style={{ unicodeBidi: "plaintext" }}
         >
-          {text}
+          {displayText}
         </div>
+        {hasAttachments && (
+          <AttachmentPreviews paths={paths} chatId={chatId} cwd={cwd} />
+        )}
         {onRewind && (
           <button
             type="button"
