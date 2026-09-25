@@ -15,7 +15,7 @@ type Provider struct {
 	models          modelCatalogSource
 	runtimeAssets   provisioning.RuntimeAssetProvisioner
 	binary          string
-	planUsage       *apiKeyValidator
+	planUsage       tokenPlanReader
 }
 
 type apiKeySource interface {
@@ -28,6 +28,7 @@ func newProvider(
 	models modelCatalogSource,
 	runtimeAssets provisioning.RuntimeAssetProvisioner,
 	binary string,
+	planUsage tokenPlanReader,
 ) *Provider {
 	return &Provider{
 		projectPreparer: projectPreparer,
@@ -35,7 +36,7 @@ func newProvider(
 		models:          models,
 		runtimeAssets:   runtimeAssets,
 		binary:          binary,
-		planUsage:       newAPIKeyValidator(),
+		planUsage:       planUsage,
 	}
 }
 

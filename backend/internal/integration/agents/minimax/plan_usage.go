@@ -14,6 +14,12 @@ import (
 
 var _ agent.PlanUsageReader = (*Provider)(nil)
 
+// tokenPlanReader is the provider's narrow dependency on MiniMax's Token Plan
+// API. The module factory shares one concrete client with API-key validation.
+type tokenPlanReader interface {
+	tokenPlan(context.Context, string) ([]json.RawMessage, error)
+}
+
 // ReadPlanUsage asks MiniMax's Token Plan API for each saved key. An API key
 // does not rotate during the read, so accounts can be read independently of
 // running chats. Pay-as-you-go keys are rejected by the existing key service.
