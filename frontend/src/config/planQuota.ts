@@ -38,10 +38,10 @@ export const PLAN_QUOTA_DEFAULT_PRESENTATION: PlanQuotaPresentation = {
 /** Names the provider's current login when it is listed beside saved accounts. */
 export const PLAN_QUOTA_CURRENT_LOGIN_LABEL = "Current login";
 
-/** The text and color for each projected quota state. */
-export const PLAN_QUOTA_TONES: Record<QuotaTone, { textClass: string; label: string }> = {
-  ok: { textClass: "text-accent-blue", label: "fine" },
-  warn: { textClass: "text-accent-orange", label: "getting low" },
-  spent: { textClass: "text-accent-red", label: "out" },
-  unknown: { textClass: "text-ink-400", label: "not reported" },
+/** The provider-neutral wording for a status-only quota reading. */
+export const PLAN_QUOTA_TONE_LABELS: Record<QuotaTone, string> = {
+  ok: "fine",
+  warn: "getting low",
+  spent: "out",
+  unknown: "not reported",
 };

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountQuota, QuotaWindow } from "../../../models/agentQuota.ts";
 import type { AgentAuthAccount, AgentAuthProvider } from "../../../models/auth.ts";
-import { projectPlanQuota, type PlanQuotaClock } from "./planQuotaState.ts";
+import { projectPlanQuota } from "./planQuotaState.ts";
+import type { PlanQuotaClock } from "./planQuotaWindowState.ts";
 
 // 2026-08-23T15:46:40Z: a fixed clock in a pinned locale and time zone, so
 // reset times read the same everywhere.
