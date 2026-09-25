@@ -34,6 +34,7 @@ function readAccountQuota(value: unknown): AccountQuota {
     accountId,
     session: readWindow(value.session, "session"),
     weekly: readWindow(value.weekly, "weekly"),
+    error: typeof value.error === "string" && value.error.trim() ? value.error.trim() : undefined,
   };
 }
 
