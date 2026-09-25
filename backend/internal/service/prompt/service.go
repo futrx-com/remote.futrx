@@ -88,11 +88,13 @@ type UsageRecorder interface {
 	RecordRun(ctx context.Context, event serviceusage.RunEvent)
 }
 
-// QuotaRecorder files the subscription windows the agent CLIs volunteer. It is
-// optional: without one the readings are dropped and the dashboard has no plan
-// card, which is the behaviour before this existed.
+// QuotaRecorder files the subscription windows the agent CLIs volunteer. A
+// plan belongs to the provider account that ran, so each window arrives with
+// the saved account ID its adapter stamped, or an empty ID for the provider's
+// host login. It is optional: without one the readings are dropped and the
+// dashboard has no plan card, which is the behaviour before this existed.
 type QuotaRecorder interface {
-	Record(ctx context.Context, provider agent.ProviderID, quota agent.Quota)
+	Record(ctx context.Context, provider agent.ProviderID, accountID string, quota agent.Quota)
 }
 
 type Option func(*Service)
@@ -122,7 +124,7 @@ func WithUsageRecorder(recorder UsageRecorder) Option {
 	}
 }
 
-// WithQuotaRecorder installs it.
+// WithQuotaRecorder installs the recipient of provider quota observations.
 func WithQuotaRecorder(recorder QuotaRecorder) Option {
 	return func(service *Service) {
 		service.quota = recorder

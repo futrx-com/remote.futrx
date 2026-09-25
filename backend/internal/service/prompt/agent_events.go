@@ -143,21 +143,19 @@ type ledgerRun struct {
 	scheduled bool
 }
 
-// recordQuota files a subscription window the CLI mentioned mid-run.
+// recordQuota files a subscription window the CLI mentioned mid-run under the
+// provider account the run used.
 //
 // It is separate from recordRunUsage because the two measure different things:
 // the ledger counts what this platform spent, and this is the vendor saying
-// how much of the operator's plan is left across everywhere they work.
+// how much of the account's plan is left across everywhere it is used.
 func (rnr *Service) recordQuota(ctx context.Context, ev agent.Event) {
 	if rnr.quota == nil || ev.Type != agent.EventQuotaUpdated || ev.Quota == nil {
 		return
 	}
-	// A cancelled request context must not throw away a reading that arrived
-	// before the cancel: the window is real whether or not the turn finished.
-	if ctx == nil || ctx.Err() != nil {
-		ctx = context.Background()
-	}
-	rnr.quota.Record(ctx, ev.Provider, *ev.Quota)
+	// A cancelled prompt must not throw away a reading that arrived before the
+	// cancel: the window is real whether or not the turn finished.
+	rnr.quota.Record(context.WithoutCancel(ctx), ev.Provider, ev.AccountID, *ev.Quota)
 }
 
 // recordRunUsage forwards a finished turn to the usage ledger. Only completed

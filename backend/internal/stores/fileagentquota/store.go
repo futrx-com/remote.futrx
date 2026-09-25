@@ -1,17 +1,16 @@
 // Package fileagentquota stores the last subscription-quota reading from each
-// agent integration at <dataDir>/agent-quota.json.
+// provider account at <dataDir>/agent-quota.json.
 //
 // Mode 0600 like the other settings stores, though this document holds no
-// secret — a percentage and a reset time. The file exists so the dashboard has
-// something to show after a restart: readings only arrive during a run, so
-// without it an operator who restarts the platform sees an empty card until
-// they happen to run an agent.
+// secret — a percentage, a reset time, and an opaque account ID. The file
+// exists so the dashboard has something to show after a restart: readings only
+// arrive during a run, so without it an operator who restarts the platform
+// sees an empty card until they happen to run an agent.
 package fileagentquota
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +22,13 @@ import (
 var _ agentquota.Repository = (*Store)(nil)
 
 const fileName = "agent-quota.json"
+
+// document is the file's shape. A file written before readings were kept per
+// account has no accounts list, so it loads as empty and the next reported
+// window replaces it.
+type document struct {
+	Accounts []agentquota.AccountQuota `json:"accounts"`
+}
 
 type Store struct {
 	root string
@@ -39,9 +45,9 @@ func New(dataDir string) (*Store, error) {
 func (s *Store) path() string { return filepath.Join(s.root, fileName) }
 
 // Load returns what was last seen. A missing or unreadable file is an empty
-// map, not an error: the readings are a convenience, and refusing to start the
+// list, not an error: the readings are a convenience, and refusing to start the
 // platform because a cache of percentages will not parse would be absurd.
-func (s *Store) Load(ctx context.Context) (map[string]agentquota.AgentQuota, error) {
+func (s *Store) Load(ctx context.Context) ([]agentquota.AccountQuota, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -52,23 +58,17 @@ func (s *Store) Load(ctx context.Context) (map[string]agentquota.AgentQuota, err
 	defer s.mu.Unlock()
 
 	raw, err := os.ReadFile(s.path())
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return map[string]agentquota.AgentQuota{}, nil
-		}
-		return map[string]agentquota.AgentQuota{}, nil
+	if err != nil || len(raw) == 0 {
+		return nil, nil
 	}
-	if len(raw) == 0 {
-		return map[string]agentquota.AgentQuota{}, nil
+	var saved document
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		return nil, nil
 	}
-	readings := map[string]agentquota.AgentQuota{}
-	if err := json.Unmarshal(raw, &readings); err != nil {
-		return map[string]agentquota.AgentQuota{}, nil
-	}
-	return readings, nil
+	return saved.Accounts, nil
 }
 
-func (s *Store) Save(ctx context.Context, readings map[string]agentquota.AgentQuota) error {
+func (s *Store) Save(ctx context.Context, readings []agentquota.AccountQuota) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -78,6 +78,9 @@ func (s *Store) Save(ctx context.Context, readings map[string]agentquota.AgentQu
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if readings == nil {
+		readings = []agentquota.AccountQuota{}
+	}
 	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
@@ -92,7 +95,7 @@ func (s *Store) Save(ctx context.Context, readings map[string]agentquota.AgentQu
 	}
 	encoder := json.NewEncoder(tmp)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(readings); err != nil {
+	if err := encoder.Encode(document{Accounts: readings}); err != nil {
 		tmp.Close()
 		return fmt.Errorf("write agent quota: %w", err)
 	}

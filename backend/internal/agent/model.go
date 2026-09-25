@@ -158,7 +158,13 @@ type Event struct {
 	InteractionID  string          `json:"interactionId,omitempty"`
 	Status         string          `json:"status,omitempty"`
 
-	// Quota is set only on EventQuotaUpdated.
+	// AccountID is the saved provider account a run used. Provider adapters
+	// set it on every event of a saved-account run and leave it empty when
+	// the run used the provider's host login.
+	AccountID string `json:"accountId,omitempty"`
+
+	// Quota is set only on EventQuotaUpdated. It describes the plan of the
+	// provider account named by Provider and AccountID.
 	Quota *Quota `json:"quota,omitempty"`
 
 	// NotificationSummary is an internal completion hint, never provider input.

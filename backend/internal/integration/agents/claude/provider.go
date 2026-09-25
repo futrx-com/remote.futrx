@@ -68,6 +68,9 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	if emit == nil {
 		emit = func(agent.Event) {}
 	}
+	if run != nil {
+		emit = agentruntime.EmitForAccount(emit, run.saved.AccountID)
+	}
 	if req.Provider == "" {
 		req.Provider = agent.ProviderClaude
 	}

@@ -8,15 +8,22 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
-// AgentQuotaService reports the last subscription window each agent mentioned.
+// AgentQuotaService reports the last subscription windows each provider
+// account mentioned.
 type AgentQuotaService interface {
-	View() []agentquota.AgentQuota
+	View() []agentquota.AccountQuota
 }
 
-// AgentQuotaHandler serves the home screen's plan card.
+// AgentQuotaHandler serves the Usage tab's plan-limits section.
 type AgentQuotaHandler struct {
 	quota AgentQuotaService
 	auth  *serviceauth.Service
+}
+
+// agentQuotaResponse lists readings by provider account. Account IDs are the
+// saved-account IDs from the agent-auth snapshot, which owns their labels.
+type agentQuotaResponse struct {
+	Accounts []agentquota.AccountQuota `json:"accounts"`
 }
 
 func NewAgentQuotaHandler(quota AgentQuotaService, auth *serviceauth.Service) *AgentQuotaHandler {
@@ -27,28 +34,35 @@ func (h *AgentQuotaHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agent-quota", h.handle)
 }
 
-// handle answers any signed-in user.
+// handle answers any signed-in user, or any caller on an install without
+// application authentication.
 //
 // An empty list is a real answer, not an error: readings only arrive while an
 // agent runs, so a platform nobody has used yet genuinely knows nothing. The
-// browser is expected to say "no reading yet" rather than draw an empty gauge.
+// browser hides the section until an account has reported a window.
 func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodGet {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	if h == nil || h.quota == nil {
-		httptransport.SendJSON(w, http.StatusOK, map[string]any{"agents": []agentquota.AgentQuota{}})
+		sendAgentQuota(w, nil)
 		return
 	}
-	email, _, err := httptransport.NewPrincipalResolver(h.auth).EmailAndAdmin(r.Context(), r)
-	if err != nil || email == "" {
-		httptransport.SendErr(w, http.StatusUnauthorized, "authentication required")
-		return
+	if h.auth != nil {
+		email, err := httptransport.NewPrincipalResolver(h.auth).Email(r)
+		if err != nil || email == "" {
+			httptransport.SendErr(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
 	}
-	agents := h.quota.View()
-	if agents == nil {
-		agents = []agentquota.AgentQuota{}
+	sendAgentQuota(w, h.quota.View())
+}
+
+func sendAgentQuota(w http.ResponseWriter, accounts []agentquota.AccountQuota) {
+	if accounts == nil {
+		accounts = []agentquota.AccountQuota{}
 	}
-	httptransport.SendJSON(w, http.StatusOK, map[string]any{"agents": agents})
+	httptransport.SendJSON(w, http.StatusOK, agentQuotaResponse{Accounts: accounts})
 }

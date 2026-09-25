@@ -16,6 +16,12 @@ package agent
 //   - codex app-server describes primary and secondary rate-limit windows,
 //     including percentage used, reset time, and window length.
 //
+// A plan belongs to one provider account. Claude and Codex keep several saved
+// subscription accounts and a chat may pin any of them, so the adapter stamps
+// the account a run used on its events (Event.AccountID) and each window is
+// filed under the account that reported it, not under the provider as a
+// whole.
+//
 // The normalized value is a last-seen observation, not a live counter.
 // Anything built on it must say when it was measured rather than implying it
 // is current.
