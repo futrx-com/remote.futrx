@@ -87,6 +87,9 @@ jobs:
         run: npm ci
       - name: Run frontend tests
         run: npm test
+      - name: Run application extension tests
+        working-directory: .
+        run: node --test applications/file-management/ui/scripts/*.test.mjs
       - name: Build frontend
         run: npm run build
 

@@ -63,7 +63,7 @@ go build ./... && go vet ./...
 | `pkg/applications/rpc/stream_test.go` | bounded absolute reads, seek behavior, disconnect cleanup, and blocked-read cancellation across the response-stream RPC boundary |
 | `lifecycle/event_bus_test.go`, `application_event_bridge_test.go` | defensive payload copies and canonical version-1 core event envelopes |
 | `handlers/applications_backend_handler_test.go` | which headers cross the boundary, plus streamed `GET`, `HEAD`, ranges, conditionals, and cancellation |
-| `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, per-instance spool cleanup, and application-wide archive slots |
+| `applications/file-management/backend/workspace/*_test.go` | rooted file access, symlink containment, bounded listing/search/archive behavior, media policy, unlinked spool cleanup/self-exclusion, and application-wide archive slots |
 | `applications/file-management/backend/api/api_test.go` | trusted chat-context requirement, route JSON, status mapping, dispositions, media policy, ZIP responses, and cancellation while waiting for an archive spool slot |
 
 `applications` tests compile real backends with the Go toolchain, so they take
@@ -199,8 +199,9 @@ Be aware of the gaps rather than assuming coverage:
   by hand.
 - **Rendering is not unit-tested.** `ExtensionSlot.tsx` has no test; the
   registry it reads from does. Rendering is verified in a browser.
-- **CI does not run `go test`.** Run it locally before pushing — see
-  [CONTRIBUTING](../../../CONTRIBUTING.md).
+- **Application UI tests live outside the frontend package.** CI runs the
+  File Management extension tests explicitly; add the same kind of step when
+  another application ships browser modules with their own Node tests.
 
 ## Before opening a pull request
 

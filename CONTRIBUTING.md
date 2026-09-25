@@ -174,7 +174,7 @@ There is no CI that exercises the installer against a server. `infra/` changes r
 ## Making changes
 
 - **Match the surrounding code.** The backend follows a strict layering: `transport → service → integration/store`. Don't reach across layers (e.g. no LXD calls from handlers). The frontend keeps state transitions in `frontend/src/state/` with unit tests pinning their behavior.
-- **Write or update tests.** Backend packages have table-driven `_test.go` files next to the code. Frontend state changes should extend the corresponding `*.test.ts` file (and the `test` script in `frontend/package.json` if you add a new one). Note that CI does not currently run `go test` — run it locally before pushing.
+- **Write or update tests.** Backend packages have table-driven `_test.go` files next to the code. Frontend state changes should extend the corresponding `*.test.ts` file (and the `test` script in `frontend/package.json` if you add a new one). Application-owned browser tests live outside `frontend/`, so add an explicit CI step for them as File Management does.
 - **Format and vet.** Run `gofmt` and `go vet ./...` on Go changes; `tsc -b` (via `npm run build`) must pass on frontend changes.
 - **Update docs** when behavior changes — `README.md` for user-facing behavior, the relevant file under `docs/` for architecture changes.
 
