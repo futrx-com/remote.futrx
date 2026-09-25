@@ -55,6 +55,13 @@ flowchart LR
 
 The backend embeds the compiled frontend, so Caddy only needs to proxy the main origin to the Go process.
 
+The Vite build stamps the bundle with a fingerprint of its `index.html`. That
+file names every content-hashed script and stylesheet, so the fingerprint
+changes only when the frontend itself changes. The stamp goes into the page as
+`<meta name="remote-build">` and is also served as `/build.json`, which is
+never cached. An open page compares the two and reloads itself after a deploy
+replaces its frontend. See [Frontend build after a deploy](#frontend-build-after-a-deploy).
+
 ## Host agent CLI convergence
 
 After the host toolchain is available and the target checkout is selected, the
@@ -187,6 +194,30 @@ The updater intentionally resets the installed application checkout to the
 requested tag/ref, defaulting to `origin/main` when none is supplied. The
 in-app updater supplies its selected release tag. Persistent application data
 and project workspaces live outside the tracked source tree.
+
+### Frontend build after a deploy
+
+Nobody has to reload after an update. Every open page checks `/build.json`
+when it loads, when it comes back into view, when the network returns, and
+once a minute while it is visible. The Updates screen also checks each time it
+polls a running update, so the administrator's page moves as soon as the
+restarted backend answers. A release that changes only the backend keeps the
+same stamp, so it does not reload anything.
+
+When the served build differs from the page's own stamp, the page reloads
+itself:
+
+| Page state | Behavior |
+| --- | --- |
+| Hidden, or the user is just returning to it | Reloads immediately |
+| Visible and idle | Reloads immediately |
+| Focus in a text field, or a modal dialog is open | Waits until focus leaves, the page is hidden, or the next check |
+| Composer holds attachment chips | Waits until they are sent or removed, because they exist only in page memory |
+
+Drafts and queued prompts survive the reload through `sessionStorage`. Each
+tab reloads at most once for each served build. It records that build in
+`sessionStorage`, so a cache that keeps returning an older `index.html` causes
+one extra reload, not a reload loop.
 
 ## Startup reconciliation
 

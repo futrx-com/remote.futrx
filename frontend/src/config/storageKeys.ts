@@ -25,4 +25,7 @@ export const STORAGE_KEYS = {
  */
 export const SESSION_STORAGE_KEYS = {
   composerSession: "remote.futrx.composerSession.v1",
+  /** The served frontend build this tab last reloaded for; stops a loop when
+   *  something between browser and server keeps handing back an older page. */
+  frontendBuildReload: "remote.futrx.frontendBuildReload",
 } as const;

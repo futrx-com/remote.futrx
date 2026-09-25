@@ -208,7 +208,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Notifications | Per-device Web Push permission, subscription, status, and test notification |
 | Agents | Module-driven admin cards: managed sign-in/status/refresh, external instructions, or no-auth status |
 | Users | Google OAuth configuration; add/remove users; member/admin roles |
-| Updates | Current release, update checks, and administrator-triggered update flow |
+| Updates | Current release, update checks, and administrator-triggered update flow. Open pages reload themselves once the new frontend is live. |
 | Info | Host CPU, memory, disks, network, OS/runtime, process, paths, role |
 
 ## Persistence reference

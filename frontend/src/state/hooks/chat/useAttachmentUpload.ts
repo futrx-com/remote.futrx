@@ -5,6 +5,7 @@ import type { UploadHandle } from "../../../types/uploadApi";
 import { idService } from "../../../services/platform/idService.ts";
 import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
 import { announceUpload } from "./attachmentClaimPolicy.ts";
+import { frontendBuildStore } from "../../stores/server/frontendBuildStore.ts";
 
 export function useAttachmentUpload(
   chatId: string,
@@ -43,6 +44,14 @@ export function useAttachmentUpload(
     },
     [clearAttachments]
   );
+
+  // The chips and their uploads live only in this page, so a reload onto a
+  // newer frontend waits until the composer has sent or dropped them.
+  const hasAttachments = attachments.length > 0;
+  useEffect(() => {
+    if (!hasAttachments) return;
+    return frontendBuildStore.getState().hold();
+  }, [hasAttachments]);
 
   useEffect(() => {
     attachmentBasePathRef.current = attachmentBasePath;

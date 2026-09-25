@@ -208,6 +208,7 @@ flowchart TD
 | Composer drafts and queued prompts | In-memory map mirrored to per-tab `sessionStorage`, keyed by chat ID |
 | Agent capability catalog | Last response in page memory, keyed by normalized user plus host/project scope; backend process memory owns TTL freshness |
 | Service-worker offline cache | Only the versioned, self-contained `/offline.html`; navigation and application data remain network-first |
+| Frontend build | Page's own stamp from `<meta name="remote-build">`; the served stamp from `/build.json` in `frontendBuildStore`. `useFrontendBuildSync` reloads onto a newer build (see [deployment](../04-operations/09-deployment-and-operations.md#frontend-build-after-a-deploy)). The last build this tab reloaded for is kept in per-tab `sessionStorage`. |
 | Browser drawer width | Browser `localStorage` |
 | Answered interactive question state | Browser storage used by the question renderer |
 
@@ -279,4 +280,5 @@ The initial snapshot is filtered to permitted projects for members. Current live
 - Workspace context: [`frontend/src/state/context/WorkspaceContext.tsx`](../../frontend/src/state/context/WorkspaceContext.tsx)
 - Workspace data hook: [`frontend/src/state/hooks/workspace/useWorkspaceData.ts`](../../frontend/src/state/hooks/workspace/useWorkspaceData.ts)
 - Per-tab composer persistence: [`frontend/src/state/chat/composerSessionStore.ts`](../../frontend/src/state/chat/composerSessionStore.ts)
+- Frontend build sync: [`frontend/src/state/hooks/server/useFrontendBuildSync.ts`](../../frontend/src/state/hooks/server/useFrontendBuildSync.ts), [`frontend/src/state/hooks/server/frontendBuildReloadState.ts`](../../frontend/src/state/hooks/server/frontendBuildReloadState.ts), [`frontend/src/state/stores/server/frontendBuildStore.ts`](../../frontend/src/state/stores/server/frontendBuildStore.ts), and the stamp plugin in [`frontend/vite.config.ts`](../../frontend/vite.config.ts)
 - Scheduled-task drawer and client API: [`frontend/src/ui/chat/schedules/`](../../frontend/src/ui/chat/schedules/), [`frontend/src/api/chat/chatScheduleApi.ts`](../../frontend/src/api/chat/chatScheduleApi.ts)
