@@ -78,7 +78,7 @@ func TestRefreshReadsEveryAccountAndReplacesItsWindows(t *testing.T) {
 	)
 	service := New(context.Background(), store, codex)
 	now := time.Unix(1_000, 0)
-	service.now = func() time.Time { return now }
+	service.refresher.now = func() time.Time { return now }
 
 	service.Refresh(context.Background())
 	want := map[string][]string{
@@ -98,7 +98,7 @@ func TestRefreshReadsEveryAccountAndReplacesItsWindows(t *testing.T) {
 		agent.AccountPlanUsage{AccountID: "work", Windows: []agent.Quota{usedWindow(agent.QuotaWindowSession, 55)}},
 		agent.AccountPlanUsage{AccountID: "personal"},
 	)
-	now = now.Add(service.refreshInterval)
+	now = now.Add(service.refresher.refreshInterval)
 	service.Refresh(context.Background())
 	want = map[string][]string{"codex/work": {"session=55"}}
 	if got := windowsOf(service.View()); !reflect.DeepEqual(got, want) {
@@ -110,10 +110,10 @@ func TestRefreshSharesOneAnswerWithinTheInterval(t *testing.T) {
 	codex := &fakeReader{provider: agent.ProviderCodex}
 	service := New(context.Background(), nil, codex)
 	now := time.Unix(1_000, 0)
-	service.now = func() time.Time { return now }
+	service.refresher.now = func() time.Time { return now }
 
 	service.Refresh(context.Background())
-	now = now.Add(service.refreshInterval - time.Second)
+	now = now.Add(service.refresher.refreshInterval - time.Second)
 	service.Refresh(context.Background())
 	if reads := codex.reads.Load(); reads != 1 {
 		t.Fatalf("reads within the interval = %d; want 1", reads)
@@ -191,11 +191,11 @@ func TestRefreshKeepsWindowsThroughAFailedRead(t *testing.T) {
 	claude := &fakeReader{provider: agent.ProviderClaude}
 	service := New(context.Background(), nil, claude)
 	now := time.Unix(1_000, 0)
-	service.now = func() time.Time { return now }
+	service.refresher.now = func() time.Time { return now }
 	read := func(answer ...agent.AccountPlanUsage) map[string][]string {
 		t.Helper()
 		claude.set(answer...)
-		now = now.Add(service.refreshInterval)
+		now = now.Add(service.refresher.refreshInterval)
 		service.Refresh(context.Background())
 		return windowsOf(service.View())
 	}
