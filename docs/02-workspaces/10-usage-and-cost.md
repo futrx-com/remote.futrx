@@ -132,8 +132,24 @@ Editing prices **does not retroactively change existing records.** Run a rebuild
 - A per-day bar chart (inline SVG, no chart library), switchable between tokens and cost.
 - A table grouped by project, user, provider, model, or day. While grouped by project, selecting a row drills down to that project's individual runs.
 - For administrators, a **Rebuild usage ledger** button.
+- Above the ledger, **Plan limits** once a subscription account has reported a window. See [Plan limits](#plan-limits).
 
 The project page header additionally shows a one-line month-to-date summary for that project.
+
+## Plan limits
+
+The ledger counts what this platform spent. A subscription plan is spent from everywhere its account is used, including an operator's laptop, so only the vendor knows how much is left. **Plan limits** shows the last five-hour and weekly windows the provider reported during a run, each with how long ago it was measured and when it resets. It is a last-seen snapshot, not a live counter: it moves only when an agent runs, and a reset that has passed is marked as awaiting a new reading.
+
+| Provider | Account type | What it reports |
+| --- | --- | --- |
+| **Claude** | Saved Claude subscription logins | `rate_limit_event` lines on the stream: a status such as `allowed` or `allowed_warning` and a reset time, usually without a percentage. A window without a percentage is shown by its status, never as 0% used. |
+| **Codex** | Saved ChatGPT logins | The app server's rate-limit updates, sent with each token count while a turn runs: a percentage and reset time for each window. |
+| **MiniMax** | Saved Token Plan keys | Nothing yet. |
+| **Kimi**, **Antigravity** | No saved accounts | Nothing. |
+
+A plan belongs to one account, not to the provider. Each run uses the chat's pinned account, or else the provider's active saved account, and its windows are listed under that account's label with its email, plan type, and whether it is the active account. While a provider has no active saved account, chats without a pinned account run on its current login, whose windows appear under the provider name, or as **Current login** beside saved accounts. Once an account is active, the current login's older reading is hidden, and a removed account's reading is never shown, so one account's number is never presented under another's name.
+
+The section reads `GET /api/agent-quota`, available to any signed-in user, and refreshes every 15 seconds while it is open; refreshing never contacts a provider or starts a run. Readings persist across restarts in `DATA_DIR/agent-quota.json`.
 
 ## Rebuilding
 
