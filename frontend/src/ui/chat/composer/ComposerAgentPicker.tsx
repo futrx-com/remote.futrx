@@ -116,7 +116,9 @@ export function ComposerAgentPicker({
       nextAccounts,
       nextProvider === provider ? accountId : "",
     ));
-    setMobileStep(nextAccounts?.items.length ? "accounts" : "models");
+    // Mirror the desktop Account column: the step is shown even without saved
+    // accounts, so a phone never skips from step 1 to step 3.
+    setMobileStep("accounts");
     setQuery("");
   }
 
@@ -139,11 +141,7 @@ export function ComposerAgentPicker({
   }
 
   function previousMobileStep() {
-    if (mobileStep === "models" && viewedAccounts?.items.length) {
-      setMobileStep("accounts");
-      return;
-    }
-    setMobileStep("providers");
+    setMobileStep(mobileStep === "models" ? "accounts" : "providers");
   }
 
   const triggerTitle = loading
@@ -202,9 +200,7 @@ export function ComposerAgentPicker({
                     type="button"
                     onClick={previousMobileStep}
                     class="-ml-1 rounded p-1 text-ink-300 hover:bg-tint-strong hover:text-ink-100 md:hidden"
-                    aria-label={mobileStep === "models" && viewedAccounts?.items.length
-                      ? "Back to accounts"
-                      : "Back to providers"}
+                    aria-label={mobileStep === "models" ? "Back to accounts" : "Back to providers"}
                   >
                     <ChevronLeft class="h-4 w-4" />
                   </button>
@@ -456,6 +452,14 @@ function AccountList({
               <p class="mt-1 text-[10.5px] leading-4 text-ink-400">
                 {providerLabel} has no saved account choices, so its configured login will be used.
               </p>
+              {/* Desktop shows the model column alongside; the phone step needs a way forward. */}
+              <button
+                type="button"
+                onClick={() => onChoose("")}
+                class="mt-3 h-9 w-full rounded-md bg-accent-blue/80 px-3 text-[12px] font-medium text-white transition hover:bg-accent-blue md:hidden"
+              >
+                Use default login
+              </button>
             </div>
           </div>
         )}
