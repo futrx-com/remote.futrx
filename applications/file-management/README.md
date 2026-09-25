@@ -58,9 +58,11 @@ without allowing escapes, and refuse special files.
 
 Changing the manifest version makes installed copies reconverge on the new
 package. The application has no container resources, service, port, credentials,
-or install script. Its only persistent state is temporary ZIP data beneath the
-instance `DataDir`; completed and failed requests remove their spool files, and
-uninstall removes the instance data directory. The backend holds one of two
+or install script. ZIPs are created beneath the instance `DataDir` and unlinked
+immediately while their open descriptors retain the temporary data; this keeps
+a loose-chat archive from discovering its own spool. Closing a completed or
+failed request releases that data, and uninstall removes the instance data
+directory. The backend holds one of two
 server-wide archive locks in the application's `SharedRuntimeDir` from the start
 of ZIP construction until the response stream closes. Process exit releases the
 lock automatically, and Remote removes shared runtime files during package

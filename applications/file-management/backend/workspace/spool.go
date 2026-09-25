@@ -20,10 +20,12 @@ const (
 const archiveSlotRetryInterval = 25 * time.Millisecond
 
 // Spooler bounds ZIP construction before any success response is returned.
-// ZIP files live in the installed instance's DataDir, preserving per-instance
-// restart and uninstall cleanup. Slot locks live in the application's shared
-// runtime directory, so the concurrency and aggregate-spool limits cover every
-// global and project instance rather than resetting in each backend process.
+// ZIP files are created in the installed instance's DataDir and immediately
+// unlinked while their descriptor stays open. That keeps a loose-chat archive
+// rooted above DataDir from discovering and recursively ingesting its own
+// growing spool. Slot locks live in the application's shared runtime directory,
+// so the concurrency and aggregate-spool limits cover every global and project
+// instance rather than resetting in each backend process.
 type Spooler struct {
 	directory     string
 	lockDirectory string
@@ -95,6 +97,9 @@ func (s *Spooler) Prepare(
 	temporary, err = os.CreateTemp(s.directory, "workspace-archive-*.zip")
 	if err != nil {
 		return nil, err
+	}
+	if err := os.Remove(temporary.Name()); err != nil {
+		return nil, fmt.Errorf("unlink archive spool: %w", err)
 	}
 	bounded := &boundedContextWriter{ctx: ctx, destination: temporary, remaining: s.maxBytes}
 	if err := writeArchive(bounded); err != nil {

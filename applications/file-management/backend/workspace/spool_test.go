@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"io"
@@ -56,6 +57,9 @@ func TestSpoolerBoundsConcurrencyAndCleansOnClose(t *testing.T) {
 		t.Fatalf("spooled size = %d, want %d", first.Size(), len("first"))
 	}
 	firstPath := first.file.Name()
+	if _, err := os.Stat(firstPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("open spool remains visible in the filesystem: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	second, err := spooler.Prepare(ctx, writePayload("second"))
@@ -131,8 +135,8 @@ func TestSpoolersShareArchiveSlotsAcrossApplicationInstances(t *testing.T) {
 	if third != nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("third shared archive = (%v, %v), want shared cap", third, err)
 	}
-	assertSpoolFileCount(t, firstDirectory, 1)
-	assertSpoolFileCount(t, secondDirectory, 1)
+	assertSpoolFileCount(t, firstDirectory, 0)
+	assertSpoolFileCount(t, secondDirectory, 0)
 
 	if err := first.Close(); err != nil {
 		t.Fatal(err)
@@ -143,6 +147,38 @@ func TestSpoolersShareArchiveSlotsAcrossApplicationInstances(t *testing.T) {
 	}
 	if err := third.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSpoolerDoesNotArchiveItselfWhenDirectoryIsInsideWorkspace(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "keep.txt"), []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	spooler, err := NewSpooler(
+		filepath.Join(root, "data", "applications", "file-management", "spool"),
+		t.TempDir(),
+		1,
+		1<<20,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewStore()
+	archive, err := spooler.Prepare(context.Background(), func(destination io.Writer) error {
+		return store.WriteArchive(context.Background(), root, "", destination)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+
+	reader, err := zip.NewReader(archive.file, archive.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reader.File) != 1 || reader.File[0].Name != "keep.txt" {
+		t.Fatalf("archive entries = %+v, want only keep.txt", reader.File)
 	}
 }
 
