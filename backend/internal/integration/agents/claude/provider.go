@@ -57,6 +57,9 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 			if err != nil {
 				return err
 			}
+			// Plan-usage reads leave the account alone until this run has
+			// offered its refreshed login back.
+			defer p.accounts.BeginIsolatedRun(saved.AccountID)()
 		} else {
 			releaseAccount, err = p.accounts.BeginRunFor(ctx, req.AccountID)
 			if err != nil {

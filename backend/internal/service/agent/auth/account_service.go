@@ -143,6 +143,11 @@ type AccountService struct {
 	login      *pendingAccountLogin
 	activeRuns int
 	hostStale  bool
+	// isolatedRuns counts, per saved account, runs in progress in a private
+	// home.
+	isolatedRuns map[string]int
+	usageReads   map[string]bool
+	usageIdle    *sync.Cond
 }
 
 type pendingAccountLogin struct {
@@ -574,6 +579,96 @@ func (s *AccountService) leaseRunLocked() func() {
 			s.mu.Unlock()
 		})
 	}
+}
+
+// BeginIsolatedRun records a run of accountID in a private home until the
+// returned release is called. Plan-usage reads leave such an account alone:
+// refreshing its login could spend the refresh token the running chat still
+// holds.
+func (s *AccountService) BeginIsolatedRun(accountID string) func() {
+	s.mu.Lock()
+	if s.usageIdle == nil {
+		s.usageIdle = sync.NewCond(&s.mu)
+	}
+	for s.usageReads[accountID] {
+		s.usageIdle.Wait()
+	}
+	if s.isolatedRuns == nil {
+		s.isolatedRuns = make(map[string]int)
+	}
+	s.isolatedRuns[accountID]++
+	s.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.mu.Lock()
+			s.isolatedRuns[accountID]--
+			if s.isolatedRuns[accountID] <= 0 {
+				delete(s.isolatedRuns, accountID)
+			}
+			s.mu.Unlock()
+		})
+	}
+}
+
+// WithIdleIsolatedAccount reads one saved account only while no run uses its
+// credential. A run starting during the read waits until read has offered any
+// refreshed login back to the vault.
+func (s *AccountService) WithIdleIsolatedAccount(accountID string, read func()) bool {
+	s.mu.Lock()
+	if s.isolatedRuns[accountID] > 0 || s.usageReads[accountID] {
+		s.mu.Unlock()
+		return false
+	}
+	if s.usageReads == nil {
+		s.usageReads = make(map[string]bool)
+	}
+	s.usageReads[accountID] = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.usageReads, accountID)
+		if s.usageIdle != nil {
+			s.usageIdle.Broadcast()
+		}
+		s.mu.Unlock()
+	}()
+	read()
+	return true
+}
+
+// WithIdleHostLogin runs read against the host login while no account change
+// can rewrite it: activations, imports, and finished logins wait until read
+// returns. It returns false without running read while a legacy run, or an
+// account login that may write the host, is using the host login.
+func (s *AccountService) WithIdleHostLogin(expectedActiveAccountID string, read func()) bool {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	s.mu.Lock()
+	busy := s.activeRuns > 0 || (s.config.LoginMayWriteHost && s.login != nil) ||
+		s.accounts.ActiveAccountID != expectedActiveAccountID ||
+		(expectedActiveAccountID != "" && (s.isolatedRuns[expectedActiveAccountID] > 0 || s.usageReads[expectedActiveAccountID]))
+	if busy {
+		s.mu.Unlock()
+		return false
+	}
+	if expectedActiveAccountID != "" {
+		if s.usageReads == nil {
+			s.usageReads = make(map[string]bool)
+		}
+		s.usageReads[expectedActiveAccountID] = true
+		defer func() {
+			s.mu.Lock()
+			delete(s.usageReads, expectedActiveAccountID)
+			if s.usageIdle != nil {
+				s.usageIdle.Broadcast()
+			}
+			s.mu.Unlock()
+		}()
+	}
+	s.mu.Unlock()
+	read()
+	return true
 }
 
 // CaptureAfterRun keeps a login the provider CLI refreshed during a run.

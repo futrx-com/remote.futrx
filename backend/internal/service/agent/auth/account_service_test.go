@@ -1837,3 +1837,116 @@ func TestAccountServiceImportCurrentRefusedDuringHostWritingLogin(t *testing.T) 
 	}
 	h.requireNoSaves(t)
 }
+
+func TestAccountServiceTracksIsolatedRunsPerAccount(t *testing.T) {
+	h := newAccountHarness(t, twoAccounts(), testCredential("w", "t1"))
+	first := h.service.BeginIsolatedRun("work")
+	second := h.service.BeginIsolatedRun("work")
+	if h.service.WithIdleIsolatedAccount("work", func() {}) || !h.service.WithIdleIsolatedAccount("home", func() {}) {
+		t.Fatal("isolated runs were not tracked per account")
+	}
+	first()
+	first()
+	if h.service.WithIdleIsolatedAccount("work", func() {}) {
+		t.Fatal("releasing one run twice ended another run of the same account")
+	}
+	second()
+	if !h.service.WithIdleIsolatedAccount("work", func() {}) {
+		t.Fatal("the account still reads as running after its runs ended")
+	}
+}
+
+func TestAccountServiceUsageReadFinishesBeforeAnIsolatedRunStarts(t *testing.T) {
+	h := newAccountHarness(t, twoAccounts(), testCredential("w", "t1"))
+	reading := make(chan struct{})
+	finish := make(chan struct{})
+	readDone := make(chan bool, 1)
+	go func() {
+		readDone <- h.service.WithIdleIsolatedAccount("work", func() {
+			close(reading)
+			<-finish
+		})
+	}()
+	<-reading
+	if h.service.WithIdleIsolatedAccount("work", func() {}) {
+		t.Fatal("a second usage read started for the same account")
+	}
+	if !h.service.WithIdleIsolatedAccount("home", func() {}) {
+		t.Fatal("an unrelated account's usage read was blocked")
+	}
+	started := make(chan func(), 1)
+	go func() { started <- h.service.BeginIsolatedRun("work") }()
+	select {
+	case release := <-started:
+		release()
+		t.Fatal("a run started before the usage read finished")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(finish)
+	if !<-readDone {
+		t.Fatal("the usage read was skipped")
+	}
+	release := <-started
+	if h.service.WithIdleIsolatedAccount("work", func() {}) {
+		t.Fatal("usage read started while the run was active")
+	}
+	release()
+	if !h.service.WithIdleIsolatedAccount("work", func() {}) {
+		t.Fatal("usage read stayed blocked after the run finished")
+	}
+}
+
+func TestAccountServiceWithIdleHostLoginSkipsABusyHostLogin(t *testing.T) {
+	h := newAccountHarness(t, twoAccounts(), testCredential("w", "t1"), loginMayWriteHost)
+	read := 0
+	count := func() { read++ }
+
+	release := h.beginRun(t)
+	if h.service.WithIdleHostLogin("work", count) || read != 0 {
+		t.Fatal("the host login was read while a run held it")
+	}
+	release()
+
+	h.startLogin(t, "New", "")
+	if h.service.WithIdleHostLogin("work", count) || read != 0 {
+		t.Fatal("the host login was read while an account login could write it")
+	}
+	_, _ = h.service.FinishLogin(errors.New("login abandoned"), "")
+	if !h.service.WithIdleHostLogin("work", count) || read != 1 {
+		t.Fatal("an idle host login was not read")
+	}
+}
+
+// Account changes wait for a host read instead of rewriting the login under
+// the CLI that is reading it.
+func TestAccountServiceWithIdleHostLoginHoldsAccountChanges(t *testing.T) {
+	h := newAccountHarness(t, twoAccounts(), testCredential("w", "t1"))
+	reading := make(chan struct{})
+	finish := make(chan struct{})
+	readDone := make(chan bool, 1)
+	go func() {
+		readDone <- h.service.WithIdleHostLogin("work", func() {
+			close(reading)
+			<-finish
+		})
+	}()
+	<-reading
+
+	activated := make(chan error, 1)
+	go func() { activated <- h.service.ActivateAccount(context.Background(), "home") }()
+	select {
+	case err := <-activated:
+		t.Fatalf("ActivateAccount finished during a host read: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	h.requireHost(t, testCredential("w", "t1"))
+
+	close(finish)
+	if !<-readDone {
+		t.Fatal("an idle host login was not read")
+	}
+	if err := <-activated; err != nil {
+		t.Fatalf("ActivateAccount after the read: %v", err)
+	}
+	h.requireActive(t, "home")
+}

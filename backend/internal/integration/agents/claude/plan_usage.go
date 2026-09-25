@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
 const (
@@ -23,6 +24,9 @@ const (
 	claudeUsageRequestID = "remote-plan-usage"
 	// claudeUsageReadTimeout bounds one account's read, CLI start included.
 	claudeUsageReadTimeout = 15 * time.Second
+	// claudeUsageExitGrace is how long the CLI may take to exit after its
+	// answer before it and everything it started are killed.
+	claudeUsageExitGrace = 2 * time.Second
 )
 
 var _ agent.PlanUsageReader = (*Provider)(nil)
@@ -32,22 +36,36 @@ var _ agent.PlanUsageReader = (*Provider)(nil)
 // them from claude.ai and refreshes an expired sign-in as a run would. No
 // prompt is sent, so a read spends none of the plan.
 //
-// Saved accounts are read one at a time in private config directories. The
-// host login is read only while no saved account is active, because only
-// then do chats without a pinned account run on it.
+// Saved accounts are read one at a time in private config directories, except
+// while a chat runs on one: the chat reports that account's limits itself,
+// and a read could refresh the login the chat still uses. The host login is
+// read only while no saved account is active, because only then do chats
+// without a pinned account run on it, and account changes wait for that read.
 func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 	var usages []agent.AccountPlanUsage
 	readHost := true
 	if p.accounts != nil {
 		snapshot := p.accounts.AccountsSnapshot()
 		for _, account := range snapshot.Items {
-			usages = append(usages, p.readSavedAccountUsage(ctx, account.ID))
+			p.accounts.WithIdleIsolatedAccount(account.ID, func() {
+				usages = append(usages, p.readSavedAccountUsage(ctx, account.ID))
+			})
 		}
 		readHost = snapshot.ActiveAccountID == ""
 	}
-	if readHost && hostHasSubscriptionLogin() {
-		windows, err := readClaudeUsage(ctx, "")
-		usages = append(usages, agent.AccountPlanUsage{Windows: windows, Err: err})
+	if readHost {
+		readHostLogin := func() {
+			if !hostHasSubscriptionLogin() {
+				return
+			}
+			windows, err := readClaudeUsage(ctx, "")
+			usages = append(usages, agent.AccountPlanUsage{Windows: windows, Err: err})
+		}
+		if p.accounts == nil {
+			readHostLogin()
+		} else {
+			p.accounts.WithIdleHostLogin("", readHostLogin)
+		}
 	}
 	return usages
 }
@@ -105,39 +123,24 @@ func readClaudeUsage(ctx context.Context, configDir string) ([]agent.Quota, erro
 	ctx, cancel := context.WithTimeout(ctx, claudeUsageReadTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "claude",
+	cmd := exec.Command("claude",
 		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose")
 	cmd.Env = claudeUsageEnv(os.Environ(), configDir)
 	cmd.Dir = os.TempDir()
-	stdin, err := cmd.StdinPipe()
+	var report claudeUsageReport
+	stderr, err := agentruntime.Converse(ctx, cmd, claudeUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+		var err error
+		report, err = requestClaudeUsage(stdin, stdout)
+		return err
+	})
 	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	var stderr strings.Builder
-	cmd.Stderr = &limitedWriter{builder: &stderr, limit: 2048}
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start claude: %w", err)
-	}
-	report, readErr := requestClaudeUsage(stdin, stdout)
-	_ = stdin.Close()
-	// Wait may close stdout only after everything the CLI printed was read.
-	_, _ = io.Copy(io.Discard, stdout)
-	waitErr := cmd.Wait()
-	if readErr != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("Claude usage read timed out: %w", ctx.Err())
 		}
-		if detail := strings.TrimSpace(stderr.String()); detail != "" {
-			return nil, fmt.Errorf("%w; claude: %s", readErr, detail)
+		if stderr != "" {
+			return nil, fmt.Errorf("%w; claude: %s", err, stderr)
 		}
-		if waitErr != nil {
-			return nil, fmt.Errorf("%w (%v)", readErr, waitErr)
-		}
-		return nil, readErr
+		return nil, err
 	}
 	return report.windows(time.Now()), nil
 }
@@ -252,21 +255,4 @@ func (r claudeUsageReport) windows(now time.Time) []agent.Quota {
 		windows = append(windows, quota)
 	}
 	return windows
-}
-
-// limitedWriter keeps the first limit bytes written to it.
-type limitedWriter struct {
-	builder *strings.Builder
-	limit   int
-}
-
-func (w *limitedWriter) Write(data []byte) (int, error) {
-	if room := w.limit - w.builder.Len(); room > 0 {
-		if len(data) > room {
-			w.builder.Write(data[:room])
-		} else {
-			w.builder.Write(data)
-		}
-	}
-	return len(data), nil
 }

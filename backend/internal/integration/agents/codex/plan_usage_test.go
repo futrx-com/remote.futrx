@@ -2,11 +2,13 @@ package codex
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -155,7 +157,8 @@ func TestReadCodexRateLimitsReportsAnAppServerThatNeverAnswers(t *testing.T) {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := readCodexRateLimits(ctx, t.TempDir()); err == nil || !strings.Contains(err.Error(), "closed before reporting usage") {
+	if _, err := readCodexRateLimits(ctx, t.TempDir()); err == nil ||
+		(!strings.Contains(err.Error(), "closed before reporting usage") && !errors.Is(err, syscall.EPIPE)) {
 		t.Fatalf("error = %v", err)
 	}
 }

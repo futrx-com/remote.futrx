@@ -15,10 +15,17 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
+	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
-// codexUsageReadTimeout bounds one account's read, app-server start included.
-const codexUsageReadTimeout = 15 * time.Second
+const (
+	// codexUsageReadTimeout bounds one account's read, app-server start
+	// included.
+	codexUsageReadTimeout = 15 * time.Second
+	// codexUsageExitGrace is how long the app server may take to exit after
+	// its answer before it and the wrapper that started it are killed.
+	codexUsageExitGrace = time.Second
+)
 
 var _ agent.PlanUsageReader = (*Provider)(nil)
 
@@ -27,11 +34,13 @@ var _ agent.PlanUsageReader = (*Provider)(nil)
 // from. The app server refreshes an expired sign-in as a run would, and no
 // turn is started, so a read spends none of the plan.
 //
-// Saved accounts are read one at a time in private CODEX_HOMEs. The host
-// login is read only while no saved account is active, because only then do
-// chats without a pinned account run on it. A Snap build ignores CODEX_HOME,
-// so there only the host login can be read, and it belongs to the active
-// account.
+// Saved accounts are read one at a time in private CODEX_HOMEs, except while
+// a chat runs on one: the chat reports that account's limits itself, and a
+// read could refresh the login the chat still uses. The host login is read
+// only while no saved account is active, because only then do chats without a
+// pinned account run on it, and account changes wait for that read. A Snap
+// build ignores CODEX_HOME, so there only the host login can be read, and it
+// belongs to the active account.
 func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 	var usages []agent.AccountPlanUsage
 	readHost, hostAccountID := true, ""
@@ -41,14 +50,27 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 			hostAccountID = snapshot.ActiveAccountID
 		} else {
 			for _, account := range snapshot.Items {
-				usages = append(usages, p.readSavedAccountUsage(ctx, account.ID))
+				p.accounts.WithIdleIsolatedAccount(account.ID, func() {
+					usages = append(usages, p.readSavedAccountUsage(ctx, account.ID))
+				})
 			}
 			readHost = snapshot.ActiveAccountID == ""
 		}
 	}
-	if signedIn, _, usesAPIKey := authenticated(); readHost && signedIn && !usesAPIKey {
-		windows, err := readCodexRateLimits(ctx, "")
-		usages = append(usages, agent.AccountPlanUsage{AccountID: hostAccountID, Windows: windows, Err: err})
+	if readHost {
+		readHostLogin := func() {
+			signedIn, _, usesAPIKey := authenticated()
+			if !signedIn || usesAPIKey {
+				return
+			}
+			windows, err := readCodexRateLimits(ctx, "")
+			usages = append(usages, agent.AccountPlanUsage{AccountID: hostAccountID, Windows: windows, Err: err})
+		}
+		if p.accounts == nil {
+			readHostLogin()
+		} else {
+			p.accounts.WithIdleHostLogin(hostAccountID, readHostLogin)
+		}
 	}
 	return usages
 }
@@ -96,36 +118,23 @@ func readCodexRateLimits(ctx context.Context, home string) ([]agent.Quota, error
 	ctx, cancel := context.WithTimeout(ctx, codexUsageReadTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "codex", "app-server")
+	cmd := exec.Command("codex", "app-server")
 	if home == "" {
 		cmd.Env = codexAuthEnv(os.Environ())
 	} else {
 		cmd.Env = isolatedCodexAuthEnvFor(os.Environ(), home)
 	}
-	stdin, err := cmd.StdinPipe()
+	var result json.RawMessage
+	_, err := agentruntime.Converse(ctx, cmd, codexUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+		var err error
+		result, err = requestCodexRateLimits(stdin, stdout)
+		return err
+	})
 	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stderr = io.Discard
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start codex app-server: %w", err)
-	}
-	result, readErr := requestCodexRateLimits(stdin, stdout)
-	// Any refreshed login was written before the answer, so the app server
-	// has nothing left to do; stop it rather than wait for its shutdown.
-	_ = stdin.Close()
-	_ = cmd.Process.Kill()
-	_, _ = io.Copy(io.Discard, stdout)
-	_ = cmd.Wait()
-	if readErr != nil {
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("Codex usage read timed out: %w", ctx.Err())
 		}
-		return nil, readErr
+		return nil, err
 	}
 	return codexharness.RateLimitQuotas(result, time.Now().UnixMilli()), nil
 }
