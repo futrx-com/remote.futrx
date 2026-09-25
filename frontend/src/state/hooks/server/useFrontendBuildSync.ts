@@ -19,21 +19,13 @@ export function useFrontendBuildSync(): void {
     if (!running) return;
 
     let reloading = false;
-    let blurTimer: number | undefined;
 
-    const settle = (opening: boolean) => {
+    const settle = () => {
       if (reloading) return;
-      const { served, holds } = frontendBuildStore.getState();
-      const decision = frontendBuildReloadState.decide({
-        running,
-        served,
-        reloadedFor: readReloadedFor(),
-        opening,
-        hidden: document.visibilityState === "hidden",
-        editing: isEditing(),
-        held: holds > 0,
-      });
-      if (decision !== "reload" || !served) return;
+      const { served } = frontendBuildStore.getState();
+      if (!served) return;
+      const reloadedFor = readReloadedFor();
+      if (!frontendBuildReloadState.shouldReload({ running, served, reloadedFor })) return;
       // Unrecorded, the next page could not tell a stale cache from an update
       // and would reload forever; staying on the old build is the lesser harm.
       if (!writeReloadedFor(served)) return;
@@ -41,52 +33,35 @@ export function useFrontendBuildSync(): void {
       window.location.reload();
     };
 
-    const check = (opening: boolean) => {
-      void frontendBuildStore.getState().check().then(() => settle(opening));
+    const check = () => {
+      void frontendBuildStore.getState().check();
     };
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") check(true);
-      else settle(false);
+      if (document.visibilityState === "visible") check();
     };
     const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) check(true);
-    };
-    const onOnline = () => check(false);
-    // Focus has not landed anywhere yet while focusout runs; decide after it.
-    const onFocusOut = () => {
-      window.clearTimeout(blurTimer);
-      blurTimer = window.setTimeout(() => settle(false), 0);
+      if (event.persisted) check();
     };
 
-    // A newer build or a released hold, from here or from another screen.
-    const unsubscribe = frontendBuildStore.subscribe(() => settle(false));
+    // A newer build, heard here or by the updates screen.
+    const unsubscribe = frontendBuildStore.subscribe(settle);
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pageshow", onPageShow);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("focusout", onFocusOut);
+    window.addEventListener("online", check);
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") check(false);
+      if (document.visibilityState === "visible") check();
     }, FRONTEND_BUILD.checkIntervalMs);
-    check(true);
+    check();
 
     return () => {
       unsubscribe();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pageshow", onPageShow);
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("focusout", onFocusOut);
+      window.removeEventListener("online", check);
       window.clearInterval(interval);
-      window.clearTimeout(blurTimer);
     };
   }, []);
-}
-
-function isEditing(): boolean {
-  if (document.querySelector('[aria-modal="true"]')) return true;
-  const active = document.activeElement;
-  if (!(active instanceof HTMLElement)) return false;
-  return active.isContentEditable || active.matches("input, textarea, select");
 }
 
 function readReloadedFor(): string | null {

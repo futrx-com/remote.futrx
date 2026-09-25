@@ -39,16 +39,3 @@ test("overlapping checks share one request", async () => {
   void store.getState().check();
   assert.equal(calls, 2);
 });
-
-test("counts holds, and a release only ever counts once", () => {
-  const store = createFrontendBuildStore(async () => null);
-  const releaseUploads = store.getState().hold();
-  const releaseOther = store.getState().hold();
-  assert.equal(store.getState().holds, 2);
-
-  releaseUploads();
-  releaseUploads();
-  assert.equal(store.getState().holds, 1);
-  releaseOther();
-  assert.equal(store.getState().holds, 0);
-});

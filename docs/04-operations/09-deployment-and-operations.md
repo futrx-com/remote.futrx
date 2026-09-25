@@ -205,14 +205,8 @@ restarted backend answers. A release that changes only the backend keeps the
 same stamp, so it does not reload anything.
 
 When the served build differs from the page's own stamp, the page reloads
-itself:
-
-| Page state | Behavior |
-| --- | --- |
-| Hidden, or the user is just returning to it | Reloads immediately |
-| Visible and idle | Reloads immediately |
-| Focus in a text field, or a modal dialog is open | Waits until focus leaves, the page is hidden, or the next check |
-| Composer holds attachment chips | Waits until they are sent or removed, because they exist only in page memory |
+itself right away. It does not wait for anything on the page, so an attachment
+chip that has not been sent yet is dropped.
 
 Drafts and queued prompts survive the reload through `sessionStorage`. Each
 tab reloads at most once for each served build. It records that build in

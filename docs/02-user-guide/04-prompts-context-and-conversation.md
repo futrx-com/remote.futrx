@@ -61,9 +61,8 @@ not normally appear in repository status.
 
 Uploads are resumable at the transport layer, but attachment chips in the
 composer are local page state. Do not reload until the uploads have completed
-and the prompt has been sent. After an update, the app waits to reload itself
-until the composer has no attachment chips. Remove an attachment chip to abort
-an in-progress upload or exclude a completed one from the prompt.
+and the prompt has been sent. Remove an attachment chip to abort an in-progress
+upload or exclude a completed one from the prompt.
 
 ## Queue the next prompt
 
