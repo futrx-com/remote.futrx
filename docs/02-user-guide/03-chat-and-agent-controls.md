@@ -29,7 +29,9 @@ Before sending a prompt:
 **Outcome:** Remote saves the selections to the chat and uses supported values
 to construct the next provider CLI run. The composer presents these choices in
 dependency order: select the provider first, then one of that provider's saved
-accounts when available, then the provider's model. The three values are
+accounts when available, then the provider's model. On a phone the picker shows
+the same three choices as numbered steps; a provider without saved accounts
+shows its default login at the account step. The three values are
 applied together, and the account is pinned to the chat. Changing between two
 pinned accounts keeps the visible transcript but starts a fresh provider
 session. The last provider, account, and model selection becomes that user's
