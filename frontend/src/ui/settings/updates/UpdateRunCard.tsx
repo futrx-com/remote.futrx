@@ -51,15 +51,6 @@ export function UpdateRunCard({
         {run.state === "running" && run.progress && (
           <UpdateProgress progress={run.progress} />
         )}
-        {run.state === "succeeded" && (
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            class="btn btn-primary btn-sm mt-2.5 font-medium"
-          >
-            Reload to use the new version
-          </button>
-        )}
         {run.state === "failed" && onRetry && (
           <button
             type="button"
