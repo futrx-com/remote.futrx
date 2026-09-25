@@ -29,3 +29,21 @@ func TestStaticHandlerServesAppShellForWorkspaceRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestStaticHandlerRevalidatesFrontendBuildManifest(t *testing.T) {
+	var files fs.FS = fstest.MapFS{
+		"index.html": &fstest.MapFile{Data: []byte("app shell")},
+		"build.json": &fstest.MapFile{Data: []byte(`{"build":"abc"}`)},
+	}
+	response := httptest.NewRecorder()
+	NewStaticHandler(files).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/build.json", nil))
+	if response.Code != http.StatusOK || response.Body.String() != `{"build":"abc"}` {
+		t.Fatalf("code %d body %q", response.Code, response.Body.String())
+	}
+	if got := response.Header().Get("Cache-Control"); got != "no-cache" {
+		t.Fatalf("Cache-Control = %q, want no-cache", got)
+	}
+	if got := response.Header().Get("Content-Type"); got != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", got)
+	}
+}
