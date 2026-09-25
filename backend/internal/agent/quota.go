@@ -1,5 +1,7 @@
 package agent
 
+import "context"
+
 // Subscription quota, as the agent CLIs report it.
 //
 // This is the operator's *plan* allowance — the rolling window a Claude Max or
@@ -55,4 +57,22 @@ type Quota struct {
 	// the honest half of the reading: the rest is a snapshot from whenever
 	// the last run happened.
 	MeasuredAt int64 `json:"measuredAt"`
+}
+
+// PlanUsageReader is an optional provider capability: asking the vendor for
+// every account's plan limits on demand, the way the CLI's own usage screen
+// does, instead of waiting for a run to mention them.
+type PlanUsageReader interface {
+	ID() ProviderID
+	ReadPlanUsage(ctx context.Context) []AccountPlanUsage
+}
+
+// AccountPlanUsage is what the vendor said about one account's plan just now.
+// AccountID is the saved account, or empty for the provider's host login.
+// Windows replaces the account's last reading, so a window it leaves out is
+// not in effect. Err says why the vendor could not be asked.
+type AccountPlanUsage struct {
+	AccountID string
+	Windows   []Quota
+	Err       error
 }

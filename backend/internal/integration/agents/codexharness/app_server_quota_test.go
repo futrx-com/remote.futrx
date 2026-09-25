@@ -60,7 +60,7 @@ func TestCodexQuotaReadingsSelectProductAndWindowDuration(t *testing.T) {
 		{name: "wrong number type", raw: `{"rateLimits":{"primary":{"usedPercent":"20","windowDurationMins":300}}}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if got := codexQuotaReadings(json.RawMessage(test.raw), now); !reflect.DeepEqual(got, test.want) {
+			if got := RateLimitQuotas(json.RawMessage(test.raw), now); !reflect.DeepEqual(got, test.want) {
 				t.Fatalf("readings = %#v; want %#v", got, test.want)
 			}
 		})

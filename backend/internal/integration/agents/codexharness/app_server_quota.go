@@ -33,7 +33,10 @@ type appServerRateLimitWindow struct {
 	ResetsAt           *int64   `json:"resetsAt"`
 }
 
-func codexQuotaReadings(raw json.RawMessage, now int64) []agent.Quota {
+// RateLimitQuotas reads the Codex subscription's windows from an
+// account/rateLimits notification or read response. A window is recognized
+// by its five-hour or seven-day duration, and other products are ignored.
+func RateLimitQuotas(raw json.RawMessage, now int64) []agent.Quota {
 	var limits appServerRateLimits
 	if json.Unmarshal(raw, &limits) != nil {
 		return nil
@@ -85,7 +88,7 @@ func (parser *appServerEventParser) quotaEvents(now int64, method string, raw js
 		return nil
 	}
 	var events []agent.Event
-	for _, quota := range codexQuotaReadings(raw, now) {
+	for _, quota := range RateLimitQuotas(raw, now) {
 		events = append(events, parser.event(now, method, agent.EventQuotaUpdated, raw, func(event *agent.Event) {
 			event.Quota = &quota
 		}))

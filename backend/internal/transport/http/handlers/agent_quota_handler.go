@@ -1,6 +1,7 @@
 package httphandlers
 
 import (
+	"context"
 	"net/http"
 
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
@@ -8,10 +9,11 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
-// AgentQuotaService reports the last subscription windows each provider
-// account mentioned.
+// AgentQuotaService reports each provider account's plan windows, asking the
+// providers again when its last answer is out of date.
 type AgentQuotaService interface {
-	View() []agentquota.AccountQuota
+	Refresh(ctx context.Context)
+	View() []agentquota.AccountView
 }
 
 // AgentQuotaHandler serves the Usage tab's plan-limits section.
@@ -23,7 +25,7 @@ type AgentQuotaHandler struct {
 // agentQuotaResponse lists readings by provider account. Account IDs are the
 // saved-account IDs from the agent-auth snapshot, which owns their labels.
 type agentQuotaResponse struct {
-	Accounts []agentquota.AccountQuota `json:"accounts"`
+	Accounts []agentquota.AccountView `json:"accounts"`
 }
 
 func NewAgentQuotaHandler(quota AgentQuotaService, auth *serviceauth.Service) *AgentQuotaHandler {
@@ -37,9 +39,10 @@ func (h *AgentQuotaHandler) RegisterRoutes(mux *http.ServeMux) {
 // handle answers any signed-in user, or any caller on an install without
 // application authentication.
 //
-// An empty list is a real answer, not an error: readings only arrive while an
-// agent runs, so a platform nobody has used yet genuinely knows nothing. The
-// browser hides the section until an account has reported a window.
+// Each request first lets the service ask the providers for current plan
+// limits, as Claude Code's /usage and Codex's /status do; the service shares
+// one answer between requests for a while. An empty list is a real answer,
+// not an error: an install without a subscription login has no plan to show.
 func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodGet {
@@ -57,12 +60,13 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	h.quota.Refresh(r.Context())
 	sendAgentQuota(w, h.quota.View())
 }
 
-func sendAgentQuota(w http.ResponseWriter, accounts []agentquota.AccountQuota) {
+func sendAgentQuota(w http.ResponseWriter, accounts []agentquota.AccountView) {
 	if accounts == nil {
-		accounts = []agentquota.AccountQuota{}
+		accounts = []agentquota.AccountView{}
 	}
 	httptransport.SendJSON(w, http.StatusOK, agentQuotaResponse{Accounts: accounts})
 }

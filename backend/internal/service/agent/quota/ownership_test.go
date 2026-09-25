@@ -29,7 +29,7 @@ func corruptReading(reading AccountQuota) {
 
 func assertOwnedReading(t *testing.T, service *Service) {
 	t.Helper()
-	want := []AccountQuota{ownedReading()}
+	want := []AccountView{{AccountQuota: ownedReading()}}
 	if got := service.View(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("service state changed through an external reference: got %+v, want %+v", got, want)
 	}
@@ -61,7 +61,7 @@ func TestViewReturnsIndependentWindows(t *testing.T) {
 	store := &memoryStore{readings: []AccountQuota{ownedReading()}}
 	service := New(context.Background(), store)
 	view := service.View()
-	corruptReading(view[0])
+	corruptReading(view[0].AccountQuota)
 	view[0].Provider = "changed"
 	view[0].AccountID = "changed"
 	view[0].Session = nil
@@ -112,7 +112,7 @@ func TestRecordSerializesPersistenceWithoutBlockingView(t *testing.T) {
 	var release sync.Once
 	defer release.Do(func() { close(store.releaseFirst) })
 
-	viewReady := make(chan []AccountQuota, 1)
+	viewReady := make(chan []AccountView, 1)
 	go func() { viewReady <- service.View() }()
 	select {
 	case view := <-viewReady:

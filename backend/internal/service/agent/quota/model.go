@@ -15,6 +15,14 @@ type AccountQuota struct {
 	Weekly  *agent.Quota `json:"weekly,omitempty"`
 }
 
+// AccountView is one account's plan as the Usage tab reads it.
+type AccountView struct {
+	AccountQuota
+	// Error says why the provider could not be asked for this account's
+	// limits just now. Any windows are the last ones it reported.
+	Error string `json:"error,omitempty"`
+}
+
 // accountKey names one provider account's plan.
 type accountKey struct {
 	provider string
