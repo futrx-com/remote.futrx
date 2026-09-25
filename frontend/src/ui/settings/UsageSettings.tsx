@@ -1,6 +1,5 @@
-import { useState } from "preact/hooks";
 import { USAGE_RANGE_PRESETS } from "../../config/usage";
-import type { UsageChartMetric, UsageGroupBy } from "../../models/usage";
+import type { UsageGroupBy } from "../../models/usage";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { usageFormatService } from "../../services/usage/usageFormatService.ts";
 import { usageRangeService } from "../../services/usage/usageRangeService.ts";
@@ -30,11 +29,9 @@ export function UsageSettings({
   rebuilding: boolean;
   rebuildMessage: string | null;
 }) {
-  const [metric, setMetric] = useState<UsageChartMetric>("tokens");
   const { summary, range, groupBy, drillDown } = dashboard;
   const labels = usageRangeService.labels(range);
   const totals = summary?.totals;
-  const note = totals ? usageFormatService.confidenceNote(totals) : null;
 
   if (dashboard.loading && !summary) {
     return (
@@ -143,18 +140,13 @@ export function UsageSettings({
         </div>
       )}
 
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid gap-3 sm:grid-cols-3">
         <KpiTile label="Total tokens" value={usageFormatService.tokens(totals?.totalTokens ?? 0)} />
-        <KpiTile
-          label="Estimated cost"
-          value={totals ? usageFormatService.costWithConfidence(totals) : "$0.00"}
-          detail={note ?? undefined}
-        />
         <KpiTile label="Runs" value={String(totals?.runs ?? 0)} />
         <KpiTile label="Active projects" value={String(summary?.projects ?? 0)} />
       </div>
 
-      <UsageBarChart daily={summary?.daily ?? []} metric={metric} onMetricChange={setMetric} />
+      <UsageBarChart daily={summary?.daily ?? []} />
 
       <UsageGroupTable
         groups={summary?.groups ?? []}
@@ -180,7 +172,7 @@ export function UsageSettings({
           <p class="mt-1 text-[12.5px] text-ink-300 leading-relaxed">
             Rebuild re-derives every usage record from the stored chat event logs. It is safe to
             run repeatedly and is how an existing install backfills history recorded before this
-            page existed. Prices live in <span class="font-mono">DATA_DIR/usage/prices.json</span>.
+            page existed.
           </p>
           <div class="mt-3 flex items-center gap-3">
             <button
@@ -200,20 +192,11 @@ export function UsageSettings({
   );
 }
 
-function KpiTile({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-}) {
+function KpiTile({ label, value }: { label: string; value: string }) {
   return (
     <div class="rounded-card border border-line bg-surface px-4 py-3">
       <div class="text-[11.5px] uppercase tracking-wide text-ink-400">{label}</div>
       <div class="mt-1 text-[22px] font-semibold text-ink-50 tabular-nums">{value}</div>
-      {detail && <div class="mt-1 text-[11.5px] text-ink-400 leading-snug">{detail}</div>}
     </div>
   );
 }

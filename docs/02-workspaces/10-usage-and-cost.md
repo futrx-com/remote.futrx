@@ -1,6 +1,6 @@
 # Usage and cost
 
-Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is spending, who ran it, on which provider and model, and how much it cost.
+Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is using tokens, who ran it, and on which provider and model. The page shows token usage only. The ledger also prices each run, as described below, and the usage API still returns that cost, but no dollar amount is shown in the UI.
 
 Two things this document is careful about, because getting them wrong makes the numbers worse than useless:
 
@@ -72,7 +72,7 @@ cost = (uncachedInput × inputPerMTok
       + cacheWrite × cacheWritePerMTok) / 1_000_000
 ```
 
-In the UI, an all-estimated total is prefixed with `~`, a partly estimated total is suffixed with `*`, and unpriced runs are called out under the cost tile.
+The UI does not show cost. It stays in the ledger and in the usage API's `costUsd`, `estimatedCostUsd`, and `unpricedRuns` fields.
 
 ## Editing the price table
 
@@ -128,13 +128,13 @@ Editing prices **does not retroactively change existing records.** Run a rebuild
 **Settings → Usage** shows, for the selected window:
 
 - A range picker: 7 days, 30 days, this month, or a custom pair of dates. All ranges are bounded in **UTC**, matching how the ledger buckets days.
-- KPI tiles: total tokens, estimated cost, runs, active projects.
-- A per-day bar chart (inline SVG, no chart library), switchable between tokens and cost.
+- KPI tiles: total tokens, runs, active projects.
+- A per-day bar chart of tokens (inline SVG, no chart library).
 - A table grouped by project, user, provider, model, or day. While grouped by project, selecting a row drills down to that project's individual runs.
 - For administrators, a **Rebuild usage ledger** button.
 - Above the ledger, **Plan limits** once a subscription account has reported a window. See [Plan limits](#plan-limits).
 
-The project page header additionally shows a one-line month-to-date summary for that project.
+The project page header additionally shows a one-line month-to-date token and run count for that project.
 
 ## Plan limits
 

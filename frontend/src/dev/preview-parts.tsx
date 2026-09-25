@@ -42,7 +42,6 @@ function Parts() {
             <UsagePill
               totals={{ inputTokens: 18422, outputTokens: 3120, cacheReadTokens: 90210, cacheWriteTokens: 1200 }}
               tokenLabel="112.9k"
-              costUsd={0.4213}
             />
             <ModelPicker
               modelRef={modelRef}

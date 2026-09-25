@@ -61,7 +61,7 @@ const tabs: Array<{
   {
     id: "usage",
     label: "Usage",
-    description: "Track tokens and estimated cost per project, user, provider, and model.",
+    description: "Track token usage per project, user, provider, and model.",
     Icon: Activity,
   },
   {
