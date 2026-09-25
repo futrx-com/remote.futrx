@@ -4,11 +4,11 @@ import type { Attachment } from "../../models/upload.ts";
 import { CHAT_UPLOAD_PATHS } from "../../config/chat.ts";
 
 const ATTACHED_FILES_HEADER = "Attached files:";
-
-// Single bullet prefix used in the rendered prompt. Files whose names start
-// with the prefix char survive the parser; we therefore slice off only the
-// first two chars ("- ").
-const ATTACHED_BULLET_PREFIX = /^\s*-\s?/;
+const ATTACHED_FILES_HEADER_LINE = `${ATTACHED_FILES_HEADER}\n`;
+// Matches exactly the bullet shape `promptWithAttachments` writes: a leading
+// dash followed by a single space. Tightening (vs. permissive whitespace)
+// keeps the parser symmetrical with the writer.
+const ATTACHED_BULLET_PREFIX = /^- /;
 
 export interface AttachedFileSection {
   /** The user message with the `Attached files:` block stripped out. */
@@ -63,45 +63,34 @@ class ChatAttachmentService {
    * verbatim.
    */
   parseAttachedPaths(text: string): AttachedFileSection {
+    const unchanged = { message: text, paths: [] as string[] };
     if (!text) return { message: "", paths: [] };
-    const headerOffset = text.indexOf(`${ATTACHED_FILES_HEADER}\n`);
-    if (headerOffset < 0) return { message: text, paths: [] };
 
-    // Must begin at the start or be preceded by a blank line.
-    const headerStart = headerOffset + `${ATTACHED_FILES_HEADER}\n`.length;
-    if (headerOffset !== 0) {
-      const before = text.slice(0, headerOffset);
-      if (!before.endsWith("\n\n")) return { message: text, paths: [] };
-    }
+    const headerOffset = text.indexOf(ATTACHED_FILES_HEADER_LINE);
+    if (headerOffset < 0) return unchanged;
 
-    const body = text.slice(headerStart);
+    // The block must be preceded by either the start of the text or a blank
+    // line; otherwise we leave the user's prose untouched.
+    const before = text.slice(0, headerOffset);
+    if (headerOffset !== 0 && !before.endsWith("\n\n")) return unchanged;
+
+    const body = text.slice(headerOffset + ATTACHED_FILES_HEADER_LINE.length);
     const lines = body.split("\n");
-    if (!lines.length || !ATTACHED_BULLET_PREFIX.test(lines[0])) {
-      return { message: text, paths: [] };
-    }
 
     const bulletLines: string[] = [];
     let i = 0;
     for (; i < lines.length; i++) {
-      if (!lines[i] || !ATTACHED_BULLET_PREFIX.test(lines[i])) break;
-      bulletLines.push(lines[i]);
+      const line = lines[i];
+      if (!line || !ATTACHED_BULLET_PREFIX.test(line)) break;
+      bulletLines.push(line);
     }
-    if (!bulletLines.length) return { message: text, paths: [] };
+    if (!bulletLines.length) return unchanged;
 
-    // Reject the block if any non-blank line after the bullets is not part of
-    // the trailing message tail. The bullet block extends to the first
-    // non-bullet, non-blank line.
+    // Reject the block if anything but blank lines trails the bullets.
     while (i < lines.length && lines[i] === "") i++;
-    if (i < lines.length) {
-      return { message: text, paths: [] };
-    }
+    if (i < lines.length) return unchanged;
 
-    const paths = bulletLines
-      .map((line) => line.replace(ATTACHED_BULLET_PREFIX, "").trim())
-      .filter((line) => line.length > 0);
-    if (!paths.length) return { message: text, paths: [] };
-
-    const before = text.slice(0, headerOffset);
+    const paths = bulletLines.map((line) => line.replace(ATTACHED_BULLET_PREFIX, "").trim());
     const message = before.endsWith("\n\n") ? before.slice(0, -2) : before;
     return { message, paths };
   }
