@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
 import { internalPathOpenUrl } from "../ideLinks";
+import { isChatMediaOpenUrl } from "../../../config/routes";
 import { hasLtrText, isRtlText, splitBidiSegments } from "./bidi";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
@@ -164,7 +165,7 @@ function renderImage(src: string, alt: string, rawSrc: string, key: string): Com
   // preserved as a title attribute for hover introspection.
   const fileName = rawSrc.split("/").pop()?.split(/[:#]/)[0] || alt || "image";
   const mediaKind = fileService.viewableMediaKind(fileName);
-  if (mediaKind === "image" && src.includes("/media-open?")) {
+  if (mediaKind === "image" && isChatMediaOpenUrl(src)) {
     return (
       <button
         key={key}
@@ -277,7 +278,7 @@ function trimTrailingUrlPunctuation(url: string): string {
 function maybeOpenMediaViewer(event: MouseEvent, href: string): void {
   if (event.defaultPrevented) return;
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  if (!href.includes("/media-open?")) return;
+  if (!isChatMediaOpenUrl(href)) return;
   const name = mediaOpenFileName(href);
   const kind = name ? fileService.viewableMediaKind(name) : null;
   if (!name || !kind) return;
