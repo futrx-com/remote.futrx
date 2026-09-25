@@ -4,17 +4,16 @@ import { usePlanQuota } from "../../../state/hooks/usage/usePlanQuota";
 import { Key, Loader } from "../../primitives/icons";
 
 /**
- * Plan limits: how much of each Claude and Codex subscription account is left.
+ * Plan limits: how much of each supported provider account's plan is left.
  *
- * It sits above the ledger because the two answer different questions with
- * different money. The ledger below is what this platform spent and can prove.
+ * It sits above the ledger because the two answer different questions. The
+ * ledger below counts the tokens this platform spent and can prove.
  * This is a rolling subscription window the vendor owns, spent from everywhere
  * the account is used — the operator's laptop included — which is why it can
  * move while the ledger does not.
  *
- * The server asks each provider for its accounts' current limits, as Claude
- * Code's /usage and Codex's /status do, and each window is shown in that
- * CLI's words. A plan belongs to one provider account, so a provider with
+ * The server asks each provider for its accounts' current limits, using the
+ * provider's CLI or plan API. A plan belongs to one provider account, so one with
  * several saved accounts lists each account under its own label.
  */
 export function PlanQuotaSection() {

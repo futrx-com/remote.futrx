@@ -174,6 +174,9 @@ read in a private CLI home made from its vault credential, one account at a
 time, and a login the CLI refreshed is offered back through
 `CaptureRunCredential`. The host login is read in place, and only while the
 provider has no active saved account. No prompt or turn is sent.
+MiniMax's reader calls `/v1/token_plan/remains` once for each saved Token Plan
+key and uses the coding bucket's explicit remaining percentages. It does not
+infer a percentage from the API's ambiguous count fields.
 
 A plan belongs to one provider account. For a saved-account run, the Claude
 and Codex adapters wrap the run's event callback with
@@ -221,8 +224,8 @@ saved accounts; once an account is active it is hidden. A removed account's
 reading is never shown.
 The projection builds display contracts in `models/planQuota.ts` from
 `config/planQuota.ts`: each provider's window labels and measure, as its CLI
-prints them (Claude's floored percentage used, Codex's rounded percentage
-left), tones, and thresholds. Missing percentages stay absent, so a
+prints them (Claude's floored percentage used, Codex's and MiniMax's rounded
+percentage left), tones, and thresholds. Missing percentages stay absent, so a
 status-only window never acquires a zero-percent bar. A reported zero has zero
 bar width, and bars are capped at 100%. Reset times are absolute in the
 viewer's time zone, with the date only when the reset is not today, and an

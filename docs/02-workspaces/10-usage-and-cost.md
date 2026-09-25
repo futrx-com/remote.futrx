@@ -144,10 +144,10 @@ The ledger counts what this platform spent. A subscription plan is spent from ev
 | --- | --- | --- | --- |
 | **Claude** | Saved Claude subscription logins | Claude Code's `get_usage` control request, the data behind `/usage` | **Current session** and **Current week (all models)**, as a percentage used |
 | **Codex** | Saved ChatGPT logins | The app server's `account/rateLimits/read`, the data behind `/status` | **5h limit** and **Weekly limit**, as a percentage left; a plan with only a weekly limit shows only that |
-| **MiniMax** | Saved Token Plan keys | Not read yet | — |
+| **MiniMax** | Saved Token Plan keys | `GET /v1/token_plan/remains` with each saved key | **5h limit** and **Weekly limit**, as a percentage left when the coding bucket reports them |
 | **Kimi**, **Antigravity** | No saved accounts | Not read | — |
 
-While the Usage tab is open, the server asks each provider for every saved account's current limits, at most once a minute, and shows when each window resets. A read starts the provider's CLI headless and sends no prompt, so it spends none of the plan; if the CLI refreshes an expired sign-in, the refreshed login is saved back to the account by the same rules as a run. Runs keep the numbers current in between: Claude and Codex report their windows while they work.
+While the Usage tab is open, the server asks each provider for every saved account's current limits, at most once a minute, and shows when each window resets. Claude and Codex use a headless CLI request that sends no prompt, so it spends none of the plan; if the CLI refreshes an expired sign-in, the refreshed login is saved back to the account by the same rules as a run. MiniMax uses its Token Plan API with the saved key. Runs keep the numbers current in between: Claude and Codex report their windows while they work.
 
 A plan belongs to one account, not to the provider. Each saved account is listed under its label with its email, plan type, and whether it is the active account. While a provider has no active saved account, chats without a pinned account run on its current login, whose limits appear under the provider name, or as **Current login** beside saved accounts. A removed account's reading is never shown, so one account's number is never presented under another's name.
 

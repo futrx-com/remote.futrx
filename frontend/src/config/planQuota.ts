@@ -14,14 +14,17 @@ export const PLAN_QUOTA_CLOCK_INTERVAL_MS = 15_000;
 /** A reading older than this says how old it is. */
 export const PLAN_QUOTA_STALE_AFTER_MS = 5 * 60_000;
 
-/** Each provider's windows as its own CLI shows them: Claude Code's /usage
- *  and Codex's /status. */
+/** Each provider's windows as its own CLI or plan API shows them. */
 export const PLAN_QUOTA_PRESENTATIONS: Readonly<Record<string, PlanQuotaPresentation>> = {
   claude: {
     windows: { session: "Current session", weekly: "Current week (all models)" },
     measure: "used",
   },
   codex: {
+    windows: { session: "5h limit", weekly: "Weekly limit" },
+    measure: "left",
+  },
+  minimax: {
     windows: { session: "5h limit", weekly: "Weekly limit" },
     measure: "left",
   },

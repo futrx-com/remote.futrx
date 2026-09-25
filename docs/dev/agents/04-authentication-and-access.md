@@ -262,7 +262,8 @@ account, such as its plan limits, is filed under it. Events from a legacy
 host-login run carry no account ID. The Usage tab's plan-limit reads use the
 same credential snapshots: each saved Claude or Codex account is read in a
 private temporary home without a prompt, and a login the CLI refreshed there
-goes through `CaptureRunCredential` like a run's. See
+goes through `CaptureRunCredential` like a run's. MiniMax reads the Token Plan
+API once per saved key and uses its reported remaining percentages. See
 [Agent quota snapshots](../../03-platform/07-data-and-frontend-state.md#agent-quota-snapshots).
 
 ### Capture after runs

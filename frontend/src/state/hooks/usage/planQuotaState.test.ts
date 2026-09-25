@@ -64,6 +64,9 @@ test("each provider's windows read the way its own CLI prints them", () => {
     [["5h limit", "55% left", 55], ["Weekly limit", "0% left", 0]],
   );
 
+  const minimax = project(win({ usedPercent: 35 }), "minimax");
+  assert.deepEqual([minimax.label, minimax.value, minimax.barPercent], ["5h limit", "65% left", 65]);
+
   const other = project(win({ usedPercent: 12 }), "future-cli");
   assert.deepEqual([other.label, other.value], ["5-hour limit", "12% used"]);
 });
@@ -84,7 +87,7 @@ test("a rejected window reads as spent whatever the percentage says", () => {
 });
 
 test("the used percentage sets the tone in either measure", () => {
-  for (const provider of ["claude", "codex"]) {
+  for (const provider of ["claude", "codex", "minimax"]) {
     assert.equal(project(win({ usedPercent: 12 }), provider).tone, "ok");
     assert.equal(project(win({ usedPercent: 74 }), provider).tone, "warn");
     assert.equal(project(win({ usedPercent: 95 }), provider).tone, "spent");
