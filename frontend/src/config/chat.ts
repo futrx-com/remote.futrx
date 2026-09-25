@@ -1,5 +1,4 @@
 import type { ApprovalPolicy, SandboxPolicy } from "../models/chat";
-import { PROVIDER_DISPLAY_LABELS } from "./agents.ts";
 import { capitalize } from "./text.ts";
 
 export const DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS = 6000;
@@ -61,7 +60,14 @@ export function modelShortLabel(model?: string): string {
 
 export function providerDisplayLabel(provider?: string): string {
   if (!provider) return "Codex";
-  return PROVIDER_DISPLAY_LABELS[provider] ?? provider
+  const knownLabels: Record<string, string> = {
+    antigravity: "Antigravity",
+    claude: "Claude",
+    codex: "Codex",
+    kimi: "Kimi",
+    minimax: "MiniMax",
+  };
+  return knownLabels[provider] ?? provider
     .split("-")
     .filter(Boolean)
     .map(capitalize)

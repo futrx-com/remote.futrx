@@ -6,46 +6,29 @@
  * the total. Provider integrations obtain that total through their native
  * protocols, so every reading is a last-seen snapshot and carries when it was
  * taken.
+ *
+ * A plan belongs to one provider account. Readings name the saved account a
+ * run used by its ID; the agent-auth catalog owns that account's label.
  */
 export type QuotaWindowKind = "session" | "weekly";
 
 export interface QuotaWindow {
   window: QuotaWindowKind;
-  /** 0–100, absent when the CLI reports a status instead of a number. */
+  /** Nonnegative percentage; may exceed 100 when a plan is over its limit. */
   usedPercent?: number;
-  /** Unix seconds. 0 when the CLI did not say. */
+  /** Unix seconds. Absent when the CLI did not say. */
   resetsAt?: number;
   /** The CLI's own word: "allowed", "allowed_warning", "rejected". */
   status?: string;
-  /** Unix ms — when this platform saw it, not when it was true. */
+  /** Unix ms — when this platform saw it, not when it was true. 0 if unknown. */
   measuredAt: number;
 }
 
-export interface AgentQuota {
+/** Every window one provider account has reported. */
+export interface AccountQuota {
   provider: string;
+  /** The saved account the windows belong to; empty for the host login. */
+  accountId: string;
   session?: QuotaWindow;
   weekly?: QuotaWindow;
-}
-
-export interface AgentQuotaResponse {
-  agents?: AgentQuota[];
-}
-
-export type QuotaTone = "ok" | "warn" | "spent" | "unknown";
-
-/** Render-ready projection consumed by the plan-limits section. */
-export interface PlanQuotaWindow {
-  kind: QuotaWindowKind;
-  label: string;
-  tone: QuotaTone;
-  percent: number | null;
-  barPercent: number | null;
-  reset: string;
-}
-
-export interface PlanQuotaRow {
-  provider: string;
-  label: string;
-  measured: string;
-  windows: PlanQuotaWindow[];
 }
