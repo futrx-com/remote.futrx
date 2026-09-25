@@ -13,9 +13,10 @@ import (
 // keeps its last reading. A snapshot may describe several metered products;
 // only the Codex bucket describes the subscription displayed by Remote.
 //
-// Remote does not also call account/rateLimits/read. The app server finishes
+// A run does not also call account/rateLimits/read: the app server finishes
 // in-flight requests before it exits when its input closes, so an unanswered
-// read would hold back the end of every short turn.
+// read would hold back the end of every short turn. The Usage tab's on-demand
+// reads start an app server of their own (codex/plan_usage.go).
 type appServerRateLimits struct {
 	RateLimits          json.RawMessage            `json:"rateLimits"`
 	RateLimitsByLimitID map[string]json.RawMessage `json:"rateLimitsByLimitId"`
@@ -33,7 +34,10 @@ type appServerRateLimitWindow struct {
 	ResetsAt           *int64   `json:"resetsAt"`
 }
 
-func codexQuotaReadings(raw json.RawMessage, now int64) []agent.Quota {
+// RateLimitQuotas reads the Codex subscription's windows from an
+// account/rateLimits notification or read response. A window is recognized
+// by its five-hour or seven-day duration, and other products are ignored.
+func RateLimitQuotas(raw json.RawMessage, now int64) []agent.Quota {
 	var limits appServerRateLimits
 	if json.Unmarshal(raw, &limits) != nil {
 		return nil
@@ -85,7 +89,7 @@ func (parser *appServerEventParser) quotaEvents(now int64, method string, raw js
 		return nil
 	}
 	var events []agent.Event
-	for _, quota := range codexQuotaReadings(raw, now) {
+	for _, quota := range RateLimitQuotas(raw, now) {
 		events = append(events, parser.event(now, method, agent.EventQuotaUpdated, raw, func(event *agent.Event) {
 			event.Quota = &quota
 		}))

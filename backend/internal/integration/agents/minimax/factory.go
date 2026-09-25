@@ -33,11 +33,12 @@ func NewFactory() (agentmodule.Factory, error) {
 			ExecutionPolicies: true,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
+		tokenPlans := newAPIKeyValidator()
 		apiKeys, err := agentauth.NewAPIKeyService(
 			context.Background(),
 			agent.ProviderMiniMax,
 			deps.APIKeys,
-			newAPIKeyValidator(),
+			tokenPlans,
 		)
 		if err != nil {
 			return agentmodule.Components{}, err
@@ -53,6 +54,7 @@ func NewFactory() (agentmodule.Factory, error) {
 				newModelCatalogClient(),
 				deps.RuntimeAssets,
 				validatedProfile.CLI.Binary,
+				tokenPlans,
 			),
 			Auth: &binding,
 		}, nil

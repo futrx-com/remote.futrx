@@ -31,4 +31,7 @@ export interface AccountQuota {
   accountId: string;
   session?: QuotaWindow;
   weekly?: QuotaWindow;
+  /** Why the provider could not be asked for this account's limits just now;
+   *  any windows are the last ones it reported. */
+  error?: string;
 }

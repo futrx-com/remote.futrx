@@ -12,11 +12,19 @@ import (
 )
 
 type stubAgentQuota struct {
-	accounts []agentquota.AccountQuota
-	views    int
+	accounts  []agentquota.AccountView
+	refreshes int
+	views     int
 }
 
-func (s *stubAgentQuota) View() []agentquota.AccountQuota {
+func (s *stubAgentQuota) Refresh(context.Context) {
+	s.refreshes++
+}
+
+func (s *stubAgentQuota) View() []agentquota.AccountView {
+	if s.refreshes == 0 {
+		panic("View before Refresh")
+	}
 	s.views++
 	return s.accounts
 }
@@ -45,14 +53,16 @@ func TestAgentQuotaResponseAndGuards(t *testing.T) {
 		{"missing session", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{}, auth), "", 401, `{"error":"authentication required"}`},
 		{"invalid session", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{}, auth), "invalid", 401, `{"error":"authentication required"}`},
 		{"nil readings", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{}, auth), token, 200, `{"accounts":[]}`},
-		{"saved account and host login", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountQuota{
-			{Provider: "codex", Session: &agent.Quota{Window: agent.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123}},
-			{Provider: "codex", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}},
+		{"saved account, host login and failed read", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountView{
+			{AccountQuota: agentquota.AccountQuota{Provider: "codex", Session: &agent.Quota{Window: agent.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123}}},
+			{AccountQuota: agentquota.AccountQuota{Provider: "codex", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}}},
+			{AccountQuota: agentquota.AccountQuota{Provider: "codex", AccountID: "spare"}, Error: "sign-in expired"},
 		}}, auth), token, 200, `{"accounts":[` +
 			`{"provider":"codex","session":{"window":"session","usedPercent":0,"measuredAt":123}},` +
-			`{"provider":"codex","accountId":"work","weekly":{"window":"weekly","status":"allowed","measuredAt":456}}]}`},
-		{"reported window without auth", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountQuota{{
-			Provider: "claude", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456},
+			`{"provider":"codex","accountId":"work","weekly":{"window":"weekly","status":"allowed","measuredAt":456}},` +
+			`{"provider":"codex","accountId":"spare","error":"sign-in expired"}]}`},
+		{"reported window without auth", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountView{{
+			AccountQuota: agentquota.AccountQuota{Provider: "claude", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}},
 		}}}, nil), "", 200, `{"accounts":[{"provider":"claude","accountId":"work","weekly":{"window":"weekly","status":"allowed","measuredAt":456}}]}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -72,12 +82,15 @@ func TestAgentQuotaResponseAndGuards(t *testing.T) {
 				t.Fatalf("cache control = %q", response.Header().Get("Cache-Control"))
 			}
 			if test.handler != nil && test.handler.quota != nil {
-				wantViews := 0
+				// Only a caller allowed to see the plans may make the service
+				// ask the providers again.
+				want := 0
 				if test.status == http.StatusOK {
-					wantViews = 1
+					want = 1
 				}
-				if views := test.handler.quota.(*stubAgentQuota).views; views != wantViews {
-					t.Fatalf("View calls = %d; want %d", views, wantViews)
+				stub := test.handler.quota.(*stubAgentQuota)
+				if stub.refreshes != want || stub.views != want {
+					t.Fatalf("Refresh calls = %d, View calls = %d; want %d each", stub.refreshes, stub.views, want)
 				}
 			}
 		})

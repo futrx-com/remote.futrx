@@ -1,6 +1,6 @@
 # Usage and cost
 
-Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is spending, who ran it, on which provider and model, and how much it cost.
+Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is using tokens, who ran it, and on which provider and model. The page shows token usage only. The ledger also prices each run, as described below, and the usage API still returns that cost, but no dollar amount is shown in the UI.
 
 Two things this document is careful about, because getting them wrong makes the numbers worse than useless:
 
@@ -72,7 +72,7 @@ cost = (uncachedInput × inputPerMTok
       + cacheWrite × cacheWritePerMTok) / 1_000_000
 ```
 
-In the UI, an all-estimated total is prefixed with `~`, a partly estimated total is suffixed with `*`, and unpriced runs are called out under the cost tile.
+The UI does not show cost. It stays in the ledger and in the usage API's `costUsd`, `estimatedCostUsd`, and `unpricedRuns` fields.
 
 ## Editing the price table
 
@@ -128,28 +128,30 @@ Editing prices **does not retroactively change existing records.** Run a rebuild
 **Settings → Usage** shows, for the selected window:
 
 - A range picker: 7 days, 30 days, this month, or a custom pair of dates. All ranges are bounded in **UTC**, matching how the ledger buckets days.
-- KPI tiles: total tokens, estimated cost, runs, active projects.
-- A per-day bar chart (inline SVG, no chart library), switchable between tokens and cost.
+- KPI tiles: total tokens, runs, active projects.
+- A per-day bar chart of tokens (inline SVG, no chart library).
 - A table grouped by project, user, provider, model, or day. While grouped by project, selecting a row drills down to that project's individual runs.
 - For administrators, a **Rebuild usage ledger** button.
 - Above the ledger, **Plan limits** once a subscription account has reported a window. See [Plan limits](#plan-limits).
 
-The project page header additionally shows a one-line month-to-date summary for that project.
+The project page header additionally shows a one-line month-to-date token and run count for that project.
 
 ## Plan limits
 
-The ledger counts what this platform spent. A subscription plan is spent from everywhere its account is used, including an operator's laptop, so only the vendor knows how much is left. **Plan limits** shows the last five-hour and weekly windows the provider reported during a run, each with how long ago it was measured and when it resets. It is a last-seen snapshot, not a live counter: it moves only when an agent runs, and a reset that has passed is marked as awaiting a new reading.
+The ledger counts what this platform spent. A subscription plan is spent from everywhere its account is used, including an operator's laptop, so only the vendor knows how much is left. **Plan limits** shows each subscription account's five-hour and weekly limits the way the provider's own CLI shows them: Claude Code's `/usage` and Codex's `/status`.
 
-| Provider | Account type | What it reports |
-| --- | --- | --- |
-| **Claude** | Saved Claude subscription logins | `rate_limit_event` lines on the stream: a status such as `allowed` or `allowed_warning` and a reset time, usually without a percentage. A window without a percentage is shown by its status, never as 0% used. |
-| **Codex** | Saved ChatGPT logins | The app server's rate-limit updates, sent with each token count while a turn runs: a percentage and reset time for each window. |
-| **MiniMax** | Saved Token Plan keys | Nothing yet. |
-| **Kimi**, **Antigravity** | No saved accounts | Nothing. |
+| Provider | Account type | How Remote reads it | How it is shown |
+| --- | --- | --- | --- |
+| **Claude** | Saved Claude subscription logins | Claude Code's `get_usage` control request, the data behind `/usage` | **Current session** and **Current week (all models)**, as a percentage used |
+| **Codex** | Saved ChatGPT logins | The app server's `account/rateLimits/read`, the data behind `/status` | **5h limit** and **Weekly limit**, as a percentage left; a plan with only a weekly limit shows only that |
+| **MiniMax** | Saved Token Plan keys | `GET /v1/token_plan/remains` with each saved key | **5h limit** and **Weekly limit**, as a percentage left when the coding bucket reports them |
+| **Kimi**, **Antigravity** | No saved accounts | Not read | — |
 
-A plan belongs to one account, not to the provider. Each run uses the chat's pinned account, or else the provider's active saved account, and its windows are listed under that account's label with its email, plan type, and whether it is the active account. While a provider has no active saved account, chats without a pinned account run on its current login, whose windows appear under the provider name, or as **Current login** beside saved accounts. Once an account is active, the current login's older reading is hidden, and a removed account's reading is never shown, so one account's number is never presented under another's name.
+While the Usage tab is open, the server asks each provider for every saved account's current limits, at most once a minute, and shows when each window resets. Claude and Codex use a headless CLI request that sends no prompt, so it spends none of the plan; if the CLI refreshes an expired sign-in, the refreshed login is saved back to the account by the same rules as a run. MiniMax uses its Token Plan API with the saved key. Runs keep the numbers current in between: Claude and Codex report their windows while they work.
 
-The section reads `GET /api/agent-quota`, available to any signed-in user, and refreshes every 15 seconds while it is open; refreshing never contacts a provider or starts a run. Readings persist across restarts in `DATA_DIR/agent-quota.json`.
+A plan belongs to one account, not to the provider. Each saved account is listed under its label with its email, plan type, and whether it is the active account. While a provider has no active saved account, chats without a pinned account run on its current login, whose limits appear under the provider name, or as **Current login** beside saved accounts. A removed account's reading is never shown, so one account's number is never presented under another's name.
+
+When an account cannot be read, for example because its sign-in has expired, it says so under the account and keeps its last reading, marked with its age. The section reads `GET /api/agent-quota`, available to any signed-in user. Readings persist across restarts in `DATA_DIR/agent-quota.json`.
 
 ## Rebuilding
 

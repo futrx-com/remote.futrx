@@ -25,6 +25,19 @@ test("quota requests bypass caches, carry cancellation, and preserve order, acco
   assert.equal(quotas[1].weekly?.window, "weekly");
 });
 
+test("a failed live read reaches the page with the account it belongs to", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => Response.json({ accounts: [
+    { provider: "claude", accountId: "work", error: " sign-in expired " },
+    { provider: "claude", accountId: "home", error: 42, session: { usedPercent: 10, measuredAt: 1000 } },
+  ] });
+
+  const [failed, readable] = await agentQuotaApi.list();
+  assert.deepEqual([failed.accountId, failed.error, failed.session], ["work", "sign-in expired", undefined]);
+  assert.deepEqual([readable.accountId, readable.error, readable.session?.usedPercent], ["home", undefined, 10]);
+});
+
 test("missing optional quota lists remain valid empty snapshots", async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => { globalThis.fetch = originalFetch; });

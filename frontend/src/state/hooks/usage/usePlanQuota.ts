@@ -11,8 +11,9 @@ export interface PlanQuotaState {
   loading: boolean;
 }
 
-/** Reads stored snapshots while the Usage tab is mounted, ages each reading,
- *  and attributes it to a saved account from the agent-auth catalog. */
+/** Reads each account's plan limits while the Usage tab is mounted, ages each
+ *  reading, and attributes it to a saved account from the agent-auth catalog.
+ *  The server asks the providers for current limits as these requests come. */
 export function usePlanQuota(): PlanQuotaState {
   const { agentAuth } = useAuthContext();
   const [quotas, setQuotas] = useState<AccountQuota[] | null>(null);
@@ -27,7 +28,7 @@ export function usePlanQuota(): PlanQuotaState {
   }), []);
 
   return {
-    providers: projectPlanQuota(quotas ?? [], agentAuth.providers, nowMs),
+    providers: projectPlanQuota(quotas ?? [], agentAuth.providers, { nowMs }),
     loading,
   };
 }

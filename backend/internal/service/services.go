@@ -280,7 +280,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 	// The quota service is built even without a store: readings still show for
 	// the life of the process, they just do not survive a restart.
-	agentQuotaService := agentquota.New(ctx, deps.AgentQuota)
+	agentQuotaService := agentquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
 	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
 	promptService := prompt.New(
 		chats,

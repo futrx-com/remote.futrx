@@ -310,6 +310,15 @@ func (r *Runtime) CapabilityProviders() []agent.CapabilityProvider {
 	return r.providers.CapabilityProviders()
 }
 
+// PlanUsageReaders returns the providers that can read their accounts' plan
+// limits on demand, in validated module order.
+func (r *Runtime) PlanUsageReaders() []agent.PlanUsageReader {
+	if r == nil {
+		return nil
+	}
+	return r.providers.PlanUsageReaders()
+}
+
 func (r *Runtime) Bindings() []agentauth.Binding {
 	if r == nil {
 		return nil

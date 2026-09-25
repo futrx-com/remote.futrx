@@ -77,8 +77,11 @@ test("clock ticks during a failed request and teardown aborts and suppresses lat
 
   t.mock.timers.tick(PLAN_QUOTA_CLOCK_INTERVAL_MS);
   assert.deepEqual(clocks, [NOW + PLAN_QUOTA_CLOCK_INTERVAL_MS]);
+  assert.equal(signal.aborted, false, "a request still inside its deadline stays open");
+  t.mock.timers.tick(PLAN_QUOTA_REQUEST_TIMEOUT_MS - PLAN_QUOTA_CLOCK_INTERVAL_MS);
   assert.equal(calls, 1, "a non-cooperative request must not be overlapped");
   assert.equal(signal.aborted, true, "the request deadline must still abort fetch");
+  const ticks = clocks.length;
   stop();
   resolveRequest([{ provider: "claude", accountId: "work" }]);
   await Promise.resolve();
@@ -86,7 +89,7 @@ test("clock ticks during a failed request and teardown aborts and suppresses lat
   assert.equal(calls, 1);
   assert.equal(settled, 0);
   assert.deepEqual(snapshots, []);
-  assert.equal(clocks.length, 1);
+  assert.equal(clocks.length, ticks, "a stopped section keeps no clock");
 });
 
 test("timed-out fetches settle loading and schedule a fresh request", async (t) => {

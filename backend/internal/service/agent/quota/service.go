@@ -1,14 +1,16 @@
 // Package quota remembers the last subscription-quota reading each provider
 // account reports, so the dashboard can show how much of each plan is left.
 //
-// Integrations obtain quota through provider-specific protocols and submit
-// normalized observations here. Three consequences shape this service:
+// Readings arrive two ways. Runs report the windows the CLIs mention while
+// they work, and Refresh asks every provider that can read plan limits on
+// demand, the way Claude Code's /usage and Codex's /status do. Three
+// consequences shape this service:
 //
 //   - A reading is a snapshot, not a live figure. Every reading carries when
 //     it was taken and the UI is expected to say so; a stale number presented
 //     as current is worse than an empty card, because an operator would plan
 //     around it.
-//   - An account nobody has run has no reading at all, and that is not an
+//   - An account nobody has read has no reading at all, and that is not an
 //     error. It is the honest state, and it is different from "0% used".
 //   - A plan belongs to a provider account, not to the provider. Claude and
 //     Codex keep several saved accounts and a chat may pin any of them, so
@@ -17,16 +19,15 @@
 //
 // It is also not the usage ledger. The ledger knows what this platform spent;
 // the plan is spent from everywhere the operator works. Only the vendor knows
-// the total, and these events are the vendor talking.
+// the total, and these readings are the vendor talking.
 package quota
 
 import (
 	"context"
-	"sort"
-	"strings"
-	"sync"
+	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 )
 
 // Repository persists readings across restarts.
@@ -35,35 +36,27 @@ type Repository interface {
 	Save(ctx context.Context, readings []AccountQuota) error
 }
 
-// Service keeps the readings.
+// Service composes the durable account readings with their live refresh
+// lifecycle. Each collaborator owns its own synchronization.
 type Service struct {
-	// recordMu holds one update through its synchronous save, so an older
-	// snapshot is never written after a newer one. mu guards readings and is
-	// released before saving, so readers do not wait for persistence.
-	recordMu sync.Mutex
-	mu       sync.RWMutex
-	readings map[accountKey]AccountQuota
-	store    Repository
+	readings  *accountReadings
+	refresher *planUsageRefresher
 }
 
-func New(ctx context.Context, store Repository) *Service {
-	service := &Service{readings: map[accountKey]AccountQuota{}, store: store}
-	if store == nil {
-		return service
+// New loads saved readings from store and asks readers for live plan limits
+// whenever Refresh finds the last answer out of date.
+func New(ctx context.Context, store Repository, readers ...agent.PlanUsageReader) *Service {
+	readings := newAccountReadings(ctx, store)
+	return &Service{
+		readings: readings,
+		refresher: newPlanUsageRefresher(
+			readings,
+			readers,
+			configconstants.PlanUsageRefreshInterval,
+			configconstants.PlanUsageReadTimeout,
+			time.Now,
+		),
 	}
-	loaded, err := store.Load(ctx)
-	if err != nil {
-		return service
-	}
-	for _, reading := range loaded {
-		reading.Provider = strings.TrimSpace(reading.Provider)
-		reading.AccountID = strings.TrimSpace(reading.AccountID)
-		if reading.Provider == "" {
-			continue
-		}
-		service.readings[reading.key()] = reading.clone()
-	}
-	return service
 }
 
 // Record files one reading against the provider account that reported it. An
@@ -76,65 +69,27 @@ func (s *Service) Record(ctx context.Context, provider agent.ProviderID, account
 	if s == nil {
 		return
 	}
-	key := accountKey{
-		provider: strings.TrimSpace(string(provider)),
-		account:  strings.TrimSpace(accountID),
-	}
-	if key.provider == "" {
-		return
-	}
-	if quota.Window != agent.QuotaWindowSession && quota.Window != agent.QuotaWindowWeekly {
-		return
-	}
-
-	s.recordMu.Lock()
-	defer s.recordMu.Unlock()
-
-	s.mu.Lock()
-	current := s.readings[key]
-	current.Provider = key.provider
-	current.AccountID = key.account
-	switch quota.Window {
-	case agent.QuotaWindowSession:
-		current.Session = cloneWindow(&quota)
-	case agent.QuotaWindowWeekly:
-		current.Weekly = cloneWindow(&quota)
-	}
-	s.readings[key] = current
-	var snapshot []AccountQuota
-	if s.store != nil {
-		snapshot = s.viewLocked()
-	}
-	s.mu.Unlock()
-
-	if s.store != nil {
-		_ = s.store.Save(ctx, snapshot)
-	}
+	s.readings.record(ctx, provider, accountID, quota)
 }
 
-// View lists what is known by provider and then account, in a stable order so
-// the card does not reshuffle between polls.
-func (s *Service) View() []AccountQuota {
+// Refresh asks every provider that can read plan limits on demand for each
+// account's current windows. An answer stays current for the refresh
+// interval, and callers within it, or while a read is running, share it.
+// The read belongs to no single caller: it continues, bounded by the read
+// timeout, after a caller whose ctx ends stops waiting for it.
+func (s *Service) Refresh(ctx context.Context) {
+	if s == nil {
+		return
+	}
+	s.refresher.refresh(ctx)
+}
+
+// View lists every account with a reading or a failed read, by provider and
+// then account, in a stable order so the card does not reshuffle between
+// polls.
+func (s *Service) View() []AccountView {
 	if s == nil {
 		return nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.viewLocked()
-}
-
-// viewLocked copies every reading, so callers never share windows with the
-// service. s.mu must be held.
-func (s *Service) viewLocked() []AccountQuota {
-	out := make([]AccountQuota, 0, len(s.readings))
-	for _, reading := range s.readings {
-		out = append(out, reading.clone())
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Provider != out[j].Provider {
-			return out[i].Provider < out[j].Provider
-		}
-		return out[i].AccountID < out[j].AccountID
-	})
-	return out
+	return s.readings.view()
 }
