@@ -14,17 +14,9 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/agents/codexharness"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
-)
-
-const (
-	// codexUsageReadTimeout bounds one account's read, app-server start
-	// included.
-	codexUsageReadTimeout = 15 * time.Second
-	// codexUsageExitGrace is how long the app server may take to exit after
-	// its answer before it and the wrapper that started it are killed.
-	codexUsageExitGrace = time.Second
 )
 
 var _ agent.PlanUsageReader = (*Provider)(nil)
@@ -115,7 +107,7 @@ func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) 
 // readCodexRateLimits starts an app server on home, or on the host login when
 // home is empty, and returns the Codex windows its rate-limit read reports.
 func readCodexRateLimits(ctx context.Context, home string) ([]agent.Quota, error) {
-	ctx, cancel := context.WithTimeout(ctx, codexUsageReadTimeout)
+	ctx, cancel := context.WithTimeout(ctx, configconstants.PlanUsageAccountReadTimeout)
 	defer cancel()
 
 	cmd := exec.Command("codex", "app-server")
@@ -125,7 +117,7 @@ func readCodexRateLimits(ctx context.Context, home string) ([]agent.Quota, error
 		cmd.Env = isolatedCodexAuthEnvFor(os.Environ(), home)
 	}
 	var result json.RawMessage
-	_, err := agentruntime.Converse(ctx, cmd, codexUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+	_, err := agentruntime.Converse(ctx, cmd, configconstants.CodexPlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
 		var err error
 		result, err = requestCodexRateLimits(stdin, stdout)
 		return err

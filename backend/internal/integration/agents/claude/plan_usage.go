@@ -16,18 +16,12 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 )
 
-const (
-	// claudeUsageRequestID names the one control request a usage read sends.
-	claudeUsageRequestID = "remote-plan-usage"
-	// claudeUsageReadTimeout bounds one account's read, CLI start included.
-	claudeUsageReadTimeout = 15 * time.Second
-	// claudeUsageExitGrace is how long the CLI may take to exit after its
-	// answer before it and everything it started are killed.
-	claudeUsageExitGrace = 2 * time.Second
-)
+// claudeUsageRequestID names the one control request a usage read sends.
+const claudeUsageRequestID = "remote-plan-usage"
 
 var _ agent.PlanUsageReader = (*Provider)(nil)
 
@@ -120,7 +114,7 @@ func hostHasSubscriptionLogin() bool {
 // answer reports. Closing the CLI's input after the answer ends it before any
 // prompt.
 func readClaudeUsage(ctx context.Context, configDir string) ([]agent.Quota, error) {
-	ctx, cancel := context.WithTimeout(ctx, claudeUsageReadTimeout)
+	ctx, cancel := context.WithTimeout(ctx, configconstants.PlanUsageAccountReadTimeout)
 	defer cancel()
 
 	cmd := exec.Command("claude",
@@ -128,7 +122,7 @@ func readClaudeUsage(ctx context.Context, configDir string) ([]agent.Quota, erro
 	cmd.Env = claudeUsageEnv(os.Environ(), configDir)
 	cmd.Dir = os.TempDir()
 	var report claudeUsageReport
-	stderr, err := agentruntime.Converse(ctx, cmd, claudeUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+	stderr, err := agentruntime.Converse(ctx, cmd, configconstants.ClaudePlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
 		var err error
 		report, err = requestClaudeUsage(stdin, stdout)
 		return err
