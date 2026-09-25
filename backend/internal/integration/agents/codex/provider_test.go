@@ -401,6 +401,41 @@ func TestContainerRunKeepsOnlyTheActiveAccountsLogin(t *testing.T) {
 	requireCodexHostCredential(t, hostPath, saved)
 }
 
+// A plan belongs to the account that ran, so the windows a saved-account run
+// reports carry that account rather than only the provider.
+func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
+	codexHome := t.TempDir()
+	t.Setenv("CODEX_HOME", codexHome)
+	installFakeContainerAppServerWith(t,
+		`{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"codex","primary":{"usedPercent":25,"windowDurationMins":300}}}}`,
+	)
+	saved := codexTestCredential("personal", "saved")
+	writeCodexHostCredential(t, filepath.Join(codexHome, "auth.json"), saved)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "personal",
+		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
+	}}
+	project := agent.Project{ID: agent.ProjectID("abcd"), ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(&fakeCodexCredentials{}, &fakeCodexBrowser{}))
+	provider.accounts = newTestAuth(t, store).accounts
+
+	var quotas []agent.Event
+	err := provider.Run(context.Background(), agent.RunRequest{
+		ProjectID: string(project.ID), ConversationID: "chat-1", Prompt: "hello",
+	}, func(event agent.Event) {
+		if event.Type == agent.EventQuotaUpdated {
+			quotas = append(quotas, event)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quotas) != 1 || quotas[0].Provider != agent.ProviderCodex || quotas[0].AccountID != "personal" ||
+		quotas[0].Quota == nil || *quotas[0].Quota.UsedPercent != 25 {
+		t.Fatalf("quota events = %#v; want one reading for the personal account", quotas)
+	}
+}
+
 func TestAccountRunHomesSeparateChats(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	saved := agentauth.RunCredential{AccountID: "personal", Credential: codexTestCredential("personal", "token")}
@@ -449,7 +484,18 @@ func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
 // its arguments and completes one Codex app-server turn.
 func installFakeContainerAppServer(t *testing.T) {
 	t.Helper()
+	installFakeContainerAppServerWith(t)
+}
+
+// installFakeContainerAppServerWith is installFakeContainerAppServer whose turn
+// also sends each notification line before it completes.
+func installFakeContainerAppServerWith(t *testing.T, notifications ...string) {
+	t.Helper()
 	binDir := t.TempDir()
+	var sent strings.Builder
+	for _, notification := range notifications {
+		sent.WriteString("      printf '%s\\n' '" + notification + "'\n")
+	}
 	script := `#!/bin/sh
 while IFS= read -r line; do
   case "$line" in
@@ -457,7 +503,7 @@ while IFS= read -r line; do
     *'"id":2'*) printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-1"},"model":"gpt-test"}}' ;;
     *'"id":3'*)
       printf '%s\n' '{"id":3,"result":{"turn":{"id":"turn-1","status":"inProgress","items":[]}}}'
-      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
+` + sent.String() + `      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"thread-1","turn":{"id":"turn-1","status":"completed","items":[]}}}'
       exit 0
       ;;
   esac

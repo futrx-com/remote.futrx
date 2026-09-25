@@ -138,6 +138,7 @@ export const API_ROUTES = {
       `/api/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
   },
   settings: "/api/me/settings",
+  agentQuota: "/api/agent-quota",
   security: {
     summary: "/api/me/security",
     enroll: "/api/me/security/2fa/enroll",

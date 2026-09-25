@@ -88,6 +88,15 @@ type UsageRecorder interface {
 	RecordRun(ctx context.Context, event serviceusage.RunEvent)
 }
 
+// QuotaRecorder files the subscription windows the agent CLIs volunteer. A
+// plan belongs to the provider account that ran, so each window arrives with
+// the saved account ID its adapter stamped, or an empty ID for the provider's
+// host login. It is optional: without one the readings are dropped and the
+// dashboard has no plan card, which is the behaviour before this existed.
+type QuotaRecorder interface {
+	Record(ctx context.Context, provider agent.ProviderID, accountID string, quota agent.Quota)
+}
+
 type Option func(*Service)
 
 // StartGate blocks new agent runs while an external host job owns the
@@ -115,6 +124,13 @@ func WithUsageRecorder(recorder UsageRecorder) Option {
 	}
 }
 
+// WithQuotaRecorder installs the recipient of provider quota observations.
+func WithQuotaRecorder(recorder QuotaRecorder) Option {
+	return func(service *Service) {
+		service.quota = recorder
+	}
+}
+
 type AgentPolicy interface {
 	Descriptor(provider string) (agentmodule.Descriptor, bool)
 	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
@@ -139,6 +155,7 @@ type Service struct {
 	agentPolicy   AgentPolicy
 	scheduleTools ScheduleToolIssuer
 	usage         UsageRecorder
+	quota         QuotaRecorder
 	startGate     StartGate
 	interactions  interactionResponseRouter
 }
@@ -398,7 +415,6 @@ func (rnr *Service) runPromptAs(
 		chatID:    id,
 		projectID: string(meta.ProjectID),
 		userEmail: input.Actor.Email,
-		provider:  providerID,
 		model:     meta.Model,
 		scheduled: input.ScheduledTaskID != "",
 	}

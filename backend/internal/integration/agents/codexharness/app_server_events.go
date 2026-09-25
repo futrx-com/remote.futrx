@@ -34,6 +34,10 @@ func newAppServerEventParser(req agent.RunRequest, providerLabel string) *appSer
 func (parser *appServerEventParser) ParseNotification(method string, raw json.RawMessage) []agent.Event {
 	now := time.Now().UnixMilli()
 	switch method {
+	case "account/rateLimits/updated":
+		// Preserve the native notification alongside normalized observations.
+		return append(parser.nativeEvent(now, method, raw), parser.quotaEvents(now, method, raw)...)
+
 	case "item/agentMessage/delta", "item/plan/delta":
 		var params appServerDeltaParams
 		if json.Unmarshal(raw, &params) != nil || params.Delta == "" {

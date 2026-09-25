@@ -256,6 +256,12 @@ keeping the visible Remote transcript.
 It reconciles and leases the canonical host login, retaining the older
 single-slot behavior until that login is imported.
 
+An isolated run also stamps its saved account ID on every event it emits
+(`agentruntime.EmitForAccount`), so what the provider reports about that
+account, such as its plan limits, is filed under it. Events from a legacy
+host-login run carry no account ID. See
+[Agent quota snapshots](../../03-platform/07-data-and-frontend-state.md#agent-quota-snapshots).
+
 ### Capture after runs
 
 After a successful saved-account run, the provider calls

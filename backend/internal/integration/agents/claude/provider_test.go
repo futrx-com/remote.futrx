@@ -117,6 +117,56 @@ esac
 	}
 }
 
+// A plan belongs to the account that ran: a saved-account run stamps its
+// account on the windows the CLI reports, and a host-login run stamps none.
+func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
+	installFakeClaude(t, `
+case "$1" in
+auth)
+  printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}' ;;
+-p)
+  printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1790000000}}' ;;
+esac
+`)
+	host := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", host)
+	writeHostFiles(t, host,
+		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
+		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
+	)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "one",
+		Accounts: []agentauth.AccountRecord{
+			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
+		},
+	}}
+	for _, test := range []struct {
+		name         string
+		dependencies agentmodule.BuildDependencies
+		want         string
+	}{
+		{"saved account", agentmodule.BuildDependencies{Accounts: agentauth.NewAccountVault(store)}, "one"},
+		{"host login", agentmodule.BuildDependencies{}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			provider := newTestRuntime(test.dependencies).Lookup(agent.ProviderClaude).(*Provider)
+			var quotas []agent.Event
+			err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, func(event agent.Event) {
+				if event.Type == agent.EventQuotaUpdated {
+					quotas = append(quotas, event)
+				}
+			})
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if len(quotas) != 1 || quotas[0].AccountID != test.want ||
+				quotas[0].Quota == nil || quotas[0].Quota.Window != agent.QuotaWindowSession {
+				t.Fatalf("quota events = %#v; want one session window for account %q", quotas, test.want)
+			}
+		})
+	}
+}
+
 func TestAccountRunHomesSeparateChats(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	saved := agentauth.RunCredential{

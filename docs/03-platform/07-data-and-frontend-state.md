@@ -17,6 +17,7 @@ The application does not use an external database service. Durable metadata is s
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── agent-quota.json                    last reported plan windows per provider account
 ├── session.key
 ├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
 └── uploads/tmp/                        tus chunks and sidecars
@@ -150,6 +151,66 @@ Writes atomically replace the document. The scheduler loop is in-memory, but it
 reconstructs deadlines and abandons stale claims after a backend restart.
 
 Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
+
+## Agent quota snapshots
+
+Subscription windows follow a separate path from the usage ledger. Claude's
+adapter owns its stream normalization in `claude/quota.go`. Live Codex runs
+use `codexharness/app_server_quota.go` for the `account/rateLimits/updated`
+notifications the app server sends with every token count that carries rate
+limits. Only the Codex product's recognized five-hour and seven-day durations
+become plan windows; other products and durations are ignored, and a window
+that an update leaves out keeps its last reading. Remote does not request
+`account/rateLimits/read`: the app server finishes in-flight requests before
+it exits, so an unanswered read would delay the end of the turn.
+
+A plan belongs to one provider account. For a saved-account run, the Claude
+and Codex adapters wrap the run's event callback with
+`agentruntime.EmitForAccount`, which stamps the saved account ID on every
+event. A run on a provider's current host login, which chats without a
+pinned account use while no saved account is active, leaves `AccountID`
+empty. The prompt service's run event relay
+records `EventQuotaUpdated` through its `QuotaRecorder` contract with the
+provider and account; quota events are not chat transcript events, and a
+cancelled prompt still records readings that arrived before the cancel.
+`service/agent/quota` owns the latest session and weekly readings per
+provider account and lists them by provider and then account ID. It keys
+readings only by account ID; which saved accounts exist and what they are
+called stays with the saved-account service.
+
+`stores/fileagentquota` persists `{"accounts": [...]}` to
+`DATA_DIR/agent-quota.json` using a mode-`0600` temporary file and rename.
+Updates and their synchronous, best-effort writes are serialized so an older
+save cannot overwrite a newer snapshot. Reads use a separate lock and do not
+wait for file writes. Inputs, loaded data, saved snapshots, and returned views
+have independent window and percentage values. Missing or unreadable
+snapshots, including files from before readings were kept per account, load
+as empty and do not prevent startup. Without a repository, readings remain
+available for the lifetime of the process.
+
+`GET /api/agent-quota` exposes the snapshots to signed-in users, or without a
+session when application authentication is disabled. Responses are not cached.
+In the frontend, `agentQuotaApi` validates the response and
+`models/agentQuota.ts` describes its data. The Usage section's `usePlanQuota`
+hook owns a serialized refresh every 15 seconds after the previous request
+settles, with a 10-second request timeout and cancellation on unmount. A
+failed refresh retains the last successful snapshot; a successful empty
+response clears it. Its adjacent `planQuotaState` projection joins readings
+with the agent-auth catalog from `AuthContext`. Each saved account that has
+reported a window is listed in catalog order with its label, email, plan type,
+and active flag. While no saved account is active, the current login's reading
+is listed too, under the provider heading when it is the only plan and as
+"Current login" beside saved accounts; once an account is active it is hidden.
+A removed account's reading is never shown.
+The projection builds display contracts in `models/planQuota.ts`, using
+labels, tones, and thresholds from `config/planQuota.ts`. Missing percentages
+stay absent, so a status-only window never acquires a zero-percent bar. A
+reported zero has zero bar width; over-limit values retain their reported
+percentage with the bar capped at 100%. Each window shows its own observation
+age. Ages and reset countdowns advance every 15 seconds even if refreshes fail,
+and an expired reset is marked as awaiting a new reading. Refreshing this
+endpoint reads stored observations; it does not query a provider or start an
+agent run.
 
 ## Project persistence
 
