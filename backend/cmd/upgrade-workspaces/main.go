@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
+	containerapps "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
+	serviceapps "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
@@ -35,13 +38,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
-	containerStack := config.NewContainerStack(lxcClient, agentModules.Profiles(), config.ContainerStackOptions{})
+	packages, err := containerapps.NewPackageStore(filepath.Join(cfg.DataDir, "app-packages"))
+	if err != nil {
+		log.Fatalf("open application packages: %v", err)
+	}
+	registry, err := containerapps.NewRegistry(containerapps.EmbeddedCatalog(), packages)
+	if err != nil {
+		log.Fatalf("load application catalog: %v", err)
+	}
+	containerStack := config.NewContainerStack(lxcClient, agentModules.Profiles(), config.ContainerStackOptions{
+		AppRegistry: registry, DataDir: cfg.DataDir,
+	})
 	projects := serviceproject.New(
 		storeSet.Projects,
 		containerStack.ProjectDependencies(),
 		storeSet.ProjectSecrets,
 		storeSet.ProjectAccess,
 	)
+	apps := serviceapps.New(registry, storeSet.Applications, containerStack.AppInstaller, nil, containerStack.AppPorts)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
@@ -54,6 +68,7 @@ func main() {
 		*dryRun,
 		*includeBusy,
 		progress,
+		apps.RestoreProject,
 	)
 	if err != nil {
 		log.Fatalf("list projects: %v", err)
@@ -75,6 +90,7 @@ func upgradeAll(
 	lifecycle *servicelifecycle.Service,
 	dryRun, includeBusy bool,
 	progress progressWriter,
+	restoreProject func(context.Context, string) error,
 ) (upgraded, skipped, failed int, err error) {
 	metas, err := projects.List(ctx)
 	if err != nil {
@@ -128,6 +144,11 @@ func upgradeAll(
 			}
 			failed++
 			log.Printf("FAIL %s: %v", meta.Slug, err)
+			continue
+		}
+		if err := restoreProject(ctx, string(meta.ID)); err != nil {
+			failed++
+			log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
 			continue
 		}
 		upgraded++

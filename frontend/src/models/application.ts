@@ -16,6 +16,7 @@ export interface AppEnvVar {
   required?: boolean;
   secret?: boolean;
   default?: string;
+  format?: "json";
   generate?: string;
 }
 

@@ -43,7 +43,7 @@
     <img src="/icon.svg" alt="" />
     <div>
       <h1>Futrx IDE</h1>
-      <p>Open a project workspace in its own container IDE</p>
+      <p>Open a project where Code Server is installed</p>
     </div>
   </header>
   <main>
@@ -55,11 +55,19 @@
     async function load() {
       const status = document.getElementById("status");
       try {
-        const res = await fetch("/api/projects", { credentials: "include" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const projects = await res.json();
-        render(Array.isArray(projects) ? projects : []);
-        status.style.display = "none";
+        const [projectRes, extensionRes] = await Promise.all([
+          fetch("/api/projects", { credentials: "include" }),
+          fetch("/api/applications/ui", { credentials: "include" }),
+        ]);
+        if (!projectRes.ok || !extensionRes.ok) throw new Error("Could not load installed projects");
+        const projects = await projectRes.json();
+        const extensions = await extensionRes.json();
+        const codeServer = Array.isArray(extensions)
+          ? extensions.find((item) => item.application?.id === "code-server") : null;
+        const installed = new Set(codeServer?.projectIds || []);
+        const count = render(Array.isArray(projects)
+          ? projects.filter((project) => installed.has(project.id)) : []);
+        if (count) status.style.display = "none";
       } catch (e) {
         status.className = "status err";
         status.textContent = "Could not load projects: " + e.message;
@@ -87,8 +95,9 @@
         });
       if (!grid.children.length) {
         const s = document.getElementById("status");
-        s.style.display = ""; s.textContent = "No projects yet.";
+        s.style.display = ""; s.textContent = "Install Code Server in a project to open its IDE here.";
       }
+      return grid.children.length;
     }
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
     load();

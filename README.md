@@ -125,7 +125,7 @@ controls switch ports, resize or reload the pane, and open the app in a new tab.
       <img src="docs/assets/readme/feature-ide.webp" alt="Orbit Tasks source code open in Remote's browser IDE">
       <br>
       <strong>A complete browser IDE</strong><br>
-      Every project includes code-server rooted at the same durable workspace the agents use.
+      Install Code Server per project when you want a browser editor rooted at the same durable workspace the agents use.
     </td>
   </tr>
   <tr>

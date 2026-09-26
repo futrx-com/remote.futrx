@@ -16,6 +16,7 @@ var (
 	ErrScope              = errors.New("applications: application does not support this scope")
 	ErrProjectneeded      = errors.New("applications: project id required")
 	ErrRequiredEnv        = errors.New("applications: missing required value")
+	ErrInvalidEnv         = errors.New("applications: invalid setting value")
 	ErrNotFound           = errors.New("applications: instance not found")
 	ErrPortRange          = errors.New("applications: external port out of range")
 	ErrAlreadyInstalled   = errors.New("applications: this application is already installed in this scope")

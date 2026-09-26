@@ -43,7 +43,8 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	var middleware httptransport.Middleware
 	if deps.Services.Auth != nil {
 		auth = httphandlers.NewAuthHandler(deps.Services.Auth, deps.Services.Access).
-			WithShares(deps.Services.Shares)
+			WithShares(deps.Services.Shares).
+			WithCodeServer(deps.Services.Projects, deps.Services.Applications)
 		providerAuthPrefixes := make([]string, 0, len(agentAuthBindings)*2)
 		for _, binding := range agentAuthBindings {
 			provider := string(binding.ID())

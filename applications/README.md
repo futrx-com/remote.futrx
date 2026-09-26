@@ -8,7 +8,8 @@ applications` in [`../catalog.go`](../catalog.go), a module of its own because
 any an administrator has uploaded as a `.zip` — same shape, same validator,
 stored outside the binary. See [Uploaded packages](../docs/dev/installable-applications/16-uploaded-packages.md).
 
-**One application ships here: [`hello-remote/`](hello-remote/)**, the worked example
+**Two applications ship here: [`hello-remote/`](hello-remote/) and
+[`code-server/`](code-server/).** Hello Remote is the worked example
 — every supported capability composed into one installable package.
 Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
 repositories and reach a server as uploaded packages, so the catalog format can
@@ -149,8 +150,8 @@ install's secrets. It deserves the same review as any change under
 
 ## The example app
 
-[`hello-remote/`](hello-remote/) is the one application this repository ships, and it
-is here to be installed. It deliberately carries every composable capability:
+[`hello-remote/`](hello-remote/) is the full capability example and is here to
+be installed. It deliberately carries every composable capability:
 custom infrastructure, a supervised service and port, health checking, host
 tools, container-built commands, a host backend, UI, and a project skill. Its
 manifest also fills every author-controlled model field. Installing it exercises

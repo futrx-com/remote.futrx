@@ -226,6 +226,7 @@ export function ChatContainer({
         />
         <FileManagerDrawer
           chatId={chat.id}
+          projectId={chat.projectId}
           open={drawers.filesOpen}
           onClose={drawers.closeFiles}
         />

@@ -4,17 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/futrx-com/remote.futrx.com/internal/shared/workspacepath"
 )
 
 type Service struct {
 	baseURL      string
+	projectURL   string
 	projectsRoot string
 }
 
-func New(baseURL, projectsRoot string) *Service {
-	return &Service{baseURL: baseURL, projectsRoot: projectsRoot}
+func New(baseURL, projectURL, projectsRoot string) *Service {
+	return &Service{baseURL: baseURL, projectURL: strings.TrimRight(projectURL, "/") + "/", projectsRoot: projectsRoot}
 }
 
 func (s *Service) OpenURL(cwd, rawPath string) (string, error) {
@@ -30,7 +32,7 @@ func (s *Service) redirectURL(target workspacepath.Target) string {
 	folder := target.WorkspaceRoot
 	file := target.FilePath
 	if slug, containerRoot, ok := workspacepath.ContainerPath(target.WorkspaceRoot, s.projectsRoot); ok {
-		base = s.baseURL + slug + "/"
+		base = s.projectURL + slug + "/code/"
 		folder = containerRoot
 		if _, containerFile, fileIsInContainer := workspacepath.ContainerPath(target.FilePath, s.projectsRoot); fileIsInContainer {
 			file = containerFile

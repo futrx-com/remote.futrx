@@ -14,6 +14,7 @@ var (
 	serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]*$`)
 	environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	identityPattern    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+	readyPathPattern   = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
 	eventNamePattern   = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
 )
 
@@ -60,6 +61,14 @@ func validateApplication(application svc.Application) error {
 	for _, scope := range application.Scopes {
 		if !scope.Valid() {
 			return fmt.Errorf("invalid scope %q", scope)
+		}
+	}
+	for _, variable := range application.Env {
+		if variable.Format != "" && variable.Format != "json" {
+			return fmt.Errorf("env %q has unsupported format %q", variable.Key, variable.Format)
+		}
+		if err := svc.ValidateEnvValue(variable, variable.Default); err != nil {
+			return fmt.Errorf("env %q default: %w", variable.Key, err)
 		}
 	}
 	if err := validateService(application); err != nil {
@@ -236,6 +245,19 @@ func validateService(application svc.Application) error {
 	}
 	if service.RestartSec < 0 {
 		return fmt.Errorf("service.restartSec cannot be negative")
+	}
+	if socket := service.SocketProxy; socket != nil {
+		if socket.ListenPort < 1024 || socket.ListenPort > 65535 ||
+			socket.TargetPort < 1024 || socket.TargetPort > 65535 ||
+			socket.ListenPort == socket.TargetPort || socket.IdleSeconds < 1 {
+			return fmt.Errorf("service.socketProxy requires distinct non-privileged ports and a positive idleSeconds")
+		}
+		if application.Port.Internal != 0 && application.Port.Internal != socket.ListenPort {
+			return fmt.Errorf("service.socketProxy.listenPort must match port.internal when exposed")
+		}
+		if socket.ReadyPath != "" && !readyPathPattern.MatchString(socket.ReadyPath) {
+			return fmt.Errorf("service.socketProxy.readyPath must be a plain absolute HTTP path")
+		}
 	}
 	if protect := service.Hardening.ProtectSystem; protect != "" && protect != "true" && protect != "full" && protect != "strict" {
 		return fmt.Errorf("service.hardening.protectSystem %q is invalid", protect)

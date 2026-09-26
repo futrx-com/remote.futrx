@@ -346,6 +346,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithLifecyclePublisher(deps.ApplicationLifecycle),
 			serviceapplications.WithEventSource(ctx, deps.ApplicationEvents),
 		)
+		projectService.SetContainerRestorer(applicationsService.RestoreProject)
 	}
 
 	pushNotifier.push = pushService

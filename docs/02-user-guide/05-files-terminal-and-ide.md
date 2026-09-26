@@ -152,33 +152,37 @@ itself as a durable process supervisor.
 
 ## Open the browser IDE
 
-1. Open the intended project chat.
-2. Select **Open in IDE**.
-3. Allow the new tab if the browser blocks it.
-4. Wait for code-server to open the chat path, normally `/workspace`.
-5. Use the IDE's explorer, search, editor, and integrated tools normally.
+1. Open **Code Server** on that project's Applications page. Edit the complete
+   **VS Code settings.json** field before selecting **Install**. It starts with
+   Remote's defaults and accepts a JSON object with any VS Code settings keys.
+2. Open the intended project chat.
+3. Select **Open in IDE**.
+4. Allow the new tab if the browser blocks it.
+5. Wait for code-server to open the chat path, normally `/workspace`.
+6. Use the IDE's explorer, search, editor, and integrated tools normally.
 
-**Outcome:** the browser opens the project's code-server instance on its
-dedicated IDE endpoint. File rows and agent-produced workspace links can target
+**Outcome:** the browser opens the project's code-server instance at
+`/<project-slug>/code/`. File rows and agent-produced workspace links can target
 a validated file and optional line/column inside that IDE.
 
 ![The project code-server IDE in a browser tab](/assets/docs/screenshots/browser-ide.webp)
 
-### IDE authorization caveat
+### IDE access
 
-The current IDE proxy verifies that the browser belongs to a registered Remote
-user, but it does **not** verify membership in the selected project. Any user
-invited to the Remote server can potentially open any project IDE.
+The IDE proxy requires project membership or administrator access and a running
+Code Server application in that project. Stopping or uninstalling the app
+blocks both IDE URL forms. Project containers still share the LXD bridge, so
+container-to-container access is a separate host-network limitation.
 
-This differs from Files, Terminal, and Preview endpoints, which enforce project
-membership or administrator access. Do not place mutually untrusted users on
-the same Remote installation until IDE membership enforcement is added.
+Open `https://<your-remote-host>/<project-slug>/code/` for the project editor.
+The IDE stays at this address, and each request checks project access and
+whether Code Server is running.
 
 ### Use the installable IDE launcher
 
 Open `https://code.<your-remote-host>` to see the available project IDEs in a dedicated launcher. That launcher includes a web-app manifest and minimal service worker, so a supporting browser can install it as a PWA for faster access to project editors.
 
-The launcher always loads the live project list and does not provide offline
+The launcher lists only projects with a running Code Server installation and does not provide offline
 project access. The main Remote chat application is also installable as a PWA,
 but it remains network-first: only a self-contained offline status page is
 cached, never the live workspace or agent data.

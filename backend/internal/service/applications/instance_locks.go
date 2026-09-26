@@ -27,6 +27,21 @@ func (s *instanceLockSet) lock(id string) func() {
 	}
 }
 
+// tryLock lets project-container recovery skip an instance whose own lifecycle
+// operation is already preparing that same container. Waiting there would
+// deadlock: the owning operation may itself be waiting for the project start.
+func (s *instanceLockSet) tryLock(id string) (func(), bool) {
+	entry := s.retain(id)
+	if !entry.mu.TryLock() {
+		s.release(id, entry)
+		return nil, false
+	}
+	return func() {
+		entry.mu.Unlock()
+		s.release(id, entry)
+	}, true
+}
+
 // rlock lets backend calls and event notifications for one running instance
 // overlap while still excluding lifecycle and reconfiguration work.
 func (s *instanceLockSet) rlock(id string) func() {

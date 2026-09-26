@@ -27,7 +27,7 @@ flowchart LR
     LXD --> P1["Project container A"]
     LXD --> P2["Project container B"]
     P1 --> Agent["Agent CLI"]
-    P1 --> IDE["code-server"]
+    P1 --> IDE["Code Server application (optional)"]
     P1 --> Apps["Project web apps"]
     P1 --> Chromium["Agent Browser"]
 

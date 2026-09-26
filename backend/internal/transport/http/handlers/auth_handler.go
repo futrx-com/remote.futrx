@@ -3,7 +3,9 @@ package httphandlers
 import (
 	"net/http"
 
+	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 )
 
@@ -36,6 +38,13 @@ func (h *AuthHandler) WithShares(shares *serviceshare.Service) *AuthHandler {
 	if shares != nil {
 		h.verify.shares = shares
 	}
+	return h
+}
+
+// WithCodeServer gates the IDE proxy on a running project installation.
+func (h *AuthHandler) WithCodeServer(projects *serviceproject.Service, apps *serviceapplications.Service) *AuthHandler {
+	h.verify.codeServer.projects = projects
+	h.verify.codeServer.applications = apps
 	return h
 }
 

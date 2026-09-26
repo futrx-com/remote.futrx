@@ -413,6 +413,7 @@ func sendAppError(w http.ResponseWriter, err error) {
 		errors.Is(err, serviceapplications.ErrScope),
 		errors.Is(err, serviceapplications.ErrProjectneeded),
 		errors.Is(err, serviceapplications.ErrRequiredEnv),
+		errors.Is(err, serviceapplications.ErrInvalidEnv),
 		errors.Is(err, serviceapplications.ErrPortRange):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnavailable):

@@ -80,6 +80,8 @@ Selecting a file routes by type:
 
 - supported image/audio/video/PDF opens in the full-screen media overlay;
 - code, data, text, logs, and unknown non-media files redirect to code-server;
+- without a running Code Server installation, clicking those files downloads
+  them instead of opening an unavailable editor;
   and
 - archives and unsupported media download.
 
@@ -160,7 +162,9 @@ chat run path. See [Scheduled tasks](06-scheduled-tasks.md).
 
 ## Browser IDE
 
-Each project has an on-demand code-server instance on container port `8842`.
+Code Server is an optional project application. Installing it arms an on-demand
+socket on container port `8842`; stopping or uninstalling the application
+removes the editor button and disables that socket.
 
 ```mermaid
 flowchart LR
@@ -171,7 +175,9 @@ flowchart LR
     Code --> Workspace["/workspace"]
 ```
 
-Caddy disables upstream keep-alive so code-server can stop after its idle window. Platform session cookies are removed before requests reach the container.
+Caddy verifies project membership and a running Code Server installation, then
+disables upstream keep-alive so code-server can stop after its idle window.
+Platform session cookies are removed before requests reach the container.
 
 ## IDE and media links in chat
 

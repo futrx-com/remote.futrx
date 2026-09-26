@@ -68,6 +68,11 @@ type EnvVar struct {
 	Secret bool `json:"secret,omitempty"`
 	// Default is applied when the user leaves the field blank.
 	Default string `json:"default,omitempty"`
+	// DefaultFile is resolved from the application's own files when the catalog
+	// loads, then cleared before the manifest is served to the browser.
+	DefaultFile string `json:"defaultFile,omitempty"`
+	// Format selects an editor and validation for structured install inputs.
+	Format string `json:"format,omitempty"`
 	// Generate names a generator ("password") used to fill a blank value.
 	Generate string `json:"generate,omitempty"`
 }
@@ -90,6 +95,16 @@ type ApplicationService struct {
 	RestartSec  int                  `json:"restartSec,omitempty"`
 	Environment []ServiceEnvironment `json:"environment,omitempty"`
 	Hardening   ServiceHardening     `json:"hardening,omitempty"`
+	// SocketProxy keeps the application process stopped until a connection reaches
+	// the declared socket. Remote owns both the socket and its proxy unit.
+	SocketProxy *SocketProxy `json:"socketProxy,omitempty"`
+}
+
+type SocketProxy struct {
+	ListenPort  int    `json:"listenPort"`
+	TargetPort  int    `json:"targetPort"`
+	IdleSeconds int    `json:"idleSeconds"`
+	ReadyPath   string `json:"readyPath,omitempty"`
 }
 
 // ServiceEnvironment maps one resolved install input into the service's

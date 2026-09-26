@@ -64,6 +64,31 @@ func TestConcurrentStartSerializesContainerEnsure(t *testing.T) {
 	}
 }
 
+func TestStartRestoresApplicationsAfterMissingContainerRecovery(t *testing.T) {
+	repo := &startTestRepository{meta: Meta{
+		ID: ID("abcd"), Name: "project", ContainerName: "project", Status: StatusMissing,
+	}}
+	lifecycle := &startTestLifecycle{state: ContainerStateMissing}
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	calls := 0
+	service.SetContainerRestorer(func(_ context.Context, projectID string) error {
+		calls++
+		if projectID != "abcd" {
+			t.Errorf("restored wrong project: %s", projectID)
+		}
+		return nil
+	})
+	if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("restore calls = %d, want 1", calls)
+	}
+}
+
 func TestStartDelegatesFrozenRecoveryToContainerEnsure(t *testing.T) {
 	repo := &startTestRepository{meta: Meta{
 		ID:            ID("abcd"),

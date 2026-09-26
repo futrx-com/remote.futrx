@@ -8,7 +8,7 @@
 # Docker leaves ip6tables untouched, which makes the breakage nearly invisible:
 # containers keep reaching every destination that publishes an AAAA record, and
 # the first hard failure is whichever IPv4-only host the build happens to need.
-# In practice that is github.com in the browser IDE stage, several minutes in,
+# In practice that can be github.com during an optional Code Server install,
 # reported as a bare connection timeout.
 #
 # The ACCEPT rules go in DOCKER-USER when Docker owns the ruleset: it is the

@@ -136,7 +136,6 @@ sequenceDiagram
     Builder->>Ubuntu: Launch temporary container
     Builder->>Ubuntu: Install system tools, Node, GitHub CLI, catalog-declared project CLIs
     Builder->>Ubuntu: Install Chromium and Agent Browser
-    Builder->>Ubuntu: Install code-server
     Builder->>Ubuntu: Stop container
     Builder->>Alias: Publish reusable image
     Builder->>LXD: Remove temporary builder
@@ -305,7 +304,7 @@ The server-info settings page reports host, CPU, memory, storage, network, and G
 
 - The backend listens on loopback by default; Caddy is the public entry point.
 - Platform sessions use secure, HTTP-only cookies.
-- Preview and IDE requests use forward authentication; preview authorization is project-aware, while IDE authorization currently accepts any registered user.
+- Preview and IDE requests use forward authentication; IDE authorization checks project membership and a running Code Server application.
 - Platform cookies are removed before container proxying.
 - Internal Caddy helper routes are denied externally.
 - Secret, auth, access, and user files use restrictive permissions.

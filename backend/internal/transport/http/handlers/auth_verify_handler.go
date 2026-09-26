@@ -15,13 +15,15 @@ import (
 var projectVerifyHostPattern = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.(.+)$`)
 
 type authVerifyHandler struct {
-	auth   *serviceauth.Service
-	access *serviceauth.AccessVerifier
-	shares shareAuthorizer
+	auth       *serviceauth.Service
+	access     *serviceauth.AccessVerifier
+	shares     shareAuthorizer
+	codeServer codeServerAccess
 }
 
 func (h *authVerifyHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/verify", h.verify)
+	mux.HandleFunc("/auth/verify-code-server", h.verifyCodeServer)
 }
 
 func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
@@ -29,19 +31,21 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	matchedSlug, matchedPort := h.matchPreviewHost(host)
 
 	// Only the preview host class can be authorized by a public share link.
-	// The IDE hosts and the main application never reach this branch, because
-	// matchPreviewHost leaves the slug empty for them. It runs before the
-	// session check so that a member who opens a share URL themselves also
-	// gets the token stripped from it rather than forwarding it into the
-	// project's own request logs.
+	// It runs before the session check so that a member who opens a share
+	// URL themselves also gets the token stripped from it rather than
+	// forwarding it into the project's own request logs.
 	if matchedSlug != "" && h.authorizeShare(w, r, matchedSlug, matchedPort) {
 		return
 	}
+	if h.verifySession(w, r, matchedSlug) {
+		w.WriteHeader(http.StatusOK)
+	}
+}
 
+func (h *authVerifyHandler) verifySession(w http.ResponseWriter, r *http.Request, matchedSlug string) bool {
 	err := h.access.Verify(r.Context(), httptransport.SessionCookieValue(r), matchedSlug)
 	if err == nil {
-		w.WriteHeader(http.StatusOK)
-		return
+		return true
 	}
 
 	switch {
@@ -55,6 +59,7 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	return false
 }
 
 // matchPreviewHost resolves a forwarded host to the project slug and port

@@ -128,7 +128,7 @@ image builder:
 2. verifies IPv4 egress;
 3. generates the shared system/Node/tool recipe plus every project profile's
    CLI install;
-4. installs Agent Browser/Chromium and code-server;
+4. installs Agent Browser/Chromium; Code Server is installed only as a project application;
 5. stops the builder and publishes `futrx-remote-dev-base`;
 6. removes the disposable builder.
 
@@ -314,8 +314,8 @@ the run flag, then shared project preparation publishes `remote-schedule` and
 its skill for the run that needs it.
 
 On first launch or after mount changes, the launch provisioner performs
-credential seeding, skill links, browser script/skill/nesting, scheduled tools,
-and code-server setup in a stable order. Those launch steps are deliberately
+credential seeding, skill links, browser script/skill/nesting, and scheduled
+tools in a stable order. Those launch steps are deliberately
 best-effort so optional tooling cannot prevent the container from starting.
 Shared run preparation repeats the required pieces and surfaces failures that
 would make that selected run unusable.

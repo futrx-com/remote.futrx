@@ -38,8 +38,7 @@ export function buildIdeUrl(
   const proj = projectSlugAndContainerPath(folder);
   const ideBaseUrl = currentIdeBaseUrl();
   if (proj) {
-    // Per-container IDE: code.<installed-domain>/<slug>/.
-    const url = new URL(`${proj.slug}/`, ideBaseUrl);
+    const url = new URL(`${proj.slug}/code/`, location.origin + "/");
     url.searchParams.set("folder", proj.containerPath);
     if (filePath) {
       const f = projectSlugAndContainerPath(normalizeAbsolutePath(filePath));

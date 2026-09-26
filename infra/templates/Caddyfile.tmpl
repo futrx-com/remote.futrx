@@ -23,13 +23,35 @@
 
 ${HOSTNAME} {
     encode zstd gzip
-    # Defense in depth: /internal/* is reachable only on loopback (Caddy →
-    # backend). Reject any external attempt.
-    @internal path /internal/*
-    handle @internal {
-        respond 403
+    route {
+        # Defense in depth: /internal/* is reachable only on loopback.
+        @internal path /internal/*
+        handle @internal {
+            respond 403
+        }
+        # A trailing slash keeps the editor's relative asset URLs inside its
+        # project prefix.
+        @ideBare path_regexp ideBare ^/([a-z0-9][a-z0-9-]*)/code$
+        redir @ideBare {path}/{?query} 308
+        @ide path_regexp ide ^/(?P<slug>[a-z0-9][a-z0-9-]*)/code(?P<rest>/.*)$
+        handle @ide {
+            forward_auth 127.0.0.1:${SERVICE_PORT} {
+                uri /auth/verify-code-server
+                header_up X-Forwarded-Uri {http.request.orig_uri}
+            }
+            rewrite * {re.ide.rest}
+            reverse_proxy {re.ide.slug}.lxd:8842 {
+                transport http {
+                    keepalive off
+                }
+                header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
+                header_down -Set-Cookie
+            }
+        }
+        handle {
+            reverse_proxy 127.0.0.1:${SERVICE_PORT}
+        }
     }
-    reverse_proxy 127.0.0.1:${SERVICE_PORT}
 }
 
 code.${HOSTNAME} {
@@ -59,6 +81,11 @@ code.${HOSTNAME} {
         # code-server uses relative asset paths so it works under the sub-path.
         @ide path_regexp ide ^/(?P<slug>[a-z0-9][a-z0-9-]+)(?P<rest>/.*)$
         handle @ide {
+            # The project must have an active Code Server application install.
+            forward_auth 127.0.0.1:${SERVICE_PORT} {
+                uri /auth/verify-code-server
+                header_up X-Forwarded-Uri {http.request.orig_uri}
+            }
             rewrite * {re.ide.rest}
             reverse_proxy {re.ide.slug}.lxd:8842 {
                 transport http {
@@ -89,7 +116,7 @@ code.${HOSTNAME} {
         on_demand
     }
     forward_auth 127.0.0.1:${SERVICE_PORT} {
-        uri /auth/verify
+        uri /auth/verify-code-server
     }
     @valid {
         header_regexp host Host ^([a-z0-9][a-z0-9-]*)\.code\.${HOSTNAME_RE}$

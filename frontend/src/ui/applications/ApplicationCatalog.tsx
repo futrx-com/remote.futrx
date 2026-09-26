@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { AppApplication } from "../../models/application";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import { prepareInstallRequest } from "../../services/applications/prepareInstallRequest";
 import { AppIcon } from "./AppIcon";
 import { ApplicationEmptyState } from "./ApplicationEmptyState";
 import { hasPortBinding } from "./applicationPresentation";
@@ -143,18 +144,7 @@ function InstallDialog({
     setBusy(true);
     setErr(null);
     try {
-      const port = asksForPort && externalPort.trim()
-        ? Number(externalPort.trim())
-        : undefined;
-      if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
-        throw new Error("External port must be 1–65535.");
-      }
-      await onInstall({
-        applicationId: application.id,
-        name: name.trim() || application.name,
-        env,
-        externalPort: port,
-      });
+      await onInstall(prepareInstallRequest(application, { name, env, externalPort }, asksForPort));
       onClose();
     } catch (error) {
       setErr((error as Error).message);
@@ -175,7 +165,7 @@ function InstallDialog({
       <form
         onSubmit={submit}
         onClick={(event) => event.stopPropagation()}
-        class="w-full max-w-md max-h-[calc(100dvh-2rem)] flex flex-col rounded-lg border border-white/10 bg-[#0f1217] shadow-xl"
+        class={`${application.env?.some((variable) => variable.format === "json") ? "max-w-2xl" : "max-w-md"} w-full max-h-[calc(100dvh-2rem)] flex flex-col rounded-lg border border-white/10 bg-[#0f1217] shadow-xl`}
       >
         <div class="flex-none flex items-center gap-2 px-4 pt-4 pb-3">
           <Server class="w-4 h-4 text-ink-200" />
@@ -209,20 +199,38 @@ function InstallDialog({
                   <span class="text-ink-400"> — leave blank to auto-generate</span>
                 )}
               </span>
-              <input
-                type={variable.secret ? "password" : "text"}
-                value={env[variable.key] ?? ""}
-                placeholder={variable.default ? `default: ${variable.default}` : ""}
-                autoComplete="off"
-                spellcheck={false}
-                onInput={(event) =>
-                  setEnv((current) => ({
-                    ...current,
-                    [variable.key]: (event.target as HTMLInputElement).value,
-                  }))
-                }
-                class="w-full h-9 px-2.5 rounded border border-white/10 bg-black/30 text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
-              />
+              {variable.format === "json" ? (
+                <>
+                  <textarea
+                    value={env[variable.key] ?? variable.default ?? ""}
+                    rows={16}
+                    spellcheck={false}
+                    onInput={(event) => setEnv((current) => ({
+                      ...current,
+                      [variable.key]: (event.target as HTMLTextAreaElement).value,
+                    }))}
+                    class="w-full min-h-48 px-2.5 py-2 rounded border border-white/10 bg-black/30 text-[12px] leading-relaxed font-mono text-ink-50 focus:outline-none focus:border-accent-blue/50 resize-y"
+                  />
+                  <span class="block text-[11px] text-ink-400">
+                    Edit the complete JSON object before installing. The saved value is hidden from installed app details.
+                  </span>
+                </>
+              ) : (
+                <input
+                  type={variable.secret ? "password" : "text"}
+                  value={env[variable.key] ?? ""}
+                  placeholder={variable.default ? `default: ${variable.default}` : ""}
+                  autoComplete="off"
+                  spellcheck={false}
+                  onInput={(event) =>
+                    setEnv((current) => ({
+                      ...current,
+                      [variable.key]: (event.target as HTMLInputElement).value,
+                    }))
+                  }
+                  class="w-full h-9 px-2.5 rounded border border-white/10 bg-black/30 text-[13px] font-mono text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
+                />
+              )}
             </label>
           ))}
 

@@ -88,7 +88,7 @@ func configuredProfiles() []provisioning.Profile {
 func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 	runtime := &recordingRuntime{available: true}
 	profiles := &recordingProfileSource{profiles: configuredProfiles()}
-	builder := NewBuilder(runtime, profiles, "browser-install", []byte("code-server-install"), nil)
+	builder := NewBuilder(runtime, profiles, "browser-install", nil)
 	builder.networkWarmup = 0
 
 	if err := builder.Build(context.Background(), ""); err != nil {
@@ -105,7 +105,6 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 		"script " + baseImageBuilderName + " " + ipv4EgressProbe,
 		"script " + baseImageBuilderName + " " + installScript,
 		"script " + baseImageBuilderName + " browser-install",
-		"script " + baseImageBuilderName + " code-server-install",
 		"stop " + baseImageBuilderName,
 		"publish " + baseImageBuilderName + " " + Alias + " futrx remote dev base: ubuntu 24.04 + node 22 + alpha-cli",
 		"delete " + baseImageBuilderName,
@@ -127,7 +126,6 @@ func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	builder.networkWarmup = 0
@@ -147,7 +145,7 @@ func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
 		}
 	}
 	for _, event := range runtime.events {
-		if strings.Contains(event, "browser-install") || strings.Contains(event, "code-server-install") {
+		if strings.Contains(event, "browser-install") {
 			t.Fatalf("build ran install stages despite no IPv4 egress: %q", runtime.events)
 		}
 	}
@@ -169,7 +167,6 @@ func TestBuildPreservesErrorOutputAndDeferredCleanup(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	builder.networkWarmup = 0
@@ -190,7 +187,6 @@ func TestBuildUnavailablePreservesErrorAndDoesNotMutateRuntime(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 
@@ -230,7 +226,6 @@ func TestBuildWaitsForIPv4EgressInsteadOfFailingOnABootingContainer(t *testing.T
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	builder.networkWarmup = 0
@@ -263,7 +258,6 @@ func TestWaitForIPv4EgressStopsWhenTheBuildIsCanceled(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	ctx, cancel := context.WithCancel(context.Background())

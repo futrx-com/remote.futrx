@@ -10,7 +10,9 @@ import (
 	"io/fs"
 	"path"
 	"sort"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"futrx.local/catalog"
 
@@ -245,6 +247,28 @@ func loadApplicationManifest(
 			"application id %q must be lowercase letters, digits and dashes, starting with a letter or digit",
 			application.ID,
 		)
+	}
+	for index := range application.Env {
+		variable := &application.Env[index]
+		if variable.DefaultFile == "" {
+			continue
+		}
+		if variable.Default != "" || !fs.ValidPath(variable.DefaultFile) ||
+			!strings.HasPrefix(variable.DefaultFile, "infra/") {
+			return svc.Application{}, nil, fmt.Errorf("env %q has an invalid defaultFile", variable.Key)
+		}
+		contents, err := fs.ReadFile(catalog, path.Join(root, variable.DefaultFile))
+		if err != nil {
+			return svc.Application{}, nil, fmt.Errorf("env %q defaultFile: %w", variable.Key, err)
+		}
+		if len(contents) > 128<<10 {
+			return svc.Application{}, nil, fmt.Errorf("env %q defaultFile exceeds 128 KiB", variable.Key)
+		}
+		if !utf8.Valid(contents) {
+			return svc.Application{}, nil, fmt.Errorf("env %q defaultFile is not UTF-8", variable.Key)
+		}
+		variable.Default = string(contents)
+		variable.DefaultFile = ""
 	}
 	// Container metadata is derived from backend/container/ below. A manifest
 	// cannot claim a build identity or commands that the package does not carry.

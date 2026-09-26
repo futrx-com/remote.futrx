@@ -105,6 +105,15 @@ func (in *Installer) Start(ctx context.Context, spec svc.InstallSpec) error {
 	if err := in.ensureContainer(ctx, spec); err != nil {
 		return err
 	}
+	// A stopped project application keeps its database record when the project
+	// container is replaced. Reinstall it on first start if its unit disappeared
+	// with the old root filesystem.
+	if name := spec.Application.ServiceName(); name != "" {
+		if _, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout,
+			"test", "-f", serviceUnitPath(name)); err != nil {
+			return in.Install(ctx, spec)
+		}
+	}
 	if err := in.publishSkills(ctx, spec); err != nil {
 		return err
 	}
@@ -140,6 +149,14 @@ func (in *Installer) ensureHostTools(ctx context.Context, spec svc.InstallSpec) 
 func (in *Installer) startService(ctx context.Context, spec svc.InstallSpec) error {
 	name := spec.Application.ServiceName()
 	if name == "" {
+		return nil
+	}
+	if spec.Application.Service.SocketProxy != nil {
+		name += ".socket"
+		out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "enable", "--now", name)
+		if err != nil {
+			return fmt.Errorf("start %s in %s: %w; output: %s", name, spec.Instance.ContainerName, err, tail(out))
+		}
 		return nil
 	}
 	out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "start", name)
@@ -191,6 +208,10 @@ func (in *Installer) Stop(ctx context.Context, spec svc.InstallSpec) error {
 		return nil
 	}
 	if svcName := spec.Application.ServiceName(); svcName != "" {
+		if spec.Application.Service.SocketProxy != nil {
+			_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName+".socket")
+			_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "stop", svcName+"-proxy.service")
+		}
 		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "stop", svcName)
 	}
 	return nil
@@ -220,6 +241,10 @@ func (in *Installer) Uninstall(ctx context.Context, spec svc.InstallSpec) error 
 		return err
 	}
 	if svcName := spec.Application.ServiceName(); svcName != "" {
+		if spec.Application.Service.SocketProxy != nil {
+			_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName+".socket")
+			_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "stop", svcName+"-proxy.service")
+		}
 		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName)
 		in.removeServiceFiles(ctx, spec)
 	}
@@ -363,6 +388,20 @@ func (in *Installer) installService(ctx context.Context, spec svc.InstallSpec) e
 		path.Join(configDir, ".unit.sha256"), "644", serviceUnitPath(service.Name)); err != nil {
 		return fmt.Errorf("publish service %s unit: %w", service.Name, err)
 	}
+	if socket := service.SocketProxy; socket != nil {
+		for _, file := range []struct {
+			name string
+			body []byte
+		}{
+			{service.Name + "-proxy.service", socketProxyUnit(service.Name, *socket)},
+			{service.Name + ".socket", socketUnit(service.Name, *socket)},
+		} {
+			if err := in.publisher.PushVerified(ctx, spec.Instance.ContainerName, file.body,
+				path.Join(configDir, "."+file.name+".sha256"), "644", path.Join(serviceUnitRoot, file.name)); err != nil {
+				return fmt.Errorf("publish service %s unit %s: %w", service.Name, file.name, err)
+			}
+		}
+	}
 	if err := in.publisher.PushVerified(ctx, spec.Instance.ContainerName, []byte(service.Name+"\n"),
 		path.Join(configDir, ".idle.sha256"), "644", path.Join(workspaceIdleRoot, service.Name)); err != nil {
 		return fmt.Errorf("publish service %s idle declaration: %w", service.Name, err)
@@ -371,6 +410,16 @@ func (in *Installer) installService(ctx context.Context, spec svc.InstallSpec) e
 	if out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "daemon-reload"); err != nil {
 		return fmt.Errorf("reload systemd for %s in %s: %w; output: %s",
 			service.Name, spec.Instance.ContainerName, err, tail(out))
+	}
+	if service.SocketProxy != nil {
+		// A socket-activated application must not inherit an enabled eager service
+		// from a prior installation or from a legacy base image.
+		_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", service.Name+".service")
+		if out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout,
+			"systemctl", "enable", "--now", service.Name+".socket"); err != nil {
+			return fmt.Errorf("enable socket for %s in %s: %w; output: %s", service.Name, spec.Instance.ContainerName, err, tail(out))
+		}
+		return nil
 	}
 	if out, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "enable", service.Name); err != nil {
 		return fmt.Errorf("enable %s in %s: %w; output: %s",
@@ -407,9 +456,18 @@ func serviceUnit(spec svc.InstallSpec, environmentPath string) []byte {
 	}
 
 	var unit strings.Builder
-	fmt.Fprintf(&unit, "[Unit]\nDescription=%s\nAfter=network.target\n\n", systemdValue(description))
-	unit.WriteString("[Service]\nType=simple\n")
+	fmt.Fprintf(&unit, "[Unit]\nDescription=%s\nAfter=network.target\n", systemdValue(description))
+	if service.SocketProxy != nil {
+		// The proxy requires this service only while handling connections.
+		// StopWhenUnneeded lets systemd release its memory after proxy idle exit.
+		unit.WriteString("StopWhenUnneeded=yes\n")
+	}
+	unit.WriteString("\n[Service]\nType=simple\n")
 	fmt.Fprintf(&unit, "EnvironmentFile=%s\nExecStart=%s\n", environmentPath, strings.Join(command, " "))
+	if socket := service.SocketProxy; socket != nil && socket.ReadyPath != "" {
+		probe := fmt.Sprintf("for i in {1..50}; do /usr/bin/curl -fsS -o /dev/null http://127.0.0.1:%d%s && exit 0; sleep 0.2; done; exit 1", socket.TargetPort, socket.ReadyPath)
+		fmt.Fprintf(&unit, "ExecStartPost=/usr/bin/bash -c %s\n", systemdArgument(probe))
+	}
 	if service.Restart != "" {
 		fmt.Fprintf(&unit, "Restart=%s\n", service.Restart)
 	}
@@ -438,6 +496,16 @@ func serviceUnit(spec svc.InstallSpec, environmentPath string) []byte {
 	return []byte(unit.String())
 }
 
+func socketProxyUnit(name string, socket svc.SocketProxy) []byte {
+	return []byte(fmt.Sprintf("[Unit]\nDescription=%s on-demand proxy\nRequires=%s.service\nAfter=%s.service\n\n[Service]\nExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time=%ds 127.0.0.1:%d\n",
+		name, name, name, socket.IdleSeconds, socket.TargetPort))
+}
+
+func socketUnit(name string, socket svc.SocketProxy) []byte {
+	return []byte(fmt.Sprintf("[Unit]\nDescription=%s on-demand socket\n\n[Socket]\nListenStream=0.0.0.0:%d\nService=%s-proxy.service\n\n[Install]\nWantedBy=sockets.target\n",
+		name, socket.ListenPort, name))
+}
+
 func systemdArgument(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)
 	value = strings.ReplaceAll(value, `"`, `\"`)
@@ -461,6 +529,11 @@ func (in *Installer) removeServiceFiles(ctx context.Context, spec svc.InstallSpe
 	configDir := path.Join(serviceConfigRoot, service.Name)
 	_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "rm", "-f",
 		serviceUnitPath(service.Name), path.Join(workspaceIdleRoot, service.Name))
+	if service.SocketProxy != nil {
+		_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "rm", "-f",
+			path.Join(serviceUnitRoot, service.Name+".socket"),
+			path.Join(serviceUnitRoot, service.Name+"-proxy.service"))
+	}
 	_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "rm", "-rf", configDir)
 	_, _ = in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout, "systemctl", "daemon-reload")
 }

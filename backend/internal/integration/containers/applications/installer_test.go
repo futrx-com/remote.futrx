@@ -15,8 +15,9 @@ import (
 // assert on what it did (and, more importantly, on what it did not do).
 type fakeRunner struct {
 	// running is the set of containers `lxc info` should report as up.
-	running map[string]bool
-	calls   [][]string
+	running     map[string]bool
+	missingUnit bool
+	calls       [][]string
 }
 
 func newFakeRunner(running ...string) *fakeRunner {
@@ -38,6 +39,9 @@ func (f *fakeRunner) Run(_ context.Context, args ...string) (string, error) {
 		}
 		return "Error: Instance not found", fmt.Errorf("exit status 1")
 	case len(args) >= 1 && args[0] == "exec":
+		if f.missingUnit && strings.Contains(strings.Join(args, " "), "test -f /etc/systemd/system/fixture.service") {
+			return "", fmt.Errorf("exit status 1")
+		}
 		// waitNetwork probes for connectivity; report it immediately.
 		return "ok", nil
 	}
@@ -189,6 +193,58 @@ func TestInstallMaterializesAndStartsTheManifestService(t *testing.T) {
 		if !runner.contains(command) {
 			t.Errorf("install did not run %q:\n%s", command, strings.Join(runner.commands(), "\n"))
 		}
+	}
+}
+
+func TestSocketProxyStartsOnDemandAndStopsWithTheApplication(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	installer := testInstaller(t, runner)
+	spec := serviceSpec(svc.ScopeProject, "my-project")
+	spec.Application.Service.SocketProxy = &svc.SocketProxy{
+		ListenPort: 8842, TargetPort: 8081, IdleSeconds: 600, ReadyPath: "/healthz",
+	}
+	spec.Application.Port = svc.Port{}
+	spec.Instance.DeviceName = ""
+	if err := installer.Install(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl enable --now fixture.socket") || runner.contains("systemctl restart fixture") {
+		t.Fatalf("install should arm only the socket: %v", runner.commands())
+	}
+	unit := string(serviceUnit(spec, "/etc/remote/applications/fixture/environment"))
+	if !strings.Contains(unit, "StopWhenUnneeded=yes") || !strings.Contains(unit, "ExecStartPost=") {
+		t.Fatalf("service does not stop when idle or wait for readiness: %s", unit)
+	}
+	if !strings.Contains(string(socketUnit("fixture", *spec.Application.Service.SocketProxy)), "ListenStream=0.0.0.0:8842") ||
+		!strings.Contains(string(socketProxyUnit("fixture", *spec.Application.Service.SocketProxy)), "--exit-idle-time=600s 127.0.0.1:8081") {
+		t.Fatal("socket proxy does not preserve the declared endpoints")
+	}
+	runner.calls = nil
+	if err := installer.Stop(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl disable --now fixture.socket") || !runner.contains("systemctl stop fixture-proxy.service") || !runner.contains("systemctl stop fixture") {
+		t.Fatalf("stop left a socket or process active: %v", runner.commands())
+	}
+	runner.calls = nil
+	if err := installer.Start(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl enable --now fixture.socket") || runner.contains("systemctl start fixture") {
+		t.Fatalf("start should re-arm the socket without starting the editor: %v", runner.commands())
+	}
+}
+
+func TestStartReinstallsStoppedServiceAfterProjectContainerReplacement(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	runner.missingUnit = true
+	installer := testInstaller(t, runner)
+	spec := serviceSpec(svc.ScopeProject, "my-project")
+	if err := installer.Start(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("bash -s") || !runner.contains("systemctl restart fixture") {
+		t.Fatalf("missing service was not reinstalled: %v", runner.commands())
 	}
 }
 

@@ -198,7 +198,12 @@ location.
 
 ### A user can open an IDE for a project they do not belong to
 
-This is a known authorization gap: the IDE proxy currently checks registered-user status but not project membership. Remove the person from the global user directory if access must stop, and do not invite mutually untrusted users to the same server.
+The public IDE routes require project membership and a running Code Server
+installation. If a removed member still has an already-open editor connection,
+close that browser session or stop the project application. Project containers
+still share a bridge, so processes inside another project container can reach
+an installed IDE's unauthenticated socket directly; see the
+[known limitations](../known-limitations.md).
 
 ## Preview and browser
 

@@ -48,6 +48,7 @@ export function FileTreeNodes({
           <FileRow
             key={node.path}
             node={node}
+            canOpenIde={state.canOpenIde}
             downloadUrl={state.downloadUrl}
             onOpen={state.onOpenFile}
           />
@@ -127,10 +128,12 @@ function FolderRow({
 
 function FileRow({
   node,
+  canOpenIde,
   downloadUrl,
   onOpen,
 }: {
   node: FileNode;
+  canOpenIde: boolean;
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
@@ -141,7 +144,7 @@ function FileRow({
         class="group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-tint cursor-pointer select-none"
         role="button"
         tabIndex={0}
-        title={openTitle(node.name)}
+        title={openTitle(node.name, canOpenIde)}
         onClick={() => onOpen(node)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -175,10 +178,12 @@ function FileRow({
 /** Flat row used to render server-side search results, showing the full path. */
 export function SearchResultRow({
   node,
+  canOpenIde,
   downloadUrl,
   onOpen,
 }: {
   node: FileNode;
+  canOpenIde: boolean;
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
@@ -193,7 +198,7 @@ export function SearchResultRow({
         class={`group flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-tint ${openable ? "cursor-pointer select-none" : ""}`}
         role={openable ? "button" : undefined}
         tabIndex={openable ? 0 : undefined}
-        title={openable ? openTitle(node.name) : undefined}
+        title={openable ? openTitle(node.name, canOpenIde) : undefined}
         onClick={openable ? () => onOpen(node) : undefined}
         onKeyDown={
           openable
@@ -231,9 +236,9 @@ export function SearchResultRow({
 }
 
 // Hover hint describing what a click will do for this file.
-function openTitle(name: string): string {
+function openTitle(name: string, canOpenIde: boolean): string {
   const target = fileService.openAction(name);
   if (target.action === "media") return `View ${name}`;
-  if (target.action === "ide") return `Open ${name} in IDE`;
+  if (target.action === "ide" && canOpenIde) return `Open ${name} in IDE`;
   return `Download ${name}`;
 }

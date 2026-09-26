@@ -34,7 +34,15 @@ type Service struct {
 	// image) is relaunched exactly once even under concurrent prompts. It also
 	// keeps an explicit stop, restart, or delete from racing an agent-triggered
 	// recovery. Different projects remain independent.
-	runState keyedMutex
+	runState          keyedMutex
+	containerRestorer func(context.Context, string) error
+}
+
+// SetContainerRestorer attaches optional application recovery after a missing
+// project container has been recreated. The caller wires this after both
+// services exist, avoiding a construction cycle.
+func (s *Service) SetContainerRestorer(restore func(context.Context, string) error) {
+	s.containerRestorer = restore
 }
 
 func New(
@@ -354,6 +362,11 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 		if state == ContainerStateMissing {
 			if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 				log.Printf("projects: sync env to %s after ensure: %v", m.ContainerName, syncErr)
+			}
+			if s.containerRestorer != nil {
+				if restoreErr := s.containerRestorer(ctx, string(id)); restoreErr != nil {
+					log.Printf("projects: restore applications in %s: %v", m.ContainerName, restoreErr)
+				}
 			}
 		}
 	}

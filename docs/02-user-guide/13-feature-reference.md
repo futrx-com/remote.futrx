@@ -106,7 +106,7 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 
 | Feature | How to use it | Limits or lifecycle |
 | --- | --- | --- |
-| Open in IDE | Choose **Open in IDE** in a project chat | code-server in `/workspace`; registered-user auth caveat |
+| Open in IDE | Install and run Code Server in the project, then choose **Open in IDE** in its chat | On-demand code-server in `/workspace`; project membership required |
 | Installable apps | Use the browser's install action on Remote or `code.<host>` | Main app is network-first with a cached offline status page; IDE launcher keeps a live project list |
 | Open Terminal | Choose **Open Terminal** | Resizable pane; hiding it in the same chat preserves the PTY; socket loss or page/chat change ends it |
 | Open History | Choose **History** | Git repositories only |
@@ -114,7 +114,7 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 | Open Browser | Choose **Open Browser** | Preview or Agent Browser |
 | Refresh Files | Use the drawer refresh control | Reloads root |
 | Expand folder | Select folder row | Lazy-loads children |
-| Open file | Select a file or search result | Supported media opens in-app; other non-archives open in IDE; unsupported media/archives download |
+| Open file | Select a file or search result | Supported media opens in-app; source files open in the IDE when Code Server runs, otherwise download; unsupported media/archives download |
 | Search filenames | Type at least two characters | 300 results; 200,000 visited-entry cap |
 | Download file | Hover a file and choose download | Direct file response |
 | Download folder | Hover a folder and choose download | ZIP up to 1 GiB; two concurrent |

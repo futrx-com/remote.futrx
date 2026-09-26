@@ -239,11 +239,13 @@ install script, and a field in the install dialog.
 | `key` | string | The environment variable name. |
 | `label` | string | Field label in the install dialog. Falls back to `key`. |
 | `required` | bool | Reject the install if left blank with no default or generator. |
-| `secret` | bool | Value is redacted in API responses and masked in the dialog. |
+| `secret` | bool | Value is redacted in installed-app details. Ordinary fields are masked in the dialog; a JSON editor shows its contents while the user edits them. |
 | `default` | string | Applied when the user leaves the field blank. |
+| `defaultFile` | string | Path under the application's `infra/` directory whose UTF-8 contents become `default` when the catalog loads. Use for larger editable defaults; it cannot be combined with `default`. Maximum 128 KiB. |
+| `format` | string | `json` renders a multiline editor and requires a JSON object at install time. |
 | `generate` | string | `password` → a strong value is generated when blank. |
 
-Resolution order for a blank field: `generate`, then `default`, then reject if
+Resolution order for a blank field: `default`, then `generate`, then reject if
 `required`.
 
 ### `service`
@@ -263,11 +265,17 @@ unit, and owns start/stop/uninstall lifecycle.
 | `restartSec` | int | Non-negative restart delay in seconds. |
 | `environment` | object[] | Maps a declared `env[]` key into the service environment. Each entry is `{ "key", "fromEnv", "encoding": "base64" }`. |
 | `hardening` | object | Optional `noNewPrivileges`, `privateTmp`, `protectHome`, and `protectSystem` (`true`, `full`, or `strict`). |
+| `socketProxy` | object | Optional on-demand systemd socket and proxy: `listenPort`, loopback `targetPort`, positive `idleSeconds`, and optional HTTP `readyPath`. The process starts on first connection and stops when the proxy idles out. `port.internal`, if declared, must equal `listenPort`. |
 
 Environment mappings are deliberately base64 encoded. This preserves spaces,
 line breaks, quotes, and secrets without letting a value change systemd's
 environment-file syntax. The service decodes those values itself, as Hello
 Remote does for its `HELLO_*_B64` variables.
+
+For `socketProxy`, Remote enables the socket instead of starting the service.
+Stop and uninstall disable the socket and stop the proxy and service. The
+application installer supplies its own executable and configuration; it does
+not write systemd units. Code Server is the built-in example.
 
 ### `connection`
 

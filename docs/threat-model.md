@@ -36,7 +36,7 @@ machine and guardrails.
 | 1 | Loose (project-less) chat → root code execution on the host, reachable by any invited user | Agent / Web | Elevation of privilege | **Critical** | ✓ |
 | 2 | Host tmux WebSocket / `/api/sessions` → host shell as root, no admin gate | Web | Elevation of privilege | **Critical** | ✓ (direct) |
 | 3 | Operator-selected update ref executes as root without commit/tag signature verification | Supply chain | Elevation of privilege | **High** | cited |
-| 4 | Any invited user reaches any project's code-server IDE (cross-tenant root shell) | Web | Elevation of privilege | **High** | ✓ |
+| 4 | Any invited user reaches any project's code-server IDE (cross-tenant root shell) | Web | Elevation of privilege | **Resolved at edge** | ✓ |
 | 5 | Cross-container lateral movement over the unsegmented LXD bridge | Container | Elevation of privilege | **High** | ✓ |
 | 6 | Prompt-injected agent exfiltrates secrets over unrestricted egress | Agent | Information disclosure | **High** | cited |
 | 7 | Provider OAuth tokens copied into every container, readable/exfiltrable by an injected agent | Secrets | Information disclosure | **High** | cited |
@@ -52,6 +52,7 @@ machine and guardrails.
 | 17 | No CSRF tokens and WebSocket origin checks disabled | Web | Tampering | **Medium** | cited |
 | 18 | Secrets/OAuth key plaintext at rest; leaked `session.key` forges admin sessions forever | Secrets | Elevation of privilege | **Medium** | cited |
 | 19 | `return_to` open redirect into untrusted preview/IDE subdomains | Web | Spoofing | **Low** | cited |
+| 20 | Project IDE content shares the platform browser origin | Web | Elevation of privilege | **High** | ✓ |
 
 ¹ Conditional — see finding 11 for the precondition.
 
@@ -68,12 +69,30 @@ External users reach only Caddy, which terminates TLS and forwards to the loopba
 - **Existing mitigations:** session names are validated (`^[a-zA-Z0-9_-]{1,32}$`); the main UI does not surface this route.
 - **Residual gap:** no authorization beyond "registered." This is a full host compromise available to any non-admin invited user. Directly verified.
 
-### 4. Any invited user reaches any project's code-server IDE — **High** ✓ code-verified
+### 4. Any invited user reaches any project's code-server IDE — resolved at edge
 
-**Elevation of privilege.** The `forward_auth` handler ([`auth_verify_handler.go`](../backend/internal/transport/http/handlers/auth_verify_handler.go)) extracts the project slug **only** from the dev-preview host pattern `^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.(.+)$`. For the IDE host classes — `<slug>.code.<host>` and `code.<host>/<slug>/` — the slug is never parsed, so [`access.go`](../backend/internal/service/auth/access.go) skips the membership branch and falls through to a **registered-user-only** check. code-server itself runs `auth: none` ([`code-server-up.sh`](../backend/internal/integration/containers/codeserver/assets/code-server-up.sh)) with an integrated root terminal over the bind-mounted project root. So any invited user can hand-craft `https://<victim-slug>.code.<host>/` and get a root shell and full read/write in a project they were never granted.
+The optional Code Server application now has an application-aware Caddy
+forward-auth route for `<host>/<slug>/code/`, `<slug>.code.<host>`, and
+`code.<host>/<slug>/`.
+[`auth_verify_handler.go`](../backend/internal/transport/http/handlers/auth_verify_handler.go)
+extracts the slug, verifies project membership or administrator access, and
+requires a running Code Server installation. Stopping or uninstalling the app
+also disables its in-container socket. The direct LXD bridge path remains
+ungated; see finding 5.
 
-- **Existing mitigations:** Caddy `forward_auth` does require an authenticated, registered session, and strips platform cookies before proxying. The dev-preview URL path (`--<port>.dev`) *does* enforce membership — proving the mechanism exists and is simply not applied to the IDE host class.
-- **Residual gap:** no per-project membership check for the IDE/code hosts. This is documented as a known gap in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md), but the Caddyfile comments incorrectly call it "the same admin gate as the rest of the platform."
+### 20. Project IDE content shares the platform browser origin — **High**
+
+The `/<slug>/code/` route serves code-server on the main Remote origin. Code
+Server can render project-controlled content in the browser. Script running in
+that origin can call Remote's API with the user's session, including routes
+outside the project. The proxy strips platform cookies before forwarding
+requests into the container and strips upstream `Set-Cookie` responses; these
+measures keep the container from reading or replacing the cookie directly, but
+they do not stop browser script from sending credentialed same-origin requests.
+The previous dedicated `code.<host>` origin provided a browser boundary that
+this path cannot provide. Operators should treat opening project IDE content as
+granting it the user's platform browser privileges until an isolated origin is
+restored or the API gains a separate authorization boundary.
 
 ### 11. Google OAuth authorizes on an unverified email — **High** (conditional) ✓ code-verified
 
@@ -171,7 +190,7 @@ Unprivileged LXC namespaces plus the managed resource profile are the isolation 
 
 ### 5. Cross-container lateral movement over the LXD bridge — **High** ✓ code-verified
 
-**Elevation of privilege.** All project containers share one unsegmented `lxdbr0` with no `security.mac_filtering` and no per-container firewall; the host UFW opens only 80/443, which does not filter peer-to-peer traffic. Each container exposes root-level services reachable on the bridge: code-server on `0.0.0.0:8842` (`auth: none`) and noVNC/websockify on `0.0.0.0:6080` (`x11vnc -nopw`). Code executing in container A can connect to `<B>.lxd:8842` — a root IDE/terminal in B — or `<B>.lxd:6080` — B's live authenticated browser — completely bypassing Caddy's edge auth.
+**Elevation of privilege.** All project containers share one unsegmented `lxdbr0` with no `security.mac_filtering` and no per-container firewall; the host UFW opens only 80/443, which does not filter peer-to-peer traffic. A project with the optional Code Server app exposes an unauthenticated socket on `0.0.0.0:8842`; browser tooling may expose noVNC/websockify on `0.0.0.0:6080` (`x11vnc -nopw`). Code executing in container A can connect to `<B>.lxd:8842` when B installed the IDE, or `<B>.lxd:6080` when B's browser is running, bypassing Caddy's edge auth.
 
 - **Existing mitigations:** code-server binds loopback behind the `:8842` socket-activation proxy; CDP and raw RFB are loopback-only; Caddy gates the *edge*.
 - **Residual gap:** nothing gates the direct bridge path. Precondition is only code execution in one container — the platform's core function — so prompt-injection-to-lateral-movement is a first-class path. Fix with LXD network ACLs or per-container nftables default-deny for peer ingress on 8842/6080/9222/5900, or bind those services host-only.
@@ -253,7 +272,7 @@ project secret once an operator applies it.
 
 ### 12. Unpinned/unverified upstream fetches baked in as root — **High**
 
-**Tampering.** Several root-context fetches have no cryptographic integrity check: NodeSource `curl | bash` (major-version pinned only), the Go tarball (validated only by `tar -tzf` + the reported version string), the code-server `.deb` from GitHub releases (no checksum), `snap install lxd` (unpinned), and the `ubuntu:24.04` base image (floating). All of this is rebuilt on every update and re-run inside live containers via the CLI repair path. A compromise or MITM of any of these upstreams runs as root and propagates into every workspace on the next rebake.
+**Tampering.** Several root-context fetches have no cryptographic integrity check: NodeSource `curl | bash` (major-version pinned only), the Go tarball (validated only by `tar -tzf` + the reported version string), `snap install lxd` (unpinned), and the `ubuntu:24.04` base image (floating). The optional Code Server application also downloads a version-pinned `.deb` without an independent checksum when installed. A compromise or MITM of these upstreams runs as root, with Code Server now limited to projects where it is installed rather than every base-image rebake.
 
 - **Existing mitigations:** Caddy and GitHub CLI apt repos are GPG-signed; the Go install stages with backup/rollback; LXD's `ubuntu:` remote verifies image signatures; agent CLI and host versions are centrally pinned in one canonical manifest (`infra/versions.env` is a symlink).
 - **Residual gap:** no SHA256/signature pinning on the fetches above; the base image is non-reproducible. Also note the npm agent CLIs are pinned by version but installed with lifecycle scripts enabled and no integrity hashes — a backdoored publish *at* the pinned version, or a poisoned pin commit, runs as root host-wide.

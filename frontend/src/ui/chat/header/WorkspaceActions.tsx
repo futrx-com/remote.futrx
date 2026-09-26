@@ -1,9 +1,9 @@
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
-import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
+import { CalendarClock, Clock, Folder, Monitor, Terminal } from "../../primitives/icons";
 import { ExtensionSlot } from "../../primitives/ExtensionSlot";
 import { EXTENSION_SLOTS } from "../../../config/extensions";
-import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
+import { defaultWorkspacePath } from "../ideLinks";
 
 // Two states only, and they never fight over the same property: Tailwind emits
 // utilities in file order, so an "expanded" colour appended after a base colour
@@ -50,7 +50,6 @@ export function WorkspaceActions({
   orientation: "horizontal" | "vertical";
 }) {
   const workspacePath = cwd && cwd !== "~" ? cwd : defaultWorkspacePath;
-  const ideUrl = buildIdeUrl(workspacePath);
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
 
   return (
@@ -60,13 +59,6 @@ export function WorkspaceActions({
         chatId={chatId}
         projectId={projectId}
         cwd={workspacePath}
-      />
-      <WorkspaceAction
-        Icon={Code}
-        href={ideUrl}
-        label="Workspace IDE"
-        tooltip="Open workspace in IDE"
-        tooltipPlacement={tooltipPlacement}
       />
       <WorkspaceAction
         Icon={Terminal}
@@ -130,17 +122,15 @@ function WorkspaceAction({
   Icon,
   label,
   tooltip,
-  href,
   onClick,
   expanded,
   controls,
   action,
   tooltipPlacement,
 }: {
-  Icon: typeof Code;
+  Icon: typeof Terminal;
   label: string;
   tooltip: string;
-  href?: string;
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
@@ -190,20 +180,6 @@ function WorkspaceAction({
       </span>
     </>
   );
-
-  if (href) {
-    return (
-      <a
-        {...interactionProps}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        class={actionIdle}
-      >
-        {content}
-      </a>
-    );
-  }
 
   return (
     <button

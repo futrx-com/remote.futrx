@@ -256,7 +256,7 @@ func main() {
 		SelfUpdate: selfUpdateService,
 		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
 		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),
-		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot),
+		IDE:        serviceworkspaceide.New(codeServerBaseURL, cfg.BaseURL, fileproject.WorkspaceRoot),
 	})
 	if err != nil {
 		log.Fatalf("init http handler: %v", err)
