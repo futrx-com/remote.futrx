@@ -2,13 +2,14 @@ import type { ComponentChildren } from "preact";
 import type { MediaKind } from "../../../models/files";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
-import { API_ROUTES } from "../../../config/routes";
+import { API_ROUTES, isChatMediaOpenUrl } from "../../../config/routes";
 import { internalPathOpenUrl } from "../ideLinks";
 import { File as FileIcon } from "../../primitives/icons";
 
 // Renders the file attachments that the chat composer tucked into a user
-// message. Image kinds render as clickable thumbnails (open the in-app media
-// viewer) and the rest render as IDE-link chips that open the file in code.
+// message. Images render as thumbnails and other viewable media (video, audio,
+// PDF) as chips; both open the in-app media viewer. The rest render as
+// IDE-link chips that open the file in code.
 export function AttachmentPreviews({
   paths,
   chatId,
@@ -47,7 +48,7 @@ function AttachmentPreview({
   if (mediaKind === "image" && chatId) {
     return <AttachmentImage path={path} name={name} chatId={chatId} />;
   }
-  return <AttachmentFile path={path} name={name} chatId={chatId} cwd={cwd} />;
+  return <AttachmentFile path={path} name={name} chatId={chatId} cwd={cwd} mediaKind={mediaKind} />;
 }
 
 function AttachmentImage({
@@ -92,11 +93,13 @@ function AttachmentFile({
   name,
   chatId,
   cwd,
+  mediaKind,
 }: {
   path: string;
   name: string;
   chatId?: string;
   cwd?: string;
+  mediaKind: MediaKind | null;
 }) {
   // Picks the IDE open URL when the path is inside a workspace; otherwise
   // shows the bare path as a label.
@@ -111,6 +114,14 @@ function AttachmentFile({
     return (
       <a
         href={internalUrl}
+        onClick={(event) => {
+          // Viewable media plays in the in-app viewer; modified clicks keep
+          // the browser's default so the file can still open in a new tab.
+          if (!mediaKind || !isChatMediaOpenUrl(internalUrl)) return;
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          mediaViewerStore.getState().open({ url: internalUrl, name, kind: mediaKind });
+        }}
         class="group flex items-center gap-1.5 bg-surface border border-line rounded-md px-2 py-1.5 text-xs min-h-10 hover:bg-tint-strong transition-colors"
         title={path}
       >
