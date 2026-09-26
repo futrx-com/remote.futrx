@@ -1,5 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
+import { FRONTEND_BUILD } from "../../../config/build.ts";
+import { SESSION_STORAGE_KEYS } from "../../../config/storageKeys.ts";
 import { AlertTriangle } from "../../primitives/icons";
+import { isChunkLoadError } from "./mermaidBlock.ts";
 
 // A `flowchart` / `sequenceDiagram` / etc. block lifted out of the assistant
 // markdown and rendered through the mermaid library. Mermaid is large (~
@@ -39,6 +42,25 @@ async function loadMermaid(): Promise<MermaidAPI> {
     });
   }
   return mermaidPromise;
+}
+
+// A diagram chunk that fails to load usually means this page predates a deploy
+// that replaced its assets, or the fetch was cut off mid-flight. Reload once
+// per build so the page picks up assets the server actually serves; if the
+// same build fails again, keep the page and let the fallback explain.
+function reloadForChunkLoadError(): boolean {
+  const running =
+    document.querySelector<HTMLMetaElement>(`meta[name="${FRONTEND_BUILD.metaName}"]`)?.content ||
+    "dev";
+  try {
+    if (sessionStorage.getItem(SESSION_STORAGE_KEYS.mermaidChunkReload) === running) return false;
+    sessionStorage.setItem(SESSION_STORAGE_KEYS.mermaidChunkReload, running);
+  } catch {
+    // Unrecorded, a persistent failure would reload forever.
+    return false;
+  }
+  window.location.reload();
+  return true;
 }
 
 interface RenderOutcome {
@@ -103,6 +125,12 @@ export function MermaidBlock({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        if (isChunkLoadError(err)) {
+          // mermaid.render lazily imports per-diagram chunks after the core
+          // loaded, so drop the cached instance as well before retrying.
+          mermaidPromise = null;
+          if (reloadForChunkLoadError()) return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         setOutcome({ status: "error", error: message });
       });
