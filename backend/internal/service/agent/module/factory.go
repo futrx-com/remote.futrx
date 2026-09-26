@@ -61,7 +61,16 @@ type Features struct {
 	BrowserTools      bool
 	ScheduledTools    bool
 	ExecutionPolicies bool
+	// Empty selects token streaming for modules that do not opt into block reveal.
+	StreamingPresentation StreamingPresentation
 }
+
+type StreamingPresentation string
+
+const (
+	StreamingTokens StreamingPresentation = "tokens"
+	StreamingBlocks StreamingPresentation = "blocks"
+)
 
 type APIKeyAuth struct {
 	CreateURL       string
@@ -311,6 +320,11 @@ func validateDescriptor(descriptor Descriptor, profile *provisioning.Profile) er
 	}
 	if descriptor.Features.Sessions.Fork && !descriptor.Features.Sessions.Resume {
 		return fmt.Errorf("%w: provider %q declares fork without resume", ErrInvalidFactory, descriptor.ID)
+	}
+	switch descriptor.Features.StreamingPresentation {
+	case "", StreamingTokens, StreamingBlocks:
+	default:
+		return fmt.Errorf("%w: provider %q has unknown streaming presentation %q", ErrInvalidFactory, descriptor.ID, descriptor.Features.StreamingPresentation)
 	}
 	switch descriptor.Features.Skills {
 	case SkillsNone, SkillsSlashCommand, SkillsDollarMention, SkillsInstructions:

@@ -230,7 +230,7 @@ func TestListUsesModuleIdentityAndPublishesDefensiveMetadata(t *testing.T) {
 		len(got.ExecutionScopes) != 1 || got.ExecutionScopes[0] != "host" ||
 		got.Authentication.Mode != "external" || got.Authentication.Instructions != "Run future-agent login." ||
 		!got.Features.Sessions.Resume || got.Features.Skills != "instructions" || !got.Features.ScheduledTools ||
-		!got.Features.ExecutionPolicies {
+		!got.Features.ExecutionPolicies || got.Features.StreamingPresentation != "tokens" {
 		t.Fatalf("decorated capabilities = %#v", got)
 	}
 	items[0].ExecutionScopes[0] = "changed"
@@ -240,6 +240,29 @@ func TestListUsesModuleIdentityAndPublishesDefensiveMetadata(t *testing.T) {
 	}
 	if cached[0].ExecutionScopes[0] != "host" {
 		t.Fatalf("cached metadata mutated through response: %#v", cached[0])
+	}
+}
+
+func TestStreamingPresentationFollowsModulePolicy(t *testing.T) {
+	service := Service{descriptors: catalogTestModules{
+		"block-agent": {
+			ID:       "block-agent",
+			Features: agentmodule.Features{StreamingPresentation: agentmodule.StreamingBlocks},
+		},
+		"token-agent": {ID: "token-agent"},
+	}}
+	for _, testCase := range []struct {
+		provider agent.ProviderID
+		want     string
+	}{
+		{provider: "block-agent", want: "blocks"},
+		{provider: "token-agent", want: "tokens"},
+	} {
+		capabilities := agent.Capabilities{Provider: testCase.provider}
+		service.decorate(&capabilities)
+		if capabilities.Features.StreamingPresentation != testCase.want {
+			t.Fatalf("provider %q streaming presentation = %q, want %q", testCase.provider, capabilities.Features.StreamingPresentation, testCase.want)
+		}
 	}
 }
 

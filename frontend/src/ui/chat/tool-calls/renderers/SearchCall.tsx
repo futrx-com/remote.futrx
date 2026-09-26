@@ -5,7 +5,7 @@ import { ToolShell } from "../ToolShell";
 import { DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS } from "../../../../config/chat";
 import { shortPath, truncate } from "../utils";
 
-export function SearchCall({ name, input, output, outputExpanded, status, isError }: ToolCallProps) {
+export function SearchCall({ name, input, output, outputExpanded, status, isError, onOpen, loadingResponse }: ToolCallProps) {
   const pattern = (input?.pattern as string) ?? (input?.query as string) ?? "";
   const path = (input?.path as string) ?? "";
   return (
@@ -21,6 +21,8 @@ export function SearchCall({ name, input, output, outputExpanded, status, isErro
       status={status}
       isError={isError}
       revealSignal={outputExpanded}
+      onOpen={onOpen}
+      loadingResponse={loadingResponse}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>

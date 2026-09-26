@@ -19,9 +19,10 @@ func NewFactory() (agentmodule.Factory, error) {
 		Auth:             agentmodule.AuthExternal,
 		AuthInstructions: "Open the project terminal, run `agy`, and complete its sign-in flow.",
 		Features: agentmodule.Features{
-			Sessions:       agentmodule.SessionSupport{Resume: true},
-			Skills:         agentmodule.SkillsInstructions,
-			ScheduledTools: true,
+			Sessions:              agentmodule.SessionSupport{Resume: true},
+			Skills:                agentmodule.SkillsInstructions,
+			ScheduledTools:        true,
+			StreamingPresentation: agentmodule.StreamingBlocks,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		binding := agentauth.NewExternalBinding(agent.ProviderAntigravity)

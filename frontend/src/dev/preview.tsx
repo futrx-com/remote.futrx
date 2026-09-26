@@ -157,7 +157,8 @@ function Preview() {
           </div>
           <div class="relative min-h-0 flex-1">
             <MessageList
-              status="streaming" blocks={blocks} hasOlder loadingOlder={false} indexingProgress={null} error={null}
+              status="streaming" locallyStartedTurn={false} blocks={blocks} hasOlder loadingOlder={false} indexingProgress={null} error={null}
+              streamingPresentation="blocks"
               chatId="c1" cwd="/opt/remote.futrx/gamerhead"
               scrollRef={scrollRef} contentRef={contentRef} bottomRef={bottomRef}
               onScroll={noop} onAnswerQuestion={noop} onLoadOlder={noopAsync} onRewind={noop}

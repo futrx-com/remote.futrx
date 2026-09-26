@@ -4,7 +4,7 @@ import { CodeBlock } from "../CodeBlock";
 import { ToolShell } from "../ToolShell";
 import { shortPath, truncate } from "../utils";
 
-export function WriteCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
+export function WriteCall({ input, output, outputExpanded, status, isError, onOpen, loadingResponse }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   const content = (input?.content as string) ?? "";
   return (
@@ -15,6 +15,8 @@ export function WriteCall({ input, output, outputExpanded, status, isError }: Om
       status={status}
       isError={isError}
       revealSignal={outputExpanded}
+      onOpen={onOpen}
+      loadingResponse={loadingResponse}
     >
       <CodeBlock text={truncate(content, 8000)} />
       {output && (isError || outputExpanded) ? (

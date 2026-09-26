@@ -6,9 +6,47 @@ const hrPattern = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const listPattern = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
 
 export function parseMarkdown(markdown: string): MarkdownBlock[] {
+  return parseMarkdownWithEnding(markdown).blocks;
+}
+
+// Only newline-terminated lines can establish a block boundary. A partial
+// marker ("-", "1.", "|") can change type as more characters arrive; parsing
+// it as a new block would reveal and then retract the preceding list/table.
+export function parseStreamingMarkdown(markdown: string, settled = false): MarkdownBlock[] {
+  if (settled) return parseMarkdown(markdown);
+  // Hold a trailing CR until we know whether the provider is sending CRLF.
+  const normalized = markdown.replace(/\r$/, "").replace(/\r\n?/g, "\n");
+  const complete = normalized.slice(0, normalized.lastIndexOf("\n") + 1);
+  const { blocks, lastClosedFence, lastOpenFence } = parseMarkdownWithEnding(complete);
+  if (blocks.length === 0) return blocks;
+  const last = blocks[blocks.length - 1];
+  const separated = !lastOpenFence && /\n[ \t]*\n$/.test(complete);
+  const singleLineComplete = last.type === "heading" || last.type === "hr";
+  if (lastClosedFence || separated || singleLineComplete) return blocks;
+  if (last.type === "table") {
+    // The delimiter establishes the table; each newline-terminated row is
+    // complete and can be shown without waiting for the final blank line.
+    return blocks;
+  }
+  if (last.type === "list") {
+    // Each item is stable once the next complete item starts. Publish those
+    // items now while keeping the final item buffered for continuation lines.
+    const items = last.items.slice(0, -1);
+    return items.length ? [...blocks.slice(0, -1), { ...last, items }] : blocks.slice(0, -1);
+  }
+  return blocks.slice(0, -1);
+}
+
+function parseMarkdownWithEnding(markdown: string): {
+  blocks: MarkdownBlock[];
+  lastClosedFence: boolean;
+  lastOpenFence: boolean;
+} {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MarkdownBlock[] = [];
   let index = 0;
+  let lastClosedFence = false;
+  let lastOpenFence = false;
 
   while (index < lines.length) {
     const line = lines[index];
@@ -27,10 +65,16 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
         code.push(lines[index]);
         index++;
       }
-      if (index < lines.length) index++;
+      const closed = index < lines.length;
+      if (closed) index++;
       blocks.push({ type: "code", lang, text: code.join("\n") });
+      lastClosedFence = closed;
+      lastOpenFence = !closed;
       continue;
     }
+
+    lastClosedFence = false;
+    lastOpenFence = false;
 
     const heading = line.match(headingPattern);
     if (heading) {
@@ -83,7 +127,7 @@ export function parseMarkdown(markdown: string): MarkdownBlock[] {
     blocks.push({ type: "paragraph", text: paragraph.join("\n") });
   }
 
-  return blocks;
+  return { blocks, lastClosedFence, lastOpenFence };
 }
 
 function parseList(lines: string[], startIndex: number, ordered: boolean): { block: MarkdownBlock; next: number } {

@@ -13,7 +13,10 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
   }, [resetKey]);
 
   useEffect(() => {
-    if (userScrolledRef.current) return;
+    // ResizeObserver follows the visible content as a block opens. Stream
+    // events can arrive without changing its height; scheduling a second
+    // scroll for every event makes the viewport chase stale positions.
+    if (userScrolledRef.current || typeof ResizeObserver !== "undefined") return;
     scrollToBottom("auto");
   }, [scrollKey]);
 
@@ -21,7 +24,8 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
     const content = contentRef.current;
     if (!content || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      if (!userScrolledRef.current) scrollToBottom("auto");
+      const element = scrollRef.current;
+      if (!userScrolledRef.current && element) element.scrollTop = element.scrollHeight;
     });
     observer.observe(content);
     return () => observer.disconnect();

@@ -7,6 +7,7 @@ import type {
 import { EMPTY_CHAT_USAGE_TOTALS } from "../../../models/chatUsage.ts";
 import { chatMessageBlockBuilder } from "./chatMessageBlockBuilder.ts";
 import { chatUsageAccumulator } from "./chatUsageAccumulator.ts";
+import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
 
 class ChatEventStateProjector {
   empty(): ChatRenderState {
@@ -52,8 +53,7 @@ class ChatEventStateProjector {
   }
 
   statusAfter(event: ChatEvent, current: ChatStatus): ChatStatus {
-    const terminalTurnStatus = event.type === "turn_status"
-      && ["completed", "failed", "interrupted"].includes(event.status || "");
+    const terminalTurnStatus = event.type === "turn_status" && isTerminalTurnStatus(event.status);
     if (event.type === "complete" || event.type === "error" || terminalTurnStatus) {
       // The backend clears the run lock in a later sync event. Keep streaming
       // until sync running=false so queued prompts are not sent into a locked

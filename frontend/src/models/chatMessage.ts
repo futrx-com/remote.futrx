@@ -44,3 +44,6 @@ export type ChatMessageBlock =
   | { type: "user"; text: string; t: number }
   | AssistantMessageBlock
   | { type: "error"; message: string; t: number };
+
+// Identifies the text part already present when an active chat is opened.
+export type HydratedTextPart = { assistantT: number; partIndex: number };

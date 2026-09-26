@@ -5,7 +5,7 @@ import { ToolShell } from "../ToolShell";
 import { DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS } from "../../../../config/chat";
 import { truncate } from "../utils";
 
-export function BashCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
+export function BashCall({ input, output, outputExpanded, status, isError, onOpen, loadingResponse }: Omit<ToolCallProps, "name">) {
   const command = (input?.command as string) ?? "";
   const description = (input?.description as string) ?? "";
   return (
@@ -16,6 +16,8 @@ export function BashCall({ input, output, outputExpanded, status, isError }: Omi
       status={status}
       isError={isError}
       revealSignal={outputExpanded}
+      onOpen={onOpen}
+      loadingResponse={loadingResponse}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>

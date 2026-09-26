@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --stream-reveal-feather {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* ---------------------------------------------------------------------------
    Design tokens
 
@@ -399,6 +405,73 @@ html[data-theme="light"] {
   .codex-prose h2 { font-size: 1.15em; }
   .codex-prose h3 { font-size: 1.02em; }
   .codex-prose > *:first-child { margin-top: 0; }
+
+  .turn-activity {
+    height: 1.5rem;
+    overflow: hidden;
+    opacity: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgb(var(--fg-muted));
+    font-size: 0.75rem;
+    line-height: 1.5rem;
+  }
+
+  .turn-activity-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    color: rgb(var(--accent-orange));
+  }
+
+  .turn-activity-icon line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.35;
+  }
+
+  .turn-activity-label {
+    opacity: 1;
+  }
+
+  /* Keep new content legible while its box opens, then gently bring it to
+     full contrast. Mounted blocks retain their transition state. */
+  @media (prefers-reduced-motion: no-preference) {
+    .turn-activity {
+      transition: height 180ms ease, opacity 180ms ease;
+
+      @starting-style { height: 0; opacity: 0.55; }
+    }
+
+    .turn-activity-icon line {
+      animation: turn-activity-pulse 1.2s ease-out infinite;
+    }
+
+    .turn-activity-label {
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .turn-activity-label-changing {
+      opacity: 0.4;
+      transform: translateY(2px);
+    }
+
+    .markdown-block-reveal {
+      transition: height var(--stream-reveal-duration, 560ms) linear,
+        opacity 440ms ease-out,
+        --stream-reveal-feather var(--stream-reveal-duration, 560ms) linear;
+
+      @starting-style { opacity: 0.55; }
+    }
+  }
+
+  @keyframes turn-activity-pulse {
+    0% { opacity: 1; }
+    40%, 100% { opacity: 0.2; }
+  }
 
 
   /* -------------------------------------------------------------------------

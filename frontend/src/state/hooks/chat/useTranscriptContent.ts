@@ -47,6 +47,7 @@ export function useTranscriptContent({
     expanded: fullContent !== null,
     canExpand: (!!contentRef || canExpandInline) && fullContent === null,
     disabled: (!!contentRef && !chatId) || loading,
+    loading,
     label: fullResponseLabel(loading, contentBytes),
     error,
     load,

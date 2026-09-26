@@ -5,6 +5,7 @@ import type {
   ChatMessageBlock,
 } from "../../../models/chatMessage";
 import { chatInteractionService } from "../../../services/chat/chatInteractionService.ts";
+import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
 
 type AssistantToolPart = Extract<AssistantMessagePart, { kind: "tool" }>;
 type AssistantInteractionPart = Extract<AssistantMessagePart, { kind: "interaction" }>;
@@ -112,7 +113,7 @@ class ChatMessageBlockBuilder {
         };
         if (existing >= 0) assistant.parts[existing] = part;
         else assistant.parts.push(part);
-        if (["completed", "failed", "interrupted"].includes(part.status)) {
+        if (isTerminalTurnStatus(part.status)) {
           return this.endTrailingAssistant(next);
         }
         return next;

@@ -43,6 +43,10 @@ export function ToolCall(props: ToolCallProps) {
     ...props,
     output: response.content,
     outputExpanded: response.expanded,
+    onOpen: response.canExpand && (!outputRef || !!chatId)
+      ? () => { if (!response.disabled) void response.load(); }
+      : undefined,
+    loadingResponse: response.loading,
   };
   let rendered;
   switch (name) {
@@ -70,19 +74,7 @@ export function ToolCall(props: ToolCallProps) {
   return (
     <>
       {rendered}
-      {response.canExpand && (
-        <div class="-mt-1 mb-2 flex items-center gap-2 px-2 text-[11px]">
-          <button
-            type="button"
-            disabled={response.disabled}
-            onClick={() => void response.load()}
-            class="text-accent-blue hover:underline disabled:opacity-50"
-          >
-            {response.label}
-          </button>
-          {response.error && <span class="text-accent-red">{response.error}</span>}
-        </div>
-      )}
+      {response.error && <div class="-mt-1 mb-2 px-2 text-[11px] text-accent-red">{response.error}</div>}
     </>
   );
 }

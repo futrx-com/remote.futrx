@@ -5,7 +5,7 @@ import { ToolShell } from "../ToolShell";
 import { READ_TOOL_OUTPUT_PREVIEW_CHARS } from "../../../../config/chat";
 import { shortPath, truncate } from "../utils";
 
-export function ReadCall({ input, output, outputExpanded, status, isError }: Omit<ToolCallProps, "name">) {
+export function ReadCall({ input, output, outputExpanded, status, isError, onOpen, loadingResponse }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   return (
     <ToolShell
@@ -14,6 +14,8 @@ export function ReadCall({ input, output, outputExpanded, status, isError }: Omi
       status={status}
       isError={isError}
       revealSignal={outputExpanded}
+      onOpen={onOpen}
+      loadingResponse={loadingResponse}
     >
       {output ? <CodeBlock text={outputExpanded ? output : truncate(output, READ_TOOL_OUTPUT_PREVIEW_CHARS)} /> : null}
     </ToolShell>

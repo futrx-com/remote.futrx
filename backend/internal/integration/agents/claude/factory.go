@@ -26,10 +26,11 @@ func NewFactory() (agentmodule.Factory, error) {
 			"/root/.claude/skills",
 		},
 		Features: agentmodule.Features{
-			Sessions:       agentmodule.SessionSupport{Resume: true, Fork: true},
-			Skills:         agentmodule.SkillsSlashCommand,
-			BrowserTools:   true,
-			ScheduledTools: true,
+			Sessions:              agentmodule.SessionSupport{Resume: true, Fork: true},
+			Skills:                agentmodule.SkillsSlashCommand,
+			BrowserTools:          true,
+			ScheduledTools:        true,
+			StreamingPresentation: agentmodule.StreamingBlocks,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		auth, err := NewAuth(deps.Accounts)

@@ -254,6 +254,11 @@ func TestNewFactoryRejectsInvalidDeclarations(t *testing.T) {
 			descriptor.Features.Sessions = SessionSupport{Fork: true}
 			return descriptor
 		}(),
+		"unknown streaming presentation": func() Descriptor {
+			descriptor := cloneDescriptor(valid)
+			descriptor.Features.StreamingPresentation = "unknown"
+			return descriptor
+		}(),
 	}
 	for name, descriptor := range tests {
 		t.Run(name, func(t *testing.T) {

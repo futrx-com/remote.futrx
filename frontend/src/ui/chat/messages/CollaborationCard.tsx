@@ -1,6 +1,6 @@
 import type { AssistantMessagePart } from "../../../models/chatMessage";
 import { useState } from "preact/hooks";
-import { ChevronDown, ChevronRight } from "../../primitives/icons";
+import { ChevronDown, ChevronRight, Loader } from "../../primitives/icons";
 import { Markdown } from "../markdown/Markdown";
 import { CodeBlock } from "../tool-calls/CodeBlock";
 import { useTranscriptContent } from "../../../state/hooks/chat/useTranscriptContent";
@@ -170,7 +170,7 @@ function SubagentToolDetails({ tool, index, chatId }: { tool: SubagentTool; inde
     contentRef: tool.outputRef,
     contentBytes: tool.outputBytes,
   });
-  const hasDetails = tool.input !== undefined || tool.output !== undefined;
+  const hasDetails = tool.input !== undefined || tool.output !== undefined || tool.outputRef !== undefined;
   const timing = toolTiming(tool);
   return (
     <li>
@@ -178,7 +178,11 @@ function SubagentToolDetails({ tool, index, chatId }: { tool: SubagentTool; inde
         type="button"
         disabled={!hasDetails}
         aria-expanded={hasDetails ? expanded : undefined}
-        onClick={() => hasDetails && setExpanded((current) => !current)}
+        onClick={() => {
+          if (!hasDetails) return;
+          if (!expanded && response.canExpand && !response.disabled) void response.load();
+          setExpanded((current) => !current);
+        }}
         class="flex w-full items-center gap-2 px-3 py-1.5 text-left enabled:hover:bg-tint disabled:cursor-default"
       >
         {hasDetails ? (
@@ -201,6 +205,7 @@ function SubagentToolDetails({ tool, index, chatId }: { tool: SubagentTool; inde
             {timing.label}
           </span>
         )}
+        {response.loading && <Loader class="h-3 w-3 flex-none animate-spin text-ink-400" />}
         <span class={`flex-none text-[10px] ${tool.isError ? "text-accent-red" : "text-ink-400"}`}>
           {tool.isError ? "failed" : statusLabel(tool.status)}
         </span>
@@ -213,23 +218,11 @@ function SubagentToolDetails({ tool, index, chatId }: { tool: SubagentTool; inde
               <CodeBlock text={formatToolInput(tool.input)} lang="json" />
             </div>
           )}
-          {tool.output !== undefined && (
+          {(tool.output !== undefined || tool.outputRef !== undefined) && (
             <div>
               <div class="bg-tint px-3 py-1 text-[10px] font-medium text-ink-400">Output</div>
-              <CodeBlock text={response.content ?? tool.output} />
-              {response.canExpand && (
-                <div class="flex items-center gap-2 border-t border-line px-3 py-2 text-[10px]">
-                  <button
-                    type="button"
-                    disabled={response.disabled}
-                    onClick={() => void response.load()}
-                    class="text-accent-blue hover:underline disabled:opacity-50"
-                  >
-                    {response.label}
-                  </button>
-                  {response.error && <span class="text-accent-red">{response.error}</span>}
-                </div>
-              )}
+              {response.content !== undefined && <CodeBlock text={response.content} />}
+              {response.error && <div class="px-3 py-2 text-[10px] text-accent-red">{response.error}</div>}
             </div>
           )}
         </div>

@@ -50,6 +50,7 @@ export interface AgentProviderCapabilities {
     browserTools: boolean;
     scheduledTools: boolean;
     executionPolicies: boolean;
+    streamingPresentation?: "blocks" | "tokens";
   };
   version?: string;
   source: "live" | "fallback";

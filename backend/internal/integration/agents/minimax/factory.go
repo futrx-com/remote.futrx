@@ -26,11 +26,12 @@ func NewFactory() (agentmodule.Factory, error) {
 			CredentialLabel: configconstants.MiniMaxAPIKeyCredentialLabel,
 		},
 		Features: agentmodule.Features{
-			Sessions:          agentmodule.SessionSupport{Resume: true, Fork: true},
-			Skills:            agentmodule.SkillsDollarMention,
-			BrowserTools:      true,
-			ScheduledTools:    true,
-			ExecutionPolicies: true,
+			Sessions:              agentmodule.SessionSupport{Resume: true, Fork: true},
+			Skills:                agentmodule.SkillsDollarMention,
+			BrowserTools:          true,
+			ScheduledTools:        true,
+			ExecutionPolicies:     true,
+			StreamingPresentation: agentmodule.StreamingBlocks,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
 		tokenPlans := newAPIKeyValidator()

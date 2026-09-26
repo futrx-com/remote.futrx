@@ -62,11 +62,12 @@ type CapabilitySessionSupport struct {
 }
 
 type CapabilityFeatures struct {
-	Sessions          CapabilitySessionSupport `json:"sessions"`
-	Skills            string                   `json:"skills"`
-	BrowserTools      bool                     `json:"browserTools"`
-	ScheduledTools    bool                     `json:"scheduledTools"`
-	ExecutionPolicies bool                     `json:"executionPolicies"`
+	Sessions              CapabilitySessionSupport `json:"sessions"`
+	Skills                string                   `json:"skills"`
+	BrowserTools          bool                     `json:"browserTools"`
+	ScheduledTools        bool                     `json:"scheduledTools"`
+	ExecutionPolicies     bool                     `json:"executionPolicies"`
+	StreamingPresentation string                   `json:"streamingPresentation"`
 }
 
 // Capabilities is the normalized catalog returned by every agent adapter.

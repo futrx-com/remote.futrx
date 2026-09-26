@@ -19,6 +19,7 @@ Before writing code, answer these questions:
 | Skills | Choose `none`, `slash-command`, `dollar-mention`, or `instructions` to match what the runtime actually accepts |
 | Modes | The shared saved-mode contract currently supports `default` and `plan`; a different native mode needs a coordinated backend/settings/frontend contract change |
 | Extra tools | Declare Browser or scheduled tools only when shared preparation installs their assets and the adapter supplies required native wiring/runtime environment |
+| Response streaming | Declare `StreamingBlocks` to reveal completed formatted Markdown blocks; leave the feature unset or choose `StreamingTokens` for the plain-text token fallback |
 | Persistence | Identify the smallest provider-owned directories that must survive container replacement |
 
 Choose one stable ID matching `[a-z][a-z0-9-]*`. Provider IDs appear in chats,
