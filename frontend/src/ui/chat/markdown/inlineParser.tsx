@@ -2,6 +2,8 @@ import type { ComponentChildren } from "preact";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
 import { internalPathOpenUrl } from "../ideLinks";
+import { isChatMediaOpenUrl } from "../../../config/routes";
+import { findImageSyntaxAt } from "./extractImageSyntax.ts";
 import { hasLtrText, isRtlText, splitBidiSegments } from "./bidi";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
@@ -72,6 +74,23 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       }
     }
 
+    if (text[index] === "!" && text[index + 1] === "[") {
+      // ![alt](src) — markdown image syntax. Supports the same href rules
+      // as `[label](href)` (http, absolute paths, internal chat/IDE URLs).
+      // Bare `!` (no following `[`) is treated as a literal character.
+      const found = findImageSyntaxAt(text, index);
+      if (found) {
+        const src = safeHref(found.src, context);
+        if (src) {
+          flush();
+          const key = `${keyPrefix}-img-${nodes.length}`;
+          nodes.push(renderImage(src, found.alt, found.src, key));
+          index = found.end;
+          continue;
+        }
+      }
+    }
+
     if (text[index] === "[") {
       const labelEnd = text.indexOf("]", index + 1);
       const hrefStart = labelEnd >= 0 ? labelEnd + 1 : -1;
@@ -132,6 +151,54 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
 
   flush();
   return nodes;
+}
+
+function renderImage(src: string, alt: string, rawSrc: string, key: string): ComponentChildren {
+  // Internal image paths (uploaded files, workspace images) get a clickable
+  // button that opens the in-app viewer instead of navigating away; HTTP URLs
+  // render as a plain <img> that opens in a new tab on click. The raw src is
+  // preserved as a title attribute for hover introspection.
+  const fileName = rawSrc.split("/").pop()?.split(/[:#]/)[0] || alt || "image";
+  const mediaKind = fileService.viewableMediaKind(fileName);
+  if (mediaKind === "image" && isChatMediaOpenUrl(src)) {
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          mediaViewerStore.getState().open({ url: src, name: fileName, kind: mediaKind });
+        }}
+        class="my-1 inline-flex max-w-full overflow-hidden rounded-lg border border-line bg-surface hover:ring-2 hover:ring-accent-blue/55 transition-shadow"
+        title={rawSrc}
+        aria-label={`Open ${fileName} in viewer`}
+      >
+        <img
+          src={src}
+          alt={alt || fileName}
+          loading="lazy"
+          class="block max-w-full max-h-72 object-contain bg-surface"
+        />
+      </button>
+    );
+  }
+  return (
+    <a
+      key={key}
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      class="my-1 inline-flex max-w-full overflow-hidden rounded-lg border border-line bg-surface"
+      title={rawSrc}
+    >
+      <img
+        src={src}
+        alt={alt || rawSrc}
+        loading="lazy"
+        class="block max-w-full max-h-72 object-contain bg-surface"
+      />
+    </a>
+  );
 }
 
 function renderPlainText(
@@ -206,7 +273,7 @@ function trimTrailingUrlPunctuation(url: string): string {
 function maybeOpenMediaViewer(event: MouseEvent, href: string): void {
   if (event.defaultPrevented) return;
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  if (!href.includes("/media-open?")) return;
+  if (!isChatMediaOpenUrl(href)) return;
   const name = mediaOpenFileName(href);
   const kind = name ? fileService.viewableMediaKind(name) : null;
   if (!name || !kind) return;

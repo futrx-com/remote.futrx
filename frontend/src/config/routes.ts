@@ -138,6 +138,7 @@ export const API_ROUTES = {
       `/api/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
   },
   settings: "/api/me/settings",
+  agentQuota: "/api/agent-quota",
   security: {
     summary: "/api/me/security",
     enroll: "/api/me/security/2fa/enroll",
@@ -196,3 +197,12 @@ export const WEB_SOCKET_ROUTES = {
   terminal: (chatId: string): ApplicationPath =>
     applicationPath(`/ws/terminal?chat=${encodeURIComponent(chatId)}`),
 } as const;
+
+// The chat media-open URL is the only chat route an embedded image or link
+// may target with a click handler that opens the in-app viewer. Match the
+// route shape so callers do not have to share a substring across files.
+const CHAT_MEDIA_OPEN_PATTERN = /^\/api\/chats\/[^/?]+\/media-open\?/;
+
+export function isChatMediaOpenUrl(url: string): boolean {
+  return CHAT_MEDIA_OPEN_PATTERN.test(url);
+}

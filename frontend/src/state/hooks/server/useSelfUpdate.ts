@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { selfUpdateApi } from "../../../api/selfUpdateApi";
 import { SELF_UPDATE_RUNNING_POLL_INTERVAL_MS } from "../../../config/server";
 import type { SelfUpdateStatus } from "../../../models/selfUpdate";
+import { frontendBuildStore } from "../../stores/server/frontendBuildStore.ts";
 
 export function useSelfUpdate(enabled: boolean) {
   const [status, setStatus] = useState<SelfUpdateStatus | null>(null);
@@ -72,7 +73,9 @@ export function useSelfUpdate(enabled: boolean) {
 
   // While an update runs, keep polling. The updater restarts the backend, so
   // failed polls are expected mid-run — surface them as "restarting" instead
-  // of an error and keep going until the new backend answers.
+  // of an error and keep going until the new backend answers. Each answer also
+  // asks which frontend it serves, so the page moves onto a new build as soon
+  // as the restarted backend has one rather than at the next minute's check.
   useEffect(() => {
     if (!enabled || !running) return;
     const interval = window.setInterval(() => {
@@ -81,6 +84,7 @@ export function useSelfUpdate(enabled: boolean) {
           const next = await selfUpdateApi.status();
           setStatus(next);
           setRestarting(false);
+          void frontendBuildStore.getState().check();
         } catch {
           setRestarting(true);
         }

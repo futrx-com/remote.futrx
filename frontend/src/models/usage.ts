@@ -127,8 +127,6 @@ export interface UsageDrillDown {
   hasMore: boolean;
 }
 
-export type UsageChartMetric = "tokens" | "cost";
-
 export interface UsageChartBar {
   day: string;
   value: number;

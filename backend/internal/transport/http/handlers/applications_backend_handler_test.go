@@ -64,11 +64,11 @@ func TestWriteBackendResponseSanitizesHeaders(t *testing.T) {
 	writeBackendResponse(recorder, applications.Response{
 		Status: http.StatusCreated,
 		Headers: map[string][]string{
-			"Content-Type":     {"application/json; charset=utf-8"},
-			"Set-Cookie":       {"session=hijacked"},
-			"Connection":       {"close"},
-			"Content-Length":   {"999"},
-			"Cache-Control":    {"no-store"},
+			"Content-Type":      {"application/json; charset=utf-8"},
+			"Set-Cookie":        {"session=hijacked"},
+			"Connection":        {"close"},
+			"Content-Length":    {"999"},
+			"Cache-Control":     {"no-store"},
 			"X-Backend-Verdict": {"ok"},
 		},
 		Body: []byte(`{"ok":true}`),
@@ -88,8 +88,8 @@ func TestWriteBackendResponseSanitizesHeaders(t *testing.T) {
 		t.Error("the response is sniffable")
 	}
 	for header, want := range map[string]string{
-		"Content-Type":     "application/json; charset=utf-8",
-		"Cache-Control":    "no-store",
+		"Content-Type":      "application/json; charset=utf-8",
+		"Cache-Control":     "no-store",
 		"X-Backend-Verdict": "ok",
 	} {
 		if got := result.Header.Get(header); got != want {

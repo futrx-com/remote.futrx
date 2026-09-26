@@ -199,10 +199,10 @@ even when your browser is closed.
       Connect managed providers, review provider-specific setup instructions, and synchronize the appropriate host-managed state into projects.
     </td>
     <td width="50%" valign="top">
-      <img src="docs/assets/readme/feature-usage.webp" alt="Remote token usage and estimated cost dashboard">
+      <img src="docs/assets/readme/feature-usage.webp" alt="Remote token usage dashboard">
       <br>
-      <strong>Usage and estimated cost</strong><br>
-      Compare tokens, runs, active projects, and estimated cost by project, user, provider, model, or day.
+      <strong>Usage and plan limits</strong><br>
+      Compare tokens, runs, and active projects by project, user, provider, model, or day, and see each subscription account's current plan limits.
     </td>
   </tr>
   <tr>

@@ -1,4 +1,3 @@
-import type { UsageChartMetric } from "../../../models/usage";
 import { usageChartService } from "../../../services/usage/usageChartService.ts";
 import type { UsageDayPoint } from "../../../models/usage";
 
@@ -7,20 +6,12 @@ const VIEW_HEIGHT = 120;
 const MIN_VISIBLE_RATIO = 0.015;
 
 /**
- * Per-day bar chart drawn as inline SVG — no chart library, no runtime
+ * Per-day token bar chart drawn as inline SVG — no chart library, no runtime
  * measurement. The viewBox scales the drawing to whatever width the card
  * gets, so the only responsive rule needed is `w-full`.
  */
-export function UsageBarChart({
-  daily,
-  metric,
-  onMetricChange,
-}: {
-  daily: UsageDayPoint[];
-  metric: UsageChartMetric;
-  onMetricChange: (metric: UsageChartMetric) => void;
-}) {
-  const chart = usageChartService.build(daily, metric);
+export function UsageBarChart({ daily }: { daily: UsageDayPoint[] }) {
+  const chart = usageChartService.build(daily);
   const slot = chart.bars.length > 0 ? VIEW_WIDTH / chart.bars.length : VIEW_WIDTH;
   const barWidth = Math.max(1, slot * 0.62);
 
@@ -32,25 +23,8 @@ export function UsageBarChart({
           <div class="text-[12.5px] text-ink-300 mt-0.5 leading-snug">
             {chart.isEmpty
               ? "No runs recorded in this range."
-              : `Peak day ${chart.peakLabel} · UTC days`}
+              : `Peak day ${chart.peakLabel} tokens · UTC days`}
           </div>
-        </div>
-        <div class="flex-none inline-flex rounded-md border border-line overflow-hidden">
-          {(["tokens", "cost"] as UsageChartMetric[]).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onMetricChange(option)}
-              aria-pressed={metric === option}
-              class={`h-8 px-3 text-[12px] font-medium transition-colors ${
-                metric === option
-                  ? "bg-tint-active text-ink-50"
-                  : "text-ink-300 hover:text-ink-100 hover:bg-tint"
-              }`}
-            >
-              {option === "tokens" ? "Tokens" : "Cost"}
-            </button>
-          ))}
         </div>
       </header>
 
@@ -60,7 +34,7 @@ export function UsageBarChart({
           preserveAspectRatio="none"
           class="w-full h-[120px] text-ink-400"
           role="img"
-          aria-label={`Usage per day, measured in ${metric}`}
+          aria-label="Tokens per day"
         >
           {/* Baseline. currentColor comes from the themed text class on the
               svg, so the axis stays visible in both light and dark. */}

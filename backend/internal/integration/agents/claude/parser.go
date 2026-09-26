@@ -44,6 +44,16 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	}
 
 	switch raw.Type {
+	case "rate_limit_event":
+		// The CLI volunteers one window per line, unprompted. Claude reports a
+		// status and a reset time rather than a percentage, so a reading with
+		// no number is normal and must not be stored as zero used.
+		if quota, ok := parseRateLimit(raw.RateLimitInfo, now); ok {
+			events = append(events, p.event(now, agent.EventQuotaUpdated, rawLine, func(ev *agent.Event) {
+				ev.Quota = &quota
+			}))
+		}
+
 	case "system":
 		events = append(events, p.event(now, agent.EventSystem, rawLine, func(ev *agent.Event) {
 			ev.Subtype = raw.Subtype
@@ -175,6 +185,9 @@ type streamMsg struct {
 	IsError   bool            `json:"is_error,omitempty"`
 	Result    string          `json:"result,omitempty"`
 	Usage     json.RawMessage `json:"usage,omitempty"`
+	// RateLimitInfo rides on a top-level "rate_limit_event" line and carries
+	// one subscription window.
+	RateLimitInfo json.RawMessage `json:"rate_limit_info,omitempty"`
 	// The `result` message prices and times the whole turn outside `usage`.
 	TotalCostUSD *float64 `json:"total_cost_usd,omitempty"`
 	DurationMs   int64    `json:"duration_ms,omitempty"`

@@ -59,3 +59,18 @@ func (r *Registry) CapabilityProviders() []CapabilityProvider {
 	}
 	return providers
 }
+
+// PlanUsageReaders returns, in composition order, the registered providers
+// that can read their accounts' plan limits on demand.
+func (r *Registry) PlanUsageReaders() []PlanUsageReader {
+	if r == nil {
+		return nil
+	}
+	var readers []PlanUsageReader
+	for _, id := range r.order {
+		if reader, ok := r.providers[id].(PlanUsageReader); ok {
+			readers = append(readers, reader)
+		}
+	}
+	return readers
+}

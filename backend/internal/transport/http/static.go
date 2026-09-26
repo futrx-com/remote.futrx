@@ -25,6 +25,10 @@ func NewStaticHandler(static fs.FS) http.Handler {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		case r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html"):
 			w.Header().Set("Cache-Control", "no-cache")
+		case r.URL.Path == "/build.json":
+			// Open pages poll this to learn that a deploy replaced their
+			// frontend; a cached copy would hide the new build from them.
+			w.Header().Set("Cache-Control", "no-cache")
 		case r.URL.Path == "/sw.js":
 			// The service worker is the app's update mechanism; a cached copy
 			// would keep an old one installed after a deploy.

@@ -16,6 +16,60 @@ git commit -s
 
 This appends a `Signed-off-by: Your Name <your@email>` line to the commit message.
 
+## Finding something to work on
+
+Most contributions start with an issue. Issues live in the repo; the public
+[project board](https://github.com/orgs/futrx-com/projects/4) shows their
+status.
+
+### Status
+
+- **Todo** — open issues, not yet picked up. Open to anyone.
+- **In Progress** — someone is actively working on it (check the assignee).
+- **Done** — closed via a merged PR.
+
+### How to pick up an issue
+
+1. Browse the project board, or filter the issue list for
+   [`good first issue`](https://github.com/futrx-com/remote.futrx/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+   or
+   [`help wanted`](https://github.com/futrx-com/remote.futrx/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+2. Comment *"I'd like to take this"* on the issue. A maintainer will assign
+   you and move the card to **In Progress**. If we don't reply in 3 days,
+   ping `@futrx-com/futrx-maintainers`.
+
+   > Outside contributors cannot be assigned until they comment on the issue.
+   > This is a GitHub security rule, not us being slow.
+
+3. If a card has been **In Progress** with no PR for 10 days, we unassign it
+   and the issue returns to the pool. Open a draft PR early if you need more
+   time.
+
+### Auto-claim with `/take`
+
+On any unassigned issue labeled `help wanted` or `good first issue`, comment
+`/take` and a bot will assign you automatically. This skips the wait for a
+maintainer; you still need to open a PR within 10 days.
+
+### Reporting bugs
+
+Open an issue using the **Bug report** template. Include:
+
+- What you did, what you expected, what happened
+- Browser + version, OS, remote.futrx commit/branch
+- Container logs (`journalctl -u <app>-dev-<port>`) if relevant
+
+### Suggesting features
+
+Open an issue using the **Feature request** template. Features larger than a
+few days of work get broken into sub-issues so people can claim smaller
+pieces.
+
+### Questions?
+
+Use [GitHub Discussions](https://github.com/orgs/futrx-com/discussions),
+not issues. Issues are for actionable work.
+
 ## Repository layout
 
 | Path | What it is |
@@ -217,10 +271,19 @@ full infrastructure convergence.
 
 ## Pull requests
 
-1. Fork and create a topic branch from `main`.
+1. Fork the repo and create a topic branch from **`qa`** (our default branch).
+   ```bash
+   git checkout qa
+   git pull origin qa
+   git checkout -b fix/123-short-description
+   ```
 2. Make your change with tests and docs.
 3. Run the test suites listed above.
-4. Open a PR describing **what** changed and **why**. Link any related issue.
+4. Open a PR against `futrx-com/remote.futrx:qa`. The
+   [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) will
+   prefill most fields. The PR description **must** contain `Fixes #N` (or
+   `Closes #N`) with the issue number — without it the issue stays open and
+   the project board does not move. A draft PR is fine while you iterate.
 
 ## Reporting security issues
 

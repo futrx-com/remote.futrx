@@ -12,6 +12,7 @@ import (
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -71,6 +72,7 @@ type Dependencies struct {
 	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
 	Usage             serviceusage.Repository
+	AgentQuota        agentquota.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
@@ -157,6 +159,7 @@ type Services struct {
 	Push              *servicepush.Service
 	Presence          *servicepresence.Service
 	Usage             *serviceusage.Service
+	AgentQuota        *agentquota.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -275,6 +278,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		usageService = serviceusage.New(deps.Usage, projectService, chats)
 		promptOptions = append(promptOptions, prompt.WithUsageRecorder(usageService))
 	}
+	// The quota service is built even without a store: readings still show for
+	// the life of the process, they just do not survive a restart.
+	agentQuotaService := agentquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
+	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
@@ -367,6 +374,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Push:              pushService,
 		Presence:          presenceService,
 		Usage:             usageService,
+		AgentQuota:        agentQuotaService,
 	}, nil
 }
 

@@ -17,6 +17,7 @@ The application does not use an external database service. Durable metadata is s
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── agent-quota.json                    last reported plan windows per provider account
 ├── session.key
 ├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
 └── uploads/tmp/                        tus chunks and sidecars
@@ -151,6 +152,87 @@ reconstructs deadlines and abandons stale claims after a backend restart.
 
 Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
 
+## Agent quota snapshots
+
+Subscription windows follow a separate path from the usage ledger. Claude's
+adapter owns its stream normalization in `claude/quota.go`. Live Codex runs
+use `codexharness/app_server_quota.go` for the `account/rateLimits/updated`
+notifications the app server sends with every token count that carries rate
+limits. Only the Codex product's recognized five-hour and seven-day durations
+become plan windows; other products and durations are ignored, and a window
+that an update leaves out keeps its last reading. A run never requests
+`account/rateLimits/read` itself: the app server finishes in-flight requests
+before it exits, so an unanswered read would delay the end of the turn.
+
+The Usage tab also reads plan limits on demand, the way Claude Code's `/usage`
+and Codex's `/status` do. Providers that can do this implement
+`agent.PlanUsageReader`, and `agentmodule.Runtime.PlanUsageReaders` lists them.
+Claude's reader in `claude/plan_usage.go` runs the CLI headless and sends one
+`get_usage` control request; Codex's in `codex/plan_usage.go` starts an app
+server of its own and sends `account/rateLimits/read`. Each saved account is
+read in a private CLI home made from its vault credential, one account at a
+time, and a login the CLI refreshed is offered back through
+`CaptureRunCredential`. The host login is read in place, and only while the
+provider has no active saved account. No prompt or turn is sent.
+MiniMax's reader calls `/v1/token_plan/remains` once for each saved Token Plan
+key and uses the coding bucket's explicit remaining percentages. It does not
+infer a percentage from the API's ambiguous count fields.
+
+A plan belongs to one provider account. For a saved-account run, the Claude
+and Codex adapters wrap the run's event callback with
+`agentruntime.EmitForAccount`, which stamps the saved account ID on every
+event. A run on a provider's current host login, which chats without a
+pinned account use while no saved account is active, leaves `AccountID`
+empty. The prompt service's run event relay
+records `EventQuotaUpdated` through its `QuotaRecorder` contract with the
+provider and account; quota events are not chat transcript events, and a
+cancelled prompt still records readings that arrived before the cancel.
+`service/agent/quota` owns the latest session and weekly readings per
+provider account and lists them by provider and then account ID. It keys
+readings only by account ID; which saved accounts exist and what they are
+called stays with the saved-account service. Its `Refresh` asks every plan
+reader at most once per `PlanUsageRefreshInterval`; callers within the
+interval, or while a read runs, share one answer, and the read continues,
+bounded by `PlanUsageReadTimeout`, after a caller stops waiting. A live answer
+replaces the account's windows. A failed read keeps them and records why; that
+error is kept in memory only and returned beside the account.
+
+`stores/fileagentquota` persists `{"accounts": [...]}` to
+`DATA_DIR/agent-quota.json` using a mode-`0600` temporary file and rename.
+Updates and their synchronous, best-effort writes are serialized so an older
+save cannot overwrite a newer snapshot. Reads use a separate lock and do not
+wait for file writes. Inputs, loaded data, saved snapshots, and returned views
+have independent window and percentage values. Missing or unreadable
+snapshots, including files from before readings were kept per account, load
+as empty and do not prevent startup. Without a repository, readings remain
+available for the lifetime of the process.
+
+`GET /api/agent-quota` calls `Refresh` and then returns the view to signed-in
+users, or without a session when application authentication is disabled.
+Responses are not cached. In the frontend, `agentQuotaApi` validates the
+response and `models/agentQuota.ts` describes its data. The Usage section's
+`usePlanQuota` hook owns a serialized refresh every 15 seconds after the
+previous request settles, with a 45-second request timeout and cancellation
+on unmount. A failed refresh retains the last successful snapshot; a
+successful empty response clears it. Its adjacent `planQuotaState` projection
+joins readings with the agent-auth catalog from `AuthContext`. Each saved
+account that has reported a window, or whose latest read failed, is listed in
+catalog order with its label, email, plan type, active flag, and error. While
+no saved account is active, the current login's reading is listed too, under
+the provider heading when it is the only plan and as "Current login" beside
+saved accounts; once an account is active it is hidden. A removed account's
+reading is never shown.
+The projection builds display contracts in `models/planQuota.ts` from
+`config/planQuota.ts`: each provider's window labels and measure, as its CLI
+prints them (Claude's floored percentage used, Codex's and MiniMax's rounded
+percentage left), tones, and thresholds. Missing percentages stay absent, so a
+status-only window never acquires a zero-percent bar. A reported zero has zero
+bar width, and bars are capped at 100%. Reset times are absolute in the
+viewer's time zone, with the date only when the reset is not today, and an
+expired reset is marked as awaiting a new reading. A reading says how old it
+is only once it is five minutes old. Ages and reset countdowns advance every
+15 seconds even if refreshes fail.
+
 ## Project persistence
 
 Project metadata and workspaces are separate:
@@ -208,6 +290,7 @@ flowchart TD
 | Composer drafts and queued prompts | In-memory map mirrored to per-tab `sessionStorage`, keyed by chat ID |
 | Agent capability catalog | Last response in page memory, keyed by normalized user plus host/project scope; backend process memory owns TTL freshness |
 | Service-worker offline cache | Only the versioned, self-contained `/offline.html`; navigation and application data remain network-first |
+| Frontend build | Page's own stamp from `<meta name="remote-build">`; the served stamp from `/build.json` in `frontendBuildStore`. `useFrontendBuildSync` reloads onto a newer build (see [deployment](../04-operations/09-deployment-and-operations.md#frontend-build-after-a-deploy)). The last build this tab reloaded for is kept in per-tab `sessionStorage`. |
 | Browser drawer width | Browser `localStorage` |
 | Answered interactive question state | Browser storage used by the question renderer |
 
@@ -279,4 +362,5 @@ The initial snapshot is filtered to permitted projects for members. Current live
 - Workspace context: [`frontend/src/state/context/WorkspaceContext.tsx`](../../frontend/src/state/context/WorkspaceContext.tsx)
 - Workspace data hook: [`frontend/src/state/hooks/workspace/useWorkspaceData.ts`](../../frontend/src/state/hooks/workspace/useWorkspaceData.ts)
 - Per-tab composer persistence: [`frontend/src/state/chat/composerSessionStore.ts`](../../frontend/src/state/chat/composerSessionStore.ts)
+- Frontend build sync: [`frontend/src/state/hooks/server/useFrontendBuildSync.ts`](../../frontend/src/state/hooks/server/useFrontendBuildSync.ts), [`frontend/src/state/hooks/server/frontendBuildReloadState.ts`](../../frontend/src/state/hooks/server/frontendBuildReloadState.ts), [`frontend/src/state/stores/server/frontendBuildStore.ts`](../../frontend/src/state/stores/server/frontendBuildStore.ts), and the stamp plugin in [`frontend/vite.config.ts`](../../frontend/vite.config.ts)
 - Scheduled-task drawer and client API: [`frontend/src/ui/chat/schedules/`](../../frontend/src/ui/chat/schedules/), [`frontend/src/api/chat/chatScheduleApi.ts`](../../frontend/src/api/chat/chatScheduleApi.ts)
