@@ -25,9 +25,9 @@ export function UserMessage({
     [text],
   );
   const hasAttachments = paths.length > 0;
-  const dir = getTextDirection(hasAttachments ? message : text);
-  const align = getTextAlignClass(hasAttachments ? message : text);
   const displayText = hasAttachments ? message : text;
+  const dir = getTextDirection(displayText);
+  const align = getTextAlignClass(displayText);
 
   return (
     <div class="group flex min-w-0 justify-end">

@@ -2,6 +2,7 @@ import type { ComponentChildren } from "preact";
 import type { MediaKind } from "../../../models/files";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
+import { API_ROUTES } from "../../../config/routes";
 import { internalPathOpenUrl } from "../ideLinks";
 import { File as FileIcon } from "../../primitives/icons";
 
@@ -43,7 +44,7 @@ function AttachmentPreview({
 }) {
   const name = path.split("/").pop() || path;
   const mediaKind = chatId ? fileService.viewableMediaKind(name) : null;
-  if (mediaKind === "image") {
+  if (mediaKind === "image" && chatId) {
     return <AttachmentImage path={path} name={name} chatId={chatId} />;
   }
   return <AttachmentFile path={path} name={name} chatId={chatId} cwd={cwd} />;
@@ -56,17 +57,11 @@ function AttachmentImage({
 }: {
   path: string;
   name: string;
-  chatId?: string;
+  chatId: string;
 }) {
   // Chat-scoped media-open URL; clicking opens the in-app viewer with the
   // original filename as the label so the viewer header reads it correctly.
-  const params = new URLSearchParams({ path });
-  const url = chatId
-    ? `/api/chats/${encodeURIComponent(chatId)}/media-open?${params.toString()}`
-    : null;
-  if (!url) {
-    return <AttachmentFile path={path} name={name} chatId={undefined} cwd={undefined} />;
-  }
+  const url = API_ROUTES.chats.mediaOpen(chatId, path);
   const kind: MediaKind = "image";
   return (
     <button
@@ -104,9 +99,7 @@ function AttachmentFile({
   cwd?: string;
 }) {
   // Picks the IDE open URL when the path is inside a workspace; otherwise
-  // shows the bare path as a label. Media paths funnel through the same
-  // link, but the chat-scoped media-open URL is preferred so the viewer gets
-  // a free back/forward and we do not pop a new tab.
+  // shows the bare path as a label.
   const internalUrl = internalPathOpenUrl(path, { chatId, cwd });
   const label: ComponentChildren = (
     <span class="flex items-center gap-1.5 min-w-0">

@@ -2,6 +2,8 @@ import type { ComponentChildren } from "preact";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
 import { internalPathOpenUrl } from "../ideLinks";
+import { isChatMediaOpenUrl } from "../../../config/routes";
+import { findImageSyntaxAt } from "./extractImageSyntax.ts";
 import { hasLtrText, isRtlText, splitBidiSegments } from "./bidi";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
@@ -76,21 +78,15 @@ export function renderInline(text: string, keyPrefix: string, context: InlineRen
       // ![alt](src) — markdown image syntax. Supports the same href rules
       // as `[label](href)` (http, absolute paths, internal chat/IDE URLs).
       // Bare `!` (no following `[`) is treated as a literal character.
-      const labelEnd = text.indexOf("]", index + 2);
-      const hrefStart = labelEnd >= 0 ? labelEnd + 1 : -1;
-      if (hrefStart >= 0 && text[hrefStart] === "(") {
-        const hrefEnd = text.indexOf(")", hrefStart + 1);
-        if (hrefEnd > hrefStart + 1) {
-          const rawSrc = text.slice(hrefStart + 1, hrefEnd).trim();
-          const src = safeHref(rawSrc, context);
-          if (src) {
-            flush();
-            const key = `${keyPrefix}-img-${nodes.length}`;
-            const altText = text.slice(index + 2, labelEnd);
-            nodes.push(renderImage(src, altText, rawSrc, key));
-            index = hrefEnd + 1;
-            continue;
-          }
+      const found = findImageSyntaxAt(text, index);
+      if (found) {
+        const src = safeHref(found.src, context);
+        if (src) {
+          flush();
+          const key = `${keyPrefix}-img-${nodes.length}`;
+          nodes.push(renderImage(src, found.alt, found.src, key));
+          index = found.end;
+          continue;
         }
       }
     }
@@ -164,7 +160,7 @@ function renderImage(src: string, alt: string, rawSrc: string, key: string): Com
   // preserved as a title attribute for hover introspection.
   const fileName = rawSrc.split("/").pop()?.split(/[:#]/)[0] || alt || "image";
   const mediaKind = fileService.viewableMediaKind(fileName);
-  if (mediaKind === "image" && src.includes("/media-open?")) {
+  if (mediaKind === "image" && isChatMediaOpenUrl(src)) {
     return (
       <button
         key={key}
@@ -277,7 +273,7 @@ function trimTrailingUrlPunctuation(url: string): string {
 function maybeOpenMediaViewer(event: MouseEvent, href: string): void {
   if (event.defaultPrevented) return;
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  if (!href.includes("/media-open?")) return;
+  if (!isChatMediaOpenUrl(href)) return;
   const name = mediaOpenFileName(href);
   const kind = name ? fileService.viewableMediaKind(name) : null;
   if (!name || !kind) return;

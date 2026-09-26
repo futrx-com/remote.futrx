@@ -1,8 +1,5 @@
-import { useEffect, useId, useRef, useState } from "preact/hooks";
-import type { ComponentChildren } from "preact";
+import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import { AlertTriangle } from "../../primitives/icons";
-import { fileService } from "../../../services/files/fileService.ts";
-import { internalPathOpenUrl } from "../ideLinks";
 
 // A `flowchart` / `sequenceDiagram` / etc. block lifted out of the assistant
 // markdown and rendered through the mermaid library. Mermaid is large (~
@@ -18,7 +15,6 @@ type MermaidAPI = {
 };
 
 let mermaidPromise: Promise<MermaidAPI> | null = null;
-let mermaidReadyId = 0;
 
 async function loadMermaid(): Promise<MermaidAPI> {
   if (!mermaidPromise) {
@@ -59,7 +55,10 @@ export function MermaidBlock({
   idHint?: string;
 }) {
   const componentId = useId();
-  const elementId = `mermaid-${componentId}-${++mermaidReadyId}`;
+  // Stable across re-renders for the lifetime of this mount: each visible
+  // block needs its own element id because mermaid.render mutates the
+  // document with that id as a scratch target.
+  const elementId = useMemo(() => `mermaid-${componentId}`, [componentId]);
   const ref = useRef<HTMLDivElement>(null);
   const [outcome, setOutcome] = useState<RenderOutcome>({ status: "idle" });
   const [visible, setVisible] = useState(false);
@@ -110,8 +109,7 @@ export function MermaidBlock({
     return () => {
       cancelled = true;
     };
-    // elementId is derived from componentId and is stable per mount.
-  }, [source, visible]);
+  }, [source, visible, elementId]);
 
   if (outcome.status === "rendered" && outcome.svg) {
     return (
@@ -147,7 +145,7 @@ export function MermaidBlock({
 
 function MermaidFallback({ source, error }: { source: string; error: string }) {
   // Mermaid render failed — fall back to the source as a code block so the
-  // content is still legible, and add a copy-to-clipboard affordance.
+  // content is still legible.
   return (
     <div class="my-3 rounded-lg border border-accent-red/35 overflow-hidden">
       <div class="flex items-center gap-1.5 bg-accent-red/15 px-3 py-1.5 text-[11.5px] text-accent-red">
@@ -158,43 +156,4 @@ function MermaidFallback({ source, error }: { source: string; error: string }) {
       </pre>
     </div>
   );
-}
-
-// Inlined media-aware link for raw mermaid source labels (e.g. `%% click A
-// href "/path" %%`). Not currently used by the chat render path but kept here
-// so future diagram-callouts that need deep links share the same helper.
-export function mermaidSourceLink(
-  href: string,
-  context: { chatId?: string; cwd?: string },
-): { kind: "media" | "open" | "external"; href: string; label: string } | null {
-  const trimmed = href.trim();
-  const internal = internalPathOpenUrl(trimmed, context);
-  if (internal && internal.includes("/media-open?")) {
-    const name = trimmed.split("/").pop() || trimmed;
-    const kind = fileService.viewableMediaKind(name);
-    if (kind) return { kind: "media", href: internal, label: name };
-  }
-  if (internal) return { kind: "open", href: internal, label: trimmed };
-  if (/^https?:\/\//i.test(trimmed)) return { kind: "external", href: trimmed, label: trimmed };
-  return null;
-}
-
-// JSX helper reserved for future clickable mermaid node labels. Kept as a
-// function instead of inlined so future changes to the link policy stay in
-// one place rather than scattered across the renderer.
-export function MermaidNodeLink({
-  href,
-  children,
-}: {
-  href: { kind: "media" | "open" | "external"; href: string; label: string };
-  children?: ComponentChildren;
-}) {
-  if (href.kind === "external") {
-    return (
-      <a href={href.href} target="_blank" rel="noopener noreferrer">
-        {children ?? href.label}
-      </a>
-    );
-  }
-  return <a href={href.href}>{children ?? href.label}</a>;
 }
