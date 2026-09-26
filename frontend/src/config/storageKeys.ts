@@ -28,4 +28,7 @@ export const SESSION_STORAGE_KEYS = {
   /** The served frontend build this tab last reloaded for; stops a loop when
    *  something between browser and server keeps handing back an older page. */
   frontendBuildReload: "remote.futrx.frontendBuildReload",
+  /** The build this tab last reloaded because a diagram chunk failed to load;
+   *  a second failure on the same build shows the fallback instead of looping. */
+  mermaidChunkReload: "remote.futrx.mermaidChunkReload",
 } as const;
