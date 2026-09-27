@@ -17,6 +17,7 @@ import (
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 func main() {
@@ -26,7 +27,11 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
-	storeSet, err := stores.New(cfg.DataDir)
+	chatBackend, err := filechat.ParseBackend(cfg.ChatStore)
+	if err != nil {
+		log.Fatalf("configure chat store: %v", err)
+	}
+	storeSet, err := stores.New(cfg.DataDir, chatBackend)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}

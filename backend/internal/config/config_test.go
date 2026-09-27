@@ -101,3 +101,14 @@ func TestPublicHostnameUsesInstalledDomain(t *testing.T) {
 		t.Fatalf("PublicHostname = %q, want remote.example.com", got)
 	}
 }
+
+func TestLoadUsesChatStoreBackend(t *testing.T) {
+	if got := Load().ChatStore; got != "jsonl" {
+		t.Fatalf("chat store = %q, want jsonl", got)
+	}
+
+	t.Setenv("CHAT_STORE", "sqlite")
+	if got := Load().ChatStore; got != "sqlite" {
+		t.Fatalf("chat store = %q, want sqlite", got)
+	}
+}

@@ -10,9 +10,14 @@ import (
 )
 
 type Config struct {
-	Host         string
-	Port         string
-	DataDir      string
+	Host    string
+	Port    string
+	DataDir string
+	// ChatStore selects the chat event storage engine
+	// (CHAT_STORE: "jsonl" or "sqlite", default "jsonl"). The value is
+	// validated when the store bundle is composed, so a typo fails startup
+	// instead of silently falling back to another engine.
+	ChatStore    string
 	InstallDir   string
 	BaseURL      string
 	Agent        AgentOptions
@@ -88,6 +93,7 @@ func Load() Config {
 		Host:       envDefault("HOST", "127.0.0.1"),
 		Port:       envDefault("PORT", "7682"),
 		DataDir:    envDefault("DATA_DIR", "/opt/remote.futrx/data"),
+		ChatStore:  envDefault("CHAT_STORE", "jsonl"),
 		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
 		BaseURL:    envDefault("BASE_URL", ""),
 		Agent: AgentOptions{
