@@ -1,8 +1,10 @@
 package filechat
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -180,6 +182,67 @@ func (l *jsonlLog) LastSeq(ctx context.Context, id servicechat.ID) (int64, error
 // Prepare is a no-op: the JSONL file is the canonical copy.
 func (l *jsonlLog) Prepare(context.Context, servicechat.ID) error {
 	return nil
+}
+
+// CopyEvents streams the source file straight into an appended destination
+// file, so a fork of a large conversation never materializes it in memory and
+// never opens the destination once per event.
+func (l *jsonlLog) CopyEvents(
+	ctx context.Context,
+	from servicechat.ID,
+	to servicechat.ID,
+) (int, servicechat.Event, error) {
+	if from == to {
+		return 0, servicechat.Event{}, nil
+	}
+	seq, err := l.LastSeq(ctx, to)
+	if err != nil {
+		return 0, servicechat.Event{}, err
+	}
+	file, err := os.OpenFile(
+		l.store.eventsPath(to), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644,
+	)
+	if err != nil {
+		return 0, servicechat.Event{}, err
+	}
+	writer := bufio.NewWriterSize(file, 64*1024)
+
+	var last servicechat.Event
+	copied := 0
+	var writeErr error
+	scanErr := l.store.scanEventsFile(ctx, from, func(ev servicechat.Event) bool {
+		seq++
+		ev.Seq = seq
+		line, err := json.Marshal(eventRecordFromDomain(ev))
+		if err != nil {
+			writeErr = err
+			return false
+		}
+		if _, err := writer.Write(append(line, '\n')); err != nil {
+			writeErr = err
+			return false
+		}
+		last, copied = ev, copied+1
+		return true
+	})
+	if writeErr == nil {
+		writeErr = writer.Flush()
+	}
+	if closeErr := file.Close(); writeErr == nil {
+		writeErr = closeErr
+	}
+	if writeErr != nil {
+		return copied, last, writeErr
+	}
+	if scanErr != nil {
+		return copied, last, scanErr
+	}
+	// One derived refresh covers the whole copy. A failure only postpones the
+	// work to the next indexed read, exactly as a failed append refresh does.
+	if _, err := l.store.index.syncChat(ctx, to, l.store.eventsPath(to)); err != nil {
+		log.Printf("chat %s: transcript index refresh after copy failed: %v", to, err)
+	}
+	return copied, last, nil
 }
 
 func (l *jsonlLog) Close() error {

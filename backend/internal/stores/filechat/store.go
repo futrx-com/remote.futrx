@@ -19,6 +19,7 @@ import (
 )
 
 var _ servicechat.Repository = (*Store)(nil)
+var _ servicechat.EventStreamCopier = (*Store)(nil)
 var _ servicechat.TranscriptEventSource = (*Store)(nil)
 var _ servicechat.TranscriptEventWindowSource = (*Store)(nil)
 var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
@@ -369,6 +370,54 @@ func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicech
 		}
 	}
 	return next, nil
+}
+
+// CopyEventStream copies from's stored history onto to, assigning fresh
+// sequence numbers, in batches bounded by memory. Fork uses it so a large
+// conversation is never loaded whole just to be reappended event by event.
+func (s *Store) CopyEventStream(
+	ctx context.Context,
+	from servicechat.ID,
+	to servicechat.ID,
+) (int, error) {
+	if !servicechat.ValidID(from) || !servicechat.ValidID(to) {
+		return 0, servicechat.ErrInvalidID
+	}
+	if from == to {
+		return 0, nil
+	}
+	// Both chats are held for the whole copy so an append on either side
+	// cannot interleave. Locking in identifier order keeps two concurrent
+	// copies from deadlocking against each other.
+	locks := [2]*sync.Mutex{s.lock(from), s.lock(to)}
+	if string(from) > string(to) {
+		locks[0], locks[1] = locks[1], locks[0]
+	}
+	locks[0].Lock()
+	defer locks[0].Unlock()
+	locks[1].Lock()
+	defer locks[1].Unlock()
+
+	if err := s.events.Prepare(ctx, from); err != nil {
+		return 0, err
+	}
+	if err := s.events.Prepare(ctx, to); err != nil {
+		return 0, err
+	}
+	copied, last, err := s.events.CopyEvents(ctx, from, to)
+	if err != nil || copied == 0 {
+		return copied, err
+	}
+	// A per-event append would have refreshed this once at the end too.
+	if eventTouchesChatMeta(last.Type) {
+		if meta, err := s.Get(ctx, to); err == nil {
+			meta.LastMessageAt = last.T
+			if err := s.writeMeta(meta); err == nil {
+				s.setCachedMeta(meta)
+			}
+		}
+	}
+	return copied, nil
 }
 
 func (s *Store) ReadEvents(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error) {

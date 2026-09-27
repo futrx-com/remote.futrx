@@ -41,6 +41,7 @@ type AuthStore interface {
 // project it into each service's narrower repository and transcript contracts.
 type ChatStore interface {
 	servicechat.Repository
+	servicechat.EventStreamCopier
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
 	servicechat.TranscriptProjectionSource

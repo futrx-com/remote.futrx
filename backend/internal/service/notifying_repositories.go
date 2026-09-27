@@ -12,6 +12,9 @@ type notifyingChatRepository struct {
 	servicechat.Repository
 	workspace *workspacehub.Hub
 	running   func(servicechat.ID) bool
+	// copier copies a chat's stored history in batches. Nil when the store
+	// does not expose a bulk copy capability.
+	copier servicechat.EventStreamCopier
 	// push receives every appended event so it can raise notifications for
 	// the few that matter. Nil when push is not configured.
 	push *chatPushNotifier
@@ -79,6 +82,23 @@ func (r notifyingChatRepository) appendEvent(
 		r.push.ChatEvent(id, next)
 	}
 	return next, nil
+}
+
+// CopyEventStream forwards the bulk copy and refreshes the chat once, instead
+// of once per copied event the way sequential appends would.
+func (r notifyingChatRepository) CopyEventStream(
+	ctx context.Context,
+	from servicechat.ID,
+	to servicechat.ID,
+) (int, error) {
+	if r.copier == nil {
+		return 0, servicechat.ErrEventStreamCopyUnavailable
+	}
+	count, err := r.copier.CopyEventStream(ctx, from, to)
+	if err == nil && count > 0 {
+		r.publishChat(ctx, to)
+	}
+	return count, err
 }
 
 func (r notifyingChatRepository) TruncateEventsBefore(

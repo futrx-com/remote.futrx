@@ -5,12 +5,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"time"
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
+
+// copyBatchEvents bounds how many events a bulk copy reads and writes per
+// transaction, so copying a large conversation stays bounded by memory.
+const copyBatchEvents = 500
 
 // maxSearchTextBytes bounds the text copied into the FTS index so a single
 // oversized tool result cannot dominate the search index.
@@ -116,6 +121,120 @@ func (l *sqliteLog) insert(
 		return servicechat.Event{}, err
 	}
 	return ev, nil
+}
+
+// CopyEvents streams the source rows into the destination in bounded
+// transactions and mirrors each copied record, so a fork of a large
+// conversation never materializes it in memory and never reprojects the
+// destination once per event.
+func (l *sqliteLog) CopyEvents(
+	ctx context.Context,
+	from servicechat.ID,
+	to servicechat.ID,
+) (int, servicechat.Event, error) {
+	if from == to {
+		return 0, servicechat.Event{}, nil
+	}
+	var last servicechat.Event
+	var copied int
+	var cursor int64
+	for {
+		events, next, err := l.readCopyBatch(ctx, from, cursor)
+		if err != nil {
+			return copied, last, err
+		}
+		if len(events) == 0 {
+			break
+		}
+		if err := l.writeCopyBatch(ctx, to, events); err != nil {
+			return copied, last, err
+		}
+		copied += len(events)
+		last = events[len(events)-1]
+		cursor = next
+	}
+	if _, err := l.store.syncSQLiteTranscript(ctx, to); err != nil &&
+		!errors.Is(err, context.Canceled) {
+		log.Printf("chat %s: transcript projection update after copy failed: %v", to, err)
+	}
+	return copied, last, nil
+}
+
+func (l *sqliteLog) readCopyBatch(
+	ctx context.Context,
+	from servicechat.ID,
+	afterSeq int64,
+) ([]servicechat.Event, int64, error) {
+	rows, err := l.db.db.QueryContext(ctx, `
+		SELECT seq, payload FROM chat_events
+		WHERE chat_id = ? AND seq > ?
+		ORDER BY seq
+		LIMIT ?`, from, afterSeq, copyBatchEvents,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var events []servicechat.Event
+	var lastSeq int64
+	for rows.Next() {
+		var seq int64
+		var payload []byte
+		if err := rows.Scan(&seq, &payload); err != nil {
+			return nil, 0, err
+		}
+		event, err := decodeStoredEvent(payload, seq)
+		if err != nil {
+			return nil, 0, fmt.Errorf(
+				"%w: decode stored event %d: %v", errInvalidChatEventIndex, seq, err,
+			)
+		}
+		events = append(events, event)
+		lastSeq = seq
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return events, lastSeq, nil
+}
+
+func (l *sqliteLog) writeCopyBatch(
+	ctx context.Context,
+	to servicechat.ID,
+	events []servicechat.Event,
+) error {
+	tx, err := l.db.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var seq int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(seq), 0) FROM chat_events WHERE chat_id = ?`, to,
+	).Scan(&seq); err != nil {
+		return err
+	}
+	for index := range events {
+		seq++
+		events[index].Seq = seq
+		if err := upsertEventRow(ctx, tx, to, events[index]); err != nil {
+			return err
+		}
+	}
+	if err := writeEventState(ctx, tx, to, seq); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// The archive is only a rollback copy, so mirroring runs after the
+	// committed write and reports failure instead of failing the copy.
+	for _, event := range events {
+		l.mirrorAppend(to, event)
+	}
+	return nil
 }
 
 // Replace rewrites the chat's rows with events, keeping their sequence numbers,

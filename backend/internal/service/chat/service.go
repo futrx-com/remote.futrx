@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,12 +11,17 @@ import (
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
+// ErrEventStreamCopyUnavailable reports that no bulk copy capability is wired
+// into the repository wrapping the chat store.
+var ErrEventStreamCopyUnavailable = errors.New("event stream copy is unavailable")
+
 type Service struct {
 	repo                 Repository
 	transcriptEvents     TranscriptEventSource
 	transcriptWindow     TranscriptEventWindowSource
 	transcriptProjection TranscriptProjectionSource
 	copiedEvents         CopiedEventAppender
+	streamCopier         EventStreamCopier
 	projects             ProjectResolver
 	tmux                 TmuxResolver
 	runs                 RunController
@@ -46,6 +52,14 @@ type Option func(*Service)
 func WithCopiedEventAppender(appender CopiedEventAppender) Option {
 	return func(service *Service) {
 		service.copiedEvents = appender
+	}
+}
+
+// WithEventStreamCopier makes Fork copy a conversation's history in batches
+// instead of appending it event by event.
+func WithEventStreamCopier(copier EventStreamCopier) Option {
+	return func(service *Service) {
+		service.streamCopier = copier
 	}
 }
 
@@ -171,9 +185,14 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if !s.validProviderScope(src.Provider, src.ProjectID) {
 		return Meta{}, ErrInvalidProvider
 	}
-	events, err := s.repo.ReadEvents(ctx, id)
-	if err != nil {
-		return Meta{}, err
+	// A configured copier streams the source in batches, so the conversation
+	// is never loaded whole just to be reappended event by event.
+	var events []Event
+	if s.streamCopier == nil {
+		events, err = s.repo.ReadEvents(ctx, id)
+		if err != nil {
+			return Meta{}, err
+		}
 	}
 
 	title := strings.TrimSpace(src.Title)
@@ -213,6 +232,12 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	}
 
 	// Copy the visible history so the fork opens on the same conversation.
+	if s.streamCopier != nil {
+		if _, err := s.streamCopier.CopyEventStream(ctx, id, forked.ID); err != nil {
+			return Meta{}, err
+		}
+		return s.withRunning(forked), nil
+	}
 	// Zero seq so the store assigns fresh, monotonic sequence numbers.
 	for _, ev := range events {
 		ev.Seq = 0

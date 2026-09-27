@@ -54,6 +54,13 @@ type CopiedEventAppender interface {
 	AppendCopiedEvent(ctx context.Context, id ID, event Event) (Event, error)
 }
 
+// EventStreamCopier copies one chat's stored history onto another in batches,
+// assigning fresh sequence numbers. Fork prefers it over appending copied
+// events one at a time, so a large conversation is never loaded whole.
+type EventStreamCopier interface {
+	CopyEventStream(ctx context.Context, from ID, to ID) (int, error)
+}
+
 type ProjectResolver interface {
 	WorkspaceForProject(ctx context.Context, id ProjectID) (string, error)
 }

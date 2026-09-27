@@ -57,6 +57,15 @@ type eventLog interface {
 	ReadAfter(ctx context.Context, id servicechat.ID, afterSeq int64) ([]servicechat.Event, error)
 	// LastSeq reports the highest stored sequence number for id.
 	LastSeq(ctx context.Context, id servicechat.ID) (int64, error)
+	// CopyEvents copies from's stored stream onto to, assigning fresh
+	// sequence numbers, in batches bounded by memory. It reports how many
+	// events were written and the last one written. The caller holds both
+	// chat locks.
+	CopyEvents(
+		ctx context.Context,
+		from servicechat.ID,
+		to servicechat.ID,
+	) (int, servicechat.Event, error)
 	// Prepare makes the log ready to serve reads for id, importing archived
 	// history when the backend keeps a second copy.
 	Prepare(ctx context.Context, id servicechat.ID) error
