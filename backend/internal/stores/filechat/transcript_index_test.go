@@ -479,8 +479,8 @@ func TestTranscriptIndexFilesArePrivate(t *testing.T) {
 			}
 			t.Fatal(err)
 		}
-		if got := info.Mode().Perm(); got != chatEventIndexFileMode {
-			t.Fatalf("%s mode = %o, want %o", filepath.Base(path), got, chatEventIndexFileMode)
+		if got := info.Mode().Perm(); got != sqliteFileMode {
+			t.Fatalf("%s mode = %o, want %o", filepath.Base(path), got, sqliteFileMode)
 		}
 	}
 }

@@ -144,7 +144,7 @@ func (index *chatEventIndex) syncChatWithGrowth(
 			return state, err
 		}
 	}
-	if err := index.restrictFiles(); err != nil {
+	if err := chmodPrivateSQLiteFiles(index.path); err != nil {
 		return state, err
 	}
 	return state, nil
