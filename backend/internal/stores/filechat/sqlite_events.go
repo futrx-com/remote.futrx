@@ -76,6 +76,12 @@ func (l *sqliteLog) Append(
 		return servicechat.Event{}, err
 	}
 	l.mirrorAppend(id, stored)
+	// The transcript projection is a read model over these rows. Refreshing it
+	// here keeps a reopened chat from reporting index progress for one event.
+	// A failure only postpones the work to the next read's background sync.
+	if _, err := l.store.syncSQLiteTranscript(context.Background(), id); err != nil {
+		log.Printf("chat %s: transcript projection update failed: %v", id, err)
+	}
 	return stored, nil
 }
 
@@ -401,9 +407,6 @@ func (l *sqliteLog) mirrorAppend(id servicechat.ID, ev servicechat.Event) {
 		logMirrorFailure(l.store.root, id, err)
 		return
 	}
-	// The offset index and transcript projection read the archive, so they are
-	// refreshed exactly as they are for the JSONL backend.
-	_ = l.store.index.refreshAfterAppend(context.Background(), id, l.store.eventsPath(id))
 	if err := l.recordArchiveAppend(context.Background(), id, ev.Seq, line); err != nil &&
 		!errors.Is(err, errMissingArchive) {
 		logMirrorFailure(l.store.root, id, err)
@@ -418,7 +421,7 @@ func (l *sqliteLog) recordArchiveAppend(
 	lastSeq int64,
 	line []byte,
 ) error {
-	state, err := l.readArchiveState(ctx, id)
+	state, err := readArchiveState(ctx, l.db.db, id)
 	if err != nil {
 		return err
 	}

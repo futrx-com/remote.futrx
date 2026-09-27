@@ -45,7 +45,7 @@ func (l *sqliteLog) Prepare(ctx context.Context, id servicechat.ID) error {
 	}
 	size, mtime := info.Size(), info.ModTime().UnixNano()
 
-	state, err := l.readArchiveState(ctx, id)
+	state, err := readArchiveState(ctx, l.db.db, id)
 	if err != nil {
 		return err
 	}
@@ -76,10 +76,14 @@ func (l *sqliteLog) Prepare(ctx context.Context, id servicechat.ID) error {
 	return l.importArchive(ctx, id, path, state, size, mtime, false)
 }
 
-func (l *sqliteLog) readArchiveState(ctx context.Context, id servicechat.ID) (archiveState, error) {
+func readArchiveState(
+	ctx context.Context,
+	db *sql.DB,
+	id servicechat.ID,
+) (archiveState, error) {
 	var state archiveState
 	var prefixHash int64
-	err := l.db.db.QueryRowContext(ctx, `
+	err := db.QueryRowContext(ctx, `
 		SELECT source_bytes, source_mtime_ns, source_prefix_hash, last_seq
 		FROM chat_event_state
 		WHERE chat_id = ?`, id,
@@ -93,6 +97,37 @@ func (l *sqliteLog) readArchiveState(ctx context.Context, id servicechat.ID) (ar
 	state.prefixHash = uint64(prefixHash)
 	state.found = true
 	return state, nil
+}
+
+// archiveImported reports whether every archived event has been folded into
+// the database, which is what makes the stored sequence numbers describe the
+// whole stream rather than only what has been imported so far. The measured
+// archive size comes back so a caller can read the tail sequence directly
+// while the import is still running.
+func (s *Store) archiveImported(
+	ctx context.Context,
+	id servicechat.ID,
+) (bool, int64, error) {
+	if s.sqlite == nil {
+		return false, 0, errChatStoreUnavailable
+	}
+	info, err := os.Stat(s.eventsPath(id))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, 0, nil
+		}
+		return false, 0, err
+	}
+	state, err := readArchiveState(ctx, s.sqlite.db, id)
+	if err != nil {
+		return false, info.Size(), err
+	}
+	if !state.found {
+		return info.Size() == 0, info.Size(), nil
+	}
+	imported := state.sourceBytes == info.Size() &&
+		state.sourceMtime == info.ModTime().UnixNano()
+	return imported, info.Size(), nil
 }
 
 // importArchive streams events from the archive into the database. When

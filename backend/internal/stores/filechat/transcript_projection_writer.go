@@ -27,6 +27,10 @@ type transcriptProjectionWriter struct {
 	tx      *sql.Tx
 	chatID  servicechat.ID
 	pending map[string]pendingTranscriptItem
+	// seqSource resolves content refs to their source event by sequence,
+	// which is how chats.sqlite addresses an event. The JSONL index keeps
+	// byte offsets into the canonical log instead.
+	seqSource bool
 }
 
 func newTranscriptProjectionWriter(
@@ -169,14 +173,26 @@ func (writer *transcriptProjectionWriter) persistTranscriptItem(
 		return err
 	}
 	for _, ref := range refs {
-		if _, err := writer.tx.ExecContext(writer.ctx, `
+		if err := writer.writeContentRef(ref, turnOrdinal, itemKey); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (writer *transcriptProjectionWriter) writeContentRef(
+	ref transcriptContentRef,
+	turnOrdinal int64,
+	itemKey string,
+) error {
+	if writer.seqSource {
+		_, err := writer.tx.ExecContext(writer.ctx, `
 			INSERT INTO chat_transcript_content_refs
 				(chat_id, content_id, turn_ordinal, item_key, field_kind,
-				 field_key, source_offset, source_length, content_bytes)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				 field_key, source_seq, content_bytes)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(chat_id, content_id) DO UPDATE SET
-				source_offset = excluded.source_offset,
-				source_length = excluded.source_length,
+				source_seq = excluded.source_seq,
 				content_bytes = excluded.content_bytes`,
 			writer.chatID,
 			ref.id,
@@ -184,14 +200,31 @@ func (writer *transcriptProjectionWriter) persistTranscriptItem(
 			itemKey,
 			ref.fieldKind,
 			ref.fieldKey,
-			ref.sourceOffset,
-			ref.sourceLength,
+			ref.sourceSeq,
 			ref.contentBytes,
-		); err != nil {
-			return err
-		}
+		)
+		return err
 	}
-	return nil
+	_, err := writer.tx.ExecContext(writer.ctx, `
+		INSERT INTO chat_transcript_content_refs
+			(chat_id, content_id, turn_ordinal, item_key, field_kind,
+			 field_key, source_offset, source_length, content_bytes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(chat_id, content_id) DO UPDATE SET
+			source_offset = excluded.source_offset,
+			source_length = excluded.source_length,
+			content_bytes = excluded.content_bytes`,
+		writer.chatID,
+		ref.id,
+		turnOrdinal,
+		itemKey,
+		ref.fieldKind,
+		ref.fieldKey,
+		ref.sourceOffset,
+		ref.sourceLength,
+		ref.contentBytes,
+	)
+	return err
 }
 
 func readTranscriptItem(

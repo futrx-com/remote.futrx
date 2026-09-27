@@ -29,20 +29,15 @@ func (s *Store) ReadTranscriptContent(
 	if contentID == "" || afterBytes < 0 {
 		return servicechat.TranscriptContentPage{}, servicechat.ErrTranscriptContentNotFound
 	}
+	if s.usesSQLite() {
+		return s.readSQLiteTranscriptContent(ctx, id, contentID, afterBytes, limitBytes)
+	}
 	if err := s.index.availabilityError(); err != nil {
 		return servicechat.TranscriptContentPage{}, fmt.Errorf(
 			"%w: %v", servicechat.ErrTranscriptProjectionUnavailable, err,
 		)
 	}
-	if limitBytes <= 0 {
-		limitBytes = configconstants.DefaultChatTranscriptContentPageBytes
-	}
-	if limitBytes < utf8.UTFMax {
-		limitBytes = utf8.UTFMax
-	}
-	if limitBytes > configconstants.MaxChatTranscriptContentPageBytes {
-		limitBytes = configconstants.MaxChatTranscriptContentPageBytes
-	}
+	limitBytes = transcriptContentLimit(limitBytes)
 
 	ref, err := s.index.readTranscriptContentRef(ctx, id, contentID)
 	if err != nil {
@@ -52,6 +47,29 @@ func (s *Store) ReadTranscriptContent(
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err
 	}
+	return transcriptContentResult(contentID, ref, event, afterBytes, limitBytes)
+}
+
+func transcriptContentLimit(limitBytes int) int {
+	if limitBytes <= 0 {
+		limitBytes = configconstants.DefaultChatTranscriptContentPageBytes
+	}
+	if limitBytes < utf8.UTFMax {
+		limitBytes = utf8.UTFMax
+	}
+	if limitBytes > configconstants.MaxChatTranscriptContentPageBytes {
+		limitBytes = configconstants.MaxChatTranscriptContentPageBytes
+	}
+	return limitBytes
+}
+
+func transcriptContentResult(
+	contentID string,
+	ref transcriptContentRef,
+	event servicechat.Event,
+	afterBytes int64,
+	limitBytes int,
+) (servicechat.TranscriptContentPage, error) {
 	content, err := extractTranscriptContent(event, ref.fieldKind, ref.fieldKey)
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err

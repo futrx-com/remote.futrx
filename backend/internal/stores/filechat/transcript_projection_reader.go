@@ -3,6 +3,7 @@ package filechat
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -23,6 +24,9 @@ func (s *Store) ReadTranscriptPage(
 ) (servicechat.TranscriptPage, error) {
 	if !servicechat.ValidID(id) {
 		return servicechat.TranscriptPage{}, servicechat.ErrInvalidID
+	}
+	if s.usesSQLite() {
+		return s.readSQLiteTranscriptPage(ctx, id, query)
 	}
 	if err := s.index.availabilityError(); err != nil {
 		return servicechat.TranscriptPage{}, fmt.Errorf(
@@ -69,7 +73,7 @@ func (s *Store) ReadTranscriptPage(
 			},
 		}, nil
 	}
-	return s.index.readProjectedTranscriptPage(ctx, id, state, query)
+	return readProjectedTranscriptPage(ctx, s.index.db, id, state, query)
 }
 
 func lastStoredEventSeq(eventsPath string, fileSize int64) (int64, error) {
@@ -126,15 +130,28 @@ func (s *Store) startTranscriptIndex(id servicechat.ID) {
 		if _, err := os.Stat(s.chatDir(id)); err != nil {
 			return
 		}
-		if _, err := s.index.syncChat(s.indexContext, id, s.eventsPath(id)); err != nil &&
+		// SQLite needs the archive folded in before it can project it. The
+		// JSONL log has nothing to import, so this is a no-op there.
+		if err := s.events.Prepare(s.indexContext, id); err != nil {
+			log.Printf("preparing transcript projection for chat %s failed: %v", id, err)
+			return
+		}
+		if _, err := s.syncTranscript(s.indexContext, id); err != nil &&
 			!errors.Is(err, context.Canceled) {
 			log.Printf("background transcript projection for chat %s failed: %v", id, err)
 		}
 	}()
 }
 
-func (index *chatEventIndex) readProjectedTranscriptPage(
+// sqlQueryer is satisfied by both the JSONL transcript index and chats.sqlite,
+// which hold the same projected turn and item tables.
+type sqlQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func readProjectedTranscriptPage(
 	ctx context.Context,
+	db sqlQueryer,
 	id servicechat.ID,
 	state chatIndexState,
 	query servicechat.TranscriptPageQuery,
@@ -154,7 +171,7 @@ func (index *chatEventIndex) readProjectedTranscriptPage(
 		byteLimit = configconstants.MaxChatTranscriptByteLimit
 	}
 
-	rows, err := index.db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT i.turn_ordinal, t.source_turn_id, t.start_seq,
 		       i.start_seq, i.end_seq, i.payload_json, i.payload_bytes
 		FROM chat_transcript_items AS i

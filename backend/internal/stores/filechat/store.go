@@ -26,8 +26,13 @@ var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
 // Store manages chat dirs on disk. Single writer per chat via a per-id mutex
 // map; concurrent access across different chats is fine.
 type Store struct {
-	root         string
-	index        *chatEventIndex
+	root    string
+	backend Backend
+	// index is the disposable JSONL transcript index. The SQLite backend keeps
+	// its projection inside chats.sqlite, so it never opens a second database.
+	index *chatEventIndex
+	// sqlite is the shared event database when backend is BackendSQLite.
+	sqlite       *chatStoreDB
 	events       eventLog
 	mu           sync.Mutex
 	locks        map[servicechat.ID]*sync.Mutex
@@ -53,14 +58,19 @@ func newStore(root string, backend Backend) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(root, "chats"), 0o755); err != nil {
 		return nil, err
 	}
-	index, err := newChatEventIndex(root)
-	if err != nil {
-		log.Printf("chat event index unavailable; using canonical JSONL scans: %v", err)
-		index = unavailableChatEventIndex(root, err)
+	var index *chatEventIndex
+	if backend == BackendJSONL {
+		var err error
+		index, err = newChatEventIndex(root)
+		if err != nil {
+			log.Printf("chat event index unavailable; using canonical JSONL scans: %v", err)
+			index = unavailableChatEventIndex(root, err)
+		}
 	}
 	indexContext, indexCancel := context.WithCancel(context.Background())
 	store := &Store{
 		root:         root,
+		backend:      backend,
 		index:        index,
 		locks:        map[servicechat.ID]*sync.Mutex{},
 		metas:        map[servicechat.ID]servicechat.Meta{},
@@ -68,9 +78,14 @@ func newStore(root string, backend Backend) (*Store, error) {
 		indexCancel:  indexCancel,
 		indexing:     map[servicechat.ID]struct{}{},
 	}
+	closeIndex := func() {
+		if index != nil {
+			_ = index.close()
+		}
+	}
 	if err := store.loadMetaIndex(); err != nil {
 		indexCancel()
-		_ = index.close()
+		closeIndex()
 		return nil, err
 	}
 	switch backend {
@@ -80,16 +95,43 @@ func newStore(root string, backend Backend) (*Store, error) {
 		events, err := openSQLiteLog(store)
 		if err != nil {
 			indexCancel()
-			_ = index.close()
+			closeIndex()
 			return nil, err
 		}
 		store.events = events
+		store.sqlite = events.db
 	default:
 		indexCancel()
-		_ = index.close()
+		closeIndex()
 		return nil, fmt.Errorf("unknown chat store backend %q", backend)
 	}
 	return store, nil
+}
+
+// usesSQLite reports whether chat events live in chats.sqlite, which also owns
+// the transcript projection for that backend.
+func (s *Store) usesSQLite() bool {
+	return s.backend == BackendSQLite
+}
+
+// syncTranscript brings the derived transcript projection up to date with the
+// stored event stream for the configured backend.
+func (s *Store) syncTranscript(ctx context.Context, id servicechat.ID) (chatIndexState, error) {
+	if s.usesSQLite() {
+		return s.syncSQLiteTranscript(ctx, id)
+	}
+	if err := s.index.availabilityError(); err != nil {
+		return chatIndexState{}, err
+	}
+	return s.index.syncChat(ctx, id, s.eventsPath(id))
+}
+
+// deleteProjection discards every derived transcript row for a chat.
+func (s *Store) deleteProjection(ctx context.Context, id servicechat.ID) error {
+	if s.usesSQLite() {
+		return s.deleteSQLiteProjection(ctx, id)
+	}
+	return s.index.deleteChat(ctx, id)
 }
 
 // Close releases the derived chat event index. Callers that create a bounded
@@ -108,8 +150,10 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 	if limit <= 0 {
 		return nil
 	}
-	if err := s.index.availabilityError(); err != nil {
-		return err
+	if !s.usesSQLite() {
+		if err := s.index.availabilityError(); err != nil {
+			return err
+		}
 	}
 	metas, err := s.List(ctx)
 	if err != nil {
@@ -127,7 +171,7 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 		lk.Lock()
 		err := s.events.Prepare(ctx, meta.ID)
 		if err == nil {
-			_, err = s.index.syncChat(ctx, meta.ID, s.eventsPath(meta.ID))
+			_, err = s.syncTranscript(ctx, meta.ID)
 		}
 		lk.Unlock()
 		if err != nil {
@@ -194,7 +238,7 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 	if meta.Mode == "" {
 		meta.Mode = "default"
 	}
-	_ = s.index.deleteChat(ctx, meta.ID)
+	_ = s.deleteProjection(ctx, meta.ID)
 	dir := s.chatDir(meta.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return meta, err
@@ -278,7 +322,7 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	lk.Lock()
 	defer lk.Unlock()
 
-	_ = s.index.deleteChat(ctx, id)
+	_ = s.deleteProjection(ctx, id)
 	if err := s.events.Remove(ctx, id); err != nil {
 		return err
 	}
@@ -479,16 +523,25 @@ func (s *Store) ReadTranscriptEventWindow(
 	lk.Lock()
 	defer lk.Unlock()
 
-	window, err := s.index.readTranscriptWindow(ctx, id, s.eventsPath(id), beforeSeq, turnLimit)
+	var window servicechat.TranscriptEventWindow
+	var err error
+	if s.usesSQLite() {
+		window, err = s.readSQLiteTranscriptWindow(ctx, id, beforeSeq, turnLimit)
+	} else {
+		window, err = s.index.readTranscriptWindow(ctx, id, s.eventsPath(id), beforeSeq, turnLimit)
+	}
 	if err == nil {
 		return window, nil
 	}
 	s.discardInvalidChatIndex(ctx, id, err)
 
-	// The index is disposable. Preserve availability by falling back to the
-	// canonical log if it cannot be synchronized or read.
+	// The projection is disposable. Preserve availability by falling back to
+	// the canonical stream if it cannot be synchronized or read.
 	window = servicechat.TranscriptEventWindow{}
-	err = s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return window, err
+	}
+	err = s.events.Scan(ctx, id, func(event servicechat.Event) bool {
 		window.Events = append(window.Events, event)
 		if event.Seq > window.LastSeq {
 			window.LastSeq = event.Seq
@@ -498,14 +551,27 @@ func (s *Store) ReadTranscriptEventWindow(
 	return window, err
 }
 
+// discardInvalidChatIndex drops a projection that described its source
+// incorrectly. It is disposable in both backends, so the next read rebuilds it.
 func (s *Store) discardInvalidChatIndex(
 	ctx context.Context,
 	id servicechat.ID,
 	readErr error,
 ) {
-	if ctx.Err() == nil && errors.Is(readErr, errInvalidChatEventIndex) {
-		_ = s.index.deleteChat(ctx, id)
+	if ctx.Err() != nil || !errors.Is(readErr, errInvalidChatEventIndex) {
+		return
 	}
+	_ = s.deleteProjection(ctx, id)
+}
+
+// rebuildProjection discards the derived rows and republishes them from the
+// canonical event stream. A rewind replaces that stream wholesale.
+func (s *Store) rebuildProjection(ctx context.Context, id servicechat.ID) error {
+	if err := s.deleteProjection(ctx, id); err != nil {
+		return err
+	}
+	_, err := s.syncTranscript(ctx, id)
+	return err
 }
 
 // TruncateEventsBefore rewinds a chat by removing the selected event and every
@@ -543,9 +609,9 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 	if err := s.events.Replace(ctx, id, kept); err != nil {
 		return nil, err
 	}
-	// A rewind replaces the stored stream. Rebuild the cached offsets now;
+	// A rewind replaces the stored stream. Rebuild the cached projection now;
 	// size-based recovery on the next read remains a backstop.
-	_ = s.index.rebuildChat(context.Background(), id, s.eventsPath(id))
+	_ = s.rebuildProjection(context.Background(), id)
 
 	if meta, err := s.Get(ctx, id); err == nil {
 		if lastT == 0 {

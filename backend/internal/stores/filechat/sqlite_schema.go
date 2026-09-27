@@ -8,7 +8,7 @@ import (
 // this binary. Unlike the disposable transcript index, this database is
 // authoritative: schema changes are applied forward-only and never rebuilt
 // from scratch.
-const chatStoreSchemaVersion = 1
+const chatStoreSchemaVersion = 2
 
 // chatStoreMigrations maps schema version to the statements that upgrade a
 // database from the previous version. Statements must be idempotent so a
@@ -64,6 +64,76 @@ var chatStoreMigrations = map[int][]string{
 			VALUES ('delete', old.id, old.search_text);
 			INSERT INTO chat_events_fts(rowid, search_text) VALUES (new.id, new.search_text);
 		END`,
+	},
+	2: {
+		// The projection reports byte progress without scanning payloads, so
+		// the running total is maintained by the same writes that change them.
+		`CREATE TABLE IF NOT EXISTS chat_event_bytes (
+			chat_id TEXT PRIMARY KEY,
+			payload_bytes INTEGER NOT NULL DEFAULT 0
+		)`,
+		`INSERT INTO chat_event_bytes (chat_id, payload_bytes)
+			SELECT chat_id, SUM(LENGTH(payload)) FROM chat_events GROUP BY chat_id
+			ON CONFLICT(chat_id) DO UPDATE SET payload_bytes = excluded.payload_bytes`,
+		`CREATE TRIGGER IF NOT EXISTS chat_events_bytes_insert
+			AFTER INSERT ON chat_events BEGIN
+			INSERT OR IGNORE INTO chat_event_bytes (chat_id) VALUES (new.chat_id);
+			UPDATE chat_event_bytes
+			SET payload_bytes = payload_bytes + LENGTH(new.payload)
+			WHERE chat_id = new.chat_id;
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS chat_events_bytes_delete
+			AFTER DELETE ON chat_events BEGIN
+			UPDATE chat_event_bytes
+			SET payload_bytes = MAX(0, payload_bytes - LENGTH(old.payload))
+			WHERE chat_id = old.chat_id;
+		END`,
+		`CREATE TRIGGER IF NOT EXISTS chat_events_bytes_update
+			AFTER UPDATE OF payload ON chat_events BEGIN
+			UPDATE chat_event_bytes
+			SET payload_bytes = MAX(0, payload_bytes - LENGTH(old.payload) + LENGTH(new.payload))
+			WHERE chat_id = new.chat_id;
+		END`,
+		`CREATE TABLE IF NOT EXISTS chat_transcript_turns (
+			chat_id TEXT NOT NULL,
+			turn_ordinal INTEGER NOT NULL,
+			source_turn_id TEXT NOT NULL,
+			has_user INTEGER NOT NULL,
+			start_seq INTEGER NOT NULL,
+			end_seq INTEGER NOT NULL,
+			PRIMARY KEY (chat_id, turn_ordinal)
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS chat_transcript_turns_by_start_seq
+			ON chat_transcript_turns (chat_id, start_seq)`,
+		`CREATE TABLE IF NOT EXISTS chat_transcript_items (
+			chat_id TEXT NOT NULL,
+			turn_ordinal INTEGER NOT NULL,
+			item_key TEXT NOT NULL,
+			start_seq INTEGER NOT NULL,
+			end_seq INTEGER NOT NULL,
+			payload_json BLOB NOT NULL,
+			payload_bytes INTEGER NOT NULL,
+			PRIMARY KEY (chat_id, turn_ordinal, item_key)
+		) WITHOUT ROWID`,
+		`CREATE INDEX IF NOT EXISTS chat_transcript_items_by_start_seq
+			ON chat_transcript_items (chat_id, start_seq)`,
+		`CREATE TABLE IF NOT EXISTS chat_transcript_content_refs (
+			chat_id TEXT NOT NULL,
+			content_id TEXT NOT NULL,
+			turn_ordinal INTEGER NOT NULL,
+			item_key TEXT NOT NULL,
+			field_kind TEXT NOT NULL,
+			field_key TEXT NOT NULL,
+			source_seq INTEGER NOT NULL,
+			content_bytes INTEGER NOT NULL,
+			PRIMARY KEY (chat_id, content_id)
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS chat_transcript_projection_state (
+			chat_id TEXT PRIMARY KEY,
+			event_ordinal INTEGER NOT NULL,
+			last_seq INTEGER NOT NULL,
+			projected_bytes INTEGER NOT NULL
+		)`,
 	},
 }
 
