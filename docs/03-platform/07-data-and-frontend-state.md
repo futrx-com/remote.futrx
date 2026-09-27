@@ -169,7 +169,7 @@ claims, pending occurrence state, retry deadline, counts, and last result.
 Writes atomically replace the document. The scheduler loop is in-memory, but it
 reconstructs deadlines and abandons stale claims after a backend restart.
 
-Rewind keeps only events before the selected timestamp. In `jsonl` mode it atomically rewrites `events.jsonl` and best-effort rebuilds that chat's derived index rows; in `sqlite` mode it commits the retained events, best-effort rewrites the JSONL mirror, and re-projects from the database. Chat deletion removes the chat directory and the corresponding database rows.
+Rewind keeps only events before the selected timestamp, streaming the retained history in bounded batches so a large conversation is never held in memory. In `jsonl` mode it rewrites `events.jsonl` through a temporary file and best-effort rebuilds that chat's derived index rows; in `sqlite` mode it drops the tail that follows the cutoff with one delete, best-effort rewrites the JSONL mirror from the rows that survived, and re-projects from the database. Chat deletion removes the chat directory and the corresponding database rows.
 
 ## Agent quota snapshots
 

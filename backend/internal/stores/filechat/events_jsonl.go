@@ -103,6 +103,62 @@ func (l *jsonlLog) Replace(
 	id servicechat.ID,
 	events []servicechat.Event,
 ) error {
+	return l.replaceStream(ctx, id, func(
+		_ context.Context,
+		yield func(servicechat.Event) error,
+	) error {
+		for _, ev := range events {
+			if err := yield(ev); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// TruncateBefore streams the file once, writing the events kept by the
+// timestamp filter into a temporary file and renaming it over the log, so the
+// rewind never holds the conversation in memory.
+func (l *jsonlLog) TruncateBefore(
+	ctx context.Context,
+	id servicechat.ID,
+	beforeT int64,
+) (int64, error) {
+	var lastT int64
+	err := l.replaceStream(ctx, id, func(
+		ctx context.Context,
+		yield func(servicechat.Event) error,
+	) error {
+		var yieldErr error
+		scanErr := l.store.scanEventsFile(ctx, id, func(ev servicechat.Event) bool {
+			if ev.T >= beforeT {
+				return true
+			}
+			if ev.T > lastT {
+				lastT = ev.T
+			}
+			if err := yield(ev); err != nil {
+				yieldErr = err
+				return false
+			}
+			return true
+		})
+		if scanErr != nil {
+			return scanErr
+		}
+		return yieldErr
+	})
+	return lastT, err
+}
+
+// replaceStream rewrites events.jsonl from a streaming source: every event the
+// source yields is encoded into a temporary file that is renamed over the log
+// once the source finishes. A failed source leaves the original untouched.
+func (l *jsonlLog) replaceStream(
+	ctx context.Context,
+	id servicechat.ID,
+	src eventSource,
+) error {
 	dir := l.store.chatDir(id)
 	tmp := filepath.Join(dir, "events.jsonl.tmp")
 	final := l.store.eventsPath(id)
@@ -111,12 +167,12 @@ func (l *jsonlLog) Replace(
 		return err
 	}
 	enc := json.NewEncoder(f)
-	for _, ev := range events {
-		if err := enc.Encode(eventRecordFromDomain(ev)); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
-			return err
-		}
+	if err := src(ctx, func(ev servicechat.Event) error {
+		return enc.Encode(eventRecordFromDomain(ev))
+	}); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp)

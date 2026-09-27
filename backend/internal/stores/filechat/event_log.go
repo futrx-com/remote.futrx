@@ -36,6 +36,11 @@ func ParseBackend(raw string) (Backend, error) {
 	}
 }
 
+// eventSource streams a chat's events in storage order without materializing
+// the whole conversation. A non-nil error returned by yield stops the walk and
+// is handed back to the caller.
+type eventSource func(ctx context.Context, yield func(servicechat.Event) error) error
+
 // eventLog owns durable event storage for one chat. Store keeps meta.json,
 // per-chat locking, and the derived transcript index; the log only reads and
 // writes the event stream itself. Every method is called with the chat lock
@@ -51,6 +56,11 @@ type eventLog interface {
 	// Replace rewrites the whole stream with events, preserving each event's
 	// sequence number. It is the durability half of a rewind.
 	Replace(ctx context.Context, id servicechat.ID, events []servicechat.Event) error
+	// TruncateBefore keeps only the events whose timestamp is below beforeT
+	// and reports the highest kept timestamp, or 0 when none are kept. It
+	// streams in bounded batches rather than materializing the stream, so a
+	// rewind of a large conversation stays flat in memory.
+	TruncateBefore(ctx context.Context, id servicechat.ID, beforeT int64) (int64, error)
 	ReadAll(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error)
 	// Scan visits events in storage order without materializing the stream.
 	Scan(ctx context.Context, id servicechat.ID, visit func(servicechat.Event) bool) error

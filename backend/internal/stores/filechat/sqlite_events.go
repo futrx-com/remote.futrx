@@ -283,6 +283,164 @@ func (l *sqliteLog) Replace(
 	return nil
 }
 
+// TruncateBefore keeps the events below beforeT. Timestamps normally advance
+// with the sequence, so the survivors are a prefix and the tail can be dropped
+// with one DELETE instead of re-inserting every kept row. When timestamps are
+// not ordered by sequence the survivors are not a prefix, and the whole stream
+// goes through Replace so the rewind drops exactly what the filter drops.
+func (l *sqliteLog) TruncateBefore(
+	ctx context.Context,
+	id servicechat.ID,
+	beforeT int64,
+) (int64, error) {
+	keepSeq, lastT, prefix, err := l.rewindKeepPrefix(ctx, id, beforeT)
+	if err != nil {
+		return 0, err
+	}
+	if !prefix {
+		return l.truncateWholeStream(ctx, id, beforeT)
+	}
+	if err := l.dropRewindTail(ctx, id, keepSeq); err != nil {
+		return 0, err
+	}
+	l.replaceArchiveFromDatabase(ctx, id, keepSeq)
+	return lastT, nil
+}
+
+// rewindKeepPrefix scans only sequence numbers and timestamps to find the last
+// event the rewind keeps. It reports whether the kept events form a prefix of
+// the sequence, which is what makes dropping the tail safe.
+func (l *sqliteLog) rewindKeepPrefix(
+	ctx context.Context,
+	id servicechat.ID,
+	beforeT int64,
+) (keepSeq int64, lastT int64, prefix bool, err error) {
+	rows, err := l.db.db.QueryContext(ctx, `
+		SELECT seq, t FROM chat_events
+		WHERE chat_id = ?
+		ORDER BY seq`, id)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	defer rows.Close()
+
+	seenDropped := false
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return 0, 0, false, err
+		}
+		var seq, t int64
+		if err := rows.Scan(&seq, &t); err != nil {
+			return 0, 0, false, err
+		}
+		if t >= beforeT {
+			seenDropped = true
+			continue
+		}
+		if seenDropped {
+			// A kept event follows a dropped one, so the survivors are not a
+			// prefix of the sequence and a tail delete would drop too much.
+			return 0, 0, false, nil
+		}
+		keepSeq = seq
+		if t > lastT {
+			lastT = t
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	return keepSeq, lastT, true, nil
+}
+
+// dropRewindTail deletes every event after keepSeq and records the new last
+// sequence, so state, the byte counters, and the FTS rows follow the rewind.
+func (l *sqliteLog) dropRewindTail(
+	ctx context.Context,
+	id servicechat.ID,
+	keepSeq int64,
+) error {
+	tx, err := l.db.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM chat_events WHERE chat_id = ? AND seq > ?`,
+		id, keepSeq); err != nil {
+		return err
+	}
+	if err := writeEventState(ctx, tx, id, keepSeq); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// truncateWholeStream is the fallback for timestamps that are not ordered by
+// sequence: read, filter, and rewrite, exactly as the rewind did before it
+// was batched.
+func (l *sqliteLog) truncateWholeStream(
+	ctx context.Context,
+	id servicechat.ID,
+	beforeT int64,
+) (int64, error) {
+	events, err := l.ReadAll(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	kept := make([]servicechat.Event, 0, len(events))
+	var lastT int64
+	for _, ev := range events {
+		if ev.T >= beforeT {
+			continue
+		}
+		kept = append(kept, ev)
+		if ev.T > lastT {
+			lastT = ev.T
+		}
+	}
+	if err := l.Replace(ctx, id, kept); err != nil {
+		return 0, err
+	}
+	return lastT, nil
+}
+
+// replaceArchiveFromDatabase rewrites the JSONL mirror from the rows that
+// survived the rewind, reading them in bounded batches. The database has
+// already committed, so a mirror failure is logged instead of reported, the
+// same way an append treats its mirror.
+func (l *sqliteLog) replaceArchiveFromDatabase(
+	ctx context.Context,
+	id servicechat.ID,
+	lastSeq int64,
+) {
+	if err := l.mirror.replaceStream(ctx, id, func(
+		ctx context.Context,
+		yield func(servicechat.Event) error,
+	) error {
+		var yieldErr error
+		scanErr := l.Scan(ctx, id, func(ev servicechat.Event) bool {
+			if err := yield(ev); err != nil {
+				yieldErr = err
+				return false
+			}
+			return true
+		})
+		if scanErr != nil {
+			return scanErr
+		}
+		return yieldErr
+	}); err != nil {
+		logMirrorFailure(l.store.root, id, err)
+		return
+	}
+	if err := l.recordArchiveReplace(ctx, id, lastSeq); err != nil &&
+		!errors.Is(err, errMissingArchive) {
+		logMirrorFailure(l.store.root, id, err)
+	}
+}
+
 func (l *sqliteLog) ReadAll(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error) {
 	rows, err := l.db.db.QueryContext(ctx, `
 		SELECT seq, payload FROM chat_events

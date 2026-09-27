@@ -624,8 +624,8 @@ func (s *Store) rebuildProjection(ctx context.Context, id servicechat.ID) error 
 }
 
 // TruncateEventsBefore rewinds a chat by removing the selected event and every
-// event after it. The caller does not need the retained history back, only the
-// fact that the rewrite succeeded.
+// event after it. The retained history is rewritten in bounded batches, so the
+// conversation is never held in memory as a whole.
 func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, beforeT int64) error {
 	if !servicechat.ValidID(id) {
 		return servicechat.ErrInvalidID
@@ -640,23 +640,8 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 	if err := s.events.Prepare(ctx, id); err != nil {
 		return err
 	}
-	events, err := s.events.ReadAll(ctx, id)
+	lastT, err := s.events.TruncateBefore(ctx, id, beforeT)
 	if err != nil {
-		return err
-	}
-	kept := make([]servicechat.Event, 0, len(events))
-	var lastT int64
-	for _, ev := range events {
-		if ev.T >= beforeT {
-			continue
-		}
-		kept = append(kept, ev)
-		if ev.T > lastT {
-			lastT = ev.T
-		}
-	}
-
-	if err := s.events.Replace(ctx, id, kept); err != nil {
 		return err
 	}
 	// A rewind replaces the stored stream. Rebuild the cached projection now;
