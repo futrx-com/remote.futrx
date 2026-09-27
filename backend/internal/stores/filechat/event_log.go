@@ -1,0 +1,64 @@
+package filechat
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+)
+
+// Backend selects the storage engine that owns a chat's event stream.
+type Backend string
+
+const (
+	// BackendJSONL keeps each chat in its own append-only events.jsonl file.
+	BackendJSONL Backend = "jsonl"
+	// BackendSQLite keeps every chat in the shared chats.sqlite database and
+	// mirrors appended events back to events.jsonl.
+	BackendSQLite Backend = "sqlite"
+)
+
+// ParseBackend resolves a configured backend name. An empty value selects the
+// caller's default.
+func ParseBackend(raw string) (Backend, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return BackendJSONL, nil
+	case string(BackendJSONL):
+		return BackendJSONL, nil
+	case string(BackendSQLite):
+		return BackendSQLite, nil
+	default:
+		return "", fmt.Errorf("unknown chat store backend %q (want %q or %q)",
+			raw, BackendJSONL, BackendSQLite)
+	}
+}
+
+// eventLog owns durable event storage for one chat. Store keeps meta.json,
+// per-chat locking, and the derived transcript index; the log only reads and
+// writes the event stream itself. Every method is called with the chat lock
+// already held by Store.
+type eventLog interface {
+	// Create initializes an empty stream for id.
+	Create(id servicechat.ID) error
+	// Remove discards durable event state for id. Removing the chat directory
+	// itself remains the Store's responsibility.
+	Remove(ctx context.Context, id servicechat.ID) error
+	// Append assigns the next sequence number and durably stores the event.
+	Append(ctx context.Context, id servicechat.ID, ev servicechat.Event) (servicechat.Event, error)
+	// Replace rewrites the whole stream with events, preserving each event's
+	// sequence number. It is the durability half of a rewind.
+	Replace(ctx context.Context, id servicechat.ID, events []servicechat.Event) error
+	ReadAll(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error)
+	// Scan visits events in storage order without materializing the stream.
+	Scan(ctx context.Context, id servicechat.ID, visit func(servicechat.Event) bool) error
+	ReadPage(ctx context.Context, id servicechat.ID, beforeSeq int64, limit int) (servicechat.EventPage, error)
+	ReadAfter(ctx context.Context, id servicechat.ID, afterSeq int64) ([]servicechat.Event, error)
+	// LastSeq reports the highest stored sequence number for id.
+	LastSeq(ctx context.Context, id servicechat.ID) (int64, error)
+	// Prepare makes the log ready to serve reads for id, importing archived
+	// history when the backend keeps a second copy.
+	Prepare(ctx context.Context, id servicechat.ID) error
+	Close() error
+}

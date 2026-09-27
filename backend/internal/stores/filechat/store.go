@@ -28,6 +28,7 @@ var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
 type Store struct {
 	root         string
 	index        *chatEventIndex
+	events       eventLog
 	mu           sync.Mutex
 	locks        map[servicechat.ID]*sync.Mutex
 	metaMu       sync.RWMutex
@@ -40,6 +41,15 @@ type Store struct {
 }
 
 func New(root string) (*Store, error) {
+	return newStore(root, BackendJSONL)
+}
+
+// NewWithBackend opens the store with an explicit event storage engine.
+func NewWithBackend(root string, backend Backend) (*Store, error) {
+	return newStore(root, backend)
+}
+
+func newStore(root string, backend Backend) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(root, "chats"), 0o755); err != nil {
 		return nil, err
 	}
@@ -63,6 +73,18 @@ func New(root string) (*Store, error) {
 		_ = index.close()
 		return nil, err
 	}
+	switch backend {
+	case BackendJSONL:
+		store.events = newJSONLLog(store)
+	case BackendSQLite:
+		indexCancel()
+		_ = index.close()
+		return nil, errors.New("sqlite chat store backend is not implemented yet")
+	default:
+		indexCancel()
+		_ = index.close()
+		return nil, fmt.Errorf("unknown chat store backend %q", backend)
+	}
 	return store, nil
 }
 
@@ -71,7 +93,7 @@ func New(root string) (*Store, error) {
 func (s *Store) Close() error {
 	s.indexCancel()
 	s.indexWG.Wait()
-	return s.index.close()
+	return errors.Join(s.events.Close(), s.index.close())
 }
 
 // WarmRecentChatIndexes best-effort synchronizes the most recently active
@@ -99,7 +121,10 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 		}
 		lk := s.lock(meta.ID)
 		lk.Lock()
-		_, err := s.index.syncChat(ctx, meta.ID, s.eventsPath(meta.ID))
+		err := s.events.Prepare(ctx, meta.ID)
+		if err == nil {
+			_, err = s.index.syncChat(ctx, meta.ID, s.eventsPath(meta.ID))
+		}
 		lk.Unlock()
 		if err != nil {
 			warmErrors = append(warmErrors, fmt.Errorf("chat %s: %w", meta.ID, err))
@@ -174,11 +199,10 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 		return meta, err
 	}
 	s.setCachedMeta(meta)
-	f, err := os.OpenFile(s.eventsPath(meta.ID), os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		err = f.Close()
+	if err := s.events.Remove(ctx, meta.ID); err != nil {
+		return meta, err
 	}
-	if err != nil {
+	if err := s.events.Create(meta.ID); err != nil {
 		return meta, err
 	}
 	return meta, nil
@@ -251,6 +275,9 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	defer lk.Unlock()
 
 	_ = s.index.deleteChat(ctx, id)
+	if err := s.events.Remove(ctx, id); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(s.chatDir(id)); err != nil {
 		return err
 	}
@@ -262,8 +289,9 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	return nil
 }
 
-// AppendEvent writes one event to events.jsonl and bumps lastMessageAt.
-// Safe for concurrent calls on the same chat (serialized via per-id lock).
+// AppendEvent writes one event through the configured event log and bumps
+// lastMessageAt. Safe for concurrent calls on the same chat (serialized via
+// per-id lock).
 func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicechat.Event) (servicechat.Event, error) {
 	if !servicechat.ValidID(id) {
 		return servicechat.Event{}, servicechat.ErrInvalidID
@@ -276,60 +304,37 @@ func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicech
 	lk.Lock()
 	defer lk.Unlock()
 
-	seq, indexErr := s.index.lastEventSeq(ctx, id, s.eventsPath(id))
-	var err error
-	if indexErr != nil {
-		seq, err = s.lastEventSeqLocked(id)
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return servicechat.Event{}, err
 	}
+	next, err := s.events.Append(ctx, id, ev)
 	if err != nil {
 		return servicechat.Event{}, err
 	}
-	ev.Seq = seq + 1
-
-	line, err := json.Marshal(eventRecordFromDomain(ev))
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	line = append(line, '\n')
-
-	f, err := os.OpenFile(
-		s.eventsPath(id),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0o644,
-	)
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	defer f.Close()
-	if _, err := f.Write(line); err != nil {
-		return servicechat.Event{}, err
-	}
-	// JSONL is authoritative. If this derived update fails, the next indexed
-	// read or append retries from the last cached byte offset.
-	if indexErr == nil {
-		_ = s.index.refreshAfterAppend(context.Background(), id, s.eventsPath(id))
-	} else {
-		// The fallback scan assigned the sequence from canonical JSONL, but it
-		// did not validate the cached prefix. Revalidate before extending it.
-		_ = s.index.refreshAfterFallback(context.Background(), id, s.eventsPath(id))
-	}
-	if eventTouchesChatMeta(ev.Type) {
+	if eventTouchesChatMeta(next.Type) {
 		meta, err := s.Get(ctx, id)
 		if err == nil {
-			meta.LastMessageAt = ev.T
+			meta.LastMessageAt = next.T
 			if err := s.writeMeta(meta); err == nil {
 				s.setCachedMeta(meta)
 			}
 		}
 	}
-	return ev, nil
+	return next, nil
 }
 
 func (s *Store) ReadEvents(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error) {
 	if !servicechat.ValidID(id) {
 		return nil, servicechat.ErrInvalidID
 	}
-	return s.readEventsFile(id)
+	lk := s.lock(id)
+	lk.Lock()
+	defer lk.Unlock()
+
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.events.ReadAll(ctx, id)
 }
 
 // ScanEvents visits the raw append-only event stream in storage order. The
@@ -342,7 +347,14 @@ func (s *Store) ScanEvents(
 	if !servicechat.ValidID(id) {
 		return servicechat.ErrInvalidID
 	}
-	return s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+	lk := s.lock(id)
+	lk.Lock()
+	defer lk.Unlock()
+
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return err
+	}
+	return s.events.Scan(ctx, id, func(event servicechat.Event) bool {
 		visit(event)
 		return true
 	})
@@ -367,12 +379,10 @@ func (s *Store) ReadEventsPage(
 	lk.Lock()
 	defer lk.Unlock()
 
-	page, err := s.index.readEventPage(ctx, id, s.eventsPath(id), query.BeforeSeq, limit)
-	if err == nil {
-		return page, nil
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return servicechat.EventPage{}, err
 	}
-	s.discardInvalidChatIndex(ctx, id, err)
-	return s.readEventsPageFile(ctx, id, query, limit)
+	return s.events.ReadPage(ctx, id, query.BeforeSeq, limit)
 }
 
 func (s *Store) readEventsPageFile(
@@ -428,12 +438,10 @@ func (s *Store) ReadEventsAfter(
 	lk.Lock()
 	defer lk.Unlock()
 
-	events, err := s.index.readEventsAfter(ctx, id, s.eventsPath(id), afterSeq)
-	if err == nil {
-		return events, nil
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return nil, err
 	}
-	s.discardInvalidChatIndex(ctx, id, err)
-	return s.readEventsAfterFile(ctx, id, afterSeq)
+	return s.events.ReadAfter(ctx, id, afterSeq)
 }
 
 func (s *Store) readEventsAfterFile(
@@ -509,7 +517,10 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 	lk.Lock()
 	defer lk.Unlock()
 
-	events, err := s.readEventsFile(id)
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return nil, err
+	}
+	events, err := s.events.ReadAll(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -525,31 +536,12 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 		}
 	}
 
-	tmp := filepath.Join(s.chatDir(id), "events.jsonl.tmp")
-	final := filepath.Join(s.chatDir(id), "events.jsonl")
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
+	if err := s.events.Replace(ctx, id, kept); err != nil {
 		return nil, err
 	}
-	enc := json.NewEncoder(f)
-	for _, ev := range kept {
-		if err := enc.Encode(eventRecordFromDomain(ev)); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
-			return nil, err
-		}
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	// A rewind replaces the JSONL file. Rebuild the cached offsets now;
+	// A rewind replaces the stored stream. Rebuild the cached offsets now;
 	// size-based recovery on the next read remains a backstop.
-	_ = s.index.rebuildChat(context.Background(), id, final)
+	_ = s.index.rebuildChat(context.Background(), id, s.eventsPath(id))
 
 	if meta, err := s.Get(ctx, id); err == nil {
 		if lastT == 0 {
