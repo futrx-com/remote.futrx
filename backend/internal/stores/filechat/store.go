@@ -77,9 +77,13 @@ func newStore(root string, backend Backend) (*Store, error) {
 	case BackendJSONL:
 		store.events = newJSONLLog(store)
 	case BackendSQLite:
-		indexCancel()
-		_ = index.close()
-		return nil, errors.New("sqlite chat store backend is not implemented yet")
+		events, err := openSQLiteLog(store)
+		if err != nil {
+			indexCancel()
+			_ = index.close()
+			return nil, err
+		}
+		store.events = events
 	default:
 		indexCancel()
 		_ = index.close()
@@ -202,7 +206,7 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 	if err := s.events.Remove(ctx, meta.ID); err != nil {
 		return meta, err
 	}
-	if err := s.events.Create(meta.ID); err != nil {
+	if err := s.events.Create(ctx, meta.ID); err != nil {
 		return meta, err
 	}
 	return meta, nil

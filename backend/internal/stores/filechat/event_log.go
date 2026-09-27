@@ -41,7 +41,7 @@ func ParseBackend(raw string) (Backend, error) {
 // already held by Store.
 type eventLog interface {
 	// Create initializes an empty stream for id.
-	Create(id servicechat.ID) error
+	Create(ctx context.Context, id servicechat.ID) error
 	// Remove discards durable event state for id. Removing the chat directory
 	// itself remains the Store's responsibility.
 	Remove(ctx context.Context, id servicechat.ID) error
@@ -62,3 +62,8 @@ type eventLog interface {
 	Prepare(ctx context.Context, id servicechat.ID) error
 	Close() error
 }
+
+var (
+	_ eventLog = (*jsonlLog)(nil)
+	_ eventLog = (*sqliteLog)(nil)
+)

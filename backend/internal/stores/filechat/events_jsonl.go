@@ -20,7 +20,7 @@ func newJSONLLog(store *Store) *jsonlLog {
 	return &jsonlLog{store: store}
 }
 
-func (l *jsonlLog) Create(id servicechat.ID) error {
+func (l *jsonlLog) Create(_ context.Context, id servicechat.ID) error {
 	f, err := os.OpenFile(l.store.eventsPath(id), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err == nil {
 		err = f.Close()
@@ -54,22 +54,7 @@ func (l *jsonlLog) Append(
 	}
 	ev.Seq = seq + 1
 
-	line, err := json.Marshal(eventRecordFromDomain(ev))
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	line = append(line, '\n')
-
-	f, err := os.OpenFile(
-		l.store.eventsPath(id),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0o644,
-	)
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	defer f.Close()
-	if _, err := f.Write(line); err != nil {
+	if _, err := l.writeRecord(id, ev); err != nil {
 		return servicechat.Event{}, err
 	}
 	// JSONL is authoritative for this backend. If the derived update fails,
@@ -82,6 +67,31 @@ func (l *jsonlLog) Append(
 		_ = l.store.index.refreshAfterFallback(context.Background(), id, l.store.eventsPath(id))
 	}
 	return ev, nil
+}
+
+// writeRecord appends an already-sequenced event to the archive and returns
+// the exact bytes written. The sequence number comes from the caller, so the
+// file always agrees with the database.
+func (l *jsonlLog) writeRecord(id servicechat.ID, ev servicechat.Event) ([]byte, error) {
+	line, err := json.Marshal(eventRecordFromDomain(ev))
+	if err != nil {
+		return nil, err
+	}
+	line = append(line, '\n')
+
+	f, err := os.OpenFile(
+		l.store.eventsPath(id),
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0o644,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if _, err := f.Write(line); err != nil {
+		return nil, err
+	}
+	return line, nil
 }
 
 // Replace rewrites events.jsonl atomically so readers never observe a partial
