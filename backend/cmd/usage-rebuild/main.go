@@ -7,7 +7,7 @@
 //
 //	usage-rebuild                       # uses $DATA_DIR and $CHAT_STORE
 //	usage-rebuild -data-dir /opt/remote.futrx/data
-//	usage-rebuild -chat-store sqlite    # read chats.sqlite instead of JSONL
+//	usage-rebuild -chat-store jsonl     # read events.jsonl instead of chats.sqlite
 //	usage-rebuild -dry-run              # report only, write nothing
 //
 // The rebuild is idempotent, so running it twice is harmless.

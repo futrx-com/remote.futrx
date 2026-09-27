@@ -8,7 +8,7 @@ func TestParseBackend(t *testing.T) {
 		want    Backend
 		wantErr bool
 	}{
-		{raw: "", want: BackendJSONL},
+		{raw: "", want: BackendSQLite},
 		{raw: "jsonl", want: BackendJSONL},
 		{raw: "JSONL", want: BackendJSONL},
 		{raw: " sqlite ", want: BackendSQLite},

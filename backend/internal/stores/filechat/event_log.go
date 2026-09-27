@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -20,11 +21,11 @@ const (
 )
 
 // ParseBackend resolves a configured backend name. An empty value selects the
-// caller's default.
+// default backend, the same one CHAT_STORE falls back to when it is unset.
 func ParseBackend(raw string) (Backend, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "":
-		return BackendJSONL, nil
+		return Backend(configconstants.DefaultChatStoreBackend), nil
 	case string(BackendJSONL):
 		return BackendJSONL, nil
 	case string(BackendSQLite):
