@@ -788,7 +788,7 @@ func TestTranscriptIndexRebuildsAfterRewindAndCleansUpAfterDelete(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.TruncateEventsBefore(context.Background(), "abcd", 30); err != nil {
+	if err := store.TruncateEventsBefore(context.Background(), "abcd", 30); err != nil {
 		t.Fatal(err)
 	}
 

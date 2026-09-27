@@ -624,24 +624,25 @@ func (s *Store) rebuildProjection(ctx context.Context, id servicechat.ID) error 
 }
 
 // TruncateEventsBefore rewinds a chat by removing the selected event and every
-// event after it. The returned slice is the complete remaining history.
-func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, beforeT int64) ([]servicechat.Event, error) {
+// event after it. The caller does not need the retained history back, only the
+// fact that the rewrite succeeded.
+func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, beforeT int64) error {
 	if !servicechat.ValidID(id) {
-		return nil, servicechat.ErrInvalidID
+		return servicechat.ErrInvalidID
 	}
 	if beforeT <= 0 {
-		return nil, servicechat.ErrInvalidRewindTimestamp
+		return servicechat.ErrInvalidRewindTimestamp
 	}
 	lk := s.lock(id)
 	lk.Lock()
 	defer lk.Unlock()
 
 	if err := s.events.Prepare(ctx, id); err != nil {
-		return nil, err
+		return err
 	}
 	events, err := s.events.ReadAll(ctx, id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	kept := make([]servicechat.Event, 0, len(events))
 	var lastT int64
@@ -656,7 +657,7 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 	}
 
 	if err := s.events.Replace(ctx, id, kept); err != nil {
-		return nil, err
+		return err
 	}
 	// A rewind replaces the stored stream. Rebuild the cached projection now;
 	// size-based recovery on the next read remains a backstop.
@@ -672,8 +673,7 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 			s.setCachedMeta(meta)
 		}
 	}
-
-	return kept, nil
+	return nil
 }
 
 func (s *Store) writeMeta(meta servicechat.Meta) error {

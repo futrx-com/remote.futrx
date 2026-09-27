@@ -425,15 +425,15 @@ func (s *Service) EventPage(ctx context.Context, id ID, query EventPageQuery) (E
 	return s.repo.ReadEventsPage(ctx, id, query)
 }
 
-func (s *Service) Rewind(ctx context.Context, id ID, beforeT int64) ([]Event, error) {
+func (s *Service) Rewind(ctx context.Context, id ID, beforeT int64) error {
 	if !ValidID(id) {
-		return nil, ErrInvalidID
+		return ErrInvalidID
 	}
 	if beforeT <= 0 {
-		return nil, ErrInvalidRewindTimestamp
+		return ErrInvalidRewindTimestamp
 	}
 	if s.runs != nil && s.runs.IsRunning(id) {
-		return nil, ErrChatRunning
+		return ErrChatRunning
 	}
 	return s.repo.TruncateEventsBefore(ctx, id, beforeT)
 }

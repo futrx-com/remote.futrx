@@ -105,12 +105,12 @@ func (r notifyingChatRepository) TruncateEventsBefore(
 	ctx context.Context,
 	id servicechat.ID,
 	beforeT int64,
-) ([]servicechat.Event, error) {
-	events, err := r.Repository.TruncateEventsBefore(ctx, id, beforeT)
-	if err == nil {
-		r.publishChat(ctx, id)
+) error {
+	if err := r.Repository.TruncateEventsBefore(ctx, id, beforeT); err != nil {
+		return err
 	}
-	return events, err
+	r.publishChat(ctx, id)
+	return nil
 }
 
 func (r notifyingChatRepository) publishChat(ctx context.Context, id servicechat.ID) {

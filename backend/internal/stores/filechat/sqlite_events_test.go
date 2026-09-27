@@ -109,7 +109,10 @@ func runEventBackendScenario(t *testing.T, backend Backend) []string {
 	}
 	note("scan", scanned, nil)
 
-	kept, err := store.TruncateEventsBefore(ctx, "abcd", 13)
+	if err := store.TruncateEventsBefore(ctx, "abcd", 13); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := store.ReadEvents(ctx, "abcd")
 	note("rewind-kept", kept, err)
 	events, err = store.ReadEvents(ctx, "abcd")
 	note("read-after-rewind", events, err)

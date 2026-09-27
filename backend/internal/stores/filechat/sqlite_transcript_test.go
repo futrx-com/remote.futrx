@@ -211,7 +211,7 @@ func TestSQLiteTranscriptProgressCountsStoredPayloadBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertTrackedBytes("after append")
-	if _, err := store.TruncateEventsBefore(ctx, "abcd", 6); err != nil {
+	if err := store.TruncateEventsBefore(ctx, "abcd", 6); err != nil {
 		t.Fatal(err)
 	}
 	totalBytes = assertTrackedBytes("after rewind")
