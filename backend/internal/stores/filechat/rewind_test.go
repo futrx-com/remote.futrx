@@ -165,6 +165,38 @@ func TestRewindEverythingLeavesAnEmptyStreamWithAReusableSequence(t *testing.T) 
 	}
 }
 
+// TestOutOfOrderRewindFixtureKeepsASurvivorAfterADrop guards the fixture the
+// rewind benchmark seeds: the last event is kept even though the events before
+// it were dropped, so a prefix delete would be wrong and the whole-stream
+// fallback has to run. Without this the benchmark could silently take the fast
+// path and report the wrong number.
+func TestOutOfOrderRewindFixtureKeepsASurvivorAfterADrop(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewWithBackend(t.TempDir(), BackendSQLite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = store.Close() }()
+
+	const n = 40
+	benchSeed(t, store, "abcd", n, benchOutOfOrderEvent)
+	if err := store.TruncateEventsBefore(ctx, "abcd", benchEvent(int64(n/2)+1).T); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := store.ReadEvents(ctx, "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := n/2 + 1
+	if len(events) != want {
+		t.Fatalf("survivors = %d, want %d", len(events), want)
+	}
+	if last := events[len(events)-1]; last.Seq != int64(n) {
+		t.Fatalf("last survivor seq = %d, want %d: the fallback did not run", last.Seq, n)
+	}
+}
+
 // assertMirrorMatchesEvents reads events.jsonl directly, bypassing the backend
 // selection, so it checks the rollback copy the SQLite engine writes.
 func assertMirrorMatchesEvents(
