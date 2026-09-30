@@ -17,10 +17,13 @@ sequenceDiagram
     participant LXD
     participant Provision as Launch provisioners
 
-    User->>API: Create project with a name
+    User->>API: Create project with a name (and optional Git URL)
     API->>Store: Create ID, unique slug, metadata
     API->>Access: Add creator as a member
     API->>Files: Prepare durable workspace and agent-home directories
+    opt Git URL given and workspace empty
+        API->>Files: Clone repository into the workspace, then re-chown it
+    end
     API->>LXD: Launch from futrx-remote-dev-base
     LXD->>LXD: Attach workspace and provider homes
     API->>Provision: Credentials, skills, browser assets, code-server
@@ -32,6 +35,17 @@ The slug becomes the container name and is used in IDE and preview hostnames.
 Display names are unique case-insensitively after trimming whitespace; create
 and rename reject a duplicate with `409 Conflict`. Distinct display names that
 normalize to the same slug receive `-2`, `-3`, and later suffixes.
+
+An optional Git URL seeds the new workspace by cloning it on the host, the
+same way [Git history](05-workspace-tools.md) reads repositories — a plain
+`git clone` against the host-side workspace directory, not an in-container
+operation. Only public `https://` URLs are accepted; there is no managed
+credential path, so a private repo fails fast (`GIT_TERMINAL_PROMPT=0`
+prevents it from hanging on a password prompt) rather than being cloned.
+Cloning only ever runs against an **empty** workspace directory — it is a
+no-op if the directory already has content, which is what makes it safe to
+re-enter on every `Ensure` (a container recreated for workspace upgrades or
+recovery reuses the same already-populated directory, not a fresh clone).
 
 ## Durable and replaceable parts
 

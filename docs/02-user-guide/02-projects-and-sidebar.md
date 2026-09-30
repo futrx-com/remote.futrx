@@ -11,9 +11,12 @@ agents, terminals, the IDE, browsers, and development processes run.
 2. Enter a name in the **New project** modal. It validates the display name and
    previews the normalized slug, workspace path, and container name before any
    request is sent.
-3. Select **Create project**.
-4. Keep the modal open while it reports container provisioning progress.
-5. When provisioning finishes, select **New chat in this project** or expand
+3. Optionally expand **Import from a Git URL** and paste a public `https://`
+   repository URL to seed the new workspace by cloning it, instead of starting
+   empty.
+4. Select **Create project**.
+5. Keep the modal open while it reports container provisioning progress.
+6. When provisioning finishes, select **New chat in this project** or expand
    the project and select **New chat**.
 
 ![Creating a project from the workspace](/assets/docs/screenshots/create-project.webp)
@@ -24,6 +27,16 @@ server's development image. A display name already in use is rejected even if
 case or surrounding whitespace differs. Two genuinely different names that
 normalize to the same slug remain valid; later projects receive a numeric slug
 suffix such as `-2`.
+
+**Git import** only supports plain public `https://` repositories — no
+`ssh://`, no `git@host:` shorthand, and no credentials, so a private repo URL
+fails fast with a clear error instead of hanging or prompting for a password.
+To seed a project from a private repo, create it without a Git URL and clone
+it yourself from the project **Terminal** using your own git credentials.
+A clone failure (bad URL, unreachable host, private repo) surfaces as a
+project provisioning error the same way a container failure would; the
+project itself is still created and can be retried or used with an empty
+workspace.
 
 The new-chat control is disabled and shows a spinner while the project is still
 provisioning. If provisioning fails, the sidebar displays the project error.

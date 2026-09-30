@@ -51,6 +51,10 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **The per-project IDE is reachable by any invited user.** `<slug>.code.<host>` authenticates the registered user but does **not** check project membership, so any invited user can open any project's code editor. This is documented in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md) and analyzed in the [threat model](threat-model.md).
 - **Public sharing covers app previews only, and is bearer-token access.** A project member can hand out a time-boxed public link to one `<slug>--<port>.dev.<host>` preview (default 24h, max 30 days, revocable, SHA-256-hashed at rest). Everything else — the IDE, the Agent Browser on port 6080, and the main application — still requires an invited account, and there is still no way to give an outsider read-only access to chats or files. Anyone who obtains a link is the viewer: there is no per-recipient identity, no password on the link, and no audit trail of who opened it. *(`backend/internal/service/share/`)*
 
+## Projects
+
+- **Git import on project creation is public-repo-only.** Seeding a new project's workspace from a Git URL only accepts plain `https://` URLs with no credentials — no `ssh://`, no `git@host:` shorthand, no stored token or deploy key. A private repo fails fast at clone time instead of prompting for auth. Import it after creation instead, by cloning it yourself from the project **Terminal** with your own git credentials. *(`backend/internal/integration/gitcli/clone.go`, `backend/internal/service/project/giturl.go`)*
+
 ## Agents
 
 - **Agent modules are compiled in, not runtime plugins.** Each provider package

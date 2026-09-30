@@ -43,6 +43,14 @@ type WorkspacePreparer interface {
 	Prepare(path string) error
 }
 
+// RepositoryCloner seeds a freshly-prepared, empty workspace directory from a
+// git URL. Implementations must be safe to call against an already-seeded
+// (non-empty) directory: they should no-op rather than fail, since Ensure
+// re-clones on every provisioning pass, not only the first.
+type RepositoryCloner interface {
+	Clone(ctx context.Context, url, dest string) error
+}
+
 type ResourceEnsurer interface {
 	Ensure(ctx context.Context, containerName string) error
 	SetLimits(ctx context.Context, containerName, cpu, memory, disk string) error
@@ -63,6 +71,7 @@ type Service struct {
 	resources   ResourceEnsurer
 	provisioner LaunchProvisioner
 	profiles    ProfileSource
+	cloner      RepositoryCloner
 }
 
 func NewService(
@@ -72,6 +81,7 @@ func NewService(
 	resources ResourceEnsurer,
 	provisioner LaunchProvisioner,
 	profiles ProfileSource,
+	cloner RepositoryCloner,
 ) *Service {
 	return &Service{
 		runtime:     runtime,
@@ -80,6 +90,7 @@ func NewService(
 		resources:   resources,
 		provisioner: provisioner,
 		profiles:    profiles,
+		cloner:      cloner,
 	}
 }
 
@@ -125,6 +136,16 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 	if created {
 		if err := s.workspace.Prepare(project.Cwd); err != nil {
 			return err
+		}
+		if project.GitURL != "" {
+			if err := s.cloner.Clone(ctx, project.GitURL, project.Cwd); err != nil {
+				return err
+			}
+			// Re-chown: the clone ran as the backend process's own uid, not
+			// the container's unprivileged idmap uid/gid.
+			if err := s.workspace.Prepare(project.Cwd); err != nil {
+				return err
+			}
 		}
 		if err := s.preparePrivateDirectory(agentRoot); err != nil {
 			return fmt.Errorf("prepare agent home: %w", err)
