@@ -54,6 +54,13 @@ func (f failingScheduleTools) Ensure(_ context.Context, containerName string) er
 	return errors.New("schedule tools failed")
 }
 
+type failingUserSetup struct{ recorder *callRecorder }
+
+func (f failingUserSetup) Ensure(_ context.Context, containerName string) error {
+	f.recorder.calls = append(f.recorder.calls, "user setup "+containerName)
+	return errors.New("user setup failed")
+}
+
 func TestProvisionKeepsBestEffortCapabilityOrder(t *testing.T) {
 	recorder := &callRecorder{}
 	provisioner := NewProvisioner(
@@ -61,6 +68,7 @@ func TestProvisionKeepsBestEffortCapabilityOrder(t *testing.T) {
 		failingWorkspace{recorder: recorder},
 		failingBrowser{recorder: recorder},
 		failingCodeServer{recorder: recorder},
+		failingUserSetup{recorder: recorder},
 		failingScheduleTools{recorder: recorder},
 	)
 
@@ -74,6 +82,7 @@ func TestProvisionKeepsBestEffortCapabilityOrder(t *testing.T) {
 		"browser nesting project-1",
 		"schedule tools project-1",
 		"code-server project-1 My Project",
+		"user setup project-1",
 	}
 	if !slices.Equal(recorder.calls, want) {
 		t.Fatalf("calls: got %q, want %q", recorder.calls, want)

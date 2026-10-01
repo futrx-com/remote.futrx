@@ -13,6 +13,8 @@
 #   - Workspace files always survive (bind-mounted from the host). Anything
 #     installed in the container ROOTFS outside /workspace (ad-hoc apt/npm
 #     installs, caches) is lost — that is what "upgrade by re-clone" means.
+#     An executable /workspace/setup.sh is replayed automatically after
+#     replacement so projects can restore their own tooling.
 #   - Containers with a running agent process are SKIPPED by default.
 #   - The control plane stays online in maintenance mode so update progress is
 #     visible, while new prompts are rejected until replacement is complete.
