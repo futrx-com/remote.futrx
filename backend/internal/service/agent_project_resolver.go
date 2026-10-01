@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -18,13 +19,18 @@ func (r agentProjectResolver) Get(ctx context.Context, id agent.ProjectID) (agen
 	return projectForAgent(project), err
 }
 
+// Start readies the container for an agent run the caller was already
+// admitted to. Runs also start from background contexts that carry no
+// authenticated actor, so this is a reviewed trusted internal entry point.
 func (r agentProjectResolver) Start(ctx context.Context, id agent.ProjectID) (agent.Project, error) {
-	project, err := r.projects.Start(ctx, serviceproject.ID(id))
+	project, err := r.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
 	return projectForAgent(project), err
 }
 
 func (r agentProjectResolver) ListSecrets(ctx context.Context, id agent.ProjectID) ([]agent.ProjectSecret, error) {
-	secrets, err := r.projects.ListSecrets(ctx, serviceproject.ID(id))
+	// Execution already has access to the injected container environment. The
+	// UI secrets capability controls inspection/editing, not runtime injection.
+	secrets, err := r.projects.ListSecrets(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
 	if err != nil {
 		return nil, err
 	}

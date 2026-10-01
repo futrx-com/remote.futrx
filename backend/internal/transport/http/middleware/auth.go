@@ -1,9 +1,11 @@
 package httpmiddleware
 
 import (
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"net/http"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -39,6 +41,13 @@ func (m *Auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if !strings.HasPrefix(path, "/api/") && !strings.HasPrefix(path, "/ws") {
+			// Sign-in, sign-out, and the OAuth round-trip are auditable but
+			// ungated. They get the network half of the caller here; their own
+			// handlers supply the identity, because a login request is exactly
+			// the one with no session to resolve it from.
+			if strings.HasPrefix(path, "/auth/") {
+				r = httptransport.WithAuditCaller(r, httptransport.AuditCallerFromRequest(r))
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -52,11 +61,25 @@ func (m *Auth) Wrap(next http.Handler) http.Handler {
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
 		}
-		registered, _ := m.auth.IsRegistered(r.Context(), session.Email)
+		// Admin implies registered, so the common admin path still costs one
+		// directory lookup while every request gains the actor fields the
+		// audit log needs.
+		isAdmin, _ := m.auth.IsAdmin(r.Context(), session.Email)
+		registered := isAdmin
+		if !registered {
+			registered, _ = m.auth.IsRegistered(r.Context(), session.Email)
+		}
 		if !registered {
 			http.Error(w, "account not authorized", http.StatusUnauthorized)
 			return
 		}
+		caller := httptransport.AuditCallerFromRequest(r)
+		caller.Actor = serviceaudit.Actor{
+			Email:   session.Email,
+			Sub:     session.Sub,
+			IsAdmin: isAdmin,
+		}
+		r = httptransport.WithAuditCaller(r, caller)
 		if m.localAdminConfigured != nil && !m.localAdminConfigured() {
 			http.Error(w, "local administrator setup required", http.StatusPreconditionRequired)
 			return
@@ -65,7 +88,11 @@ func (m *Auth) Wrap(next http.Handler) http.Handler {
 			http.Error(w, "AI provider authentication required", http.StatusPreconditionRequired)
 			return
 		}
-		next.ServeHTTP(w, r)
+		// Services authorize by the actor in the context, so it is attached only
+		// here, after the session and registration are verified, and always
+		// from the session, never from anything the client sent.
+		actor := permission.UserActor(session.Email)
+		next.ServeHTTP(w, r.WithContext(permission.ContextWithActor(r.Context(), actor)))
 	})
 }
 

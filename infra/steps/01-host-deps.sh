@@ -185,12 +185,10 @@ else
     export PATH="/snap/bin:$PATH"
 fi
 
-# Initialize storage + bridge on fresh installs. `lxc network show lxdbr0`
-# is our "initialized" probe.
-if ! lxc network show lxdbr0 >/dev/null 2>&1; then
-    log "lxd init --auto"
-    lxd init --auto
-fi
+# Initialize fresh storage explicitly and preserve existing installations.
+# shellcheck source=../lib/lxd-storage.sh
+. "$INFRA_DIR/lib/lxd-storage.sh"
+configure_lxd_storage
 if [ "$NESTED_UNPRIVILEGED_LXC" = "1" ]; then
     # Debian's native package takes its initial allocation from /etc/subuid;
     # pin the profile to the idmap Remote's host-file ownership code expects.

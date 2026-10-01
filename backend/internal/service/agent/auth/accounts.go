@@ -109,6 +109,7 @@ type Account struct {
 }
 
 type AccountsSnapshot struct {
+	DefaultAllowed  *bool     `json:"defaultAllowed,omitempty"`
 	ActiveAccountID string    `json:"activeAccountId,omitempty"`
 	Items           []Account `json:"items"`
 }

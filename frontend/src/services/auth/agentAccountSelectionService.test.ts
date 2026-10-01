@@ -58,3 +58,9 @@ function provider(
     },
   };
 }
+
+test("filtered accounts preserve a revoked explicit selection instead of falling back", () => {
+  const restricted = { ...accountsForProvider(providers, "claude")!, defaultAllowed: false };
+  assert.equal(resolveProviderAccountId(restricted, "revoked-account"), "revoked-account");
+  assert.equal(resolveProviderAccountId({ items: [], defaultAllowed: false }, ""), "");
+});

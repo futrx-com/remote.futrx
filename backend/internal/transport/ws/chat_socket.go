@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"net/http"
 	"os"
 	"strconv"
@@ -37,6 +38,7 @@ type ProjectAccessChecker interface {
 }
 
 type ChatSocket struct {
+	audit  serviceaudit.Recorder
 	chats  ChatLookup
 	hub    *runhub.Hub
 	runner PromptRunner
@@ -97,6 +99,11 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 			}
 		}
 	}
+
+	// An agent run outlives the HTTP request that started it, so the run
+	// context is rooted in Background. It still carries the audit caller so
+	// the service layer can attribute the run to this session.
+	runCtx := serviceaudit.WithCaller(context.Background(), auditCaller(r, email, isAdmin))
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -161,11 +168,16 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 					Email:   email,
 					IsAdmin: isAdmin,
 				},
+				ParentContext: runCtx,
 			}, sub.SendTransient)
 			if msg.ClientID != "" {
 				sub.SendTransient(promptAckEvent(msg.ClientID, err == nil))
 			}
 		case "cancel":
+			if s.audit != nil {
+				entry := serviceaudit.Success(serviceaudit.ActionAgentRunCancel, serviceaudit.Target{Type: serviceaudit.TargetChat, ID: string(id)}, serviceaudit.Meta{"projectId": string(meta.ProjectID)})
+				s.audit.Record(runCtx, entry)
+			}
 			if !s.runner.CancelPrompt(id) {
 				sub.SendTransient(servicechat.Event{
 					T:       time.Now().UnixMilli(),
@@ -213,4 +225,9 @@ func sinceSeq(r *http.Request) int64 {
 		return 0
 	}
 	return seq
+}
+
+func (s *ChatSocket) WithAudit(recorder serviceaudit.Recorder) *ChatSocket {
+	s.audit = recorder
+	return s
 }

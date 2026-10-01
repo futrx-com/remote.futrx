@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"log"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
+	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -59,32 +62,34 @@ type PushStore interface {
 }
 
 type Dependencies struct {
-	Chats             ChatStore
-	Projects          serviceproject.Repository
-	ProjectSecrets    serviceproject.SecretsRepository
-	ProjectAccess     serviceproject.AccessRepository
-	ProjectShares     serviceshare.Repository
-	Schedules         serviceschedule.Repository
-	Auth              AuthStore
-	Users             serviceuser.Repository
-	UserSettings      serviceusersettings.Repository
-	TwoFactor         serviceauth.TwoFactorStore
-	SessionRegistry   serviceauth.SessionRegistryStore
-	Push              PushStore
-	Usage             serviceusage.Repository
-	AgentQuota        agentquota.Repository
-	AuthBaseURL       string
-	ProjectContainers serviceproject.ContainerDependencies
-	AgentContainers   provisioning.ContainerDependencies
-	AgentModules      *agentmodule.Catalog
-	AgentAPIKeys      agentauth.APIKeyStore
-	AgentAccounts     agentauth.AccountStore
-	AgentOptions      AgentOptions
-	AuthOptions       AuthOptions
-	TmuxClient        TmuxClient
-	ValidTmuxName     func(string) bool
-	ScheduleLimits    ScheduleLimits
-	PromptStartGate   prompt.StartGate
+	AuditRetentionMonths *int
+	Audit                audit.Store
+	Chats                ChatStore
+	Projects             serviceproject.Repository
+	ProjectSecrets       serviceproject.SecretsRepository
+	ProjectAccess        serviceproject.AccessRepository
+	ProjectShares        serviceshare.Repository
+	Permissions          *servicepermission.Service
+	Schedules            serviceschedule.Repository
+	Auth                 *serviceauth.Service
+	Users                serviceuser.Repository
+	UserSettings         serviceusersettings.Repository
+	TwoFactor            serviceauth.TwoFactorStore
+	SessionRegistry      serviceauth.SessionRegistryStore
+	Push                 PushStore
+	Usage                serviceusage.Repository
+	AgentQuota           agentquota.Repository
+	AuthBaseURL          string
+	ProjectContainers    serviceproject.ContainerDependencies
+	AgentContainers      provisioning.ContainerDependencies
+	AgentModules         *agentmodule.Catalog
+	AgentAPIKeys         agentauth.APIKeyStore
+	AgentAccounts        agentauth.AccountStore
+	AgentOptions         AgentOptions
+	TmuxClient           TmuxClient
+	ValidTmuxName        func(string) bool
+	ScheduleLimits       ScheduleLimits
+	PromptStartGate      prompt.StartGate
 
 	// Installable-application capabilities. When AppStore and
 	// AppRegistry are set the Applications service is enabled.
@@ -138,6 +143,8 @@ type AuthOptions struct {
 }
 
 type Services struct {
+	Audit             *audit.Service
+	AccountAccess     *agentaccountaccess.Service
 	Chats             *servicechat.Service
 	ChatAccess        *servicechat.AccessService
 	Projects          *serviceproject.Service
@@ -151,6 +158,7 @@ type Services struct {
 	Workspace         *workspacehub.Hub
 	Auth              *serviceauth.Service
 	Users             *serviceuser.Service
+	Permissions       *servicepermission.Service
 	UserSettings      *serviceusersettings.Service
 	Skills            *serviceskills.Catalog
 	Tmux              *servicetmux.Service
@@ -169,13 +177,17 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.AgentModules == nil {
 		return Services{}, errors.New("agent module catalog is required")
 	}
-	if deps.Auth != nil {
-		if err := deps.AgentModules.ValidateAccessGate(); err != nil {
-			return Services{}, fmt.Errorf("agent module catalog: %w", err)
-		}
+	if deps.Auth == nil {
+		return Services{}, errors.New("authentication service is required")
+	}
+	if err := deps.AgentModules.ValidateAccessGate(); err != nil {
+		return Services{}, fmt.Errorf("agent module catalog: %w", err)
 	}
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
+	}
+	if deps.Permissions == nil {
+		return Services{}, errors.New("permission service is required")
 	}
 
 	workspace := workspacehub.New()
@@ -193,12 +205,25 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		},
 		push: pushNotifier,
 	}
+	// Authentication and authorization are built by the composition root and
+	// injected, so this layer knows neither their stores nor their adapters.
+	authService := deps.Auth
+	auditOptions := []audit.Option{}
+	if deps.AuditRetentionMonths != nil {
+		auditOptions = append(auditOptions, audit.WithRetentionMonths(*deps.AuditRetentionMonths))
+	}
+	auditService := audit.New(deps.Audit, auditOptions...)
+	auditService.StartJanitor(ctx, 0)
+	deps.Auth.WithAudit(auditService)
+	permissionService := deps.Permissions
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	projectService := serviceproject.New(
 		projects,
 		deps.ProjectContainers,
 		deps.ProjectSecrets,
 		deps.ProjectAccess,
+		serviceproject.WithAudit(auditService),
+		serviceproject.WithAuthorizer(permissionService),
 		serviceproject.WithChatCleanup(projectChatCleanup{
 			chats: chats,
 			cancel: func(ctx context.Context, id servicechat.ID) error {
@@ -213,12 +238,13 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Projects:              agentProjectResolver{projects: projectService},
 		Containers:            deps.AgentContainers,
 		APIKeys:               deps.AgentAPIKeys,
-		Accounts:              agentauth.NewAccountVault(deps.AgentAccounts),
+		Accounts:              agentauth.NewAccountVault(deps.AgentAccounts, permissionService).WithAudit(auditService),
 		CredentialSyncTimeout: deps.AgentOptions.CredentialSyncTimeout,
 	})
 	if err != nil {
 		return Services{}, fmt.Errorf("build agent modules: %w", err)
 	}
+	accountAccess := agentaccountaccess.New(permissionService, agentRuntime.Bindings())
 	projectService.StartAgentBrowserReaper(ctx, deps.AgentOptions.BrowserIdleTTL)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
@@ -241,33 +267,26 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(agentRuntime),
 		servicechat.WithProviderPolicy(agentRuntime),
+		servicechat.WithAudit(auditService),
+		servicechat.WithAuthorizer(permissionService),
+		servicechat.WithAccountAccess(accountAccess),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
 	userService := serviceuser.New(
 		deps.Users,
-		serviceuser.WithRemovalCleanup(userRemovalCleanup{
+		serviceuser.WithAudit(auditService), serviceuser.WithRemovalCleanup(userRemovalCleanup{
 			projects:        projectService,
+			permissions:     permissionService,
 			subscriptions:   deps.Push,
 			twoFactor:       deps.TwoFactor,
 			sessionRegistry: deps.SessionRegistry,
 		}),
 	)
-	authService, err := newAuth(
-		ctx,
-		deps.Auth,
-		userService,
-		deps.AuthBaseURL,
-		deps.TwoFactor,
-		deps.SessionRegistry,
-		deps.AuthOptions,
-	)
-	if err != nil {
-		return Services{}, err
-	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
 	var usageService *serviceusage.Service
 	promptOptions := []prompt.Option{
+		prompt.WithAudit(auditService),
 		prompt.WithScheduleToolIssuer(scheduleCaps),
 		prompt.WithAgentPolicy(agentRuntime),
 	}
@@ -282,6 +301,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	// the life of the process, they just do not survive a restart.
 	agentQuotaService := agentquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
 	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
+	promptOptions = append(promptOptions, prompt.WithAccountAccess(accountAccess))
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
@@ -296,6 +316,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		projectService,
 		authService,
 		scheduledPromptExecutor{prompts: promptService},
+		serviceschedule.WithAudit(auditService),
 		serviceschedule.WithMinInterval(deps.ScheduleLimits.MinInterval),
 		serviceschedule.WithMaxConcurrentRuns(deps.ScheduleLimits.MaxConcurrentRuns),
 		serviceschedule.WithMaxTasksPerProject(deps.ScheduleLimits.MaxTasksPerProject),
@@ -322,7 +343,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
-		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
+		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService).WithIDEAuthorizer(permissionService)
 	}
 	var shareService *serviceshare.Service
 	if deps.ProjectShares != nil {
@@ -366,6 +387,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	pushNotifier.audience.users = userService
 
 	return Services{
+		Audit: auditService, AccountAccess: accountAccess,
 		Chats:             chatService,
 		ChatAccess:        chatAccessService,
 		Projects:          projectService,
@@ -379,6 +401,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Workspace:         workspace,
 		Auth:              authService,
 		Users:             userService,
+		Permissions:       permissionService,
 		UserSettings:      userSettingsService,
 		Skills:            skillCatalog,
 		Tmux:              tmuxService,
@@ -405,8 +428,11 @@ func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID s
 	return meta.Slug, nil
 }
 
+// EnsureRunning readies a container on behalf of an installed application
+// that a caller has already been admitted to use, so it is trusted internal
+// work rather than an explicit lifecycle action by that caller.
 func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
-	_, err := a.projects.Start(ctx, serviceproject.ID(projectID))
+	_, err := a.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(projectID))
 	return err
 }
 

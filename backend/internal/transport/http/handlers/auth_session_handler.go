@@ -3,12 +3,14 @@ package httphandlers
 import (
 	"net/http"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type authSessionHandler struct {
-	auth *serviceauth.Service
+	auth  *serviceauth.Service
+	audit serviceaudit.Recorder
 }
 
 func (h *authSessionHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -18,6 +20,9 @@ func (h *authSessionHandler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *authSessionHandler) logout(w http.ResponseWriter, r *http.Request) {
 	if session, err := h.auth.CurrentSession(r.Context(), httptransport.SessionCookieValue(r)); err == nil && session != nil {
+		entry := serviceaudit.Success(serviceaudit.ActionAuthLogout, serviceaudit.Target{Type: serviceaudit.TargetSession}, nil)
+		entry.Actor = serviceaudit.Actor{Email: session.Email}
+		h.auth.Audit().Record(r.Context(), entry)
 		_ = h.auth.RevokeSession(r.Context(), session.Email)
 	}
 	http.SetCookie(w, &http.Cookie{

@@ -2,15 +2,21 @@ package chat
 
 import (
 	"context"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 type Service struct {
+	audit                audit.Recorder
+	accountAccess        AccountAccess
+	selectionMu          sync.Mutex
+	authorizer           Authorizer
 	repo                 Repository
 	transcriptEvents     TranscriptEventSource
 	transcriptWindow     TranscriptEventWindowSource
@@ -69,10 +75,11 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
-		repo:     repo,
-		projects: projects,
-		tmux:     tmux,
-		runs:     runs,
+		repo:       repo,
+		authorizer: systemOnlyAuthorizer{},
+		projects:   projects,
+		tmux:       tmux,
+		runs:       runs,
 	}
 	for _, option := range options {
 		option(service)
@@ -102,7 +109,11 @@ func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
 	return s.withRunning(meta), nil
 }
 
-func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
+func (s *Service) Create(ctx context.Context, in CreateInput) (result Meta, resultErr error) {
+	defer func() { s.recordChat(ctx, "chat.create", result, result.ID, resultErr) }()
+	if err := s.requireCreate(ctx, in.ProjectID); err != nil {
+		return Meta{}, err
+	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = "New chat"
@@ -117,6 +128,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 		return Meta{}, ErrInvalidProvider
 	}
 
+	if err := s.requireAccount(ctx, provider, in.AccountID); err != nil {
+		return Meta{}, err
+	}
 	cwd := strings.TrimSpace(in.Cwd)
 	if cwd == "" && in.ProjectID != "" && s.projects != nil {
 		projectCwd, err := s.projects.WorkspaceForProject(ctx, in.ProjectID)
@@ -160,12 +174,19 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 // metadata and full visible history, plus a pending fork of the underlying
 // agent session. The fork materializes on the next prompt through each
 // provider's native fork mechanism, so the parent is never mutated.
-func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
+func (s *Service) Fork(ctx context.Context, id ID) (result Meta, resultErr error) {
+	defer func() { s.recordChat(ctx, "chat.fork", result, result.ID, resultErr) }()
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireCreate(ctx, src.ProjectID); err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireAccount(ctx, src.Provider, src.AccountID); err != nil {
 		return Meta{}, err
 	}
 	if !s.validProviderScope(src.Provider, src.ProjectID) {
@@ -232,6 +253,10 @@ func (s *Service) appendCopiedEvent(ctx context.Context, id ID, event Event) (Ev
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
+	// Serialize selections so the authorization preflight and update see the
+	// same provider/account pair. Run-side credential checks remain independent.
+	s.selectionMu.Lock()
+	defer s.selectionMu.Unlock()
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -246,6 +271,24 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		nextProvider, valid = s.providerForScope(*in.Provider, current.ProjectID)
 		if !valid {
 			return Meta{}, ErrInvalidProvider
+		}
+	}
+
+	if in.Provider != nil || in.AccountID != nil {
+		current, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return Meta{}, err
+		}
+		selectedProvider, selectedID := current.Provider, current.AccountID
+		if in.Provider != nil && nextProvider != current.Provider {
+			selectedProvider = nextProvider
+			selectedID = ""
+		}
+		if in.AccountID != nil {
+			selectedID = strings.TrimSpace(*in.AccountID)
+		}
+		if err := s.requireAccount(ctx, selectedProvider, selectedID); err != nil {
+			return Meta{}, err
 		}
 	}
 
@@ -372,7 +415,12 @@ func (s *Service) withRunning(meta Meta) Meta {
 	return meta
 }
 
-func (s *Service) Delete(ctx context.Context, id ID) error {
+func (s *Service) Delete(ctx context.Context, id ID) (resultErr error) {
+	var existing Meta
+	if s.audit != nil {
+		existing, _ = s.repo.Get(ctx, id)
+	}
+	defer func() { s.recordChat(ctx, "chat.delete", existing, id, resultErr) }()
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
@@ -440,4 +488,20 @@ func (s *Service) UploadTarget(ctx context.Context, id ID) (string, error) {
 		}
 	}
 	return filepath.Join(root, ".uploads"), nil
+}
+
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
+func (s *Service) recordChat(ctx context.Context, action string, meta Meta, id ID, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	target := audit.Target{Type: audit.TargetChat, ID: string(id), Name: meta.Title}
+	entryMeta := audit.Meta{}
+	if meta.ProjectID != "" {
+		entryMeta["projectId"] = string(meta.ProjectID)
+	}
+	s.audit.Record(ctx, audit.Result(action, target, entryMeta, err))
 }

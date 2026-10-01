@@ -173,9 +173,9 @@ cd /opt/remote.futrx/backend && go run ./cmd/usage-rebuild -data-dir /opt/remote
 
 The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebuild/main.go) and reads `DATA_DIR` from the environment when `-data-dir` is omitted.
 
-**A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. Attribution that only live recording knows (`userEmail`, `runId`, `scheduled`) is carried across from the current ledger wherever a key matches.
+**A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. New completion events preserve `userEmail`, the turn ID and the scheduled-task marker. Rebuilds use those durable values, with matching live ledger records as a fallback for older events.
 
-**What a rebuild cannot recover:** chat event logs do not store who typed a prompt. A run that was never recorded live comes back with an empty `userEmail`, so it appears under *Unattributed* when grouping by user, and a member cannot see it if it was a loose chat. Events written before completion events carried their provider can also be ambiguous if the chat later switched agents; a matching live ledger record preserves the original provider/model when one exists.
+**What a rebuild cannot recover:** older chat events may have no author data. If neither an event nor a matching live record has attribution, the run retains an empty `userEmail`, appears under *Unattributed* when grouping by user, and a member cannot see it if it was a loose chat. Events written before completion events carried their provider can also be ambiguous if the chat later switched agents; a matching live ledger record preserves the original provider/model when one exists.
 
 ## Known gaps
 
@@ -183,4 +183,4 @@ The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebu
 - **Kimi and Antigravity contribute no tokens or cost.** Their CLIs disclose nothing; only run counts are meaningful for them.
 - **Cache-write pricing is approximate for non-Claude providers,** which generally do not separate cache creation from ordinary input tokens.
 - **The ledger has no retention policy.** Monthly files grow without rotation limits, like the chat event logs described in [Known limitations](../known-limitations.md).
-- **Rebuilt records lose user attribution** unless a live record already covered the same run, as described above.
+- **Legacy records may lack user attribution** when neither the event nor a matching live record identifies the user, as described above.

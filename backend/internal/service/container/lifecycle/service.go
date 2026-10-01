@@ -61,7 +61,14 @@ type ProfileSource interface {
 	Snapshot() []provisioning.Profile
 }
 
+type PersistentStorage interface {
+	Ensure(context.Context, serviceproject.Meta) error
+}
+
+func (s *Service) WithPersistentStorage(p PersistentStorage) *Service { s.persistent = p; return s }
+
 type Service struct {
+	persistent  PersistentStorage
 	runtime     Runtime
 	image       string
 	workspace   WorkspacePreparer
@@ -119,6 +126,11 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 		return err
 	}
 
+	if s.persistent != nil {
+		if err := s.persistent.Ensure(ctx, project); err != nil {
+			return fmt.Errorf("prepare persistent project storage: %w", err)
+		}
+	}
 	state, err := s.runtime.State(ctx, project.ContainerName)
 	if err != nil {
 		return err
@@ -221,7 +233,9 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 		}
 	}
 
-	_ = s.resources.Ensure(ctx, project.ContainerName)
+	if err := s.resources.Ensure(ctx, project.ContainerName); err != nil {
+		return s.launchError(ctx, project.ContainerName, created, fmt.Errorf("apply workspace resource defaults: %w", err))
+	}
 	if project.ResourceLimits != nil {
 		if err := s.resources.SetLimits(
 			ctx,

@@ -19,6 +19,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
@@ -41,6 +42,10 @@ func main() {
 // run builds and publishes the base image under alias, optionally deleting
 // any existing image at that alias first.
 func run(alias string, overwrite bool) error {
+	software, err := serviceimage.LoadSoftware(os.Getenv("SANDBOX_SOFTWARE_FILE"))
+	if err != nil {
+		return fmt.Errorf("sandbox software: %w", err)
+	}
 	lxcClient := lxc.New()
 	if !lxcClient.Available() {
 		return errors.New("lxc CLI not found on PATH - install LXD on the host first")
@@ -71,7 +76,7 @@ func run(alias string, overwrite bool) error {
 	log.Printf("building %q from %q...", alias, serviceimage.SourceImage)
 	log.Printf("(the first build can take up to 10 minutes; progress is reported every 30 seconds)")
 
-	if err := containerStack.Images.Build(ctx, alias); err != nil {
+	if err := containerStack.Images.WithSoftware(software).Build(ctx, alias); err != nil {
 		return fmt.Errorf("build failed: %w", err)
 	}
 

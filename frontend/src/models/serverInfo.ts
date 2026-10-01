@@ -54,6 +54,8 @@ export interface ServerStorageInfo {
 }
 
 export interface ServerStorageMount {
+ inodePercent?: number;
+ warning?: boolean;
   device?: string;
   mountPath: string;
   filesystem?: string;

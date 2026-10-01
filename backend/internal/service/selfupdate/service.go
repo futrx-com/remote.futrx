@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"os"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ var (
 const lifecycleReconcileInterval = time.Second
 
 type Service struct {
+	audit          audit.Recorder
 	currentVersion string
 	installDir     string
 	host           HostClient
@@ -95,7 +97,12 @@ func (s *Service) Check(ctx context.Context) Status {
 // Apply starts the safe deployment path toward the given tag (or the newest
 // release tag when tag is empty). Single-flight: a second call while a run is
 // alive returns ErrUpdateInProgress.
-func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, error) {
+func (s *Service) Apply(ctx context.Context, startedBy, tag string) (result Status, resultErr error) {
+	defer func() {
+		if s.audit != nil {
+			s.audit.Record(ctx, audit.Result(audit.ActionSelfUpdateTrigger, audit.Target{Type: audit.TargetServer, ID: "self-update"}, audit.Meta{"tag": tag}, resultErr))
+		}
+	}()
 	tags, err := s.host.ListRemoteTags(ctx, s.installDir)
 	if err != nil {
 		return s.Status(ctx), fmt.Errorf("list origin tags: %w", err)
@@ -484,3 +491,5 @@ func containsTag(tags []string, tag string) bool {
 	}
 	return false
 }
+
+func (s *Service) WithAudit(recorder audit.Recorder) *Service { s.audit = recorder; return s }

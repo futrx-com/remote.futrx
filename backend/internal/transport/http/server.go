@@ -20,11 +20,14 @@ type Middleware interface {
 }
 
 type Handlers struct {
+	Audit             RouteRegistrar
+	AgentInstructions RouteRegistrar
 	Sessions          RouteRegistrar
 	Chats             RouteRegistrar
 	Projects          RouteRegistrar
 	Applications      RouteRegistrar
 	Users             RouteRegistrar
+	Permissions       RouteRegistrar
 	AgentAuth         RouteRegistrar
 	AgentCapabilities RouteRegistrar
 	UserSettings      RouteRegistrar
@@ -42,6 +45,7 @@ type Handlers struct {
 	WorkspaceWS       WebSocketRegistrar
 	AgentAuthWS       WebSocketRegistrar
 	Auth              RouteRegistrar
+	Workspace         Middleware
 	Middleware        Middleware
 	Static            http.Handler
 	Usage             RouteRegistrar
@@ -62,6 +66,8 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Projects)
 	register(handlers.Applications)
 	register(handlers.Users)
+	register(handlers.Permissions)
+	register(handlers.AgentInstructions)
 	register(handlers.AgentAuth)
 	register(handlers.AgentCapabilities)
 	register(handlers.UserSettings)
@@ -99,7 +105,13 @@ func NewHandler(handlers Handlers) http.Handler {
 		mux.Handle("/", handlers.Static)
 	}
 
+	if handlers.Audit != nil {
+		handlers.Audit.RegisterRoutes(mux)
+	}
 	var handler http.Handler = mux
+	if handlers.Workspace != nil {
+		handler = handlers.Workspace.Wrap(handler)
+	}
 	if handlers.Middleware != nil {
 		handler = handlers.Middleware.Wrap(handler)
 	}

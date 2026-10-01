@@ -3,6 +3,7 @@ package wstransport
 import (
 	"context"
 	"encoding/json"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"net/http"
 	"os"
 	"os/exec"
@@ -26,6 +27,7 @@ type TmuxSessionClient interface {
 }
 
 type TmuxSocket struct {
+	audit  serviceaudit.Recorder
 	client TmuxSessionClient
 }
 
@@ -60,6 +62,9 @@ func (s *TmuxSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 	cmd := exec.Command("tmux", "attach-session", "-d", "-t", name)
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	ptmx, err := pty.Start(cmd)
+	if s.audit != nil {
+		s.audit.Record(r.Context(), serviceaudit.Result(serviceaudit.ActionWorkspaceTerminalOpen, serviceaudit.Target{Type: serviceaudit.TargetSession, ID: name}, nil, err))
+	}
 	if err != nil {
 		http.Error(w, "pty failed", http.StatusInternalServerError)
 		return
@@ -136,4 +141,9 @@ func (s *TmuxSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 			}
 		}
 	}
+}
+
+func (s *TmuxSocket) WithAudit(recorder serviceaudit.Recorder) *TmuxSocket {
+	s.audit = recorder
+	return s
 }

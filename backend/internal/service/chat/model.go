@@ -56,10 +56,13 @@ type SkillRef struct {
 }
 
 type Event struct {
-	Seq                  int64           `json:"seq,omitempty"`
-	T                    int64           `json:"t"`
-	Type                 string          `json:"type"`
-	TurnID               string          `json:"turnId,omitempty"`
+	Seq    int64  `json:"seq,omitempty"`
+	T      int64  `json:"t"`
+	Type   string `json:"type"`
+	TurnID string `json:"turnId,omitempty"`
+	// UserEmail snapshots the authenticated Remote account that initiated the
+	// run. It stays with history even if the account is later removed.
+	UserEmail            string          `json:"userEmail,omitempty"`
 	Text                 string          `json:"text,omitempty"`
 	MessageID            string          `json:"messageId,omitempty"`
 	ID                   string          `json:"id,omitempty"`

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -88,7 +89,7 @@ func newWebFixture(t *testing.T, baseURL string) *webFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	apps := NewApplicationsHandler(serviceapplications.New(registry, store, nil, nil, nil), auth, projects).WithWebHost(base.Host)
+	apps := NewApplicationsHandler(serviceapplications.New(registry, store, nil, nil, nil), auth, projects).WithWebHost(base.Host).WithWorkspaceAccess(webBrowserPermission{})
 	return &webFixture{apps: apps, auth: auth, store: store, registry: registry, instance: instance, projects: projects}
 }
 
@@ -275,5 +276,31 @@ func TestApplicationWebCertificatesRequireRunningProjectInstall(t *testing.T) {
 				t.Fatalf("status=%d want=%d", rec.Code, tc.want)
 			}
 		})
+	}
+}
+
+type webBrowserPermission struct{ deny bool }
+
+func (a webBrowserPermission) Require(ctx context.Context, check rbac.Check) error {
+	actor, ok := rbac.ActorFromContext(ctx)
+	if !ok || actor.IsSystem() || check.Permission != "workspace.browser.use" || check.Scope != rbac.ProjectScope("aaaa1111") {
+		return rbac.ErrDenied
+	}
+	if a.deny {
+		return rbac.ErrDenied
+	}
+	return nil
+}
+func TestApplicationWebOriginsRespectBrowserDenial(t *testing.T) {
+	f := newWebFixture(t, "https://remote.test")
+	f.apps.WithWorkspaceAccess(webBrowserPermission{deny: true})
+	for _, target := range []string{"https://remote.test/apps/project/editor/", "https://" + webTestHost + "/"} {
+		req := httptest.NewRequest("GET", target, nil)
+		req.AddCookie(f.cookie(t, "member@example.test"))
+		rec := httptest.NewRecorder()
+		f.handler().ServeHTTP(rec, req)
+		if rec.Code != 404 {
+			t.Fatalf("%s status %d", target, rec.Code)
+		}
 	}
 }

@@ -10,15 +10,21 @@ import (
 )
 
 type Config struct {
-	Host         string
-	Port         string
-	DataDir      string
-	InstallDir   string
-	BaseURL      string
-	Agent        AgentOptions
-	Auth         AuthOptions
-	Applications ApplicationOptions
-	Schedule     ScheduleLimits
+	ProjectStorageDataset   string
+	PersistentDiskQuota     string
+	PersistentQuotaRequired bool
+	AuditRetentionMonths    int
+	DiskWarningPercent      int
+	DefaultRootDiskQuota    string
+	Host                    string
+	Port                    string
+	DataDir                 string
+	InstallDir              string
+	BaseURL                 string
+	Agent                   AgentOptions
+	Auth                    AuthOptions
+	Applications            ApplicationOptions
+	Schedule                ScheduleLimits
 }
 
 // ApplicationOptions are application-wide settings for installable application
@@ -30,6 +36,9 @@ type ApplicationOptions struct {
 
 // AgentOptions are application-wide policies for the agent subsystem.
 type AgentOptions struct {
+	// InstructionsFile is an optional operator-owned JSON configuration loaded
+	// at startup (AGENT_INSTRUCTIONS_FILE). Empty preserves built-in guidance.
+	InstructionsFile string
 	// CapabilityTimeout bounds one provider's complete model/capability probe
 	// (AGENT_CAPABILITY_TIMEOUT, Go duration, default 30s, "0" disables).
 	CapabilityTimeout time.Duration
@@ -85,12 +94,19 @@ type ScheduleLimits struct {
 
 func Load() Config {
 	return Config{
-		Host:       envDefault("HOST", "127.0.0.1"),
-		Port:       envDefault("PORT", "7682"),
-		DataDir:    envDefault("DATA_DIR", "/opt/remote.futrx/data"),
-		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
-		BaseURL:    envDefault("BASE_URL", ""),
+		ProjectStorageDataset:   envDefault("PROJECT_STORAGE_DATASET", ""),
+		PersistentDiskQuota:     envDefault("PROJECT_PERSISTENT_DISK_QUOTA", "20GiB"),
+		PersistentQuotaRequired: envDefault("PROJECT_PERSISTENT_QUOTA_REQUIRED", "false") != "false",
+		AuditRetentionMonths:    envInt("AUDIT_RETENTION_MONTHS", 12),
+		DiskWarningPercent:      envInt("DISK_WARNING_PERCENT", 80),
+		DefaultRootDiskQuota:    envDefault("PROJECT_ROOT_DISK_QUOTA", "20GiB"),
+		Host:                    envDefault("HOST", "127.0.0.1"),
+		Port:                    envDefault("PORT", "7682"),
+		DataDir:                 envDefault("DATA_DIR", "/opt/remote.futrx/data"),
+		InstallDir:              envDefault("INSTALL_DIR", "/opt/remote.futrx"),
+		BaseURL:                 envDefault("BASE_URL", ""),
 		Agent: AgentOptions{
+			InstructionsFile:           envDefault("AGENT_INSTRUCTIONS_FILE", ""),
 			CapabilityTimeout:          envDuration("AGENT_CAPABILITY_TIMEOUT", 30*time.Second),
 			HostCLIVersionTimeout:      15 * time.Second,
 			CapabilityCacheTTL:         24 * time.Hour,

@@ -65,10 +65,10 @@ func NewSetupTokenIssuer(
 	return serviceauth.NewSetupTokenIssuer(ctx, store, userDirectoryAdapter{users: users}, ttl)
 }
 
-// newAuth composes the complete runtime auth service. Operator commands use
+// NewAuth composes the complete runtime auth service. Operator commands use
 // NewSetupTokenIssuer instead so they do not initialize unrelated auth
 // capabilities or create a session key.
-func newAuth(
+func NewAuth(
 	ctx context.Context,
 	store AuthStore,
 	users *serviceuser.Service,

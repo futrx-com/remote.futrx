@@ -47,12 +47,13 @@ var profileConfig = [...][2]string{
 // Manager converges the managed profile definition and its attachment to
 // project containers.
 type Manager struct {
-	runner command.Runner
+	defaultDisk string
+	runner      command.Runner
 }
 
 // NewManager returns a Manager that issues profile operations through runner.
 func NewManager(runner command.Runner) *Manager {
-	return &Manager{runner: runner}
+	return &Manager{runner: runner, defaultDisk: DefaultRootDiskQuota}
 }
 
 // Ensure converges the profile definition, then attaches the profile to the
@@ -68,13 +69,26 @@ func (m *Manager) Ensure(ctx context.Context, containerName string) error {
 	if err := m.ensureProfile(ctx); err != nil {
 		return err
 	}
-	return m.ensureAttached(ctx, containerName)
+	if err := m.ensureAttached(ctx, containerName); err != nil {
+		return err
+	}
+	return m.ensureDefaultDisk(ctx, containerName)
 }
 
 // SetLimits writes container-local overrides, which take precedence over the
 // managed profile. Empty values remove the corresponding override. CPU and
 // memory are instance config keys; root-disk quota is a disk-device property.
 func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, disk string) error {
+	if disk == "" {
+		disk = m.defaultDisk
+	}
+	if !diskSize.MatchString(disk) {
+		return fmt.Errorf("invalid root disk quota")
+	}
+	cap, _, err := m.DiskCapability(ctx, containerName)
+	if err != nil {
+		return err
+	}
 	for _, limit := range []struct {
 		key   string
 		value string
@@ -91,6 +105,14 @@ func (m *Manager) SetLimits(ctx context.Context, containerName, cpu, memory, dis
 			return fmt.Errorf("%s: %w; output: %s", strings.Join(args, " "), err, out)
 		}
 	}
+
+	if !cap.Supported {
+		return nil
+	}
+	return m.setDiskLimit(ctx, containerName, disk)
+}
+
+func (m *Manager) setDiskLimit(ctx context.Context, containerName, disk string) error {
 
 	if disk == "" {
 		out, err := command.RunWithTimeout(ctx, m.runner, queryTimeout, "config", "device", "unset", containerName, "root", "size")

@@ -3,6 +3,7 @@ package prompt
 import (
 	"context"
 	"errors"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"os"
 	"path"
 	"strings"
@@ -147,6 +148,8 @@ func WithAgentPolicy(policy AgentPolicy) Option {
 }
 
 type Service struct {
+	audit         audit.Recorder
+	accountAccess AccountAccess
 	store         servicechat.Repository
 	tmux          TmuxClient
 	projects      ProjectResolver
@@ -204,6 +207,17 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	parentCtx := input.ParentContext
 	if parentCtx == nil {
 		parentCtx = context.Background()
+	}
+	if rnr.accountAccess != nil {
+		parentCtx = accountActorContext(parentCtx, input)
+		meta, err := rnr.store.Get(parentCtx, input.ChatID)
+		if err == nil {
+			_, err = rnr.accountAccess.Resolve(parentCtx, agent.ProviderID(meta.Provider), meta.AccountID)
+		}
+		if err != nil {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
+			return RunHandle{}, err
+		}
 	}
 	ctx, cancel := context.WithCancel(parentCtx)
 	runID, ok := rnr.hub.StartRun(input.ChatID, cancel)
@@ -277,14 +291,50 @@ func (rnr *Service) runPromptAs(
 	interactionResponses <-chan agent.InteractionResponse,
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
-) error {
+) (resultErr error) {
 	emit = withTurnID(ledgerRunID, emit)
+	emitUnattributed := emit
+	emit = func(event ChatEvent) {
+		// The actor comes from the authenticated transport or stored schedule
+		// owner, never from provider output or the client's prompt payload.
+		event.UserEmail = input.Actor.Email
+		emitUnattributed(event)
+	}
 	id := input.ChatID
 	prompt := input.Prompt
 	meta, err := rnr.store.Get(ctx, id)
 	if err != nil {
 		emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
 		return err
+	}
+
+	if rnr.accountAccess != nil {
+		ctx = accountActorContext(ctx, input)
+		selected, err := rnr.accountAccess.Resolve(ctx, agent.ProviderID(meta.Provider), meta.AccountID)
+		if err != nil {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
+			return err
+		}
+		meta.AccountID = selected
+	}
+
+	ctx = audit.WithProject(audit.EnsureCaller(ctx, audit.Caller{Actor: audit.Actor{Email: input.Actor.Email}}), string(meta.ProjectID))
+	if rnr.audit != nil {
+		detail := audit.Meta{"runId": ledgerRunID, "provider": string(meta.Provider), "accountId": meta.AccountID, "projectId": string(meta.ProjectID), "scheduledTaskId": input.ScheduledTaskID}
+		entry := audit.Success("agent.run.start", audit.Target{Type: audit.TargetChat, ID: string(id)}, detail)
+		entry.Actor = audit.Actor{Email: input.Actor.Email}
+		rnr.audit.Record(ctx, entry)
+		promptEntry := entry
+		promptEntry.Action = "prompt.submit"
+		rnr.audit.Record(ctx, promptEntry)
+		defer func() {
+			entry.Action = "agent.run.complete"
+			entry.OK = resultErr == nil
+			if resultErr != nil {
+				entry.Error = "agent run failed"
+			}
+			rnr.audit.Record(ctx, entry)
+		}()
 	}
 
 	// Auto-title from first user prompt if still default.
@@ -420,9 +470,19 @@ func (rnr *Service) runPromptAs(
 	}
 
 	run := func(runPrompt, runResumeID string) error {
+		if rnr.accountAccess != nil {
+			if _, err := rnr.accountAccess.Resolve(ctx, providerID, meta.AccountID); err != nil {
+				return err
+			}
+		}
 		relay := runEventRelay{
 			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
 			ledger: ledger, emit: emit,
+		}
+		if rnr.audit != nil {
+			entry := audit.Success("agent.account.use", audit.Target{Type: audit.TargetChat, ID: string(id)}, audit.Meta{"runId": ledgerRunID, "projectId": string(meta.ProjectID), "provider": string(providerID), "accountId": meta.AccountID})
+			entry.Actor = audit.Actor{Email: input.Actor.Email}
+			rnr.audit.Record(ctx, entry)
 		}
 		runErr := provider.Run(ctx, agent.RunRequest{
 			Provider:       providerID,
@@ -660,4 +720,10 @@ func visibleTranscript(events []ChatEvent) string {
 	}
 	flushAssistant()
 	return out.String()
+}
+
+func WithAudit(recorder audit.Recorder) Option {
+	return func(service *Service) {
+		service.audit = audit.RecorderOrNop(recorder)
+	}
 }
