@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -15,19 +14,16 @@ import (
 // jsonlLog keeps each chat in its own append-only events.jsonl file and reads
 // through the derived offset index whenever it is available.
 type jsonlLog struct {
-	store *Store
+	store   *Store
+	archive *jsonlArchive
 }
 
 func newJSONLLog(store *Store) *jsonlLog {
-	return &jsonlLog{store: store}
+	return &jsonlLog{store: store, archive: newJSONLArchive(store)}
 }
 
 func (l *jsonlLog) Create(_ context.Context, id servicechat.ID) error {
-	f, err := os.OpenFile(l.store.eventsPath(id), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err == nil {
-		err = f.Close()
-	}
-	return err
+	return l.archive.create(id)
 }
 
 // Remove is a no-op: Store deletes the whole chat directory, which already
@@ -56,7 +52,7 @@ func (l *jsonlLog) Append(
 	}
 	ev.Seq = seq + 1
 
-	if _, err := l.writeRecord(id, ev); err != nil {
+	if _, err := l.archive.writeRecord(id, ev); err != nil {
 		return servicechat.Event{}, err
 	}
 	// JSONL is authoritative for this backend. If the derived update fails,
@@ -71,31 +67,6 @@ func (l *jsonlLog) Append(
 	return ev, nil
 }
 
-// writeRecord appends an already-sequenced event to the archive and returns
-// the exact bytes written. The sequence number comes from the caller, so the
-// file always agrees with the database.
-func (l *jsonlLog) writeRecord(id servicechat.ID, ev servicechat.Event) ([]byte, error) {
-	line, err := json.Marshal(eventRecordFromDomain(ev))
-	if err != nil {
-		return nil, err
-	}
-	line = append(line, '\n')
-
-	f, err := os.OpenFile(
-		l.store.eventsPath(id),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0o644,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	if _, err := f.Write(line); err != nil {
-		return nil, err
-	}
-	return line, nil
-}
-
 // Replace rewrites events.jsonl atomically so readers never observe a partial
 // rewind.
 func (l *jsonlLog) Replace(
@@ -103,7 +74,7 @@ func (l *jsonlLog) Replace(
 	id servicechat.ID,
 	events []servicechat.Event,
 ) error {
-	return l.replaceStream(ctx, id, func(
+	return l.archive.replaceStream(ctx, id, func(
 		_ context.Context,
 		yield func(servicechat.Event) error,
 	) error {
@@ -125,7 +96,7 @@ func (l *jsonlLog) TruncateBefore(
 	beforeT int64,
 ) (int64, error) {
 	var lastT int64
-	err := l.replaceStream(ctx, id, func(
+	err := l.archive.replaceStream(ctx, id, func(
 		ctx context.Context,
 		yield func(servicechat.Event) error,
 	) error {
@@ -149,40 +120,6 @@ func (l *jsonlLog) TruncateBefore(
 		return yieldErr
 	})
 	return lastT, err
-}
-
-// replaceStream rewrites events.jsonl from a streaming source: every event the
-// source yields is encoded into a temporary file that is renamed over the log
-// once the source finishes. A failed source leaves the original untouched.
-func (l *jsonlLog) replaceStream(
-	ctx context.Context,
-	id servicechat.ID,
-	src eventSource,
-) error {
-	dir := l.store.chatDir(id)
-	tmp := filepath.Join(dir, "events.jsonl.tmp")
-	final := l.store.eventsPath(id)
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	enc := json.NewEncoder(f)
-	if err := src(ctx, func(ev servicechat.Event) error {
-		return enc.Encode(eventRecordFromDomain(ev))
-	}); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	return nil
 }
 
 func (l *jsonlLog) ReadAll(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error) {

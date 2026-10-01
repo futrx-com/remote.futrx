@@ -27,7 +27,7 @@ const maxSearchTextBytes = 64 * 1024
 type sqliteLog struct {
 	store  *Store
 	db     *chatStoreDB
-	mirror *jsonlLog
+	mirror *jsonlArchive
 }
 
 func openSQLiteLog(store *Store) (*sqliteLog, error) {
@@ -35,7 +35,7 @@ func openSQLiteLog(store *Store) (*sqliteLog, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &sqliteLog{store: store, db: db, mirror: newJSONLLog(store)}, nil
+	return &sqliteLog{store: store, db: db, mirror: newJSONLArchive(store)}, nil
 }
 
 func (l *sqliteLog) Close() error {
@@ -47,7 +47,7 @@ func (l *sqliteLog) Close() error {
 // and if it succeeds a later failure still converges because the empty archive
 // makes the next import delete the leftovers.
 func (l *sqliteLog) Create(ctx context.Context, id servicechat.ID) error {
-	if err := l.mirror.Create(ctx, id); err != nil {
+	if err := l.mirror.create(id); err != nil {
 		return err
 	}
 	if _, err := l.db.db.ExecContext(ctx,
@@ -274,7 +274,17 @@ func (l *sqliteLog) Replace(
 	// stale rather than failing a rewind that already succeeded. A stale
 	// archive keeps its recorded fingerprint, so the next import does not
 	// rebuild the database from content the rewind already replaced.
-	if err := l.mirror.Replace(ctx, id, events); err != nil {
+	if err := l.mirror.replaceStream(ctx, id, func(
+		_ context.Context,
+		yield func(servicechat.Event) error,
+	) error {
+		for _, event := range events {
+			if err := yield(event); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		logMirrorFailure(l.store.root, id, err)
 	} else if err := l.recordArchiveReplace(ctx, id, lastSeq); err != nil &&
 		!errors.Is(err, errMissingArchive) {
