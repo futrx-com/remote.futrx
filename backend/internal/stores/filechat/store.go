@@ -27,14 +27,9 @@ var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
 // Store manages chat dirs on disk. Single writer per chat via a per-id mutex
 // map; concurrent access across different chats is fine.
 type Store struct {
-	root    string
-	backend Backend
-	// index is the disposable JSONL transcript index. The SQLite backend keeps
-	// its projection inside chats.sqlite, so it never opens a second database.
-	index *chatEventIndex
-	// sqlite is the shared event database when backend is BackendSQLite.
-	sqlite       *chatStoreDB
+	root         string
 	events       eventLog
+	transcript   transcriptProjection
 	mu           sync.Mutex
 	locks        map[servicechat.ID]*sync.Mutex
 	metaMu       sync.RWMutex
@@ -71,8 +66,6 @@ func newStore(root string, backend Backend) (*Store, error) {
 	indexContext, indexCancel := context.WithCancel(context.Background())
 	store := &Store{
 		root:         root,
-		backend:      backend,
-		index:        index,
 		locks:        map[servicechat.ID]*sync.Mutex{},
 		metas:        map[servicechat.ID]servicechat.Meta{},
 		indexContext: indexContext,
@@ -91,7 +84,8 @@ func newStore(root string, backend Backend) (*Store, error) {
 	}
 	switch backend {
 	case BackendJSONL:
-		store.events = newJSONLLog(store)
+		store.events = newJSONLLog(store, index)
+		store.transcript = newJSONLTranscriptProjection(store, index)
 	case BackendSQLite:
 		events, err := openSQLiteLog(store)
 		if err != nil {
@@ -100,7 +94,7 @@ func newStore(root string, backend Backend) (*Store, error) {
 			return nil, err
 		}
 		store.events = events
-		store.sqlite = events.db
+		store.transcript = newSQLiteTranscriptProjection(store, events.db)
 	default:
 		indexCancel()
 		closeIndex()
@@ -109,38 +103,13 @@ func newStore(root string, backend Backend) (*Store, error) {
 	return store, nil
 }
 
-// usesSQLite reports whether chat events live in chats.sqlite, which also owns
-// the transcript projection for that backend.
-func (s *Store) usesSQLite() bool {
-	return s.backend == BackendSQLite
-}
-
-// syncTranscript brings the derived transcript projection up to date with the
-// stored event stream for the configured backend.
-func (s *Store) syncTranscript(ctx context.Context, id servicechat.ID) (chatIndexState, error) {
-	if s.usesSQLite() {
-		return s.syncSQLiteTranscript(ctx, id)
-	}
-	if err := s.index.availabilityError(); err != nil {
-		return chatIndexState{}, err
-	}
-	return s.index.syncChat(ctx, id, s.eventsPath(id))
-}
-
-// deleteProjection discards every derived transcript row for a chat.
-func (s *Store) deleteProjection(ctx context.Context, id servicechat.ID) error {
-	if s.usesSQLite() {
-		return s.deleteSQLiteProjection(ctx, id)
-	}
-	return s.index.deleteChat(ctx, id)
-}
-
-// Close releases the derived chat event index. Callers that create a bounded
-// Store lifetime (notably commands and tests) should call it explicitly.
+// Close releases the event log and its derived transcript projection. Callers
+// that create a bounded Store lifetime (notably commands and tests) should call
+// it explicitly.
 func (s *Store) Close() error {
 	s.indexCancel()
 	s.indexWG.Wait()
-	return errors.Join(s.events.Close(), s.index.close())
+	return errors.Join(s.events.Close(), s.transcript.close())
 }
 
 // WarmRecentChatIndexes best-effort synchronizes the most recently active
@@ -151,10 +120,8 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 	if limit <= 0 {
 		return nil
 	}
-	if !s.usesSQLite() {
-		if err := s.index.availabilityError(); err != nil {
-			return err
-		}
+	if err := s.transcript.availabilityError(); err != nil {
+		return err
 	}
 	metas, err := s.List(ctx)
 	if err != nil {
@@ -172,7 +139,7 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 		lk.Lock()
 		err := s.events.Prepare(ctx, meta.ID)
 		if err == nil {
-			_, err = s.syncTranscript(ctx, meta.ID)
+			_, err = s.transcript.sync(ctx, meta.ID)
 		}
 		lk.Unlock()
 		if err != nil {
@@ -239,7 +206,7 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 	if meta.Mode == "" {
 		meta.Mode = "default"
 	}
-	_ = s.deleteProjection(ctx, meta.ID)
+	_ = s.transcript.delete(ctx, meta.ID)
 	dir := s.chatDir(meta.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return meta, err
@@ -323,7 +290,7 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	lk.Lock()
 	defer lk.Unlock()
 
-	_ = s.deleteProjection(ctx, id)
+	_ = s.transcript.delete(ctx, id)
 	if err := s.events.Remove(ctx, id); err != nil {
 		return err
 	}
@@ -572,13 +539,7 @@ func (s *Store) ReadTranscriptEventWindow(
 	lk.Lock()
 	defer lk.Unlock()
 
-	var window servicechat.TranscriptEventWindow
-	var err error
-	if s.usesSQLite() {
-		window, err = s.readSQLiteTranscriptWindow(ctx, id, beforeSeq, turnLimit)
-	} else {
-		window, err = s.index.readTranscriptWindow(ctx, id, s.eventsPath(id), beforeSeq, turnLimit)
-	}
+	window, err := s.transcript.readWindow(ctx, id, beforeSeq, turnLimit)
 	if err == nil {
 		return window, nil
 	}
@@ -610,16 +571,16 @@ func (s *Store) discardInvalidChatIndex(
 	if ctx.Err() != nil || !errors.Is(readErr, errInvalidChatEventIndex) {
 		return
 	}
-	_ = s.deleteProjection(ctx, id)
+	_ = s.transcript.delete(ctx, id)
 }
 
 // rebuildProjection discards the derived rows and republishes them from the
 // canonical event stream. A rewind replaces that stream wholesale.
 func (s *Store) rebuildProjection(ctx context.Context, id servicechat.ID) error {
-	if err := s.deleteProjection(ctx, id); err != nil {
+	if err := s.transcript.delete(ctx, id); err != nil {
 		return err
 	}
-	_, err := s.syncTranscript(ctx, id)
+	_, err := s.transcript.sync(ctx, id)
 	return err
 }
 

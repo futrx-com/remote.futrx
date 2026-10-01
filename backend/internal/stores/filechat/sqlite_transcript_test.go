@@ -151,7 +151,7 @@ func TestSQLiteTranscriptContentReadsSourceEventBySequence(t *testing.T) {
 
 	var contentID, fieldKind string
 	var sourceSeq, contentBytes int64
-	err := store.sqlite.db.QueryRow(`
+	err := sqliteDBForTest(t, store).db.QueryRow(`
 		SELECT content_id, field_kind, source_seq, content_bytes
 		FROM chat_transcript_content_refs
 		WHERE chat_id = ?`, "abcd",
@@ -164,9 +164,6 @@ func TestSQLiteTranscriptContentReadsSourceEventBySequence(t *testing.T) {
 	}
 	if got := readAllTranscriptContent(t, store, "abcd", contentID, 4_001); got != toolOutput {
 		t.Fatalf("full content has %d bytes, want %d", len(got), len(toolOutput))
-	}
-	if store.index != nil {
-		t.Fatal("sqlite mode must not open the standalone transcript index")
 	}
 	if _, err := os.Stat(filepath.Join(root, "transcript-index.sqlite")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("transcript-index.sqlite should not exist in sqlite mode: %v", err)
@@ -185,13 +182,13 @@ func TestSQLiteTranscriptProgressCountsStoredPayloadBytes(t *testing.T) {
 	assertTrackedBytes := func(label string) int64 {
 		t.Helper()
 		var stored, tracked int64
-		if err := store.sqlite.db.QueryRow(`
+		if err := sqliteDBForTest(t, store).db.QueryRow(`
 			SELECT COALESCE(SUM(LENGTH(payload)), 0) FROM chat_events WHERE chat_id = ?`,
 			"abcd",
 		).Scan(&stored); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.sqlite.db.QueryRow(
+		if err := sqliteDBForTest(t, store).db.QueryRow(
 			`SELECT payload_bytes FROM chat_event_bytes WHERE chat_id = ?`,
 			"abcd", &tracked,
 		).Scan(&tracked); err != nil {
@@ -216,7 +213,7 @@ func TestSQLiteTranscriptProgressCountsStoredPayloadBytes(t *testing.T) {
 	}
 	totalBytes = assertTrackedBytes("after rewind")
 
-	if err := store.deleteSQLiteProjection(ctx, "abcd"); err != nil {
+	if err := store.transcript.delete(ctx, "abcd"); err != nil {
 		t.Fatal(err)
 	}
 	page, err := store.ReadTranscriptPage(

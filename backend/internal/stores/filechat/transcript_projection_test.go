@@ -49,7 +49,7 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 	}
 	writeStoredChat(t, root, "abcd", events)
 	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
+	if _, err := jsonlIndexForTest(t, store).syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,7 +93,7 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 		}
 	}
 	var collaborationEndSeq, collaborationTurnOrdinal int64
-	if err := store.index.db.QueryRow(`
+	if err := jsonlIndexForTest(t, store).db.QueryRow(`
 		SELECT end_seq, turn_ordinal
 		FROM chat_transcript_items
 		WHERE chat_id = ? AND item_key = ?`, "abcd", "collaboration:child",
@@ -104,7 +104,7 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 		t.Fatalf("collaboration index end=%d turn=%d", collaborationEndSeq, collaborationTurnOrdinal)
 	}
 	var contentTurnOrdinal int64
-	if err := store.index.db.QueryRow(`
+	if err := jsonlIndexForTest(t, store).db.QueryRow(`
 		SELECT turn_ordinal
 		FROM chat_transcript_content_refs
 		WHERE chat_id = ? AND content_id = ?`, "abcd", childToolRef,
@@ -140,7 +140,7 @@ func TestTranscriptProjectionPagesInsideOneLargeTurnByBytes(t *testing.T) {
 	events = append(events, servicechat.Event{Seq: 12, T: 12, Type: "complete", TurnID: "turn-1"})
 	writeStoredChat(t, root, "abcd", events)
 	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
+	if _, err := jsonlIndexForTest(t, store).syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
 		t.Fatal(err)
 	}
 

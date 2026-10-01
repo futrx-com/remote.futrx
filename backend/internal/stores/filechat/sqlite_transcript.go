@@ -21,15 +21,36 @@ import (
 // open, which is the SQLite counterpart of an unavailable transcript index.
 var errChatStoreUnavailable = errors.New("chat store is unavailable")
 
-func (s *Store) sqliteDB() (*chatStoreDB, error) {
-	if s.sqlite == nil {
-		return nil, errChatStoreUnavailable
-	}
-	return s.sqlite, nil
+type sqliteTranscriptProjection struct {
+	store *Store
+	db    *chatStoreDB
 }
 
-func (s *Store) deleteSQLiteProjection(ctx context.Context, id servicechat.ID) error {
-	store, err := s.sqliteDB()
+func newSQLiteTranscriptProjection(
+	store *Store,
+	db *chatStoreDB,
+) *sqliteTranscriptProjection {
+	return &sqliteTranscriptProjection{store: store, db: db}
+}
+
+func (p *sqliteTranscriptProjection) sqliteDB() (*chatStoreDB, error) {
+	if p.db == nil {
+		return nil, errChatStoreUnavailable
+	}
+	return p.db, nil
+}
+
+func (p *sqliteTranscriptProjection) availabilityError() error {
+	_, err := p.sqliteDB()
+	return err
+}
+
+func (p *sqliteTranscriptProjection) close() error {
+	return nil
+}
+
+func (p *sqliteTranscriptProjection) delete(ctx context.Context, id servicechat.ID) error {
+	store, err := p.sqliteDB()
 	if err != nil {
 		return err
 	}
@@ -44,15 +65,15 @@ func (s *Store) deleteSQLiteProjection(ctx context.Context, id servicechat.ID) e
 	return tx.Commit()
 }
 
-// readSQLiteProjectionState reports how much of the stored event stream has
+// readProjectionState reports how much of the stored event stream has
 // been folded into the projected turns and items. It reuses the JSONL index
 // checkpoint shape: indexedBytes is projected payload bytes, and the
 // file-specific fields are unused.
-func (s *Store) readSQLiteProjectionState(
+func (p *sqliteTranscriptProjection) readProjectionState(
 	ctx context.Context,
 	id servicechat.ID,
 ) (chatIndexState, bool, error) {
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return chatIndexState{}, false, err
 	}
@@ -90,14 +111,14 @@ func writeSQLiteProjectionState(
 	return err
 }
 
-// sqliteEventProgress reports the stored tail sequence and the total payload
+// eventProgress reports the stored tail sequence and the total payload
 // bytes a projection has to cover. Both are O(1): the sequence comes from the
 // unique index and the byte total is maintained by write triggers.
-func (s *Store) sqliteEventProgress(
+func (p *sqliteTranscriptProjection) eventProgress(
 	ctx context.Context,
 	id servicechat.ID,
 ) (lastSeq int64, totalBytes int64, err error) {
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return 0, 0, err
 	}
@@ -115,25 +136,25 @@ func (s *Store) sqliteEventProgress(
 	return lastSeq, totalBytes, err
 }
 
-// syncSQLiteTranscript projects every stored event the read model has not
+// sync projects every stored event the read model has not
 // seen yet. Callers hold the chat lock, so the checkpoint only races the
 // background writer for the same chat, never a concurrent append.
-func (s *Store) syncSQLiteTranscript(
+func (p *sqliteTranscriptProjection) sync(
 	ctx context.Context,
 	id servicechat.ID,
 ) (chatIndexState, error) {
-	if _, err := s.sqliteDB(); err != nil {
+	if _, err := p.sqliteDB(); err != nil {
 		return chatIndexState{}, err
 	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return chatIndexState{}, err
 		}
-		state, found, err := s.readSQLiteProjectionState(ctx, id)
+		state, found, err := p.readProjectionState(ctx, id)
 		if err != nil {
 			return chatIndexState{}, err
 		}
-		lastSeq, totalBytes, err := s.sqliteEventProgress(ctx, id)
+		lastSeq, totalBytes, err := p.eventProgress(ctx, id)
 		if err != nil {
 			return chatIndexState{}, err
 		}
@@ -147,12 +168,12 @@ func (s *Store) syncSQLiteTranscript(
 			state.lastSeq > lastSeq ||
 			state.indexedBytes > totalBytes ||
 			(state.lastSeq == lastSeq) != (state.indexedBytes == totalBytes) {
-			if err := s.deleteSQLiteProjection(ctx, id); err != nil {
+			if err := p.delete(ctx, id); err != nil {
 				return chatIndexState{}, err
 			}
 			state = newChatIndexState()
 		}
-		consumed, next, err := s.projectSQLiteBatch(ctx, id, state)
+		consumed, next, err := p.projectBatch(ctx, id, state)
 		if err != nil {
 			return chatIndexState{}, err
 		}
@@ -165,14 +186,14 @@ func (s *Store) syncSQLiteTranscript(
 	}
 }
 
-// projectSQLiteBatch folds at most one checkpoint worth of events into the
+// projectBatch folds at most one checkpoint worth of events into the
 // projection inside a single transaction.
-func (s *Store) projectSQLiteBatch(
+func (p *sqliteTranscriptProjection) projectBatch(
 	ctx context.Context,
 	id servicechat.ID,
 	state chatIndexState,
 ) (bool, chatIndexState, error) {
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return false, chatIndexState{}, err
 	}
@@ -182,7 +203,7 @@ func (s *Store) projectSQLiteBatch(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	consumed, next, err := s.writeSQLiteProjectionBatch(ctx, store.db, tx, id, state)
+	consumed, next, err := p.writeProjectionBatch(ctx, store.db, tx, id, state)
 	if err != nil {
 		return false, chatIndexState{}, err
 	}
@@ -195,7 +216,7 @@ func (s *Store) projectSQLiteBatch(
 	return consumed, next, nil
 }
 
-func (s *Store) writeSQLiteProjectionBatch(
+func (p *sqliteTranscriptProjection) writeProjectionBatch(
 	ctx context.Context,
 	db *sql.DB,
 	tx *sql.Tx,
@@ -278,31 +299,31 @@ func (s *Store) writeSQLiteProjectionBatch(
 	return consumed, next, nil
 }
 
-func (s *Store) readSQLiteTranscriptPage(
+func (p *sqliteTranscriptProjection) readPage(
 	ctx context.Context,
 	id servicechat.ID,
 	query servicechat.TranscriptPageQuery,
 ) (servicechat.TranscriptPage, error) {
-	if _, err := s.sqliteDB(); err != nil {
+	if _, err := p.sqliteDB(); err != nil {
 		return servicechat.TranscriptPage{}, fmt.Errorf("%w: %v",
 			servicechat.ErrTranscriptProjectionUnavailable, err)
 	}
-	lastSeq, totalBytes, err := s.sqliteEventProgress(ctx, id)
+	lastSeq, totalBytes, err := p.eventProgress(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
-	state, found, err := s.readSQLiteProjectionState(ctx, id)
+	state, found, err := p.readProjectionState(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
 	// Serving a page whose archive has not been folded in yet would present a
 	// partial conversation as complete, so readiness covers the import too.
-	imported, archiveBytes, err := s.archiveImported(ctx, id)
+	imported, archiveBytes, err := p.archiveImported(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
 	if !found || state.lastSeq != lastSeq || state.indexedBytes != totalBytes || !imported {
-		s.startTranscriptIndex(id)
+		p.store.startTranscriptIndex(id)
 		indexedBytes := state.indexedBytes
 		if indexedBytes < 0 || indexedBytes > totalBytes {
 			indexedBytes = 0
@@ -312,7 +333,7 @@ func (s *Store) readSQLiteTranscriptPage(
 		// the live stream can attach before the backfill finishes.
 		tailSeqKnown := imported
 		if !imported && archiveBytes > 0 {
-			if tailSeq, tailErr := lastStoredEventSeq(s.eventsPath(id), archiveBytes); tailErr == nil && tailSeq > 0 {
+			if tailSeq, tailErr := lastStoredEventSeq(p.store.eventsPath(id), archiveBytes); tailErr == nil && tailSeq > 0 {
 				if tailSeq > lastSeq {
 					lastSeq = tailSeq
 				}
@@ -329,7 +350,7 @@ func (s *Store) readSQLiteTranscriptPage(
 			},
 		}, nil
 	}
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return servicechat.TranscriptPage{}, fmt.Errorf("%w: %v",
 			servicechat.ErrTranscriptProjectionUnavailable, err)
@@ -337,14 +358,14 @@ func (s *Store) readSQLiteTranscriptPage(
 	return readProjectedTranscriptPage(ctx, store.db, id, state, query)
 }
 
-func (s *Store) readSQLiteTranscriptContent(
+func (p *sqliteTranscriptProjection) readContent(
 	ctx context.Context,
 	id servicechat.ID,
 	contentID string,
 	afterBytes int64,
 	limitBytes int,
 ) (servicechat.TranscriptContentPage, error) {
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, fmt.Errorf("%w: %v",
 			servicechat.ErrTranscriptProjectionUnavailable, err)
@@ -395,24 +416,24 @@ func readSQLiteContentRef(
 	return ref, err
 }
 
-// readSQLiteTranscriptWindow selects the newest turns before beforeSeq and
+// readWindow selects the newest turns before beforeSeq and
 // reads their whole sequence range, mirroring the offset-indexed window with
 // sequences instead of byte ranges.
-func (s *Store) readSQLiteTranscriptWindow(
+func (p *sqliteTranscriptProjection) readWindow(
 	ctx context.Context,
 	id servicechat.ID,
 	beforeSeq int64,
 	turnLimit int,
 ) (servicechat.TranscriptEventWindow, error) {
-	store, err := s.sqliteDB()
+	store, err := p.sqliteDB()
 	if err != nil {
 		return servicechat.TranscriptEventWindow{}, err
 	}
 	// The caller holds the chat lock, which is where the archive import runs.
-	if err := s.events.Prepare(ctx, id); err != nil {
+	if err := p.store.events.Prepare(ctx, id); err != nil {
 		return servicechat.TranscriptEventWindow{}, err
 	}
-	state, err := s.syncSQLiteTranscript(ctx, id)
+	state, err := p.sync(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptEventWindow{}, err
 	}

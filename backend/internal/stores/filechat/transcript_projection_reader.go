@@ -25,16 +25,21 @@ func (s *Store) ReadTranscriptPage(
 	if !servicechat.ValidID(id) {
 		return servicechat.TranscriptPage{}, servicechat.ErrInvalidID
 	}
-	if s.usesSQLite() {
-		return s.readSQLiteTranscriptPage(ctx, id, query)
-	}
-	if err := s.index.availabilityError(); err != nil {
+	return s.transcript.readPage(ctx, id, query)
+}
+
+func (p *jsonlTranscriptProjection) readPage(
+	ctx context.Context,
+	id servicechat.ID,
+	query servicechat.TranscriptPageQuery,
+) (servicechat.TranscriptPage, error) {
+	if err := p.availabilityError(); err != nil {
 		return servicechat.TranscriptPage{}, fmt.Errorf(
 			"%w: %v", servicechat.ErrTranscriptProjectionUnavailable, err,
 		)
 	}
 
-	info, err := os.Stat(s.eventsPath(id))
+	info, err := os.Stat(p.store.eventsPath(id))
 	var totalBytes, mtimeNS int64
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -44,20 +49,20 @@ func (s *Store) ReadTranscriptPage(
 		totalBytes = info.Size()
 		mtimeNS = info.ModTime().UnixNano()
 	}
-	state, found, err := s.index.readState(ctx, id)
+	state, found, err := p.index.readState(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
 	ready := found && state.indexedBytes == totalBytes && state.fileMtimeNS == mtimeNS
 	if !ready {
-		s.startTranscriptIndex(id)
+		p.store.startTranscriptIndex(id)
 		indexedBytes := state.indexedBytes
 		if indexedBytes < 0 || indexedBytes > totalBytes {
 			indexedBytes = 0
 		}
 		lastSeq := state.lastSeq
 		tailSeqKnown := totalBytes == 0
-		if tailSeq, tailErr := lastStoredEventSeq(s.eventsPath(id), totalBytes); tailErr == nil && tailSeq > 0 {
+		if tailSeq, tailErr := lastStoredEventSeq(p.store.eventsPath(id), totalBytes); tailErr == nil && tailSeq > 0 {
 			tailSeqKnown = true
 			if tailSeq > lastSeq {
 				lastSeq = tailSeq
@@ -73,7 +78,7 @@ func (s *Store) ReadTranscriptPage(
 			},
 		}, nil
 	}
-	return readProjectedTranscriptPage(ctx, s.index.db, id, state, query)
+	return readProjectedTranscriptPage(ctx, p.index.db, id, state, query)
 }
 
 func lastStoredEventSeq(eventsPath string, fileSize int64) (int64, error) {
@@ -136,7 +141,7 @@ func (s *Store) startTranscriptIndex(id servicechat.ID) {
 			log.Printf("preparing transcript projection for chat %s failed: %v", id, err)
 			return
 		}
-		if _, err := s.syncTranscript(s.indexContext, id); err != nil &&
+		if _, err := s.transcript.sync(s.indexContext, id); err != nil &&
 			!errors.Is(err, context.Canceled) {
 			log.Printf("background transcript projection for chat %s failed: %v", id, err)
 		}

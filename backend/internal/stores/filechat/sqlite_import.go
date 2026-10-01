@@ -104,21 +104,21 @@ func readArchiveState(
 // whole stream rather than only what has been imported so far. The measured
 // archive size comes back so a caller can read the tail sequence directly
 // while the import is still running.
-func (s *Store) archiveImported(
+func (p *sqliteTranscriptProjection) archiveImported(
 	ctx context.Context,
 	id servicechat.ID,
 ) (bool, int64, error) {
-	if s.sqlite == nil {
+	if p.db == nil {
 		return false, 0, errChatStoreUnavailable
 	}
-	info, err := os.Stat(s.eventsPath(id))
+	info, err := os.Stat(p.store.eventsPath(id))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return true, 0, nil
 		}
 		return false, 0, err
 	}
-	state, err := readArchiveState(ctx, s.sqlite.db, id)
+	state, err := readArchiveState(ctx, p.db.db, id)
 	if err != nil {
 		return false, info.Size(), err
 	}

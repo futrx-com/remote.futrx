@@ -15,11 +15,12 @@ import (
 // through the derived offset index whenever it is available.
 type jsonlLog struct {
 	store   *Store
+	index   *chatEventIndex
 	archive *jsonlArchive
 }
 
-func newJSONLLog(store *Store) *jsonlLog {
-	return &jsonlLog{store: store, archive: newJSONLArchive(store)}
+func newJSONLLog(store *Store, index *chatEventIndex) *jsonlLog {
+	return &jsonlLog{store: store, index: index, archive: newJSONLArchive(store)}
 }
 
 func (l *jsonlLog) Create(_ context.Context, id servicechat.ID) error {
@@ -42,7 +43,7 @@ func (l *jsonlLog) Append(
 	}
 	ev.NormalizeSession()
 
-	seq, indexErr := l.store.index.lastEventSeq(ctx, id, l.store.eventsPath(id))
+	seq, indexErr := l.index.lastEventSeq(ctx, id, l.store.eventsPath(id))
 	var err error
 	if indexErr != nil {
 		seq, err = l.store.lastEventSeqLocked(id)
@@ -58,11 +59,11 @@ func (l *jsonlLog) Append(
 	// JSONL is authoritative for this backend. If the derived update fails,
 	// the next indexed read or append retries from the last cached offset.
 	if indexErr == nil {
-		_ = l.store.index.refreshAfterAppend(context.Background(), id, l.store.eventsPath(id))
+		_ = l.index.refreshAfterAppend(context.Background(), id, l.store.eventsPath(id))
 	} else {
 		// The fallback scan assigned the sequence from canonical JSONL, but it
 		// did not validate the cached prefix. Revalidate before extending it.
-		_ = l.store.index.refreshAfterFallback(context.Background(), id, l.store.eventsPath(id))
+		_ = l.index.refreshAfterFallback(context.Background(), id, l.store.eventsPath(id))
 	}
 	return ev, nil
 }
@@ -140,7 +141,7 @@ func (l *jsonlLog) ReadPage(
 	beforeSeq int64,
 	limit int,
 ) (servicechat.EventPage, error) {
-	page, err := l.store.index.readEventPage(ctx, id, l.store.eventsPath(id), beforeSeq, limit)
+	page, err := l.index.readEventPage(ctx, id, l.store.eventsPath(id), beforeSeq, limit)
 	if err == nil {
 		return page, nil
 	}
@@ -156,7 +157,7 @@ func (l *jsonlLog) ReadAfter(
 	id servicechat.ID,
 	afterSeq int64,
 ) ([]servicechat.Event, error) {
-	events, err := l.store.index.readEventsAfter(ctx, id, l.store.eventsPath(id), afterSeq)
+	events, err := l.index.readEventsAfter(ctx, id, l.store.eventsPath(id), afterSeq)
 	if err == nil {
 		return events, nil
 	}
@@ -165,7 +166,7 @@ func (l *jsonlLog) ReadAfter(
 }
 
 func (l *jsonlLog) LastSeq(ctx context.Context, id servicechat.ID) (int64, error) {
-	seq, err := l.store.index.lastEventSeq(ctx, id, l.store.eventsPath(id))
+	seq, err := l.index.lastEventSeq(ctx, id, l.store.eventsPath(id))
 	if err == nil {
 		return seq, nil
 	}
@@ -232,7 +233,7 @@ func (l *jsonlLog) CopyEvents(
 	}
 	// One derived refresh covers the whole copy. A failure only postpones the
 	// work to the next indexed read, exactly as a failed append refresh does.
-	if _, err := l.store.index.syncChat(ctx, to, l.store.eventsPath(to)); err != nil {
+	if _, err := l.index.syncChat(ctx, to, l.store.eventsPath(to)); err != nil {
 		log.Printf("chat %s: transcript index refresh after copy failed: %v", to, err)
 	}
 	return copied, last, nil

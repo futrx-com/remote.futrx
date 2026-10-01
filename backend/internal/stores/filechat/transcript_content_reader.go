@@ -29,21 +29,30 @@ func (s *Store) ReadTranscriptContent(
 	if contentID == "" || afterBytes < 0 {
 		return servicechat.TranscriptContentPage{}, servicechat.ErrTranscriptContentNotFound
 	}
-	if s.usesSQLite() {
-		return s.readSQLiteTranscriptContent(ctx, id, contentID, afterBytes, limitBytes)
-	}
-	if err := s.index.availabilityError(); err != nil {
+	return s.transcript.readContent(ctx, id, contentID, afterBytes, limitBytes)
+}
+
+func (p *jsonlTranscriptProjection) readContent(
+	ctx context.Context,
+	id servicechat.ID,
+	contentID string,
+	afterBytes int64,
+	limitBytes int,
+) (servicechat.TranscriptContentPage, error) {
+	if err := p.availabilityError(); err != nil {
 		return servicechat.TranscriptContentPage{}, fmt.Errorf(
 			"%w: %v", servicechat.ErrTranscriptProjectionUnavailable, err,
 		)
 	}
 	limitBytes = transcriptContentLimit(limitBytes)
 
-	ref, err := s.index.readTranscriptContentRef(ctx, id, contentID)
+	ref, err := p.index.readTranscriptContentRef(ctx, id, contentID)
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err
 	}
-	event, err := readProjectedSourceEvent(ctx, s.eventsPath(id), ref.sourceOffset, ref.sourceLength)
+	event, err := readProjectedSourceEvent(
+		ctx, p.store.eventsPath(id), ref.sourceOffset, ref.sourceLength,
+	)
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err
 	}

@@ -84,7 +84,7 @@ func (l *sqliteLog) Append(
 	// The transcript projection is a read model over these rows. Refreshing it
 	// here keeps a reopened chat from reporting index progress for one event.
 	// A failure only postpones the work to the next read's background sync.
-	if _, err := l.store.syncSQLiteTranscript(context.Background(), id); err != nil {
+	if _, err := l.store.transcript.sync(context.Background(), id); err != nil {
 		log.Printf("chat %s: transcript projection update failed: %v", id, err)
 	}
 	return stored, nil
@@ -153,7 +153,7 @@ func (l *sqliteLog) CopyEvents(
 		last = events[len(events)-1]
 		cursor = next
 	}
-	if _, err := l.store.syncSQLiteTranscript(ctx, to); err != nil &&
+	if _, err := l.store.transcript.sync(ctx, to); err != nil &&
 		!errors.Is(err, context.Canceled) {
 		log.Printf("chat %s: transcript projection update after copy failed: %v", to, err)
 	}
