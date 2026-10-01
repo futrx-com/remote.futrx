@@ -1,6 +1,7 @@
 package workspaceide
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -9,15 +10,23 @@ import (
 )
 
 type Service struct {
+	authorizer   Authorizer
 	baseURL      string
 	projectsRoot string
 }
 
-func New(baseURL, projectsRoot string) *Service {
-	return &Service{baseURL: baseURL, projectsRoot: projectsRoot}
+func New(baseURL, projectsRoot string, options ...Option) *Service {
+	s := &Service{baseURL: baseURL, projectsRoot: projectsRoot}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 
-func (s *Service) OpenURL(cwd, rawPath string) (string, error) {
+func (s *Service) OpenURL(ctx context.Context, projectID, cwd, rawPath string) (string, error) {
+	if err := RequireAccess(ctx, s.authorizer, projectID); err != nil {
+		return "", err
+	}
 	target, err := workspacepath.ResolveFile(rawPath, cwd)
 	if err != nil {
 		return "", err

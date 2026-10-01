@@ -1,3 +1,4 @@
+import { usePermissions } from "../../../state/hooks/permissions/usePermissions";
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
@@ -49,6 +50,8 @@ export function WorkspaceActions({
   showSchedules: boolean;
   orientation: "horizontal" | "vertical";
 }) {
+  const permissions = usePermissions(projectId);
+  const canOpenIDE = permissions[projectId ? "workspace.ide.open" : "workspace.hostide.open"] === true;
   const workspacePath = cwd && cwd !== "~" ? cwd : defaultWorkspacePath;
   const ideUrl = buildIdeUrl(workspacePath);
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
@@ -61,13 +64,13 @@ export function WorkspaceActions({
         projectId={projectId}
         cwd={workspacePath}
       />
-      <WorkspaceAction
+      {canOpenIDE && <WorkspaceAction
         Icon={Code}
         href={ideUrl}
         label="Workspace IDE"
         tooltip="Open workspace in IDE"
         tooltipPlacement={tooltipPlacement}
-      />
+      />}
       <WorkspaceAction
         Icon={Terminal}
         onClick={onToggleTerminal}

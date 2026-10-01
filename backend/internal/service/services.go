@@ -9,6 +9,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -64,8 +65,9 @@ type Dependencies struct {
 	ProjectSecrets    serviceproject.SecretsRepository
 	ProjectAccess     serviceproject.AccessRepository
 	ProjectShares     serviceshare.Repository
+	Permissions       *servicepermission.Service
 	Schedules         serviceschedule.Repository
-	Auth              AuthStore
+	Auth              *serviceauth.Service
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
 	TwoFactor         serviceauth.TwoFactorStore
@@ -80,7 +82,6 @@ type Dependencies struct {
 	AgentAPIKeys      agentauth.APIKeyStore
 	AgentAccounts     agentauth.AccountStore
 	AgentOptions      AgentOptions
-	AuthOptions       AuthOptions
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
 	ScheduleLimits    ScheduleLimits
@@ -151,6 +152,7 @@ type Services struct {
 	Workspace         *workspacehub.Hub
 	Auth              *serviceauth.Service
 	Users             *serviceuser.Service
+	Permissions       *servicepermission.Service
 	UserSettings      *serviceusersettings.Service
 	Skills            *serviceskills.Catalog
 	Tmux              *servicetmux.Service
@@ -169,13 +171,17 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	if deps.AgentModules == nil {
 		return Services{}, errors.New("agent module catalog is required")
 	}
-	if deps.Auth != nil {
-		if err := deps.AgentModules.ValidateAccessGate(); err != nil {
-			return Services{}, fmt.Errorf("agent module catalog: %w", err)
-		}
+	if deps.Auth == nil {
+		return Services{}, errors.New("authentication service is required")
+	}
+	if err := deps.AgentModules.ValidateAccessGate(); err != nil {
+		return Services{}, fmt.Errorf("agent module catalog: %w", err)
 	}
 	if deps.Schedules == nil {
 		return Services{}, errors.New("scheduled task repository is required")
+	}
+	if deps.Permissions == nil {
+		return Services{}, errors.New("permission service is required")
 	}
 
 	workspace := workspacehub.New()
@@ -193,12 +199,17 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		},
 		push: pushNotifier,
 	}
+	// Authentication and authorization are built by the composition root and
+	// injected, so this layer knows neither their stores nor their adapters.
+	authService := deps.Auth
+	permissionService := deps.Permissions
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	projectService := serviceproject.New(
 		projects,
 		deps.ProjectContainers,
 		deps.ProjectSecrets,
 		deps.ProjectAccess,
+		serviceproject.WithAuthorizer(permissionService),
 		serviceproject.WithChatCleanup(projectChatCleanup{
 			chats: chats,
 			cancel: func(ctx context.Context, id servicechat.ID) error {
@@ -241,6 +252,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(agentRuntime),
 		servicechat.WithProviderPolicy(agentRuntime),
+		servicechat.WithAuthorizer(permissionService),
 	)
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
@@ -248,23 +260,12 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		deps.Users,
 		serviceuser.WithRemovalCleanup(userRemovalCleanup{
 			projects:        projectService,
+			permissions:     permissionService,
 			subscriptions:   deps.Push,
 			twoFactor:       deps.TwoFactor,
 			sessionRegistry: deps.SessionRegistry,
 		}),
 	)
-	authService, err := newAuth(
-		ctx,
-		deps.Auth,
-		userService,
-		deps.AuthBaseURL,
-		deps.TwoFactor,
-		deps.SessionRegistry,
-		deps.AuthOptions,
-	)
-	if err != nil {
-		return Services{}, err
-	}
 	scheduleCaps := schedulecapability.New(deps.AuthBaseURL)
 	var usageService *serviceusage.Service
 	promptOptions := []prompt.Option{
@@ -322,7 +323,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
-		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService)
+		accessVerifier = serviceauth.NewAccessVerifier(authService, projectService).WithIDEAuthorizer(permissionService)
 	}
 	var shareService *serviceshare.Service
 	if deps.ProjectShares != nil {
@@ -366,6 +367,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Workspace:         workspace,
 		Auth:              authService,
 		Users:             userService,
+		Permissions:       permissionService,
 		UserSettings:      userSettingsService,
 		Skills:            skillCatalog,
 		Tmux:              tmuxService,
@@ -392,8 +394,11 @@ func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID s
 	return meta.Slug, nil
 }
 
+// EnsureRunning readies a container on behalf of an installed application
+// that a caller has already been admitted to use, so it is trusted internal
+// work rather than an explicit lifecycle action by that caller.
 func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
-	_, err := a.projects.Start(ctx, serviceproject.ID(projectID))
+	_, err := a.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(projectID))
 	return err
 }
 

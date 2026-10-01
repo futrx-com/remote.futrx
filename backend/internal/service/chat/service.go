@@ -11,6 +11,7 @@ import (
 )
 
 type Service struct {
+	authorizer           Authorizer
 	repo                 Repository
 	transcriptEvents     TranscriptEventSource
 	transcriptWindow     TranscriptEventWindowSource
@@ -69,10 +70,11 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
-		repo:     repo,
-		projects: projects,
-		tmux:     tmux,
-		runs:     runs,
+		repo:       repo,
+		authorizer: systemOnlyAuthorizer{},
+		projects:   projects,
+		tmux:       tmux,
+		runs:       runs,
 	}
 	for _, option := range options {
 		option(service)
@@ -103,6 +105,9 @@ func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
+	if err := s.requireCreate(ctx, in.ProjectID); err != nil {
+		return Meta{}, err
+	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = "New chat"
@@ -166,6 +171,9 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	}
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireCreate(ctx, src.ProjectID); err != nil {
 		return Meta{}, err
 	}
 	if !s.validProviderScope(src.Provider, src.ProjectID) {

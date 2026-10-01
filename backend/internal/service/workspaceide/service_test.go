@@ -1,6 +1,8 @@
 package workspaceide
 
 import (
+	"context"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"net/url"
 	"strings"
 	"testing"
@@ -23,7 +25,7 @@ func redirectQuery(t *testing.T, rawURL string) url.Values {
 
 func TestOpenURLMapsProjectPathsIntoContainer(t *testing.T) {
 	service := New(testBaseURL, testProjectsRoot)
-	got, err := service.OpenURL(projectWorkspace, "/workspace/src/App.tsx:87:5")
+	got, err := service.OpenURL(rbac.ContextWithSystemActor(context.Background()), "project-one", projectWorkspace, "/workspace/src/App.tsx:87:5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func TestOpenURLMapsProjectPathsIntoContainer(t *testing.T) {
 
 func TestOpenURLLineWithoutColumn(t *testing.T) {
 	service := New(testBaseURL, testProjectsRoot)
-	got, err := service.OpenURL(projectWorkspace, "/workspace/docs/flow.md:92")
+	got, err := service.OpenURL(rbac.ContextWithSystemActor(context.Background()), "project-one", projectWorkspace, "/workspace/docs/flow.md:92")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestOpenURLLineWithoutColumn(t *testing.T) {
 
 func TestOpenURLFileWithoutLineOmitsGotoLineMode(t *testing.T) {
 	service := New(testBaseURL, testProjectsRoot)
-	got, err := service.OpenURL(projectWorkspace, "/workspace/README.md")
+	got, err := service.OpenURL(rbac.ContextWithSystemActor(context.Background()), "project-one", projectWorkspace, "/workspace/README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +84,7 @@ func TestOpenURLFileWithoutLineOmitsGotoLineMode(t *testing.T) {
 
 func TestOpenURLWorkspaceRootHasNoPayload(t *testing.T) {
 	service := New(testBaseURL, testProjectsRoot)
-	got, err := service.OpenURL(projectWorkspace, "/workspace")
+	got, err := service.OpenURL(rbac.ContextWithSystemActor(context.Background()), "project-one", projectWorkspace, "/workspace")
 	if err != nil {
 		t.Fatal(err)
 	}

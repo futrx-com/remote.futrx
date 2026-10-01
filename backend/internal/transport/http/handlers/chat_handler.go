@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -314,9 +315,17 @@ func (h *ChatHandler) handleIDEOpen(w http.ResponseWriter, r *http.Request, meta
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	redirectURL, err := h.ide.OpenURL(meta.Cwd, r.URL.Query().Get("path"))
+	if h.ide == nil {
+		httptransport.SendErr(w, 503, "IDE unavailable")
+		return
+	}
+	redirectURL, err := h.ide.OpenURL(r.Context(), string(meta.ProjectID), meta.Cwd, r.URL.Query().Get("path"))
 	if err != nil {
-		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, permission.ErrDenied) || errors.Is(err, permission.ErrActorRequired) {
+			sendPermissionError(w, err)
+		} else {
+			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -387,6 +396,8 @@ func int64Query(r *http.Request, key string, fallback int64) int64 {
 
 func sendChatError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),

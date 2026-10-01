@@ -25,6 +25,7 @@ type Handlers struct {
 	Projects          RouteRegistrar
 	Applications      RouteRegistrar
 	Users             RouteRegistrar
+	Permissions       RouteRegistrar
 	AgentAuth         RouteRegistrar
 	AgentCapabilities RouteRegistrar
 	UserSettings      RouteRegistrar
@@ -62,6 +63,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Projects)
 	register(handlers.Applications)
 	register(handlers.Users)
+	register(handlers.Permissions)
 	register(handlers.AgentAuth)
 	register(handlers.AgentCapabilities)
 	register(handlers.UserSettings)

@@ -1,3 +1,4 @@
+import { usePermissions } from "../../state/hooks/permissions/usePermissions";
 import { useLayoutEffect, useRef, useState } from "preact/hooks";
 import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
@@ -54,6 +55,7 @@ export function ProjectGroup({
   onDrop?: (event: DragEvent) => void;
   onDragEnd?: (event: DragEvent) => void;
 }) {
+  const canCreateChat = usePermissions(project.id)["chats.project.create"] === true;
   const provisioning = project.status === "provisioning";
   const hasUnread = chats.some((chat) => (chat.lastMessageAt || 0) > (chat.lastReadAt || 0));
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -150,7 +152,7 @@ export function ProjectGroup({
               event.stopPropagation();
               onNewChat();
             }}
-            disabled={provisioning}
+            disabled={provisioning || !canCreateChat}
             class={`${projectActionClass} disabled:cursor-not-allowed disabled:opacity-40`}
             aria-label="New chat in project"
             title={provisioning ? "Project is still provisioning" : "New chat in this project"}
@@ -179,7 +181,7 @@ export function ProjectGroup({
             <button
               type="button"
               onClick={onNewChat}
-              disabled={provisioning}
+              disabled={provisioning || !canCreateChat}
               class="mb-1 ml-2 inline-flex h-7 items-center gap-1.5 rounded-control px-2
                      text-[12px] text-ink-400 transition-colors hover:bg-tint hover:text-ink-100
                      disabled:cursor-not-allowed disabled:opacity-40"

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 )
 
 var (
@@ -20,8 +22,9 @@ type ProjectAccess interface {
 }
 
 type AccessVerifier struct {
-	auth     *Service
-	projects ProjectAccess
+	ideAuthorizer workspaceide.Authorizer
+	auth          *Service
+	projects      ProjectAccess
 }
 
 func NewAccessVerifier(auth *Service, projects ProjectAccess) *AccessVerifier {
@@ -58,4 +61,49 @@ func (v *AccessVerifier) Verify(ctx context.Context, sessionCookie, projectSlug 
 		return ErrAccountNotAuthorized
 	}
 	return nil
+}
+
+// WithIDEAuthorizer wires the same authorizer used by IDE open-file requests.
+func (v *AccessVerifier) WithIDEAuthorizer(authorizer workspaceide.Authorizer) *AccessVerifier {
+	v.ideAuthorizer = authorizer
+	return v
+}
+
+// VerifyIDE verifies the session and project membership before checking IDE
+// policy. Forward-auth bypasses API middleware, so it attaches only the actor
+// resolved from the validated session here, never a forwarded identity header.
+func (v *AccessVerifier) VerifyIDE(ctx context.Context, sessionCookie, projectSlug string) error {
+	session, err := v.auth.CurrentSession(ctx, sessionCookie)
+	if err != nil || session == nil {
+		return ErrAuthenticationRequired
+	}
+	registered, err := v.auth.IsRegistered(ctx, session.Email)
+	if err != nil {
+		return err
+	}
+	if !registered {
+		return ErrAccountNotAuthorized
+	}
+	if v.projects == nil || projectSlug == "" {
+		return ErrProjectNotFound
+	}
+	project, err := v.projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return ErrProjectNotFound
+	}
+	admin, err := v.auth.IsAdmin(ctx, session.Email)
+	if err != nil {
+		return err
+	}
+	if !admin {
+		member, err := v.projects.HasAccess(ctx, project.ID, session.Email)
+		if err != nil {
+			return err
+		}
+		if !member {
+			return ErrProjectAccessDenied
+		}
+	}
+	ctx = rbac.ContextWithActor(ctx, rbac.UserActor(session.Email))
+	return workspaceide.RequireAccess(ctx, v.ideAuthorizer, string(project.ID))
 }
