@@ -9,6 +9,7 @@ import (
 
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -17,11 +18,12 @@ import (
 // infrastructure. Per-project routes are delegated here by ProjectHandler,
 // which has already enforced project membership.
 type ApplicationsHandler struct {
-	apps         *serviceapplications.Service
-	auth         *serviceauth.Service
-	projects     visibleProjects
-	webHost      string
-	webTransport http.RoundTripper
+	workspaceAccess workspaceaccess.Authorizer
+	apps            *serviceapplications.Service
+	auth            *serviceauth.Service
+	projects        visibleProjects
+	webHost         string
+	webTransport    http.RoundTripper
 }
 
 // WithWebHost enables per-installation web origins below apps.<publicHost>.
@@ -430,4 +432,10 @@ func sendAppError(w http.ResponseWriter, err error) {
 	default:
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 	}
+}
+
+// WithWorkspaceAccess applies browser permissions to application web origins.
+func (h *ApplicationsHandler) WithWorkspaceAccess(a workspaceaccess.Authorizer) *ApplicationsHandler {
+	h.workspaceAccess = a
+	return h
 }

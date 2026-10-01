@@ -255,3 +255,27 @@ func readAllTranscriptContent(
 		after = page.NextAfter
 	}
 }
+
+func TestTranscriptReplayRetainsPromptAuthorSnapshot(t *testing.T) {
+	root := t.TempDir()
+	writeStoredChat(t, root, "abcd", []servicechat.Event{
+		{Seq: 1, T: 1, Type: "user", TurnID: "turn", Text: "question", UserEmail: "former-member@example.com"},
+		{Seq: 2, T: 2, Type: "complete", TurnID: "turn", UserEmail: "former-member@example.com"},
+	})
+	store := newIndexedTestStore(t, root)
+	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.ReadTranscriptPage(context.Background(), "abcd", servicechat.TranscriptPageQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Turns) != 1 {
+		t.Fatalf("missing transcript: %#v", page)
+	}
+	for _, event := range page.Turns[0].Events {
+		if event.UserEmail != "former-member@example.com" {
+			t.Fatalf("lost persisted author: %#v", event)
+		}
+	}
+}

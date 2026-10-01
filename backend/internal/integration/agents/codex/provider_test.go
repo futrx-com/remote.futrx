@@ -59,7 +59,7 @@ func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
 		vault *agentauth.AccountVault
 	}{
 		{"without a vault", nil},
-		{"with a vault", agentauth.NewAccountVault(&memoryAccountStore{})},
+		{"with a vault", agentauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, err := NewFactory()

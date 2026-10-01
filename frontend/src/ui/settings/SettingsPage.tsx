@@ -1,3 +1,5 @@
+import { AuditLogPanel } from "./AuditLogPanel";
+import { PermissionsSettings } from "./PermissionsSettings";
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
@@ -20,6 +22,7 @@ import {
 } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
+import { AgentInstructionsSettings } from "./AgentInstructionsSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { SecuritySettings } from "./SecuritySettings";
@@ -40,6 +43,7 @@ const tabs: Array<{
   description: string;
   Icon: ComponentType<{ class?: string }>;
 }> = [
+ { id: "audit", label: "Audit log", description: "Review activity by user, project, action and date.", Icon: Activity },
   {
     id: "appearance",
     label: "Appearance",
@@ -218,6 +222,7 @@ export function SettingsPage({
               </p>
             </header>
 
+            {activeTab === "audit" && isAdmin && <AuditLogPanel />}
             {activeTab === "appearance" && (
               <AppearanceSettings
                 theme={appearanceTheme}
@@ -241,6 +246,7 @@ export function SettingsPage({
                   </div>
                   <div class="p-3 space-y-3">
                     <AgentAuthSettingsList />
+                    <AgentInstructionsSettings />
                   </div>
                 </div>
               ) : (
@@ -263,6 +269,7 @@ export function SettingsPage({
             {activeTab === "users" && (
               <div class="space-y-4">
                 {isAdmin && <GoogleOAuthSettings />}
+                <PermissionsSettings />
                 <UsersPanel
                   currentEmail={currentEmail}
                   isAdmin={isAdmin}

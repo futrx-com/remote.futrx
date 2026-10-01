@@ -79,6 +79,7 @@ type ContainerBrowser interface {
 // capabilities used by Service. A nil capability preserves the behavior of a
 // nil container manager for the operations that consume it.
 type ContainerDependencies struct {
+	Storage     StorageReader
 	Lifecycle   ContainerLifecycle
 	Environment ContainerEnvironment
 	Inspector   ContainerInspector

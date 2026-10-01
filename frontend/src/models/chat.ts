@@ -54,6 +54,7 @@ export interface ProviderNativeEnvelope {
 }
 
 type ChatEventBase = {
+  userEmail?: string;
   seq?: number;
   t: number;
   turnId?: string;

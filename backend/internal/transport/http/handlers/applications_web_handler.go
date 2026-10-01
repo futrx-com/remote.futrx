@@ -8,7 +8,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -139,7 +141,16 @@ func (h *ApplicationsHandler) webProjects(w http.ResponseWriter, r *http.Request
 		http.Error(w, "project access unavailable", http.StatusInternalServerError)
 		return nil, false
 	}
-	return projects, true
+	// Application origins bypass the platform middleware, so derive the actor
+	// directly from the verified session before checking the same RBAC policy.
+	ctx := rbac.ContextWithActor(r.Context(), rbac.UserActor(email))
+	allowed := make([]serviceproject.Meta, 0, len(projects))
+	for _, project := range projects {
+		if workspaceaccess.Require(ctx, h.workspaceAccess, "browser", string(project.ID)) == nil {
+			allowed = append(allowed, project)
+		}
+	}
+	return allowed, true
 }
 
 func (h *ApplicationsHandler) webScheme() string {

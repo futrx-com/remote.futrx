@@ -7,12 +7,14 @@ import { AttachmentPreviews } from "./AttachmentPreviews";
 export function UserMessage({
   text,
   t,
+  userEmail,
   chatId,
   cwd,
   onRewind,
 }: {
   text: string;
   t: number;
+  userEmail?: string;
   chatId?: string;
   cwd?: string;
   onRewind?: (t: number, text: string) => void;
@@ -40,6 +42,9 @@ export function UserMessage({
           style={{ unicodeBidi: "plaintext" }}
         >
           {displayText}
+        </div>
+        <div class="max-w-full break-all text-xs text-ink-400">
+          {userEmail || "Unknown user"}
         </div>
         {hasAttachments && (
           <AttachmentPreviews paths={paths} chatId={chatId} cwd={cwd} />

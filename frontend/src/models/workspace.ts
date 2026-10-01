@@ -30,7 +30,7 @@ export interface WorkspaceStoreActions {
 export type WorkspaceView = "chat" | "settings" | "project-containers";
 
 export type SettingsTab =
-  | "appearance" | "notifications" | "agents" | "users" | "security"
+  | "audit" | "appearance" | "notifications" | "agents" | "users" | "security"
   | "applications" | "updates" | "info" | "usage";
 
 export interface WorkspaceUiState {

@@ -23,7 +23,12 @@ class ChatMessageBlockBuilder {
     switch (event.type) {
       case "user": {
         const next = this.endTrailingAssistant(blocks);
-        return [...next, { type: "user", text: event.text, t: event.t }];
+        return [...next, {
+          type: "user",
+          text: event.text,
+          t: event.t,
+          ...(event.userEmail ? { userEmail: event.userEmail } : {}),
+        }];
       }
       case "assistant_text": {
         const { blocks: next, assistant } = this.ensureTrailingAssistant(blocks, event.t);

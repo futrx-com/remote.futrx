@@ -25,16 +25,17 @@ type TmuxClient interface {
 }
 
 type Dependencies struct {
-	Services       service.Services
-	TmuxClient     TmuxClient
-	Static         fs.FS
-	DataDir        string
-	PublicHostname string
-	ServerInfo     *serviceserverinfo.Service
-	SelfUpdate     *serviceselfupdate.Service
-	Files          *serviceworkspacefiles.Service
-	GitHistory     *servicegithistory.Service
-	IDE            *serviceworkspaceide.Service
+	AgentInstructions httphandlers.AgentInstructionsStore
+	Services          service.Services
+	TmuxClient        TmuxClient
+	Static            fs.FS
+	DataDir           string
+	PublicHostname    string
+	ServerInfo        *serviceserverinfo.Service
+	SelfUpdate        *serviceselfupdate.Service
+	Files             *serviceworkspacefiles.Service
+	GitHistory        *servicegithistory.Service
+	IDE               *serviceworkspaceide.Service
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
@@ -68,8 +69,9 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt)
-	terminalSocket := wstransport.NewContainerTerminalSocket(deps.Services.Chats, deps.Services.Projects)
+	uploads.WithAudit(deps.Services.Audit)
+	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt).WithAudit(deps.Services.Audit)
+	terminalSocket := wstransport.NewContainerTerminalSocket(deps.Services.Chats, deps.Services.Projects).WithAudit(deps.Services.Audit)
 	workspaceSocket := wstransport.NewWorkspaceSocket(
 		deps.Services.Chats,
 		deps.Services.Projects,
@@ -86,7 +88,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Auth,
 	)
 	usageHandler := httphandlers.NewUsageHandler(deps.Services.Usage, deps.Services.Auth)
-	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth)
+	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth).WithAccountAccess(deps.Services.AccountAccess)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,
 		deps.Services.ChatAccess,
@@ -94,16 +96,17 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Files,
 		deps.GitHistory,
 		deps.IDE,
-	).WithSchedules(scheduleHandler)
+	).WithSchedules(scheduleHandler).WithAudit(deps.Services.Audit)
 
 	applicationsHandler := httphandlers.NewApplicationsHandler(
 		deps.Services.Applications,
 		deps.Services.Auth,
 		deps.Services.Projects,
-	).WithWebHost(deps.PublicHostname)
+	).WithWebHost(deps.PublicHostname).WithWorkspaceAccess(deps.Services.Permissions)
 
 	handler := httptransport.NewHandler(httptransport.Handlers{
-		Sessions: httphandlers.NewTmuxHandler(deps.Services.Tmux),
+		Audit:    httphandlers.NewAuditHandler(deps.Services.Audit, deps.Services.Auth),
+		Sessions: httphandlers.NewTmuxHandler(deps.Services.Tmux).WithAudit(deps.Services.Audit),
 		Chats:    chatHandler,
 		Projects: httphandlers.NewProjectHandler(
 			deps.Services.Projects,
@@ -112,13 +115,15 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.PublicHostname,
 			applicationsHandler,
 		).WithUsage(usageHandler).WithShares(deps.Services.Shares),
-		Applications: applicationsHandler,
-		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
+		Permissions:       httphandlers.NewPermissionsHandler(deps.Services.Permissions).WithAccounts(deps.Services.AccountAccess),
+		Applications:      applicationsHandler,
+		AgentInstructions: httphandlers.NewAgentInstructionsHandler(deps.AgentInstructions, deps.Services.Auth),
+		Users:             httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
 			deps.Services.Agents,
-		),
+		).WithAccountAccess(deps.Services.AccountAccess).WithAudit(deps.Services.Audit),
 		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
@@ -138,12 +143,13 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Usage:            usageHandler,
 		AgentQuota:       agentQuotaHandler,
 		Uploads:          uploads,
-		TmuxWS:           wstransport.NewTmuxSocket(deps.TmuxClient),
+		TmuxWS:           wstransport.NewTmuxSocket(deps.TmuxClient).WithAudit(deps.Services.Audit),
 		TerminalWS:       terminalSocket,
 		ChatWS:           chatSocket,
 		WorkspaceWS:      workspaceSocket,
-		AgentAuthWS:      wstransport.NewAgentAuthSocket(agentAuthBindings),
+		AgentAuthWS:      wstransport.NewAgentAuthSocket(agentAuthBindings).WithAccountAccess(deps.Services.AccountAccess),
 		Auth:             auth,
+		Workspace:        httpmiddleware.Workspace{Authorizer: deps.Services.Permissions, Chats: deps.Services.Chats},
 		Middleware:       middleware,
 		Static:           httptransport.NewStaticHandler(deps.Static),
 	})

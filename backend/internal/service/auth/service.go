@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"net/url"
 	"strings"
 	"time"
@@ -80,6 +81,7 @@ func (o Options) validate() error {
 }
 
 type Service struct {
+	audit             audit.Recorder
 	users             UserDirectory
 	local             *LocalAdminAuthenticator
 	google            *GoogleAuthenticator
@@ -208,7 +210,9 @@ func (s *Service) AuthCodeURL(state string) (string, error) {
 }
 
 func (s *Service) LoginGoogle(ctx context.Context, code string) (User, error) {
-	return s.google.login(ctx, code)
+	user, err := s.google.login(ctx, code)
+	s.recordLogin(ctx, "google", "", user, err)
+	return user, err
 }
 
 // EnsureSetupToken issues a token when a claim made now would actually be
@@ -232,12 +236,16 @@ func (s *Service) ClaimLocalAdmin(ctx context.Context, req ClaimRequest) (User, 
 	return s.local.claim(ctx, req)
 }
 
-func (s *Service) LoginLocal(_ context.Context, email, password string) (User, error) {
-	return s.local.login(email, password)
+func (s *Service) LoginLocal(ctx context.Context, email, password string) (User, error) {
+	user, err := s.local.login(email, password)
+	s.recordLogin(ctx, "local", email, user, err)
+	return user, err
 }
 
 func (s *Service) ConfigureGoogleOAuth(ctx context.Context, cfg OAuthConfig) error {
-	return s.google.configure(ctx, cfg)
+	err := s.google.configure(ctx, cfg)
+	s.Audit().Record(ctx, audit.Result(audit.ActionSettingsGoogleOAuth, audit.Target{Type: audit.TargetServer, ID: "google-oauth"}, nil, err))
+	return err
 }
 
 func (s *Service) GoogleOAuthEnabled() bool {
@@ -442,4 +450,33 @@ func SessionDuration() time.Duration {
 
 func (s *Service) PendingTwoFactorDuration() time.Duration {
 	return s.pendingLoginTTL
+}
+
+func (s *Service) WithAudit(recorder audit.Recorder) *Service {
+	s.audit = audit.RecorderOrNop(recorder)
+	return s
+}
+
+func (s *Service) recordLogin(ctx context.Context, method, attemptedEmail string, user User, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	action := audit.ActionAuthLoginSuccess
+	if err != nil {
+		action = audit.ActionAuthLoginFailure
+	}
+	email := user.Email
+	if email == "" {
+		email = attemptedEmail
+	}
+	entry := audit.Result(action, audit.Target{Type: audit.TargetSession}, audit.Meta{"method": method}, err)
+	entry.Actor = audit.Actor{Email: audit.NormalizeActorEmail(email), Sub: user.Sub}
+	s.audit.Record(ctx, entry)
+}
+
+func (s *Service) Audit() audit.Recorder {
+	if s == nil || s.audit == nil {
+		return audit.Nop{}
+	}
+	return s.audit
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -438,5 +439,50 @@ func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
 		loaded.ServiceTier != "fast" ||
 		loaded.ProjectID != "project-1" {
 		t.Fatalf("reloaded selections = %#v", loaded)
+	}
+}
+
+func TestPromptAuthorsSurviveReopenAndFork(t *testing.T) {
+	ctx := rbac.ContextWithSystemActor(context.Background())
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta, err := store.Create(ctx, servicechat.Meta{ID: "abcd", Provider: servicechat.ProviderClaude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authors := []string{"alice@example.com", "bob@example.com"}
+	for i, author := range authors {
+		if _, err := store.AppendEvent(ctx, meta.ID, servicechat.Event{T: int64(i + 1), Type: "user", Text: "hello", UserEmail: author}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	forked, err := servicechat.New(reopened, nil, nil, nil).Fork(ctx, meta.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []servicechat.ID{meta.ID, forked.ID} {
+		events, err := reopened.ReadEvents(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != len(authors) {
+			t.Fatalf("chat %s lost messages", id)
+		}
+		for i, event := range events {
+			if event.UserEmail != authors[i] {
+				t.Fatalf("chat %s lost author: %#v", id, event)
+			}
+		}
 	}
 }

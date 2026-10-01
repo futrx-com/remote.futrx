@@ -645,3 +645,12 @@ func TestSetPricesNormalizesAndStamps(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidPrice", err)
 	}
 }
+
+func TestRebuiltRecordUsesPersistedRunAttribution(t *testing.T) {
+	record, ok := recordFromChatEvent(servicechat.Meta{ID: "chat", Provider: servicechat.ProviderClaude}, servicechat.Event{
+		T: 1234, Seq: 8, Type: "complete", TurnID: "durable-run", UserEmail: "removed-user@example.com", ScheduledTaskID: "task",
+	}, nil, PriceTable{})
+	if !ok || record.UserEmail != "removed-user@example.com" || record.RunID != "durable-run" || !record.Scheduled {
+		t.Fatalf("lost event attribution: %#v", record)
+	}
+}

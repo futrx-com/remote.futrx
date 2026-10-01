@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
@@ -72,6 +73,11 @@ func WithMaxConcurrentRuns(limit int) Option {
 	}
 }
 
+// WithAudit records scheduled-task definition changes, arming, and forced runs.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
 // WithMaxTasksPerProject caps standing (non-terminal) tasks per project.
 // Zero disables the quota.
 func WithMaxTasksPerProject(limit int) Option {
@@ -91,6 +97,7 @@ type Service struct {
 	cron       CronParser
 	now        func() time.Time
 	busyRetry  time.Duration
+	audit      audit.Recorder
 
 	minInterval        time.Duration
 	maxConcurrent      int
@@ -128,6 +135,7 @@ func New(
 		executor:   executor,
 		cron:       FiveFieldCronParser{},
 		now:        time.Now,
+		audit:      audit.Nop{},
 		busyRetry:  defaultBusyRetry,
 		wake:       make(chan struct{}, 1),
 		baseCtx:    baseCtx,
@@ -230,6 +238,24 @@ func (s *Service) Create(
 	ownerEmail string,
 	isAdmin bool,
 ) (Task, error) {
+	task, err := s.create(ctx, input, ownerEmail, isAdmin)
+	s.recordSchedule(ctx, audit.ActionScheduleCreate, task, audit.Meta{
+		"name":           strings.TrimSpace(input.Name),
+		"kind":           string(input.Kind),
+		"cron":           strings.TrimSpace(input.Cron),
+		"chatId":         string(input.ChatID),
+		"projectId":      string(input.ProjectID),
+		"createdByAgent": input.CreatedByAgent,
+	}, err)
+	return task, err
+}
+
+func (s *Service) create(
+	ctx context.Context,
+	input CreateInput,
+	ownerEmail string,
+	isAdmin bool,
+) (Task, error) {
 	now := s.now()
 	task := Task{
 		ID:         newID(),
@@ -314,6 +340,31 @@ func (s *Service) Update(
 	callerEmail string,
 	isAdmin bool,
 ) (Task, error) {
+	task, err := s.update(ctx, id, input, callerEmail, isAdmin)
+	// Arming is the human half of the agent-create handshake, so enabling a
+	// task is recorded as its own action rather than a generic update.
+	action := audit.ActionScheduleUpdate
+	if input.Enabled != nil && *input.Enabled {
+		action = audit.ActionScheduleArm
+	}
+	meta := audit.Meta{}
+	if input.Enabled != nil {
+		meta["enabled"] = *input.Enabled
+	}
+	if task.ID == "" {
+		task.ID = id
+	}
+	s.recordSchedule(ctx, action, task, meta, err)
+	return task, err
+}
+
+func (s *Service) update(
+	ctx context.Context,
+	id ID,
+	input UpdateInput,
+	callerEmail string,
+	isAdmin bool,
+) (Task, error) {
 	if _, err := s.Get(ctx, id, callerEmail, isAdmin); err != nil {
 		return Task{}, err
 	}
@@ -371,6 +422,21 @@ func (s *Service) Delete(
 	callerEmail string,
 	isAdmin bool,
 ) error {
+	task, _ := s.Get(ctx, id, callerEmail, isAdmin)
+	if task.ID == "" {
+		task.ID = id
+	}
+	err := s.delete(ctx, id, callerEmail, isAdmin)
+	s.recordSchedule(ctx, audit.ActionScheduleDelete, task, nil, err)
+	return err
+}
+
+func (s *Service) delete(
+	ctx context.Context,
+	id ID,
+	callerEmail string,
+	isAdmin bool,
+) error {
 	if _, err := s.Get(ctx, id, callerEmail, isAdmin); err != nil {
 		return err
 	}
@@ -384,6 +450,20 @@ func (s *Service) Delete(
 // RunNow immediately claims one occurrence without moving the task's normal
 // cron/once deadline. A queue_one overlap becomes one follow-up run.
 func (s *Service) RunNow(
+	ctx context.Context,
+	id ID,
+	callerEmail string,
+	isAdmin bool,
+) (Task, error) {
+	task, err := s.runNow(ctx, id, callerEmail, isAdmin)
+	if task.ID == "" {
+		task.ID = id
+	}
+	s.recordSchedule(ctx, audit.ActionScheduleRunNow, task, nil, err)
+	return task, err
+}
+
+func (s *Service) runNow(
 	ctx context.Context,
 	id ID,
 	callerEmail string,
@@ -1415,4 +1495,18 @@ func newRunID() string {
 		panic(fmt.Sprintf("generate scheduled run id: %v", err))
 	}
 	return hex.EncodeToString(bytes[:])
+}
+
+// recordSchedule writes one scheduled-task audit line. The task name is
+// captured so a deleted definition stays identifiable.
+func (s *Service) recordSchedule(ctx context.Context, action string, task Task, meta audit.Meta, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	s.audit.Record(ctx, audit.Result(
+		action,
+		audit.Target{Type: audit.TargetSchedule, ID: string(task.ID), Name: task.Name},
+		meta,
+		err,
+	))
 }

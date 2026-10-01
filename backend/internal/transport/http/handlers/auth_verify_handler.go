@@ -2,12 +2,15 @@ package httphandlers
 
 import (
 	"errors"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -34,18 +37,39 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	// session check so that a member who opens a share URL themselves also
 	// gets the token stripped from it rather than forwarding it into the
 	// project's own request logs.
-	if matchedSlug != "" && h.authorizeShare(w, r, matchedSlug, matchedPort) {
+	ideSlug, ideRequest, targetErr := h.ideTarget(r, host)
+	if matchedSlug != "" && (matchedPort == configconstants.ProjectPreviewIDEProxyPort || matchedPort == configconstants.ProjectPreviewIDEDirectPort) {
+		ideSlug, ideRequest = matchedSlug, true
+	}
+	if targetErr != nil {
+		http.Error(w, "invalid IDE target", http.StatusBadRequest)
 		return
 	}
-	if h.verifySession(w, r, matchedSlug) {
-		w.WriteHeader(http.StatusOK)
+	if !ideRequest && matchedPort != configconstants.ProjectPreviewAgentBrowserPort && matchedSlug != "" && h.authorizeShare(w, r, matchedSlug, matchedPort) {
+		return
 	}
-}
 
-func (h *authVerifyHandler) verifySession(w http.ResponseWriter, r *http.Request, matchedSlug string) bool {
-	err := h.access.Verify(r.Context(), httptransport.SessionCookieValue(r), matchedSlug)
+	var err error
+	if ideRequest {
+		err = h.access.VerifyIDE(r.Context(), httptransport.SessionCookieValue(r), ideSlug)
+	} else if matchedSlug != "" {
+		err = h.access.VerifyBrowser(r.Context(), httptransport.SessionCookieValue(r), matchedSlug)
+	} else {
+		err = h.access.Verify(r.Context(), httptransport.SessionCookieValue(r), matchedSlug)
+	}
 	if err == nil {
-		return true
+		if ideRequest && r.Header.Get("Sec-Fetch-Dest") == "document" {
+			entry := serviceaudit.Success(serviceaudit.ActionWorkspaceIDEOpen, serviceaudit.Target{Type: serviceaudit.TargetProject}, nil)
+			if project, e := h.access.ProjectForAudit(r.Context(), ideSlug); e == nil {
+				entry.Target.ID = string(project.ID)
+			}
+			if session, e := h.auth.CurrentSession(r.Context(), httptransport.SessionCookieValue(r)); e == nil && session != nil {
+				entry.Actor.Email = session.Email
+			}
+			h.auth.Audit().Record(r.Context(), entry)
+		}
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
 	switch {
@@ -53,13 +77,13 @@ func (h *authVerifyHandler) verifySession(w http.ResponseWriter, r *http.Request
 		h.redirectToLogin(w, r)
 	case errors.Is(err, serviceauth.ErrProjectNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, serviceauth.ErrProjectAccessDenied),
+	case errors.Is(err, rbac.ErrDenied), errors.Is(err, rbac.ErrActorRequired),
+		errors.Is(err, serviceauth.ErrProjectAccessDenied),
 		errors.Is(err, serviceauth.ErrAccountNotAuthorized):
 		http.Error(w, err.Error(), http.StatusForbidden)
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	return false
 }
 
 // matchPreviewHost resolves a forwarded host to the project slug and port
@@ -93,3 +117,46 @@ func (h *authVerifyHandler) redirectToLogin(w http.ResponseWriter, r *http.Reque
 	}
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
+
+// ideTarget recognizes only URL forms routed to the built-in IDE by Caddy.
+// Launcher assets and its API retain ordinary session/API authorization.
+func (h *authVerifyHandler) ideTarget(r *http.Request, host string) (string, bool, error) {
+	base := strings.ToLower(strings.TrimSpace(baseHost(h.auth.BaseURL())))
+	if base == "" {
+		return "", false, nil
+	}
+	suffix := ".code." + base
+	if strings.HasSuffix(host, suffix) {
+		slug := strings.TrimSuffix(host, suffix)
+		if !ideSlugPattern.MatchString(slug) {
+			return "", true, errors.New("invalid IDE slug")
+		}
+		return slug, true, nil
+	}
+	if host != "code."+base {
+		return "", false, nil
+	}
+	original := forwardedURI(r)
+	if original == nil || original.Path == "" || !strings.HasPrefix(original.Path, "/") {
+		return "", true, errors.New("missing IDE path")
+	}
+	for _, segment := range strings.Split(original.Path, "/") {
+		if segment == "." || segment == ".." {
+			return "", true, errors.New("ambiguous IDE path")
+		}
+	}
+	switch original.Path {
+	case "/", "/index.html", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/favicon.ico":
+		return "", false, nil
+	}
+	if strings.HasPrefix(original.Path, "/api/") {
+		return "", false, nil
+	}
+	slug := strings.SplitN(strings.TrimPrefix(original.Path, "/"), "/", 2)[0]
+	if !ideSlugPattern.MatchString(slug) {
+		return "", true, errors.New("invalid IDE slug")
+	}
+	return slug, true, nil
+}
+
+var ideSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)

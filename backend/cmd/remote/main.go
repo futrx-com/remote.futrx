@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
@@ -31,12 +30,19 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	integrationversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/integration/versiontelemetry"
 	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
+	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
+	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/service/versiontelemetry"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
@@ -72,6 +78,22 @@ func main() {
 	agentModules, err := config.NewAgentModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
+	}
+	instructionsPath := cfg.Agent.InstructionsFile
+	if instructionsPath == "" {
+		instructionsPath = filepath.Join(cfg.DataDir, "agent-instructions.json")
+		if _, statErr := os.Stat(instructionsPath); statErr == nil {
+			cfg.Agent.InstructionsFile = instructionsPath
+		} else if !os.IsNotExist(statErr) {
+			log.Fatalf("inspect agent instructions: %v", statErr)
+		}
+	}
+	instructionsStore := config.NewAgentInstructionsStore(instructionsPath, agentModules.Profiles())
+	instructionProfiles, agentInstructions, err := config.AgentInstructionProfiles(
+		cfg.Agent.InstructionsFile, publicHostname, agentModules.Profiles(),
+	)
+	if err != nil {
+		log.Fatalf("configure agent instructions: %v", err)
 	}
 	// Uploaded application packages live in the server's state directory, not
 	// in the binary and not in the checkout. That is what makes them survive an
@@ -113,11 +135,16 @@ func main() {
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
-		agentModules.Profiles(),
+		instructionProfiles,
 		config.ContainerStackOptions{
-			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
-			AppRegistry:       appRegistry,
-			DataDir:           cfg.DataDir,
+			ProjectStorageDataset:   cfg.ProjectStorageDataset,
+			PersistentDiskQuota:     cfg.PersistentDiskQuota,
+			PersistentQuotaRequired: cfg.PersistentQuotaRequired,
+			DiskWarningPercent:      float64(cfg.DiskWarningPercent),
+			DefaultRootDiskQuota:    cfg.DefaultRootDiskQuota,
+			AgentInstructions:       agentInstructions,
+			AppRegistry:             appRegistry,
+			DataDir:                 cfg.DataDir,
 		},
 	)
 
@@ -152,40 +179,56 @@ func main() {
 	)
 
 	tmuxClient := tmuxcli.New()
+
+	// Identity and policy are composed here, the one place that knows every
+	// concrete type. Auth reads users through a view without removal cleanup:
+	// cleanup needs the project service, which needs authorization, which
+	// needs auth. Only removal differs between the two views, and auth never
+	// removes users; the user service that service.New builds keeps cleanup.
+	authService, err := newAuthService(ctx, cfg, storeSet)
+	if err != nil {
+		log.Fatalf("init auth: %v", err)
+	}
+	permissionService, err := newPermissionService(
+		ctx,
+		storeSet.Permissions,
+		authService,
+		projectMembership{access: storeSet.ProjectAccess},
+	)
+	if err != nil {
+		log.Fatalf("init permissions: %v", err)
+	}
+
 	serviceSet, err := service.New(ctx, service.Dependencies{
-		Chats:             storeSet.Chats,
-		Projects:          storeSet.Projects,
-		ProjectSecrets:    storeSet.ProjectSecrets,
-		ProjectAccess:     storeSet.ProjectAccess,
-		ProjectShares:     storeSet.ProjectShares,
-		Schedules:         storeSet.Schedules,
-		Auth:              storeSet.Auth,
-		Users:             storeSet.Users,
-		UserSettings:      storeSet.UserSettings,
-		TwoFactor:         storeSet.TwoFactor,
-		SessionRegistry:   storeSet.SessionRegistry,
-		Push:              storeSet.Push,
-		Usage:             storeSet.Usage,
-		AgentQuota:        storeSet.AgentQuota,
-		AuthBaseURL:       cfg.BaseURL,
-		ProjectContainers: containerStack.ProjectDependencies(),
-		AgentContainers:   containerStack.AgentDependencies(),
-		AgentModules:      agentModules,
-		AgentAPIKeys:      storeSet.AgentAPIKeys,
-		AgentAccounts:     storeSet.AgentAccounts,
+		AuditRetentionMonths: &cfg.AuditRetentionMonths,
+		Audit:                storeSet.Audit,
+		Chats:                storeSet.Chats,
+		Projects:             storeSet.Projects,
+		ProjectSecrets:       storeSet.ProjectSecrets,
+		ProjectAccess:        storeSet.ProjectAccess,
+		ProjectShares:        storeSet.ProjectShares,
+		Permissions:          permissionService,
+		Schedules:            storeSet.Schedules,
+		Auth:                 authService,
+		Users:                storeSet.Users,
+		UserSettings:         storeSet.UserSettings,
+		TwoFactor:            storeSet.TwoFactor,
+		SessionRegistry:      storeSet.SessionRegistry,
+		Push:                 storeSet.Push,
+		Usage:                storeSet.Usage,
+		AgentQuota:           storeSet.AgentQuota,
+		AuthBaseURL:          cfg.BaseURL,
+		ProjectContainers:    containerStack.ProjectDependencies(),
+		AgentContainers:      containerStack.AgentDependencies(),
+		AgentModules:         agentModules,
+		AgentAPIKeys:         storeSet.AgentAPIKeys,
+		AgentAccounts:        storeSet.AgentAccounts,
 		AgentOptions: service.AgentOptions{
 			CapabilityTimeout:          cfg.Agent.CapabilityTimeout,
 			CapabilityCacheTTL:         cfg.Agent.CapabilityCacheTTL,
 			DegradedCapabilityCacheTTL: cfg.Agent.DegradedCapabilityCacheTTL,
 			CredentialSyncTimeout:      cfg.Agent.CredentialSyncTimeout,
 			BrowserIdleTTL:             cfg.Agent.BrowserIdleTTL,
-		},
-		AuthOptions: service.AuthOptions{
-			PendingLoginTTL:     cfg.Auth.PendingLoginTTL,
-			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
-			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
-			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
-			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
 		},
 		TmuxClient:    tmuxClient,
 		ValidTmuxName: tmuxcli.ValidName,
@@ -249,22 +292,24 @@ func main() {
 		log.Fatalf("configure IDE URL: %v", err)
 	}
 
+	selfUpdateService.WithAudit(serviceSet.Audit)
 	handler, err := transport.NewHTTPHandler(transport.Dependencies{
-		Services:       serviceSet,
-		TmuxClient:     tmuxClient,
-		Static:         static,
-		DataDir:        cfg.DataDir,
-		PublicHostname: publicHostname,
+		AgentInstructions: instructionsStore,
+		Services:          serviceSet,
+		TmuxClient:        tmuxClient,
+		Static:            static,
+		DataDir:           cfg.DataDir,
+		PublicHostname:    publicHostname,
 		ServerInfo: serviceserverinfo.New(
 			hostinfo.New(),
 			version.Version,
 			cfg.DataDir,
 			fileproject.WorkspaceRoot,
-		),
+		).WithStorageWarningThreshold(float64(cfg.DiskWarningPercent)),
 		SelfUpdate: selfUpdateService,
 		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
 		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),
-		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot),
+		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot, serviceworkspaceide.WithAuthorizer(serviceSet.Permissions)),
 	})
 	if err != nil {
 		log.Fatalf("init http handler: %v", err)
@@ -285,4 +330,73 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+// newAuthService composes the runtime auth service from the stores and the
+// deployment's account-security policy. It reads users through a view with no
+// removal cleanup; see the note where main calls it.
+func newAuthService(ctx context.Context, cfg config.Config, storeSet stores.Stores) (*serviceauth.Service, error) {
+	return service.NewAuth(
+		ctx,
+		storeSet.Auth,
+		serviceuser.New(storeSet.Users),
+		cfg.BaseURL,
+		storeSet.TwoFactor,
+		storeSet.SessionRegistry,
+		service.AuthOptions{
+			PendingLoginTTL:     cfg.Auth.PendingLoginTTL,
+			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
+			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
+			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
+			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
+		},
+	)
+}
+
+// permissionDefinitions is the complete code-owned permission catalog. Each
+// owning service exports its definitions from a permissions.go file; add its
+// group here so the registry validates them together.
+func permissionDefinitions() [][]rbac.Definition {
+	return [][]rbac.Definition{
+		rbac.ManagementDefinitions(),
+		serviceproject.PermissionDefinitions(),
+		servicechat.PermissionDefinitions(),
+		serviceworkspaceide.PermissionDefinitions(),
+		workspaceaccess.PermissionDefinitions(),
+		agentauth.PermissionDefinitions(),
+	}
+}
+
+// newPermissionService builds the permission service from the code-owned
+// registry, the persisted policy, and the identity and membership ports. It
+// fails on a policy that is unreadable or names an unregistered permission.
+func newPermissionService(
+	ctx context.Context,
+	policy rbac.Repository,
+	identity rbac.IdentityDirectory,
+	members rbac.ProjectMembership,
+) (*rbac.Service, error) {
+	registry, err := rbac.NewRegistry(permissionDefinitions()...)
+	if err != nil {
+		return nil, err
+	}
+	return rbac.NewService(ctx, registry, policy, identity, members)
+}
+
+// projectMembership adapts the project access repository to the permission
+// layer's membership port, so the evaluator does not import the project
+// service.
+type projectMembership struct {
+	access serviceproject.AccessRepository
+}
+
+func (m projectMembership) HasAccess(ctx context.Context, projectID string, email string) (bool, error) {
+	if m.access == nil {
+		return false, nil
+	}
+	email = rbac.NormalizeEmail(email)
+	if email == "" {
+		return false, nil
+	}
+	return m.access.Has(ctx, serviceproject.ID(projectID), email)
 }

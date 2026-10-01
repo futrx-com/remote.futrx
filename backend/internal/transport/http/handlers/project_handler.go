@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
@@ -199,7 +200,7 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if len(parts) >= 2 && parts[1] == "access" {
-		h.handleAccess(w, r, id, parts, email, isAdmin)
+		h.handleAccess(w, r, id, parts, isAdmin)
 		return
 	}
 
@@ -579,12 +580,15 @@ func (h *ProjectHandler) handleSecrets(w http.ResponseWriter, r *http.Request, i
 // member (admin or not) may list and edit the access list, with a guardrail:
 // non-admins may not remove the last member of a project (which would
 // orphan it from everyone but admins).
+//
+// Who is making the change is carried on the request context by the auth
+// middleware and recorded by the project service, so it is not a parameter
+// here.
 func (h *ProjectHandler) handleAccess(
 	w http.ResponseWriter,
 	r *http.Request,
 	id serviceproject.ID,
 	parts []string,
-	callerEmail string,
 	isAdmin bool,
 ) {
 	// /api/projects/{id}/access
@@ -671,7 +675,6 @@ func (h *ProjectHandler) handleAccess(
 		sendProjectError(w, err)
 		return
 	}
-	_ = callerEmail // available for future audit logging
 	httptransport.SendJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -703,6 +706,8 @@ func (h *ProjectHandler) allowed(ctx context.Context, id serviceproject.ID, emai
 
 func sendProjectError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, serviceproject.ErrNameRequired),
 		errors.Is(err, serviceproject.ErrInvalidID),
 		errors.Is(err, serviceproject.ErrInvalidSecretKey),

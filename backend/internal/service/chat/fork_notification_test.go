@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -53,14 +54,14 @@ func TestCreateUsesConfiguredProviderCatalog(t *testing.T) {
 		nil,
 		WithProviderPolicy(forkProviderPolicy{"future-agent": true}),
 	)
-	created, err := service.Create(context.Background(), CreateInput{Provider: "future-agent"})
+	created, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: "future-agent"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.Provider != "future-agent" {
 		t.Fatalf("created provider = %q", created.Provider)
 	}
-	if _, err := service.Create(context.Background(), CreateInput{Provider: ProviderCodex}); err != ErrInvalidProvider {
+	if _, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: ProviderCodex}); err != ErrInvalidProvider {
 		t.Fatalf("unconfigured provider error = %v, want ErrInvalidProvider", err)
 	}
 }
@@ -74,14 +75,14 @@ func TestCreateUsesCatalogDefaultAndRejectsUnsafeExplicitProvider(t *testing.T) 
 		provider: "future-agent",
 	}
 	service := New(repo, nil, nil, nil, WithProviderPolicy(policy))
-	created, err := service.Create(context.Background(), CreateInput{})
+	created, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.Provider != "future-agent" {
 		t.Fatalf("default provider = %q, want future-agent", created.Provider)
 	}
-	if _, err := service.Create(context.Background(), CreateInput{Provider: "bad provider"}); err != ErrInvalidProvider {
+	if _, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: "bad provider"}); err != ErrInvalidProvider {
 		t.Fatalf("unsafe provider error = %v, want ErrInvalidProvider", err)
 	}
 }
@@ -92,17 +93,17 @@ func TestCreateAndUpdateEnforceProviderExecutionScope(t *testing.T) {
 		"project-agent": {agentmodule.ScopeProject: true},
 	}
 	service := New(&forkRepository{}, nil, nil, nil, WithProviderPolicy(policy))
-	if _, err := service.Create(context.Background(), CreateInput{Provider: "host-agent", ProjectID: "abcd"}); err != ErrInvalidProvider {
+	if _, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: "host-agent", ProjectID: "abcd"}); err != ErrInvalidProvider {
 		t.Fatalf("project chat with host agent error = %v", err)
 	}
-	if _, err := service.Create(context.Background(), CreateInput{Provider: "project-agent"}); err != ErrInvalidProvider {
+	if _, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: "project-agent"}); err != ErrInvalidProvider {
 		t.Fatalf("host chat with project agent error = %v", err)
 	}
 
 	repo := &forkRepository{source: Meta{ID: "deadbeef", Provider: "project-agent", ProjectID: "abcd"}}
 	service = New(repo, nil, nil, nil, WithProviderPolicy(policy))
 	hostAgent := Provider("host-agent")
-	if _, err := service.Update(context.Background(), "deadbeef", UpdateInput{Provider: &hostAgent}); err != ErrInvalidProvider {
+	if _, err := service.Update(permission.ContextWithSystemActor(context.Background()), "deadbeef", UpdateInput{Provider: &hostAgent}); err != ErrInvalidProvider {
 		t.Fatalf("project update to host agent error = %v", err)
 	}
 }
@@ -146,7 +147,7 @@ func TestForkClearsSessionForProviderWithoutNativeFork(t *testing.T) {
 	}}
 	service := New(repo, nil, nil, nil, WithSessionPolicy(forkSessionPolicy{}))
 
-	forked, err := service.Fork(context.Background(), "deadbeef")
+	forked, err := service.Fork(permission.ContextWithSystemActor(context.Background()), "deadbeef")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestForkRetainsSessionOnlyForNativeForkProvider(t *testing.T) {
 	}}
 	service := New(repo, nil, nil, nil, WithSessionPolicy(forkSessionPolicy{string(ProviderCodex): true}))
 
-	forked, err := service.Fork(context.Background(), "deadbeef")
+	forked, err := service.Fork(permission.ContextWithSystemActor(context.Background()), "deadbeef")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +189,7 @@ func TestUpdateAccountStartsAFreshProviderSession(t *testing.T) {
 	service := New(repo, nil, nil, nil)
 	work := "work"
 
-	updated, err := service.Update(context.Background(), "deadbeef", UpdateInput{AccountID: &work})
+	updated, err := service.Update(permission.ContextWithSystemActor(context.Background()), "deadbeef", UpdateInput{AccountID: &work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +218,7 @@ func TestForkAppendsEveryHistoryEventThroughTheCopiedEventPort(t *testing.T) {
 	}}
 	service := New(repo, nil, nil, nil, WithCopiedEventAppender(repo))
 
-	if _, err := service.Fork(context.Background(), "deadbeef"); err != nil {
+	if _, err := service.Fork(permission.ContextWithSystemActor(context.Background()), "deadbeef"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.copied) != len(repo.events) {

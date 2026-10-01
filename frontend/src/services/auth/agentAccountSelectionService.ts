@@ -15,6 +15,9 @@ export function resolveProviderAccountId(
   accounts: AgentAuthAccountsSnapshot | undefined,
   requestedAccountId: string,
 ): string {
+  // A filtered snapshot must not silently replace a revoked selection.
+  // Keep it until the user explicitly chooses an authorized account.
+  if (requestedAccountId && accounts?.defaultAllowed !== undefined) return requestedAccountId;
   if (requestedAccountId && accounts?.items.some((account) => account.id === requestedAccountId)) {
     return requestedAccountId;
   }

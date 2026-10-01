@@ -41,7 +41,7 @@ export type AssistantMessageBlock = {
 };
 
 export type ChatMessageBlock =
-  | { type: "user"; text: string; t: number }
+  | { type: "user"; text: string; t: number; userEmail?: string }
   | AssistantMessageBlock
   | { type: "error"; message: string; t: number };
 

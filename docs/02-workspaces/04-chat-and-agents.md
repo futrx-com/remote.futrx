@@ -375,3 +375,18 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Project-run preparation: [`backend/internal/service/agent/execution/`](../../backend/internal/service/agent/execution/)
 - Capability catalog: [`backend/internal/service/agent/capability/`](../../backend/internal/service/agent/capability/)
 - Frontend chat hook: [`frontend/src/state/hooks/chat/useChat.ts`](../../frontend/src/state/hooks/chat/useChat.ts)
+
+### Prompt authors
+
+Each new prompt and its persisted run events record the initiating Remote
+account's email, and the chat shows that account name below the user message.
+Email is Remote's current registered-user identifier; this does not introduce a
+second username directory. The server takes it from the authenticated connection,
+not from a client-supplied author field. Scheduled prompts record the task owner's
+stored email and retain their scheduled-task marker.
+
+Attribution stays with the event history across reloads, transcript indexing and
+forks, even if the user is removed later. Usage-ledger rebuilds recover it from
+new completion events. Old prompts without author data show `Unknown user`;
+Remote does not guess who wrote them. Attribution follows chat-history retention:
+deleting a chat or rewinding away messages removes those messages as before.

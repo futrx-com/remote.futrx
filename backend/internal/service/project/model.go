@@ -70,26 +70,28 @@ func ValidID(id ID) bool {
 // exposed at GET /api/projects/{id}/container. Fields are best-effort: a
 // stopped or missing container leaves dependent sub-structs zero-valued.
 type ContainerInspect struct {
-	Name           string                 `json:"name"`
-	State          ContainerState         `json:"state"`
-	BootAutostart  bool                   `json:"bootAutostart"`
-	Image          string                 `json:"image,omitempty"`
-	Type           string                 `json:"type,omitempty"`
-	Architecture   string                 `json:"architecture,omitempty"`
-	PID            int                    `json:"pid,omitempty"`
-	CreatedAt      string                 `json:"createdAt,omitempty"`
-	LastUsedAt     string                 `json:"lastUsedAt,omitempty"`
-	Workspace      *WorkspaceInfo         `json:"workspace,omitempty"`
-	Resources      *ResourceInfo          `json:"resources,omitempty"`
-	Network        []NetworkInterface     `json:"network,omitempty"`
-	OS             *OSInfo                `json:"os,omitempty"`
-	Disks          []DiskUsage            `json:"disks,omitempty"`
-	Limits         *ContainerLimits       `json:"limits,omitempty"`
-	LimitOverrides *ContainerLimits       `json:"limitOverrides,omitempty"`
-	Claude         ClaudeContainerStatus  `json:"claude"`
-	Codex          CodexContainerStatus   `json:"codex"`
-	Agents         []AgentContainerStatus `json:"agents,omitempty"`
-	AuthBundles    []AuthBundleStatus     `json:"authBundles"`
+	PersistentStorage *PersistentStorage     `json:"persistentStorage,omitempty"`
+	DiskQuota         *DiskQuotaInfo         `json:"diskQuota,omitempty"`
+	Name              string                 `json:"name"`
+	State             ContainerState         `json:"state"`
+	BootAutostart     bool                   `json:"bootAutostart"`
+	Image             string                 `json:"image,omitempty"`
+	Type              string                 `json:"type,omitempty"`
+	Architecture      string                 `json:"architecture,omitempty"`
+	PID               int                    `json:"pid,omitempty"`
+	CreatedAt         string                 `json:"createdAt,omitempty"`
+	LastUsedAt        string                 `json:"lastUsedAt,omitempty"`
+	Workspace         *WorkspaceInfo         `json:"workspace,omitempty"`
+	Resources         *ResourceInfo          `json:"resources,omitempty"`
+	Network           []NetworkInterface     `json:"network,omitempty"`
+	OS                *OSInfo                `json:"os,omitempty"`
+	Disks             []DiskUsage            `json:"disks,omitempty"`
+	Limits            *ContainerLimits       `json:"limits,omitempty"`
+	LimitOverrides    *ContainerLimits       `json:"limitOverrides,omitempty"`
+	Claude            ClaudeContainerStatus  `json:"claude"`
+	Codex             CodexContainerStatus   `json:"codex"`
+	Agents            []AgentContainerStatus `json:"agents,omitempty"`
+	AuthBundles       []AuthBundleStatus     `json:"authBundles"`
 }
 
 type WorkspaceInfo struct {
@@ -98,6 +100,7 @@ type WorkspaceInfo struct {
 }
 
 type ResourceInfo struct {
+	DiskUsageKnown     bool  `json:"diskUsageKnown"`
 	Processes          int   `json:"processes,omitempty"`
 	DiskUsageBytes     int64 `json:"diskUsageBytes,omitempty"`
 	MemoryCurrentBytes int64 `json:"memoryCurrentBytes,omitempty"`

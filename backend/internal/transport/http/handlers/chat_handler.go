@@ -3,12 +3,14 @@ package httphandlers
 import (
 	"encoding/json"
 	"errors"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"io"
 	"mime"
 	"net/http"
 	"strconv"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -25,6 +27,7 @@ type ChatHandler struct {
 	history   *servicegithistory.Service
 	ide       *serviceworkspaceide.Service
 	schedules *ScheduleHandler
+	audit     serviceaudit.Recorder
 }
 
 func NewChatHandler(
@@ -48,6 +51,19 @@ func NewChatHandler(
 func (h *ChatHandler) WithSchedules(schedules *ScheduleHandler) *ChatHandler {
 	h.schedules = schedules
 	return h
+}
+
+// WithAudit records the workspace actions this handler owns directly: file
+// downloads, archive downloads, IDE hand-offs, and git checkouts.
+func (h *ChatHandler) WithAudit(recorder serviceaudit.Recorder) *ChatHandler {
+	h.audit = recorder
+	return h
+}
+
+// auditWorkspaceTarget labels a workspace action by the chat it came through,
+// keeping the project id in meta so a query can pivot either way.
+func auditWorkspaceTarget(meta servicechat.Meta) serviceaudit.Target {
+	return serviceaudit.Target{Type: serviceaudit.TargetChat, ID: string(meta.ID), Name: meta.Title}
 }
 
 func (h *ChatHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -314,9 +330,18 @@ func (h *ChatHandler) handleIDEOpen(w http.ResponseWriter, r *http.Request, meta
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	redirectURL, err := h.ide.OpenURL(meta.Cwd, r.URL.Query().Get("path"))
+	if h.ide == nil {
+		httptransport.SendErr(w, 503, "IDE unavailable")
+		return
+	}
+	redirectURL, err := h.ide.OpenURL(r.Context(), string(meta.ProjectID), meta.Cwd, r.URL.Query().Get("path"))
+	recordAudit(h.audit, r, serviceaudit.ActionWorkspaceIDEOpen, auditWorkspaceTarget(meta), serviceaudit.Meta{"projectId": string(meta.ProjectID)}, err)
 	if err != nil {
-		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, permission.ErrDenied) || errors.Is(err, permission.ErrActorRequired) {
+			sendPermissionError(w, err)
+		} else {
+			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	http.Redirect(w, r, redirectURL, http.StatusFound)
@@ -387,6 +412,8 @@ func int64Query(r *http.Request, key string, fallback int64) int64 {
 
 func sendChatError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),

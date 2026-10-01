@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	"log"
 	"regexp"
 	"strconv"
@@ -12,12 +15,22 @@ import (
 )
 
 type Service struct {
+	audit              audit.Recorder
+	storage            StorageReader
 	repo               Repository
 	chats              ChatCleanup
 	containerLifecycle ContainerLifecycle
 	containerInspector ContainerInspector
 	containerNetwork   ContainerNetwork
 	containerListeners ContainerListeners
+
+	// authorizer guards the entry points that carry a project permission.
+	authorizer Authorizer
+
+	// requireLifecycle and requireAccess are the bound permission checks. They
+	// are built in New after options, so they capture the final authorizer.
+	requireLifecycle projectAuthorizer
+	requireAccess    projectAuthorizer
 
 	// access owns per-project membership and email normalization.
 	access *accessList
@@ -53,11 +66,13 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
+		storage:            containers.Storage,
 		repo:               repo,
 		containerLifecycle: containers.Lifecycle,
 		containerInspector: containers.Inspector,
 		containerNetwork:   containers.Network,
 		containerListeners: containers.Listeners,
+		authorizer:         systemOnlyAuthorizer{},
 		access:             newAccessList(access),
 		secrets:            newSecretStore(secrets, containers.Environment),
 		browsers:           newAgentBrowsers(containers.Browser, repo),
@@ -65,6 +80,8 @@ func New(
 	for _, option := range options {
 		option(service)
 	}
+	service.requireLifecycle = bind(service.authorizer, PermissionLifecycleManage)
+	service.requireAccess = bind(service.authorizer, PermissionAccessManage)
 	return service
 }
 
@@ -78,14 +95,22 @@ func WithChatCleanup(chats ChatCleanup) Option {
 	}
 }
 
-func (s *Service) ListSecrets(ctx context.Context, id ID) ([]Secret, error) {
+func (s *Service) ListSecrets(ctx context.Context, id ID) (result []Secret, resultErr error) {
+	defer func() { s.record(ctx, "project.secret.read", auditTargetID(id), nil, resultErr) }()
+	if err := bind(s.authorizer, PermissionSecretsManage)(ctx, id); err != nil {
+		return nil, err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
 	return s.secrets.list(ctx, id)
 }
 
-func (s *Service) SetSecret(ctx context.Context, id ID, key, value string) (Secret, error) {
+func (s *Service) SetSecret(ctx context.Context, id ID, key, value string) (result Secret, resultErr error) {
+	defer func() { s.record(ctx, "project.secret.set", auditTargetID(id), audit.Meta{"key": key}, resultErr) }()
+	if err := bind(s.authorizer, PermissionSecretsManage)(ctx, id); err != nil {
+		return Secret{}, err
+	}
 	if !ValidID(id) {
 		return Secret{}, ErrInvalidID
 	}
@@ -99,7 +124,11 @@ func (s *Service) SetSecret(ctx context.Context, id ID, key, value string) (Secr
 	return s.secrets.set(ctx, m, key, value)
 }
 
-func (s *Service) DeleteSecret(ctx context.Context, id ID, key string) error {
+func (s *Service) DeleteSecret(ctx context.Context, id ID, key string) (resultErr error) {
+	defer func() { s.record(ctx, "project.secret.delete", auditTargetID(id), audit.Meta{"key": key}, resultErr) }()
+	if err := bind(s.authorizer, PermissionSecretsManage)(ctx, id); err != nil {
+		return err
+	}
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
@@ -156,7 +185,13 @@ func (s *Service) WorkspaceForProject(ctx context.Context, id ID) (string, error
 
 // Create provisions a new project. callerEmail (if non-empty) is added to
 // the project's access list so the creator immediately has access.
-func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string) (Meta, error) {
+func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string) (result Meta, resultErr error) {
+	defer func() {
+		s.record(ctx, "project.create", auditProjectTarget(result.ID, result), audit.Meta{"slug": result.Slug, "status": string(result.Status)}, resultErr)
+	}()
+	if err := s.authorizer.Require(ctx, permission.Check{Permission: PermissionCreate, Scope: permission.PlatformScope()}); err != nil {
+		return Meta{}, err
+	}
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Meta{}, ErrNameRequired
@@ -196,7 +231,11 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 	return s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
 }
 
-func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
+func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (result Meta, resultErr error) {
+	defer func() { s.record(ctx, "project.rename", auditTargetID(id), nil, resultErr) }()
+	if err := bind(s.authorizer, PermissionControlsManage)(ctx, id); err != nil {
+		return Meta{}, err
+	}
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -212,7 +251,11 @@ var resourceSizePattern = regexp.MustCompile(`^[1-9][0-9]*(MiB|GiB|TiB)$`)
 // SetContainerLimits validates and persists project-level LXD overrides. The
 // running or stopped container is updated immediately; a missing container
 // retains the desired values in metadata for its next launch.
-func (s *Service) SetContainerLimits(ctx context.Context, id ID, limits ContainerLimits) (ContainerInspect, error) {
+func (s *Service) SetContainerLimits(ctx context.Context, id ID, limits ContainerLimits) (result ContainerInspect, resultErr error) {
+	defer func() { s.record(ctx, "project.container.limits", auditTargetID(id), nil, resultErr) }()
+	if err := bind(s.authorizer, PermissionControlsManage)(ctx, id); err != nil {
+		return ContainerInspect{}, err
+	}
 	if !ValidID(id) {
 		return ContainerInspect{}, ErrInvalidID
 	}
@@ -285,6 +328,11 @@ func limitsEmpty(limits ContainerLimits) bool {
 }
 
 func (s *Service) Reorder(ctx context.Context, ids []ID) ([]Meta, error) {
+	for _, id := range ids {
+		if err := bind(s.authorizer, PermissionControlsManage)(ctx, id); err != nil {
+			return nil, err
+		}
+	}
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -312,7 +360,11 @@ func (s *Service) Reorder(ctx context.Context, ids []ID) ([]Meta, error) {
 	return out, nil
 }
 
-func (s *Service) Delete(ctx context.Context, id ID) error {
+func (s *Service) Delete(ctx context.Context, id ID) (resultErr error) {
+	defer func() { s.record(ctx, "project.delete", auditTargetID(id), nil, resultErr) }()
+	if err := bind(s.authorizer, PermissionControlsManage)(ctx, id); err != nil {
+		return err
+	}
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
@@ -342,7 +394,21 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *Service) Start(ctx context.Context, id ID) (Meta, error) {
+// Start converges one project to RUNNING on behalf of the actor in ctx, who
+// must hold projects.lifecycle.manage for it. Trusted internal callers that
+// need the container running use an explicit system context or the
+// unexported start.
+func (s *Service) Start(ctx context.Context, id ID) (result Meta, resultErr error) {
+	defer func() { s.record(ctx, "project.container.start", auditTargetID(id), nil, resultErr) }()
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
+	}
+	return s.start(ctx, id)
+}
+
+// start is Start without authorization, for callers inside this package that
+// are already acting under another permission.
+func (s *Service) start(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -385,7 +451,11 @@ var ErrProjectBusy = errors.New("project has an active agent process")
 
 // Upgrade replaces one project container through the same convergence path
 // used by normal starts. Legacy agent homes are migrated before deletion.
-func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, error) {
+func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (result Meta, resultErr error) {
+	defer func() { s.record(ctx, "project.container.recycle", auditTargetID(id), nil, resultErr) }()
+	if err := bind(s.authorizer, PermissionControlsManage)(ctx, id); err != nil {
+		return Meta{}, err
+	}
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -444,9 +514,10 @@ func (s *Service) setStartError(ctx context.Context, id ID, cause error) (Meta, 
 	return m, cause
 }
 
-func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
-	if !ValidID(id) {
-		return Meta{}, ErrInvalidID
+func (s *Service) Stop(ctx context.Context, id ID) (result Meta, resultErr error) {
+	defer func() { s.record(ctx, "project.container.stop", auditTargetID(id), nil, resultErr) }()
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
@@ -467,9 +538,10 @@ func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
 // from the host kernel and needs no cooperation from processes inside. A
 // missing container is launched instead, so Restart always converges on a
 // running workspace.
-func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
-	if !ValidID(id) {
-		return Meta{}, ErrInvalidID
+func (s *Service) Restart(ctx context.Context, id ID) (result Meta, resultErr error) {
+	defer func() { s.record(ctx, "project.container.restart", auditTargetID(id), nil, resultErr) }()
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
@@ -508,6 +580,10 @@ func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect
 		return ContainerInspect{}, err
 	}
 	info.LimitOverrides = m.ResourceLimits
+	if s.storage != nil {
+		usage := s.storage.Read(ctx, m.Cwd)
+		info.PersistentStorage = &usage
+	}
 	return info, nil
 }
 
@@ -515,9 +591,10 @@ func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect
 // and returns a fresh inspection once an IPv4 address is back (or after a
 // short grace period if DHCP is slow). Manual recovery for the
 // networkd-dropped-lease failure mode.
-func (s *Service) RepairNetwork(ctx context.Context, id ID) (ContainerInspect, error) {
-	if !ValidID(id) {
-		return ContainerInspect{}, ErrInvalidID
+func (s *Service) RepairNetwork(ctx context.Context, id ID) (result ContainerInspect, resultErr error) {
+	defer func() { s.record(ctx, "project.container.repair-network", auditTargetID(id), nil, resultErr) }()
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return ContainerInspect{}, err
 	}
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -555,6 +632,9 @@ func hasIPv4(info ContainerInspect) bool {
 }
 
 func (s *Service) ListContainerApps(ctx context.Context, id ID) ([]ContainerApp, error) {
+	if err := workspaceaccess.Require(ctx, s.authorizer, "browser", string(id)); err != nil {
+		return nil, err
+	}
 	if !ValidID(id) {
 		return nil, ErrInvalidID
 	}
@@ -577,8 +657,12 @@ func (s *Service) TouchAgentBrowserActivity(ctx context.Context, id ID) {
 // StartAgentBrowser ensures the project's container is running, records the
 // Agent Browser as starting, and provisions the stack in the background.
 // Idempotent while a start is already in flight.
-func (s *Service) StartAgentBrowser(ctx context.Context, id ID) (AgentBrowserInfo, error) {
-	m, err := s.Start(ctx, id)
+func (s *Service) StartAgentBrowser(ctx context.Context, id ID) (result AgentBrowserInfo, resultErr error) {
+	defer func() { s.record(ctx, "project.browser.start", auditTargetID(id), nil, resultErr) }()
+	if err := workspaceaccess.Require(ctx, s.authorizer, "browser", string(id)); err != nil {
+		return AgentBrowserInfo{}, err
+	}
+	m, err := s.start(ctx, id)
 	if err != nil {
 		return AgentBrowserInfo{}, err
 	}
@@ -588,6 +672,9 @@ func (s *Service) StartAgentBrowser(ctx context.Context, id ID) (AgentBrowserInf
 // AgentBrowserStatus returns split core/view browser state and records a
 // heartbeat so an open pane keeps the idle reaper from tearing down the stack.
 func (s *Service) AgentBrowserStatus(ctx context.Context, id ID) (AgentBrowserInfo, error) {
+	if err := workspaceaccess.Require(ctx, s.authorizer, "browser", string(id)); err != nil {
+		return AgentBrowserInfo{}, err
+	}
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return AgentBrowserInfo{}, err
@@ -598,7 +685,11 @@ func (s *Service) AgentBrowserStatus(ctx context.Context, id ID) (AgentBrowserIn
 // StopAgentBrowser tears down the Agent Browser stack in the project's
 // container, leaving the container running and the persistent browser
 // profile on disk so logins survive.
-func (s *Service) StopAgentBrowser(ctx context.Context, id ID) error {
+func (s *Service) StopAgentBrowser(ctx context.Context, id ID) (resultErr error) {
+	defer func() { s.record(ctx, "project.browser.stop", auditTargetID(id), nil, resultErr) }()
+	if err := workspaceaccess.Require(ctx, s.authorizer, "browser", string(id)); err != nil {
+		return err
+	}
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return err
@@ -607,7 +698,11 @@ func (s *Service) StopAgentBrowser(ctx context.Context, id ID) error {
 }
 
 // StopAgentBrowserView tears down only the human noVNC layer.
-func (s *Service) StopAgentBrowserView(ctx context.Context, id ID) error {
+func (s *Service) StopAgentBrowserView(ctx context.Context, id ID) (resultErr error) {
+	defer func() { s.record(ctx, "project.browser.stop", auditTargetID(id), nil, resultErr) }()
+	if err := workspaceaccess.Require(ctx, s.authorizer, "browser", string(id)); err != nil {
+		return err
+	}
 	m, err := s.Get(ctx, id)
 	if err != nil {
 		return err
@@ -676,6 +771,9 @@ func (s *Service) HasAccess(ctx context.Context, id ID, email string) (bool, err
 
 // ListAccess returns the sorted, normalized membership list for a project.
 func (s *Service) ListAccess(ctx context.Context, id ID) ([]string, error) {
+	if err := s.requireAccess(ctx, id); err != nil {
+		return nil, err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
@@ -684,7 +782,11 @@ func (s *Service) ListAccess(ctx context.Context, id ID) ([]string, error) {
 
 // AddAccess adds email to the project's membership list. Caller is
 // responsible for verifying the email belongs to a registered user.
-func (s *Service) AddAccess(ctx context.Context, id ID, email string) error {
+func (s *Service) AddAccess(ctx context.Context, id ID, email string) (resultErr error) {
+	defer func() { s.record(ctx, "project.member.add", auditTargetID(id), audit.Meta{"member": email}, resultErr) }()
+	if err := s.requireAccess(ctx, id); err != nil {
+		return err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}
@@ -692,7 +794,13 @@ func (s *Service) AddAccess(ctx context.Context, id ID, email string) error {
 }
 
 // RemoveAccess deletes email from the project's membership list.
-func (s *Service) RemoveAccess(ctx context.Context, id ID, email string) error {
+func (s *Service) RemoveAccess(ctx context.Context, id ID, email string) (resultErr error) {
+	defer func() {
+		s.record(ctx, "project.member.remove", auditTargetID(id), audit.Meta{"member": email}, resultErr)
+	}()
+	if err := s.requireAccess(ctx, id); err != nil {
+		return err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}

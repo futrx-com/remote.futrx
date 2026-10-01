@@ -30,6 +30,7 @@ export function MessageBlock({
       <UserMessage
         text={block.text}
         t={block.t}
+        userEmail={block.userEmail}
         chatId={chatId}
         cwd={cwd}
         onRewind={onRewind}
