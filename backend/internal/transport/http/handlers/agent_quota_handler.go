@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
@@ -18,8 +20,9 @@ type AgentQuotaService interface {
 
 // AgentQuotaHandler serves the Usage tab's plan-limits section.
 type AgentQuotaHandler struct {
-	quota AgentQuotaService
-	auth  *serviceauth.Service
+	accountAccess *agentaccountaccess.Service
+	quota         AgentQuotaService
+	auth          *serviceauth.Service
 }
 
 // agentQuotaResponse lists readings by provider account. Account IDs are the
@@ -30,6 +33,11 @@ type agentQuotaResponse struct {
 
 func NewAgentQuotaHandler(quota AgentQuotaService, auth *serviceauth.Service) *AgentQuotaHandler {
 	return &AgentQuotaHandler{quota: quota, auth: auth}
+}
+
+func (h *AgentQuotaHandler) WithAccountAccess(access *agentaccountaccess.Service) *AgentQuotaHandler {
+	h.accountAccess = access
+	return h
 }
 
 func (h *AgentQuotaHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -61,7 +69,22 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.quota.Refresh(r.Context())
-	sendAgentQuota(w, h.quota.View())
+	accounts := h.quota.View()
+	if h.accountAccess != nil {
+		visible := make([]agentquota.AccountView, 0, len(accounts))
+		for _, a := range accounts {
+			allowed, err := h.accountAccess.CanViewAccount(r.Context(), agent.ProviderID(a.Provider), a.AccountID)
+			if err != nil {
+				sendPermissionError(w, err)
+				return
+			}
+			if allowed {
+				visible = append(visible, a)
+			}
+		}
+		accounts = visible
+	}
+	sendAgentQuota(w, accounts)
 }
 
 func sendAgentQuota(w http.ResponseWriter, accounts []agentquota.AccountView) {

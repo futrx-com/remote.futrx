@@ -1,3 +1,4 @@
+import { usePermissions } from "../../state/hooks/permissions/usePermissions";
 import type { ChatMeta } from "../../models/chat";
 import type { WorkspaceSidebarModel } from "../../models/workspace.ts";
 import type { WorkspaceSearch } from "../../state/hooks/workspace/useWorkspaceSearch";
@@ -70,6 +71,7 @@ export function Sidebar({
   onOpenSettings?: () => void;
   onSignOut: () => void;
 }) {
+  const canCreateProject = usePermissions()["projects.project.create"] === true;
   const sidebarWidth = sidebarCollapsed ? "md:w-[64px]" : "md:w-[300px]";
   const expandedOnly = sidebarCollapsed ? "md:hidden" : "";
   const searching = search.isSearching;
@@ -113,7 +115,7 @@ export function Sidebar({
             <div class={`flex items-center gap-1 ${expandedOnly}`}>
               <ExtensionSlot name={EXTENSION_SLOTS.sidebarHeaderActions} />
             </div>
-            <button
+            {canCreateProject && (<button
               type="button"
               onClick={onNewProject}
               class={`${ghostIconClass} ${expandedOnly}`}
@@ -121,7 +123,7 @@ export function Sidebar({
               title="New project"
             >
               <Plus class="w-4 h-4" />
-            </button>
+            </button>)}
             <button
               type="button"
               onClick={onToggleSidebar}
@@ -149,7 +151,7 @@ export function Sidebar({
 
         {sidebarCollapsed && (
           <div class="hidden md:flex flex-col items-center gap-1 px-2 pb-2">
-            <button
+            {canCreateProject && (<button
               type="button"
               onClick={onNewProject}
               class={ghostIconClass}
@@ -157,7 +159,7 @@ export function Sidebar({
               title="New project"
             >
               <Plus class="w-4 h-4" />
-            </button>
+            </button>)}
             <button
               type="button"
               onClick={onOpenPalette}

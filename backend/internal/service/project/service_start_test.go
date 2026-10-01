@@ -17,7 +17,7 @@ func TestStartPersistsAndReturnsLaunchError(t *testing.T) {
 		Status:        StatusMissing,
 	}}
 	lifecycle := &startTestLifecycle{state: ContainerStateMissing, launchErr: wantErr}
-	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil, WithAuthorizer(allowAllAuthorizer{}))
 
 	got, err := service.Start(context.Background(), repo.meta.ID)
 	if !errors.Is(err, wantErr) {
@@ -39,7 +39,7 @@ func TestConcurrentStartSerializesContainerEnsure(t *testing.T) {
 		Status:        StatusRunning,
 	}}
 	lifecycle := &startTestLifecycle{state: ContainerStateMissing}
-	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil, WithAuthorizer(allowAllAuthorizer{}))
 
 	start := make(chan struct{})
 	errs := make(chan error, 2)
@@ -97,7 +97,7 @@ func TestStartDelegatesFrozenRecoveryToContainerEnsure(t *testing.T) {
 		Status:        StatusRunning,
 	}}
 	lifecycle := &startTestLifecycle{state: ContainerStateFrozen}
-	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil, WithAuthorizer(allowAllAuthorizer{}))
 
 	got, err := service.Start(context.Background(), repo.meta.ID)
 	if err != nil {
@@ -126,7 +126,7 @@ func TestUpgradeSkipsBusyProjectUnlessExplicitlyIncluded(t *testing.T) {
 	}}
 	lifecycle := &startTestLifecycle{state: ContainerStateRunning, busy: true}
 	browser := &upgradeTestBrowser{}
-	service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Browser: browser}, nil, nil)
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Browser: browser}, nil, nil, WithAuthorizer(allowAllAuthorizer{}))
 
 	if _, err := service.Upgrade(context.Background(), repo.meta.ID, false); !errors.Is(err, ErrProjectBusy) {
 		t.Fatalf("Upgrade() error = %v, want busy", err)
@@ -215,7 +215,7 @@ func TestRunStateTransitionsWaitForConcurrentStart(t *testing.T) {
 				releaseLaunch:   releaseLaunch,
 				transitionCalls: transitionCalls,
 			}
-			service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+			service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil, WithAuthorizer(allowAllAuthorizer{}))
 
 			startResult := make(chan error, 1)
 			go func() {

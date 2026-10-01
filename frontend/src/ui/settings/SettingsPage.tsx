@@ -1,3 +1,4 @@
+import { PermissionsSettings } from "./PermissionsSettings";
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
@@ -263,6 +264,7 @@ export function SettingsPage({
             {activeTab === "users" && (
               <div class="space-y-4">
                 {isAdmin && <GoogleOAuthSettings />}
+                <PermissionsSettings />
                 <UsersPanel
                   currentEmail={currentEmail}
                   isAdmin={isAdmin}

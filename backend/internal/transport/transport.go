@@ -86,7 +86,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Auth,
 	)
 	usageHandler := httphandlers.NewUsageHandler(deps.Services.Usage, deps.Services.Auth)
-	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth)
+	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth).WithAccountAccess(deps.Services.AccountAccess)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,
 		deps.Services.ChatAccess,
@@ -113,12 +113,13 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			applicationsHandler,
 		).WithUsage(usageHandler).WithShares(deps.Services.Shares),
 		Applications: applicationsHandler,
+		Permissions:  httphandlers.NewPermissionsHandler(deps.Services.Permissions).WithAccounts(deps.Services.AccountAccess),
 		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
 			deps.Services.Agents,
-		),
+		).WithAccountAccess(deps.Services.AccountAccess),
 		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
@@ -142,7 +143,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		TerminalWS:       terminalSocket,
 		ChatWS:           chatSocket,
 		WorkspaceWS:      workspaceSocket,
-		AgentAuthWS:      wstransport.NewAgentAuthSocket(agentAuthBindings),
+		AgentAuthWS:      wstransport.NewAgentAuthSocket(agentAuthBindings).WithAccountAccess(deps.Services.AccountAccess),
 		Auth:             auth,
 		Middleware:       middleware,
 		Static:           httptransport.NewStaticHandler(deps.Static),

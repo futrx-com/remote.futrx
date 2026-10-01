@@ -373,7 +373,7 @@ func echoCodexValidator(email string) func(context.Context, json.RawMessage) (ag
 
 func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
 	t.Helper()
-	auth, err := NewAuth(agentauth.NewAccountVault(store))
+	auth, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{}))
 	if err != nil {
 		t.Fatal(err)
 	}

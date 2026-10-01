@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
+	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
@@ -16,9 +18,10 @@ import (
 // agent module catalog. Provider packages configure those flows; HTTP owns only
 // route, access-control, and response policy.
 type AgentAuthHandler struct {
-	bindings []agentauth.Binding
-	modules  agentModuleDescriptors
-	auth     *serviceauth.Service
+	accountAccess *agentaccountaccess.Service
+	bindings      []agentauth.Binding
+	modules       agentModuleDescriptors
+	auth          *serviceauth.Service
 }
 
 type agentModuleDescriptors interface {
@@ -40,13 +43,18 @@ func NewAgentAuthHandler(
 	return handler
 }
 
+func (h *AgentAuthHandler) WithAccountAccess(access *agentaccountaccess.Service) *AgentAuthHandler {
+	h.accountAccess = access
+	return h
+}
+
 func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/agent-auth", h.handleCatalog)
 	for _, binding := range h.bindings {
 		binding := binding
 		prefix := "/api/" + string(binding.ID())
 		mux.HandleFunc(prefix+"/auth-status", func(w http.ResponseWriter, r *http.Request) {
-			h.handleStatus(binding, w)
+			h.handleStatus(binding, w, r)
 		})
 
 		switch binding.Flow() {
@@ -132,6 +140,14 @@ func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request)
 			status.Authenticated = true
 		} else if binding, ok := bindings[string(descriptor.ID)]; ok {
 			status = binding.Snapshot()
+			if h.accountAccess != nil {
+				var err error
+				status, err = h.accountAccess.Visible(r.Context(), binding.ID(), status)
+				if err != nil {
+					sendPermissionError(w, err)
+					return
+				}
+			}
 		}
 		var apiKey *agentAuthAPIKeyResponse
 		if descriptor.APIKeyAuth != nil {
@@ -160,7 +176,13 @@ func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request)
 
 // Status remains open to every registered user. The outer authentication
 // middleware owns that registration gate when user auth is enabled.
-func (h *AgentAuthHandler) handleStatus(binding agentauth.Binding, w http.ResponseWriter) {
+func (h *AgentAuthHandler) handleStatus(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+	if h.accountAccess != nil && agentauth.RestrictedProvider(binding.ID()) {
+		if err := h.accountAccess.RequireManage(r.Context()); err != nil {
+			sendPermissionError(w, err)
+			return
+		}
+	}
 	httptransport.SendJSON(w, http.StatusOK, binding.Status())
 }
 
@@ -353,6 +375,8 @@ func (h *AgentAuthHandler) handleAccountDelete(binding agentauth.Binding, w http
 func (h *AgentAuthHandler) sendAccountError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	switch {
+	case errors.Is(err, rbac.ErrDenied), errors.Is(err, rbac.ErrActorRequired):
+		status = http.StatusForbidden
 	case errors.Is(err, agentauth.ErrAccountLabelRequired), errors.Is(err, agentauth.ErrAccountLabelInvalid), errors.Is(err, agentauth.ErrAccountLabelConflict):
 		status = http.StatusBadRequest
 	case errors.Is(err, agentauth.ErrAccountNotFound):

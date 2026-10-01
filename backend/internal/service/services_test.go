@@ -86,7 +86,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init session registry store: %v", err)
 	}
-	auth, err := newAuth(
+	auth, err := NewAuth(
 		context.Background(),
 		fileauth.New(t.TempDir()),
 		nil,
@@ -102,7 +102,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 		},
 	)
 	if err != nil {
-		t.Fatalf("newAuth: %v", err)
+		t.Fatalf("NewAuth: %v", err)
 	}
 	if auth.GoogleOAuthEnabled() {
 		t.Fatal("Google OAuth unexpectedly enabled")
@@ -148,8 +148,26 @@ func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	twoFactorStore, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionRegistryStore, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth, err := NewAuth(
+		context.Background(), fileauth.New(t.TempDir()), nil, "https://remote.example.com",
+		twoFactorStore, sessionRegistryStore, AuthOptions{
+			PendingLoginTTL: time.Minute, EnrollmentTTL: time.Minute, RecoveryCodeCount: 10,
+			SessionHistoryLimit: 20, SetupTokenTTL: time.Minute,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = New(context.Background(), Dependencies{
-		Auth:         fileauth.New(t.TempDir()),
+		Auth:         auth,
 		AgentModules: catalog,
 	})
 	if !errors.Is(err, agentmodule.ErrNoAccessGate) {

@@ -5,12 +5,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 type Service struct {
+	accountAccess        AccountAccess
+	selectionMu          sync.Mutex
+	authorizer           Authorizer
 	repo                 Repository
 	transcriptEvents     TranscriptEventSource
 	transcriptWindow     TranscriptEventWindowSource
@@ -69,10 +73,11 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
-		repo:     repo,
-		projects: projects,
-		tmux:     tmux,
-		runs:     runs,
+		repo:       repo,
+		authorizer: systemOnlyAuthorizer{},
+		projects:   projects,
+		tmux:       tmux,
+		runs:       runs,
 	}
 	for _, option := range options {
 		option(service)
@@ -103,6 +108,9 @@ func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
+	if err := s.requireCreate(ctx, in.ProjectID); err != nil {
+		return Meta{}, err
+	}
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = "New chat"
@@ -117,6 +125,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 		return Meta{}, ErrInvalidProvider
 	}
 
+	if err := s.requireAccount(ctx, provider, in.AccountID); err != nil {
+		return Meta{}, err
+	}
 	cwd := strings.TrimSpace(in.Cwd)
 	if cwd == "" && in.ProjectID != "" && s.projects != nil {
 		projectCwd, err := s.projects.WorkspaceForProject(ctx, in.ProjectID)
@@ -166,6 +177,12 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	}
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireCreate(ctx, src.ProjectID); err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireAccount(ctx, src.Provider, src.AccountID); err != nil {
 		return Meta{}, err
 	}
 	if !s.validProviderScope(src.Provider, src.ProjectID) {
@@ -232,6 +249,10 @@ func (s *Service) appendCopiedEvent(ctx context.Context, id ID, event Event) (Ev
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
+	// Serialize selections so the authorization preflight and update see the
+	// same provider/account pair. Run-side credential checks remain independent.
+	s.selectionMu.Lock()
+	defer s.selectionMu.Unlock()
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -246,6 +267,24 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		nextProvider, valid = s.providerForScope(*in.Provider, current.ProjectID)
 		if !valid {
 			return Meta{}, ErrInvalidProvider
+		}
+	}
+
+	if in.Provider != nil || in.AccountID != nil {
+		current, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return Meta{}, err
+		}
+		selectedProvider, selectedID := current.Provider, current.AccountID
+		if in.Provider != nil && nextProvider != current.Provider {
+			selectedProvider = nextProvider
+			selectedID = ""
+		}
+		if in.AccountID != nil {
+			selectedID = strings.TrimSpace(*in.AccountID)
+		}
+		if err := s.requireAccount(ctx, selectedProvider, selectedID); err != nil {
+			return Meta{}, err
 		}
 	}
 
