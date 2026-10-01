@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "preact/hooks";
 import { CHAT_FIND_SKIP_ATTRIBUTE } from "../../../config/chat.ts";
 import type { ChatFind } from "../../../state/hooks/chat/useChatFind";
+import { shortcutService } from "../../../services/platform/shortcutService.ts";
 import { ArrowDown, ArrowUp, Search, X } from "../../primitives/icons";
 
 const stepButtonClass =
@@ -16,10 +17,13 @@ const stepButtonClass =
 export function ChatFindBar({
   find,
   hasUnloadedMessages,
+  label = "Find in chat",
 }: {
   find: ChatFind;
   /** Older messages exist on the server, so the thread is not all here yet. */
   hasUnloadedMessages: boolean;
+  /** The bar's placeholder and accessible name; the terminal reuses this bar. */
+  label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -42,7 +46,7 @@ export function ChatFindBar({
       class="absolute right-3 top-3 z-30 flex max-w-[calc(100%-1.5rem)] flex-col gap-1
              rounded-card border border-line bg-raised px-2 py-1.5 shadow-pop"
       role="search"
-      aria-label="Find in chat"
+      aria-label={label}
     >
       <div class="flex items-center gap-1.5">
         <Search class="h-3.5 w-3.5 flex-none text-ink-400" />
@@ -56,13 +60,19 @@ export function ChatFindBar({
             if (event.key === "Enter") {
               event.preventDefault();
               event.shiftKey ? find.previous() : find.next();
+            } else if (shortcutService.isFind(event)) {
+              // Cmd/Ctrl+F again re-selects the query, as a browser's find
+              // does, and stays with this bar rather than opening another.
+              event.preventDefault();
+              event.stopPropagation();
+              event.currentTarget.select();
             }
           }}
-          placeholder="Find in chat"
+          placeholder={label}
           class="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
           autocomplete="off"
           spellcheck={false}
-          aria-label="Find in chat"
+          aria-label={label}
         />
         <span
           class={`flex-none tabular-nums text-[11px] ${

@@ -14,7 +14,7 @@ export function ToolGroup({
   parts: ToolPart[];
   startIndex: number;
   chatId?: string;
-  onAnswerQuestion?: (text: string) => void;
+  onAnswerQuestion?: (text: string) => boolean;
 }) {
   const status = parts.some((part) => part.status === "running") ? "running" : "done";
   const isError = parts.some((part) => part.isError);

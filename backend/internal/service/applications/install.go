@@ -295,6 +295,9 @@ func resolveEnv(application Application, provided map[string]string) (map[string
 			return nil, fmt.Errorf("%w: %s", ErrRequiredEnv, e.Key)
 		}
 		if v != "" {
+			if err := ValidateEnvValue(e, v); err != nil {
+				return nil, err
+			}
 			out[e.Key] = v
 		}
 	}

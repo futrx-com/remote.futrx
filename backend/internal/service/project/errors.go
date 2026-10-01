@@ -10,4 +10,7 @@ var (
 	ErrInvalidSecretKey   = errors.New("invalid secret key (must match [A-Za-z_][A-Za-z0-9_]*)")
 	ErrInvalidLimits      = errors.New("invalid container resource limits")
 	ErrSecretsUnavailable = errors.New("secrets store is not configured")
+	// ErrInsufficientStorage means the host cannot hold another project
+	// container. Callers wrap it with the numbers that explain why.
+	ErrInsufficientStorage = errors.New("not enough disk space")
 )

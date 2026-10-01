@@ -3,13 +3,14 @@ import type { MediaKind } from "../../../models/files";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
 import { API_ROUTES, isChatMediaOpenUrl } from "../../../config/routes";
-import { internalPathOpenUrl } from "../ideLinks";
+import { internalPathOpenUrl } from "../../../services/files/workspaceLinkService.ts";
+import { useWorkspaceFileUrl } from "../../../state/hooks/chat/useWorkspaceFileUrl.ts";
 import { File as FileIcon } from "../../primitives/icons";
 
 // Renders the file attachments that the chat composer tucked into a user
 // message. Images render as thumbnails and other viewable media (video, audio,
 // PDF) as chips; both open the in-app media viewer. The rest render as
-// IDE-link chips that open the file in code.
+// file chips that use an installed opener when available.
 export function AttachmentPreviews({
   paths,
   chatId,
@@ -101,9 +102,10 @@ function AttachmentFile({
   cwd?: string;
   mediaKind: MediaKind | null;
 }) {
-  // Picks the IDE open URL when the path is inside a workspace; otherwise
-  // shows the bare path as a label.
-  const internalUrl = internalPathOpenUrl(path, { chatId, cwd });
+  // Picks the installed file opener or the chat download URL for workspace
+  // paths; otherwise shows the bare path as a label.
+  const openFileUrl = useWorkspaceFileUrl();
+  const internalUrl = internalPathOpenUrl(path, { chatId, cwd, openFileUrl });
   const label: ComponentChildren = (
     <span class="flex items-center gap-1.5 min-w-0">
       <FileIcon class="w-3.5 h-3.5 text-accent-blue flex-none" />

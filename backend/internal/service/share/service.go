@@ -19,9 +19,10 @@ import (
 // lifetime, and answers the edge's "may this anonymous request through?"
 // question.
 type Service struct {
-	repo     Repository
-	projects Projects
-	now      func() time.Time
+	repo          Repository
+	projects      Projects
+	now           func() time.Time
+	protectedPort func(int) bool
 }
 
 // Option customizes a Service at construction.
@@ -34,6 +35,23 @@ func WithClock(now func() time.Time) Option {
 			s.now = now
 		}
 	}
+}
+
+// WithProtectedPort reserves ports declared by installed application catalogs
+// from anonymous preview sharing. The callback is evaluated at each request so
+// uploaded package changes take effect without rebuilding the share service.
+func WithProtectedPort(protected func(int) bool) Option {
+	return func(s *Service) { s.protectedPort = protected }
+}
+
+func (s *Service) ShareablePort(port int) error {
+	if err := ShareablePort(port); err != nil {
+		return err
+	}
+	if s != nil && s.protectedPort != nil && s.protectedPort(port) {
+		return ErrPortNotShareable
+	}
+	return nil
 }
 
 func New(repo Repository, projects Projects, options ...Option) *Service {
@@ -58,7 +76,7 @@ func (s *Service) Create(
 	if !serviceproject.ValidID(projectID) {
 		return Created{}, serviceproject.ErrInvalidID
 	}
-	if err := ShareablePort(input.Port); err != nil {
+	if err := s.ShareablePort(input.Port); err != nil {
 		return Created{}, err
 	}
 	ttl, err := resolveTTL(input.TTLHours)
@@ -172,7 +190,7 @@ func (s *Service) Validate(
 	if s == nil || s.repo == nil || token == "" {
 		return AuthorizationGrant{}, false
 	}
-	if err := ShareablePort(port); err != nil {
+	if err := s.ShareablePort(port); err != nil {
 		return AuthorizationGrant{}, false
 	}
 	shares, ok := s.sharesForSlug(ctx, slug)
@@ -199,7 +217,7 @@ func (s *Service) Allows(ctx context.Context, slug string, port int, id ID) bool
 	if s == nil || s.repo == nil || id == "" {
 		return false
 	}
-	if err := ShareablePort(port); err != nil {
+	if err := s.ShareablePort(port); err != nil {
 		return false
 	}
 	shares, ok := s.sharesForSlug(ctx, slug)

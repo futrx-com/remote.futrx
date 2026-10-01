@@ -34,6 +34,29 @@ func TestLoadApplicationDiscoversDefaultInfrastructure(t *testing.T) {
 	}
 }
 
+func TestLoadApplicationReadsEditableJSONDefaultFromItsInfraFile(t *testing.T) {
+	catalog := minimalCatalog(`{
+		"name": "Example", "version": "1", "scopes": ["project"],
+		"env": [{"key": "SETTINGS_JSON", "format": "json", "defaultFile": "infra/settings.json"}]
+	}`)
+	catalog["applications/example/infra/install.sh"] = &fstest.MapFile{Data: []byte("true\n")}
+	catalog["applications/example/infra/settings.json"] = &fstest.MapFile{Data: []byte("{\"editor.fontSize\": 16}\n")}
+	application, _, err := loadApplication(catalog, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(application.Env) != 1 || application.Env[0].Default != "{\"editor.fontSize\": 16}\n" || application.Env[0].DefaultFile != "" {
+		t.Fatalf("resolved install setting = %+v", application.Env)
+	}
+	for _, invalid := range []string{"../other/application.json", "ui/settings.json", "infra/missing.json"} {
+		manifest := `{"name":"Example","version":"1","scopes":["project"],"env":[{"key":"SETTINGS_JSON","format":"json","defaultFile":"` + invalid + `"}]}`
+		catalog["applications/example/application.json"] = &fstest.MapFile{Data: []byte(manifest)}
+		if _, _, err := loadApplication(catalog, "example"); err == nil {
+			t.Errorf("accepted invalid defaultFile %q", invalid)
+		}
+	}
+}
+
 func TestLoadApplicationAllowsNoInfrastructure(t *testing.T) {
 	catalog := minimalCatalog(`{
 		"name": "Example",

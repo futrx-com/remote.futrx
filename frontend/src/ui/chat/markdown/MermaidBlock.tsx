@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "preact/hooks";
 import { FRONTEND_BUILD } from "../../../config/build.ts";
 import { SESSION_STORAGE_KEYS } from "../../../config/storageKeys.ts";
 import { AlertTriangle } from "../../primitives/icons";
-import { isChunkLoadError } from "./mermaidBlock.ts";
+import { isChunkLoadError } from "./mermaidSupport.ts";
 
 // A `flowchart` / `sequenceDiagram` / etc. block lifted out of the assistant
 // markdown and rendered through the mermaid library. Mermaid is large (~

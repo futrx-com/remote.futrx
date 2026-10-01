@@ -1,19 +1,20 @@
 # Caddyfile for remote.futrx — managed by infra/install.sh.
 #
-# Three site blocks:
+# Platform and application site blocks:
 #   1. ${HOSTNAME}            main chat UI + backend API
 #   2. code.${HOSTNAME}       code-server (VS Code in browser)
 #   3. *.dev.${HOSTNAME}      per-project dev URLs (<slug>--<port>.dev.<host>)
+#   4. *.apps.${HOSTNAME}     isolated installation origins (<instance-id>.apps.<host>)
 #
-# All three live behind the same Google admin session — code + dev URLs use
-# forward_auth, the main block hosts the OAuth endpoints themselves.
+# All use Remote authentication. Code + dev URLs use forward_auth; the
+# application gateway validates sessions and project membership itself.
 
 {
     # Email used for Let's Encrypt ACME registration. Set to a real address
     # if you want renewal-failure emails from LE.
     # email you@example.com
 
-    # On-demand TLS for the *.dev.${HOSTNAME} wildcard. Caddy queries the
+    # On-demand TLS for dev, code, and application subdomains. Caddy queries the
     # backend's /internal/tls-ask before issuing each cert so attackers
     # can't burn through ACME rate limits by hitting random subdomains.
     on_demand_tls {
@@ -28,6 +29,18 @@ ${HOSTNAME} {
     @internal path /internal/*
     handle @internal {
         respond 403
+    }
+    reverse_proxy 127.0.0.1:${SERVICE_PORT}
+}
+
+# One generic route for every project application. Remote resolves the
+# installation, verifies the session/project membership and running status,
+# then strips credentials before forwarding to the container. No application
+# edits Caddy, and no platform API or login page is served on these hosts.
+*.apps.${HOSTNAME} {
+    encode zstd gzip
+    tls {
+        on_demand
     }
     reverse_proxy 127.0.0.1:${SERVICE_PORT}
 }

@@ -1,19 +1,21 @@
 import { cloneElement } from "preact";
 import { memo } from "preact/compat";
 import { useMemo, useState } from "preact/hooks";
+import { useWorkspaceFileUrl } from "../../../state/hooks/chat/useWorkspaceFileUrl.ts";
 import { parseMarkdown } from "./blockParser";
 import { highlightCode } from "./highlight";
-import { renderInline } from "./inlineParser";
+import { renderInline, type InlineRenderContext } from "./inlineParser";
 import type { MarkdownBlock } from "./types";
 import { getTextAlignClass, isRtlText } from "./bidi";
 import { useRevealHeight } from "./useRevealHeight";
-import { isMermaidLanguage } from "./mermaidBlock";
+import { isMermaidLanguage } from "./mermaidSupport";
 import { MermaidBlock } from "./MermaidBlock";
 
 export function Markdown({ children, chatId, cwd }: { children: string; chatId?: string; cwd?: string }) {
+  const openFileUrl = useWorkspaceFileUrl();
   const docIsRtl = isRtlText(children);
   const blocks = useMemo(() => parseMarkdown(children), [children]);
-  const context: MarkdownRenderContext = { chatId, cwd, docIsRtl };
+  const context: MarkdownRenderContext = { chatId, cwd, openFileUrl, docIsRtl };
   return <>{blocks.map((block, index) => renderBlock(block, `md-${index}`, context))}</>;
 }
 
@@ -28,30 +30,31 @@ export function MarkdownBlocks({ blocks, chatId, cwd, streaming }: {
   cwd?: string;
   streaming: boolean;
 }) {
+  const openFileUrl = useWorkspaceFileUrl();
   return <>{blocks.map((block, index) => (
-    <StableMarkdownBlock key={`md-${index}`} block={block} chatId={chatId} cwd={cwd} streaming={streaming} />
+    <StableMarkdownBlock key={`md-${index}`} block={block} chatId={chatId} cwd={cwd} streaming={streaming} openFileUrl={openFileUrl} />
   ))}</>;
 }
 
-const StableMarkdownBlock = memo(function StableMarkdownBlock({ block, chatId, cwd, streaming }: {
+const StableMarkdownBlock = memo(function StableMarkdownBlock({ block, chatId, cwd, streaming, openFileUrl }: {
   block: MarkdownBlock;
   chatId?: string;
   cwd?: string;
   streaming: boolean;
+  openFileUrl: NonNullable<InlineRenderContext["openFileUrl"]>;
 }) {
   const [animate] = useState(streaming);
   const contentVersion = block.type === "list" ? block.items.length
     : block.type === "table" ? block.rows.length + 1 : 0;
   const elementRef = useRevealHeight<HTMLElement>(animate, contentVersion);
 
-  const rendered = renderBlock(block, "block", { chatId, cwd }, animate);
+  const rendered = renderBlock(block, "block", { chatId, cwd, openFileUrl }, animate);
   return animate ? cloneElement(rendered, { ref: elementRef }) : rendered;
 }, (previous, next) => previous.chatId === next.chatId && previous.cwd === next.cwd &&
+  previous.openFileUrl === next.openFileUrl &&
   JSON.stringify(previous.block) === JSON.stringify(next.block));
 
-interface MarkdownRenderContext {
-  chatId?: string;
-  cwd?: string;
+interface MarkdownRenderContext extends InlineRenderContext {
   docIsRtl?: boolean;
   isRtl?: boolean;
 }

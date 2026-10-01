@@ -6,9 +6,9 @@ Thanks for opening a PR! A few things that help the review go fast:
    the project board doesn't move.
 2. Branch from `qa`, not `main`. Open the PR against `qa`.
 3. Keep the diff focused on one issue. Open a follow-up issue for the rest.
-4. Run the relevant tests locally before pushing. CI does not run `go test`
-   today, so please run `go test ./...` from `backend/` and from the repo
-   root yourself.
+4. Run the relevant tests locally before pushing, including `go test ./...`
+   from `backend/` and from the repo root. CI runs them too, but a local run
+   catches failures before review.
 5. Sign off your commits (`git commit -s`). See CONTRIBUTING.md for why.
 -->
 

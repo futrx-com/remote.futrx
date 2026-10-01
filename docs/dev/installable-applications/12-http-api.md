@@ -311,7 +311,7 @@ has authorized:
 
 | Status | When |
 |---|---|
-| `400` | unknown application, unsupported scope, missing project id, missing required env, port out of range |
+| `400` | unknown application, unsupported scope, missing project id, missing required env, invalid JSON settings, port out of range |
 | `401` | no valid session |
 | `403` | admin-only route, non-admin caller |
 | `403` | an `access: admin` backend and a non-admin caller |
@@ -337,3 +337,47 @@ const path = context.projectId
   : "/api/applications";
 const response = await fetch(path, { credentials: "same-origin" });
 ```
+
+## Project application web routes
+
+`GET /apps/<project-slug>/<application-id>/<path>` is an authenticated launch
+link. The identifier is the **catalog application ID**. It redirects (302) to
+`https://<instance-id>.apps.<public-host>/<path>`, preserving escaped paths and
+queries. A bare launch URL redirects to the installation's root. HEAD is also
+supported; other launch methods return 405. No application bytes are served
+on the main Remote origin.
+
+The application hostname uses the installation's 12-character ID. Every
+request checks the registered platform session, project visibility (including
+administrator visibility), a current catalog `web.port`, and a running project
+installation. The host backend's `backend.access` does not change this policy.
+`/api`, `/auth`, and `/internal` on the application hostname belong to the
+application, never to Remote's platform router.
+
+The upstream is `http://<slug>.lxd:<web.port>/<path>`. The gateway preserves the
+method, escaped path, query and public Host; it supports WebSocket upgrades.
+It does not start stopped installations or recreate containers.
+
+| Result | Meaning |
+|---|---|
+| 302 | Launch redirect, or unauthenticated GET navigation to the platform login |
+| 401 | Missing/invalid session on an application write or WebSocket handshake |
+| 403 | Unregistered account or rejected cross-origin browser request |
+| 404 | Invalid app hostname/launch route, invisible project, unknown app, missing web declaration, or stopped/missing installation |
+| 405 | Launch method other than GET/HEAD |
+| 500 | Project or application lookup failed |
+| 502 | The reverse proxy cannot communicate with the upstream |
+| Upstream status | A proxied application response, including errors or redirects |
+
+The proxy removes **all** request cookies and `Authorization`, and response
+`Set-Cookie` and `Clear-Site-Data`. Applications relying on browser cookies are
+not supported by this gateway. Responses use `Cache-Control: private, no-store`.
+Paths and redirects need no prefix rewriting: relative assets, redirects and
+service workers stay on the installation's own origin. HTTP upstream
+connections are not pooled after requests complete.
+
+Browser Origin and Fetch Metadata checks reject cross-origin API requests,
+forms and WebSocket handshakes, including those from sibling app subdomains.
+See [13 — Security model](13-security-model.md#project-application-web-content).
+Catalog `web.port` values cannot be authorized by public preview share grants;
+this also applies to old grants after the catalog changes.

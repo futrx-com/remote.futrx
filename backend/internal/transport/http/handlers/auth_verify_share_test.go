@@ -244,6 +244,10 @@ type shareAuthorizerStub struct {
 	allows     bool
 }
 
+func (s *shareAuthorizerStub) ShareablePort(port int) error {
+	return serviceshare.ShareablePort(port)
+}
+
 func (s *shareAuthorizerStub) Validate(
 	_ context.Context, _ string, _ int, token string,
 ) (serviceshare.AuthorizationGrant, bool) {

@@ -329,7 +329,19 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 	var shareService *serviceshare.Service
 	if deps.ProjectShares != nil {
-		shareService = serviceshare.New(deps.ProjectShares, projectService)
+		shareService = serviceshare.New(deps.ProjectShares, projectService,
+			serviceshare.WithProtectedPort(func(port int) bool {
+				if deps.AppRegistry == nil {
+					return false
+				}
+				for _, application := range deps.AppRegistry.List() {
+					if application.Web != nil && application.Web.Port == port {
+						return true
+					}
+				}
+				return false
+			}),
+		)
 	}
 	var tmuxService *servicetmux.Service
 	if deps.TmuxClient != nil {
@@ -349,6 +361,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithLifecyclePublisher(deps.ApplicationLifecycle),
 			serviceapplications.WithEventSource(ctx, deps.ApplicationEvents),
 		)
+		projectService.SetContainerRestorer(applicationsService.RestoreProject)
 	}
 
 	pushNotifier.push = pushService

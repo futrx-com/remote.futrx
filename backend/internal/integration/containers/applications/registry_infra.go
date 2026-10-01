@@ -21,12 +21,12 @@ type applicationInfrastructure struct {
 	container   *svc.ApplicationContainer
 }
 
-// validateInstallScriptPath rejects manifest overrides outside the capability's
-// directory. It runs before other capability discovery so load errors retain
-// their established order.
-func validateInstallScriptPath(scriptPath string) error {
+// validateInfraScriptPath rejects manifest script paths outside the capability's
+// directory. Callers choose the label so install and uninstall retain their
+// distinct error messages and established validation order.
+func validateInfraScriptPath(scriptPath, operation string) error {
 	if scriptPath != "" && (!fs.ValidPath(scriptPath) || !strings.HasPrefix(scriptPath, "infra/")) {
-		return fmt.Errorf("install script must be inside infra/")
+		return fmt.Errorf("%s script must be inside infra/", operation)
 	}
 	return nil
 }

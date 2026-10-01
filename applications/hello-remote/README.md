@@ -155,7 +155,7 @@ memory, and uptime. Each has an independent **Refresh** action.
 
 Full documentation is in [`docs/dev/installable-applications/`](../../docs/dev/installable-applications/); the tutorial that builds an
 application from nothing is
-[07 — Tutorial](../../docs/dev/installable-applications/07-tutorial-build-a-backend.md).
+[07 — Tutorial](../../docs/dev/installable-applications/07-tutorial-build-an-application.md).
 
 ## Editing it
 

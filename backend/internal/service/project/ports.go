@@ -27,6 +27,9 @@ type ContainerLifecycle interface {
 	// Ensure converges a project to one complete, running container with all
 	// durable mounts attached.
 	Ensure(ctx context.Context, p Meta) error
+	// CheckCapacity reports ErrInsufficientStorage when the host cannot hold
+	// one more project container.
+	CheckCapacity(ctx context.Context) error
 	Busy(ctx context.Context, containerName string) (bool, error)
 	Start(ctx context.Context, containerName string) error
 	Stop(ctx context.Context, containerName string) error

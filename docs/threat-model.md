@@ -49,9 +49,10 @@ machine and guardrails.
 | 14 | Login rate limiter bypassed via `X-Forwarded-For` spoofing | Web | Spoofing | **Medium** | ✓ |
 | 15 | `/ws/workspace` leaks other users' project/chat metadata | Web | Information disclosure | **Medium** | ✓ |
 | 16 | Stateless 30-day sessions with no revocation | Web | Spoofing | **Medium** | ✓ |
-| 17 | No CSRF tokens and WebSocket origin checks disabled | Web | Tampering | **Medium** | cited |
+| 17 | Cross-origin browser requests / WebSocket handshakes | Web | Tampering | Mitigated (previously **Medium**) | tests |
 | 18 | Secrets/OAuth key plaintext at rest; leaked `session.key` forges admin sessions forever | Secrets | Elevation of privilege | **Medium** | cited |
 | 19 | `return_to` open redirect into untrusted preview/IDE subdomains | Web | Spoofing | **Low** | cited |
+| 20 | Project application content shares the platform browser origin | Web | Elevation of privilege | Mitigated (previously **High**) | Go + Chromium tests |
 
 ¹ Conditional — see finding 11 for the precondition.
 
@@ -74,6 +75,25 @@ External users reach only Caddy, which terminates TLS and forwards to the loopba
 
 - **Existing mitigations:** Caddy `forward_auth` does require an authenticated, registered session, and strips platform cookies before proxying. The dev-preview URL path (`--<port>.dev`) *does* enforce membership — proving the mechanism exists and is simply not applied to the IDE host class.
 - **Residual gap:** no per-project membership check for the IDE/code hosts. This is documented as a known gap in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md), but the Caddyfile comments incorrectly call it "the same admin gate as the rest of the platform."
+
+### 20. Project application content shares the platform browser origin — mitigated
+
+The original `/apps/<project-slug>/<application-id>/` proxy would have served
+project-controlled scripts on the main Remote origin. Cookie stripping could
+not stop those scripts from making authenticated platform API calls.
+
+The route now only redirects to `<instance-id>.apps.<public-host>`. Host dispatch
+runs before the platform router, so app hosts cannot serve platform APIs or
+login pages. Every app request validates the session, project visibility and
+running installation, then strips cookies and Authorization before forwarding.
+Cross-origin browser API requests, forms and WebSockets are rejected, including
+same-site sibling origins; the main UI also rejects cross-origin framing and
+separates opener windows. Go and Chromium fixture tests cover these boundaries.
+See [application web security](dev/installable-applications/13-security-model.md#project-application-web-content).
+
+The platform session remains domain-scoped at the trusted gateway. This is
+browser isolation, not a sandbox for trusted UI extensions, host backends or
+project processes, and it does not fix the other host/network findings below.
 
 ### 11. Google OAuth authorizes on an unverified email — **High** (conditional) ✓ code-verified
 
@@ -113,12 +133,19 @@ External users reach only Caddy, which terminates TLS and forwards to the loopba
 - **Rate limiting.** `/auth/2fa/verify` shares the per-IP limiter used by password login (5 failures / 5 minutes), bounding brute force against the 6-digit space.
 - **Residual gap:** the rate limiter is per-process and per-IP, so it neither survives a restart nor constrains a distributed attacker.
 
-### 17. No CSRF tokens; WebSocket origin checks disabled — **Medium**
+### 17. Cross-origin requests and WebSockets — mitigated
 
-**Tampering.** No state-changing route carries a CSRF token, and the WS upgrader's `CheckOrigin` unconditionally returns true ([`http/websocket.go`](../backend/internal/transport/http/websocket.go)), including for the host-shell and container-shell sockets. Protection rests entirely on the `SameSite=Lax` cookie and the same-origin edge.
+Browser middleware now validates Origin against the destination scheme/host
+and rejects cross-origin Fetch Metadata for API reads, writes, forms and
+WebSocket handshakes. This includes sibling subdomains, which `SameSite=Lax`
+alone does not isolate. The WebSocket upgrader also uses Gorilla's default
+same-host Origin check instead of an unconditional allow.
 
-- **Existing mitigations:** `SameSite=Lax` does block script-initiated cross-site WS handshakes and POSTs in current browsers, so this is not exploitable from an unrelated origin today. OAuth uses a random state cookie.
-- **Residual gap:** protection is one cookie attribute deep with no defense-in-depth. Any regression to `SameSite=None`, or a content-injection foothold on a sibling subdomain, directly exposes host/container shells.
+Safe login/launch navigation remains allowed; OAuth still verifies its state
+cookie. Non-browser clients may omit Origin/Fetch Metadata but still require
+normal authentication and endpoint authorization. Browsers without Fetch
+Metadata do not get the full navigation/subresource protection. These checks
+do not protect against scripts already executing on the platform's own origin.
 
 ### 19. `return_to` open redirect into preview/IDE subdomains — **Low**
 

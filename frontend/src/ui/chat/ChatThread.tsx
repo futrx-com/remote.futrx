@@ -54,7 +54,7 @@ export function ChatThread({
   onHamburger: () => void;
   onScroll: () => void;
   onJumpToBottom: () => void;
-  onAnswerQuestion: (text: string) => void;
+  onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;

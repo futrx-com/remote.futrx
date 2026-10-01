@@ -24,15 +24,17 @@ Two things follow from "differs" rather than "is newer":
   deliberate rollback is therefore a real rollback.
 - **Not bumping the version means "nothing in a container changed".** That is
   the author's control. Re-upload the same version as often as you like while
-  iterating on a `ui/` or a `backend/`; no container is touched.
+  iterating on UI or host-backend source; those edits alone do not reinstall
+  the container. Changed `backend/container/` source or a replaced container
+  still requires convergence independently of the manifest version.
 
 ## What re-runs, and what does not
 
 | Part of an application | When it refreshes |
 |---|---|
-| `infra/install.sh` | Only when the version differs |
-| Manifest `service` | On install/upgrade; start and stop then use the installed unit |
-| `backend/container/` programs | When their source digest or application version differs |
+| `infra/install.sh` | Initial install, failed-install Retry, version/container-build upgrade, running-app restoration after container replacement, or Start when the declared service-unit check fails |
+| Manifest `service` | Materialized on install, upgrade and restoration; normal Start uses its service or socket, and reinstalls if the declared service unit is missing |
+| `backend/container/` programs | On install/restoration when their build marker is absent, or when their source digest/application version differs |
 | `ui/` assets | Every upload — they are served from the catalog, not a container |
 | `backend/` Go source | Every upload — the backend process is stopped and rebuilt on its next call |
 | Catalog metadata (name, description, env fields, scopes) | Every upload |
@@ -53,6 +55,34 @@ badged in the UI with the version it will move to, and upgrades the moment its
 owner starts it. This is also how a copy that was down during a Remote release
 catches up with a built-in application that changed version.
 
+## Container replacement recovery
+
+`RestoreProject(projectID)` re-runs installation for persisted `running`
+applications with container capabilities after project container recreation,
+even when their version is unchanged. The project start path calls it after
+recreating a missing container; `cmd/upgrade-workspaces` calls it after a
+successful workspace upgrade and loads uploaded packages as well as the
+embedded catalog. Stopped/error/installing instances and apps without container
+capabilities are skipped.
+
+Recovery rechecks each instance under a nonblocking lifecycle lock. A busy
+instance is skipped without queuing a retry. It reconciles saved env values
+against the current manifest, stops the old host backend, installs into the
+replacement container, and records current application/build versions. The
+backend comes back on its next authorized call. Individual failures are
+collected so other applications can still be restored.
+
+Project start logs recovery failures without failing the whole project start.
+The upgrade command counts recovery failure as a failed workspace upgrade,
+without rolling the new container back. Recovery does not restore arbitrary
+application data; scripts must use durable storage and tolerate repeated runs.
+
+A stopped application remains stopped. When explicitly started, its declared
+service unit is checked; a failed existence check invokes the full installer.
+This is not complete package detection and does not repair a script-only app
+with no service declaration merely because its files disappeared. See the
+[state and failure table](24-application-container-recovery.md#recovering-after-container-replacement).
+
 ## What an upgrade preserves
 
 A re-install replaces software, not identity. The instance keeps:
@@ -61,10 +91,11 @@ A re-install replaces software, not identity. The instance keeps:
   project install;
 - its host port and bind address, so nothing that already connects to it has to
   be repointed;
-- its resolved environment, including generated passwords.
+- values for still-declared environment keys, including generated passwords;
+  new keys receive defaults/generators and removed keys are discarded.
 
-Which means an upgrade is invisible to clients apart from the restart the
-install script itself performs.
+Clients keep the same connection address, but service/backend restarts and
+application-owned migrations can still interrupt them.
 
 ## Install scripts must be idempotent
 

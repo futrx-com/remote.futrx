@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isChunkLoadError, isMermaidLanguage } from "./mermaidBlock.ts";
+import { isChunkLoadError, isMermaidLanguage } from "./mermaidSupport.ts";
 
 test("recognizes mermaid language tag case-insensitively", () => {
   assert.equal(isMermaidLanguage("mermaid"), true);

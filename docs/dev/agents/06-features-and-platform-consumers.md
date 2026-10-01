@@ -215,7 +215,7 @@ catalog order. `GET /api/agent-capabilities` supplies the frontend with all
 provider/model options for the selected host/project environment. The
 frontend treats provider IDs as strings and renders options from that response
 through
-[`agentCapabilityState`](../../../frontend/src/state/chat/agentCapabilityState.ts),
+[`agentCapabilityState`](../../../frontend/src/state/hooks/chat/agentCapabilityState.ts),
 so a normal provider addition requires no provider-specific picker component.
 
 Managed providers that are not authenticated are disabled using the auth

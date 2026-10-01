@@ -395,3 +395,23 @@ Provisioning changes should normally cover:
 Run backend build/tests/vet, focused race tests, frontend tests/build when the
 public descriptor shape changes, every `infra/tests/*-test.sh`, and
 `.github/scripts/classify-release-test.sh` before release.
+
+## Restoring installed project applications
+
+A project container can be recreated while the host's installed-application
+records survive. After the missing-container start path recreates it and syncs
+secrets, `service/project.Service` invokes the application restorer wired in
+`service/services.go`. `cmd/upgrade-workspaces` also invokes it after a
+successful workspace upgrade, using both embedded and uploaded catalog entries.
+
+The restorer reinstalls only running applications with container capabilities.
+Stopped installations remain stopped; busy instance locks are skipped. Project
+start logs restoration failures and can still finish, while the upgrade command
+reports the workspace as failed if restoration fails. This restores software
+from the catalog, not arbitrary application data. A later app Start can detect
+a missing declared service unit and reinstall it.
+
+See [Project application runtime](../installable-applications/24-application-container-recovery.md#recovering-after-container-replacement)
+for state handling, lock behavior, persistence requirements, and the exact
+source files. The built-in editor is still provisioned separately on the core
+capabilities branch; replacing it with an application is a separate change.

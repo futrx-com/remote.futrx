@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatMessageBlock } from "../../../models/chatMessage.ts";
-import { hasVisibleAssistantContent, showTerminalTurnStatus, showTurnActivity } from "./turnActivity.ts";
+import { hasVisibleAssistantContent, showTerminalTurnStatus, showTurnActivity } from "./turnVisibility.ts";
 
 const completed: ChatMessageBlock = { type: "assistant", parts: [], t: 1, isComplete: true };
 const running: ChatMessageBlock = { type: "assistant", parts: [

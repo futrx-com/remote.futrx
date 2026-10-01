@@ -161,7 +161,7 @@ function Preview() {
               streamingPresentation="blocks"
               chatId="c1" cwd="/opt/remote.futrx/gamerhead"
               scrollRef={scrollRef} contentRef={contentRef} bottomRef={bottomRef}
-              onScroll={noop} onAnswerQuestion={noop} onLoadOlder={noopAsync} onRewind={noop}
+              onScroll={noop} onAnswerQuestion={() => false} onLoadOlder={noopAsync} onRewind={noop}
             />
           </div>
 

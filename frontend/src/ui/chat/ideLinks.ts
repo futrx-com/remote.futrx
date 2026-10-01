@@ -1,3 +1,4 @@
+import type { FileOpenRequest } from "../../models/files.ts";
 import { API_ROUTES } from "../../config/routes.ts";
 import { fileService } from "../../services/files/fileService.ts";
 
@@ -199,4 +200,12 @@ function stripPathSuffix(href: string): string {
   const queryIndex = href.indexOf("?");
   const cut = [hashIndex, queryIndex].filter((index) => index >= 0).sort((a, b) => a - b)[0];
   return cut === undefined ? href : href.slice(0, cut);
+}
+
+// The built-in editor remains available until its application migration.
+export const builtinEditorAvailable = true;
+
+export function builtinWorkspaceFileUrl(request: FileOpenRequest): string | null {
+  const line = request.line ? `:${request.line}${request.column ? `:${request.column}` : ""}` : "";
+  return internalPathOpenUrl(`${request.path}${line}`, { cwd: request.cwd });
 }

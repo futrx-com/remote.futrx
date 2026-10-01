@@ -105,6 +105,15 @@ func (in *Installer) Start(ctx context.Context, spec svc.InstallSpec) error {
 	if err := in.ensureContainer(ctx, spec); err != nil {
 		return err
 	}
+	// A stopped project application keeps its database record when the project
+	// container is replaced. Reinstall it on first start if its unit disappeared
+	// with the old root filesystem.
+	if name := spec.Application.ServiceName(); name != "" {
+		if _, err := in.exec(ctx, spec.Instance.ContainerName, nil, controlTimeout,
+			"test", "-f", serviceUnitPath(name)); err != nil {
+			return in.Install(ctx, spec)
+		}
+	}
 	if err := in.publishSkills(ctx, spec); err != nil {
 		return err
 	}
@@ -193,37 +202,6 @@ func (in *Installer) Stop(ctx context.Context, spec svc.InstallSpec) error {
 	if svcName := spec.Application.ServiceName(); svcName != "" {
 		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "stop", svcName)
 	}
-	return nil
-}
-
-// Uninstall removes the proxy device and, for global scope, deletes the
-// dedicated container outright. For project scope it stops and disables the
-// service; installed packages and data remain in the project container.
-func (in *Installer) Uninstall(ctx context.Context, spec svc.InstallSpec) error {
-	inst := spec.Instance
-	if inst.Scope == svc.ScopeGlobal {
-		// A failed legacy install may have been persisted before container target
-		// resolution completed. There is no container footprint to remove in that
-		// case, and passing an empty name to LXD turns Retry into a permanent error.
-		if inst.ContainerName == "" {
-			return nil
-		}
-		// Deleting the container also drops its proxy device.
-		if _, err := command.RunWithTimeout(ctx, in.runner, launchTimeout, "delete", "--force", inst.ContainerName); err != nil {
-			if !isMissing(err, "") {
-				return fmt.Errorf("delete app container %s: %w", inst.ContainerName, err)
-			}
-		}
-		return nil
-	}
-	if err := in.removeDevice(ctx, inst.ContainerName, inst.DeviceName); err != nil {
-		return err
-	}
-	if svcName := spec.Application.ServiceName(); svcName != "" {
-		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName)
-		in.removeServiceFiles(ctx, spec)
-	}
-	in.removeSkills(ctx, spec)
 	return nil
 }
 

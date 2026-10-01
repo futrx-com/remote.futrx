@@ -1,16 +1,14 @@
 import type { ComponentChildren } from "preact";
 import { mediaViewerStore } from "../../../state/stores/media/mediaViewerStore";
 import { fileService } from "../../../services/files/fileService.ts";
-import { internalPathOpenUrl } from "../ideLinks";
+import { internalPathOpenUrl, type WorkspaceLinkContext } from "../../../services/files/workspaceLinkService.ts";
 import { isChatMediaOpenUrl } from "../../../config/routes";
 import { findImageSyntaxAt } from "./extractImageSyntax.ts";
 import { hasLtrText, isRtlText, splitBidiSegments } from "./bidi";
 
 const urlPattern = /^https?:\/\/[^\s<]+/;
 
-export interface InlineRenderContext {
-  chatId?: string;
-  cwd?: string;
+export interface InlineRenderContext extends WorkspaceLinkContext {
   isRtl?: boolean;
 }
 

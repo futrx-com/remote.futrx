@@ -16,6 +16,7 @@ var (
 	ErrScope              = errors.New("applications: application does not support this scope")
 	ErrProjectneeded      = errors.New("applications: project id required")
 	ErrRequiredEnv        = errors.New("applications: missing required value")
+	ErrInvalidEnv         = errors.New("applications: invalid setting value")
 	ErrNotFound           = errors.New("applications: instance not found")
 	ErrPortRange          = errors.New("applications: external port out of range")
 	ErrAlreadyInstalled   = errors.New("applications: this application is already installed in this scope")
@@ -151,6 +152,12 @@ func (s *Service) ListProject(ctx context.Context, projectID string) ([]View, er
 		return nil, err
 	}
 	return s.views(insts), nil
+}
+
+// WebPort returns the declared HTTP port only for a running project install.
+func (s *Service) WebPort(ctx context.Context, projectID, applicationID string) (int, bool, error) {
+	target, ok, err := s.ProjectWebTarget(ctx, projectID, applicationID)
+	return target.Port, ok, err
 }
 
 // Get returns a single instance as an API-safe view.

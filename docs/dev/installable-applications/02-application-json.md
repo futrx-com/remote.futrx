@@ -205,6 +205,8 @@ An application with only a UI capability:
 | `service` | object | no | Complete systemd service declaration. It is itself a container capability; Remote creates and owns the unit. See below. |
 | `connection` | object | no | Maps env vars to user/password/database. See below. |
 | `install` | string | no | Override for the install-script path inside `infra/`. When omitted, `infra/install.sh` is detected automatically. |
+| `web` | object | no | Project HTTP route: `{ "port": 8400 }` exposes a running project service at `https://<instance-id>.apps.<public-host>/`; `/apps/<project-slug>/<application-id>/` is its launch redirect. Requires project-only scope, a service, and a port between 1024 and 65535. |
+| `uninstall` | string | no | Optional cleanup script inside `infra/`, run in a project container after its service stops and before Remote removes the service files. Global uninstall deletes the dedicated container instead. |
 | `healthcheck` | object | no | `{ "command": "…" }` run inside the container. Requires `port.internal`. |
 | `ui` | object | no | Overrides what is loaded from `ui/`. See below. |
 | `backend` | object | no | Overrides the defaults for the Go backend whose executable entry point is `backend/main.go`. See below. |
@@ -239,11 +241,13 @@ install script, and a field in the install dialog.
 | `key` | string | The environment variable name. |
 | `label` | string | Field label in the install dialog. Falls back to `key`. |
 | `required` | bool | Reject the install if left blank with no default or generator. |
-| `secret` | bool | Value is redacted in API responses and masked in the dialog. |
+| `secret` | bool | Value is redacted in installed-app details. Ordinary inputs are masked; JSON editors show their contents while editing. |
 | `default` | string | Applied when the user leaves the field blank. |
+| `defaultFile` | string | Path under the application's `infra/` directory whose UTF-8 contents become `default` when the catalog loads. Use for larger editable defaults; it cannot be combined with `default`. Maximum 128 KiB. |
+| `format` | string | Empty or `json` only. `json` renders a multiline editor and requires a JSON object of at most 128 KiB; arrays, primitives and `null` are rejected in both catalog defaults and resolved install inputs. |
 | `generate` | string | `password` → a strong value is generated when blank. |
 
-Resolution order for a blank field: `generate`, then `default`, then reject if
+Resolution order for a blank field: `default`, then `generate`, then reject if
 `required`.
 
 ### `service`
@@ -513,3 +517,18 @@ applications may declare them; uninstall leaves them in place.
 A host that installs no application declaring host tools downloads nothing, which is
 what keeps such an application a genuinely optional addition rather than a dependency
 every operator inherits.
+
+## Project application web routes
+
+See [Project application web routes](19-project-application-web-routes.md) for behavior, validation, failure cases,
+source files, and verification limits.
+
+## Application uninstall scripts
+
+See [Application uninstall scripts](21-application-uninstall-scripts.md) for behavior, validation, failure cases,
+source files, and verification limits.
+
+## JSON installation settings
+
+See [JSON installation settings](22-application-json-settings.md) for behavior, validation, failure cases,
+source files, and verification limits.

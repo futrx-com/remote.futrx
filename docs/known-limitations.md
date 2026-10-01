@@ -182,4 +182,4 @@ These are the constraints worth understanding before you deploy or rely on remot
   shell, chats, API data, or project content. Work cannot continue without a
   connection. The IDE launcher at `code.<host>` is a separate PWA.
 - **The terminal has no reconnect logic.** A network blip ends the terminal view (unlike the chat/workspace sockets, which reconnect).
-- **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite; CI does not run the Go `go test` suite either (run it locally — see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+- **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite.

@@ -64,6 +64,31 @@ func TestConcurrentStartSerializesContainerEnsure(t *testing.T) {
 	}
 }
 
+func TestStartRestoresApplicationsAfterMissingContainerRecovery(t *testing.T) {
+	repo := &startTestRepository{meta: Meta{
+		ID: ID("abcd"), Name: "project", ContainerName: "project", Status: StatusMissing,
+	}}
+	lifecycle := &startTestLifecycle{state: ContainerStateMissing}
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	calls := 0
+	service.SetContainerRestorer(func(_ context.Context, projectID string) error {
+		calls++
+		if projectID != "abcd" {
+			t.Errorf("restored wrong project: %s", projectID)
+		}
+		return nil
+	})
+	if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("restore calls = %d, want 1", calls)
+	}
+}
+
 func TestStartDelegatesFrozenRecoveryToContainerEnsure(t *testing.T) {
 	repo := &startTestRepository{meta: Meta{
 		ID:            ID("abcd"),
@@ -285,6 +310,7 @@ type startTestLifecycle struct {
 	releaseLaunch   <-chan struct{}
 	transitionCalls chan<- string
 	busy            bool
+	capacityErr     error
 }
 
 func (l *startTestLifecycle) Available() bool { return true }
@@ -294,6 +320,8 @@ func (l *startTestLifecycle) State(context.Context, string) (ContainerState, err
 	defer l.mu.Unlock()
 	return l.state, nil
 }
+
+func (l *startTestLifecycle) CheckCapacity(context.Context) error { return l.capacityErr }
 
 func (l *startTestLifecycle) Ensure(context.Context, Meta) error {
 	l.mu.Lock()

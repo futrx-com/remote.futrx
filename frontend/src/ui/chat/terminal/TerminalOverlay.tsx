@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import "@xterm/xterm/css/xterm.css";
 import type { ChatMeta } from "../../../models/chat";
+import { useTerminalFind } from "../../../state/hooks/chat/useTerminalFind";
 import { useTerminalSession } from "../../../state/hooks/chat/useTerminalSession";
+import { ChatFindBar } from "../find/ChatFindBar";
 import { Terminal as TerminalIcon, X } from "../../primitives/icons";
 import { TerminalResizeHandle } from "./TerminalResizeHandle";
 
@@ -34,11 +36,20 @@ export function TerminalOverlay({
   // running shell — including anything typed but not yet submitted — survives
   // closing and reopening the pane. It is only torn down when the chat changes.
   const [openedChatId, setOpenedChatId] = useState<string | null>(() => (open ? chat.id : null));
+  // The session reports Cmd/Ctrl+F before `find` exists, so it calls through a ref.
+  const showFindRef = useRef(() => {});
   const terminal = useTerminalSession({
     chatId: chat.id,
     enabled: openedChatId === chat.id,
     title: chat.title,
+    onFindShortcut: () => showFindRef.current(),
   });
+  const find = useTerminalFind({
+    search: terminal.search,
+    results: terminal.searchResults,
+    onClose: terminal.focus,
+  });
+  showFindRef.current = find.show;
   const [terminalWidth, setTerminalWidth] = useState(readTerminalWidth);
   const [resizing, setResizing] = useState(false);
   const asideRef = useRef<HTMLElement>(null);
@@ -56,6 +67,11 @@ export function TerminalOverlay({
     const frame = requestAnimationFrame(terminal.focus);
     return () => cancelAnimationFrame(frame);
   }, [open, terminal.focus]);
+
+  // A hidden pane must not keep claiming Escape through its find bar.
+  useEffect(() => {
+    if (!open && find.open) find.close();
+  }, [open, find.open, find.close]);
 
   useEffect(() => {
     window.localStorage.setItem(terminalWidthKey, String(terminalWidth));
@@ -162,7 +178,8 @@ export function TerminalOverlay({
           </div>
         )}
 
-        <div class="flex-1 min-h-0 p-2 md:p-3">
+        <div class="relative flex-1 min-h-0 p-2 md:p-3">
+          <ChatFindBar find={find} hasUnloadedMessages={false} label="Find in terminal" />
           <div
             ref={terminal.hostRef}
             class="h-full w-full overflow-hidden rounded-md border border-line bg-inset p-2"

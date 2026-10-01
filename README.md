@@ -18,7 +18,7 @@
   ·
   <a href="#quick-start"><strong>Install</strong></a>
   ·
-  <a href="https://github.com/futrx-com/remote.futrx.com/issues"><strong>Roadmap</strong></a>
+  <a href="https://github.com/futrx-com/remote.futrx/issues"><strong>Roadmap</strong></a>
 </p>
 
 ![Remote showing an AI conversation beside a live application preview](docs/assets/readme/feature-live-preview.webp)
@@ -294,6 +294,7 @@ Every project gets its own HTTPS address, so Remote needs a hostname with wildca
 | `code.remote.example.com` | Browser IDE |
 | `*.code.remote.example.com` | Per-project browser IDEs |
 | `*.dev.remote.example.com` | Per-project application previews |
+| `*.apps.remote.example.com` | Installed project applications, one origin per installation |
 
 **If you want a free hostname,** [DuckDNS](https://www.duckdns.org) is the quickest, because it resolves every subdomain automatically and there are no DNS records to create:
 
@@ -303,7 +304,7 @@ Every project gets its own HTTPS address, so Remote needs a hostname with wildca
 
 Then install using `yourname.duckdns.org` as the hostname.
 
-[deSEC](https://desec.io) is a good alternative, run by a non-profit and less likely to be filtered on corporate networks. It is a full DNS host rather than a wildcard service, so create the four records from the table above under your `yourname.dedyn.io` name.
+[deSEC](https://desec.io) is a good alternative, run by a non-profit and less likely to be filtered on corporate networks. It is a full DNS host rather than a wildcard service, so create the records from the table above under your `yourname.dedyn.io` name.
 
 > [!NOTE]
 > Free dynamic-DNS providers are community-run with no uptime guarantee, and some corporate networks block all of `*.duckdns.org` because of unrelated abuse elsewhere on it. If a preview link refuses to open at the office, that is usually why, and a domain you own avoids it.
@@ -384,7 +385,7 @@ The full updater preserves project files and provider homes. Coordinate a mainte
 - [System architecture](ARCHITECTURE.md) — components, data flow, and trust boundaries
 - [Project philosophy](docs/01-overview/00-philosophy.md) — why Remote treats each project as a computer
 - [Contributing](CONTRIBUTING.md) — local development and contribution workflow
-- [Issue tracker](https://github.com/futrx-com/remote.futrx.com/issues) — bugs, ideas, and roadmap
+- [Issue tracker](https://github.com/futrx-com/remote.futrx/issues) — bugs, ideas, and roadmap
 
 ## License
 

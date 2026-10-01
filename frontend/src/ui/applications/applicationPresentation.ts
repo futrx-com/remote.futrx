@@ -117,12 +117,18 @@ export function uninstallConsequence(
   // Infrastructure without a port has no host port to release; saying otherwise
   // would promise the user something the uninstall does not do.
   if (application && !hasPortBinding(application)) {
+    if (application.uninstall) {
+      return `“${instance.name}” is stopped and disabled in the project container, then its cleanup script removes application-owned packages and files.`;
+    }
     return `“${instance.name}” is stopped and disabled in the project container. Installed packages and any data it wrote stay there.`;
   }
   if (instance.scope === "global") {
     return `“${instance.name}” runs in its own container, which is deleted along with its data. The host port ${instance.bindAddress}:${instance.externalPort} is released.`;
   }
-  return `“${instance.name}” is stopped and disabled, and the host port ${instance.bindAddress}:${instance.externalPort} is released. Installed packages and data stay in the project container.`;
+  const cleanup = application?.uninstall
+    ? "Its cleanup script removes application-owned packages and files."
+    : "Installed packages and data stay in the project container.";
+  return `“${instance.name}” is stopped and disabled, and the host port ${instance.bindAddress}:${instance.externalPort} is released. ${cleanup}`;
 }
 
 /**

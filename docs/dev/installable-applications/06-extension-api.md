@@ -46,6 +46,8 @@ remote.backend.fetch(path, options?)            → Promise<Response>
 remote.backend.describe(target?)                → Promise<descriptor>
 remote.backend.url(path, target?)               // string
 
+remote.files.registerOpener(open)                → dispose
+
 remote.events.on(name, handler)                 → dispose
 
 remote.log(...args)
@@ -434,3 +436,77 @@ const response = await fetch(
 ```
 
 See [12 — HTTP API](12-http-api.md) for the applications endpoints.
+## `remote.files.registerOpener(open)`
+
+Registers a synchronous URL resolver for workspace files:
+
+```ts
+registerOpener(open: (request: {
+  cwd: string;
+  path: string;
+  line?: number;
+  column?: number;
+}) => string | null): () => void
+```
+
+| Value | Meaning |
+|---|---|
+| `cwd` | Host workspace context; the link parser normalizes chat links to the workspace root, while Files passes the chat's cwd |
+| `path` | In-container absolute path, normally `/workspace/...` |
+| `line`, `column` | Optional positive positions parsed from `:line[:column]` in links |
+| Return URL | Core uses the URL in a link or navigation; the callback should not open windows itself |
+| Return `null` | This opener declines the request, so the next eligible opener may be tried |
+| Returned disposer | Removes this registration; calling it again is harmless and an old disposer does not remove a newer replacement |
+
+The URL builder belongs to the extension; the file-opener API does not require
+the web-gateway feature. The following example assumes that separate gateway
+is available. A custom editor that accepts `file`, `line` and `column` could
+register this callback (adapt the URL parameters to the editor's own contract):
+
+```js
+export default function activate(remote) {
+  // Additive API: older hosts may still report apiVersion 1 without files.
+  if (!remote.files?.registerOpener) return;
+  remote.files.registerOpener(({ cwd, path, line, column }) => {
+    const project = cwd.match(/^\/var\/lib\/remote\/projects\/([^/]+)\/workspace(?:\/|$)/);
+    if (!project || !path.startsWith("/workspace/")) return null;
+    const url = new URL(
+      `/apps/${encodeURIComponent(project[1])}/${encodeURIComponent(remote.application.id)}/`,
+      location.origin,
+    );
+    url.searchParams.set("file", path);
+    if (line) url.searchParams.set("line", String(line));
+    if (column) url.searchParams.set("column", String(column));
+    return url.toString();
+  });
+}
+```
+
+The callback is scoped to the project's running installation through the
+extension host's `projectIds`, not through a project ID chosen by the callback.
+A global installation alone does not make an opener available everywhere.
+One opener is stored per application; registering again replaces it. Among
+eligible applications, the first nonempty URL in registry iteration order
+wins. There is no priority argument or preferred-editor setting. Throws are
+logged and the next opener can be tried. Promises are not supported.
+
+Scope updates happen during extension sync. Unloading the extension removes
+its opener automatically; the returned disposer lets the extension remove it
+earlier. Do not rely on returning the disposer from `activate`: the current
+host awaits activation but does not consume its return value as a destructor.
+
+The Files drawer, Markdown links and attachment links use this API. Media
+keeps its viewer behavior and archives/unsupported media download. On the core
+capabilities branch, the built-in workspace IDE remains the fallback when no
+opener returns a URL. Its removal belongs to the separate editor migration.
+The generic workspace-link helper can fall back to a chat download URL when
+no supplied resolver handles the file. Markdown observes opener changes and
+active-project changes. The Files drawer currently also derives availability
+from the header-action slot and the built-in fallback; verify an extension
+that registers only an opener in that surface separately.
+
+Core does not provide an editor URL builder or sanitize the returned URL.
+An extension is trusted browser code; return only URLs appropriate to its
+application and validate access at the destination. See
+[Workspace file openers](23-application-file-openers.md)
+for the path conversion and call sites.

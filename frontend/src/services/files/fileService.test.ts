@@ -18,11 +18,11 @@ test("openAction opens media in the viewer", () => {
   assert.deepEqual(fileService.openAction("report.pdf"), { action: "media", kind: "pdf" });
 });
 
-test("openAction opens source and text files in the IDE", () => {
-  assert.deepEqual(fileService.openAction("main.go"), { action: "ide" });
-  assert.deepEqual(fileService.openAction("data.json"), { action: "ide" });
-  assert.deepEqual(fileService.openAction("README.md"), { action: "ide" });
-  assert.deepEqual(fileService.openAction("Makefile"), { action: "ide" });
+test("openAction offers source and text files to an application", () => {
+  assert.deepEqual(fileService.openAction("main.go"), { action: "application" });
+  assert.deepEqual(fileService.openAction("data.json"), { action: "application" });
+  assert.deepEqual(fileService.openAction("README.md"), { action: "application" });
+  assert.deepEqual(fileService.openAction("Makefile"), { action: "application" });
 });
 
 test("openAction downloads archives and unrenderable media", () => {

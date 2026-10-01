@@ -7,6 +7,13 @@ export interface FileNode {
   modTime?: number;
 }
 
+export interface FileOpenRequest {
+  cwd: string;
+  path: string;
+  line?: number;
+  column?: number;
+}
+
 export interface DirListing {
   /** The directory that was listed ("" = workspace root). */
   path: string;
@@ -77,3 +84,19 @@ export type WorkspaceFileBrowserAction =
   | { type: "search-started" }
   | { type: "search-succeeded"; entries: FileNode[]; truncated: boolean }
   | { type: "search-failed"; error: string };
+
+export type FileOpener = (request: FileOpenRequest) => string | null;
+
+export interface FileOpenerEntry {
+  open: FileOpener;
+  projectIds: string[];
+}
+
+export interface FileOpenerStoreState {
+  revision: number;
+  register(applicationId: string, projectIds: string[], open: FileOpener): () => void;
+  setProjects(applicationId: string, projectIds: string[]): void;
+  remove(applicationId: string): void;
+  canOpen(projectId?: string): boolean;
+  forProject(projectId?: string): IterableIterator<FileOpener>;
+}

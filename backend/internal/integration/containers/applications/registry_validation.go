@@ -37,6 +37,9 @@ func validateApplication(application svc.Application) error {
 	if len(application.HostTools) > 0 && !application.NeedsContainer() {
 		return fmt.Errorf("host tools require a provisioned application")
 	}
+	if application.Uninstall != "" && !application.NeedsContainer() {
+		return fmt.Errorf("uninstall script requires a provisioned application")
+	}
 	for _, tool := range application.HostTools {
 		if err := hosttools.Validate(tool); err != nil {
 			return fmt.Errorf("host tool %q: %w", tool.Name, err)
@@ -62,8 +65,23 @@ func validateApplication(application svc.Application) error {
 			return fmt.Errorf("invalid scope %q", scope)
 		}
 	}
+	for _, variable := range application.Env {
+		if variable.Format != "" && variable.Format != "json" {
+			return fmt.Errorf("env %q has unsupported format %q", variable.Key, variable.Format)
+		}
+		if err := svc.ValidateEnvValue(variable, variable.Default); err != nil {
+			return fmt.Errorf("env %q default: %w", variable.Key, err)
+		}
+	}
 	if err := validateService(application); err != nil {
 		return err
+	}
+	if application.Web != nil {
+		if application.Web.Port < 1024 || application.Web.Port > 65535 ||
+			len(application.Scopes) != 1 || application.Scopes[0] != svc.ScopeProject ||
+			application.Service == nil {
+			return fmt.Errorf("web.port requires a project-scoped service and a non-privileged port")
+		}
 	}
 	if err := validateApplicationEvents(application); err != nil {
 		return err

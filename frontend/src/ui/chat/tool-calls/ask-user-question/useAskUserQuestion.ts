@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { readAnswered, writeAnswered } from "./storage";
-import type { AskUserQuestionInput, QuestionSummary } from "./types";
+import type { AskUserQuestionInput } from "./types";
 
 function createSelectionState(count: number): Record<number, Set<number>> {
   const init: Record<number, Set<number>> = {};
@@ -15,12 +15,13 @@ export function useAskUserQuestion({
 }: {
   toolUseId: string;
   input: AskUserQuestionInput;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => boolean;
 }) {
   const questions = input.questions ?? [];
   const total = questions.length;
   const initialAnswered = useMemo(() => readAnswered(toolUseId), [toolUseId]);
   const [answered, setAnswered] = useState<string | null>(initialAnswered);
+  const [sendFailed, setSendFailed] = useState(false);
   const [page, setPage] = useState(0);
   const [selections, setSelections] = useState<Record<number, Set<number>>>(() =>
     createSelectionState(total)
@@ -89,29 +90,34 @@ export function useAskUserQuestion({
     return chosen;
   }
 
-  function summarize(): QuestionSummary {
+  /** The answer as the agent receives it; the answered card parses it back. */
+  function summarize(): string {
     const parts: string[] = [];
-    const preview: string[] = [];
     for (let qi = 0; qi < questions.length; qi++) {
-      const question = questions[qi];
-      const chosen = chosenLabels(qi);
-      parts.push(`Q: ${question.question}\nA: ${chosen.join("; ")}`);
-      preview.push(`${question.header ?? "Answer"}: ${chosen.join(", ")}`);
+      parts.push(`Q: ${questions[qi].question}\nA: ${chosenLabels(qi).join("; ")}`);
     }
-    return { text: parts.join("\n\n"), preview: preview.join(" · ") };
+    return parts.join("\n\n");
   }
 
   function submit() {
-    const summary = summarize();
-    writeAnswered(toolUseId, summary.preview);
-    setAnswered(summary.preview);
-    onSubmit(summary.text);
+    const text = summarize();
+    // Only a delivered answer counts. Marking the card first left it saying
+    // "Answered" after a dropped connection, with nothing sent and no retry.
+    if (!onSubmit(text)) {
+      setSendFailed(true);
+      return;
+    }
+    setSendFailed(false);
+    // The full text, so the answered card still shows what was asked.
+    writeAnswered(toolUseId, text);
+    setAnswered(text);
   }
 
   return {
     questions,
     total,
     answered,
+    sendFailed,
     page,
     setPage,
     currentQuestion: questions[page],

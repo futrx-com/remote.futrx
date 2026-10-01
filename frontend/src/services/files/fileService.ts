@@ -2,7 +2,7 @@ import type { FileCategory, MediaKind } from "../../models/files.ts";
 
 export type FileOpenAction =
   | { action: "media"; kind: MediaKind }
-  | { action: "ide" }
+  | { action: "application" }
   | { action: "download" };
 
 // What a filename means to the app: the kind of thing it is, whether the
@@ -45,8 +45,8 @@ class FileService {
   }
 
   /** What a click on a file should do: render viewable media in the in-app
-   *  viewer, download what neither the browser nor the IDE can display
-   *  (archives, unsupported media), and open everything else in the IDE. */
+   *  viewer, download what neither the browser nor an installed application can display
+   *  (archives, unsupported media), and offer everything else to a registered application opener. */
   openAction(name: string): FileOpenAction {
     const kind = this.viewableMediaKind(name);
     if (kind) return { action: "media", kind };
@@ -54,7 +54,7 @@ class FileService {
     if (category === "archive" || category === "image" || category === "video" || category === "audio") {
       return { action: "download" };
     }
-    return { action: "ide" };
+    return { action: "application" };
   }
 
   /** File-tree sizes, which have a column to themselves: spaced unit, one

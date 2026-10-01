@@ -34,7 +34,15 @@ type Service struct {
 	// image) is relaunched exactly once even under concurrent prompts. It also
 	// keeps an explicit stop, restart, or delete from racing an agent-triggered
 	// recovery. Different projects remain independent.
-	runState keyedMutex
+	runState          keyedMutex
+	containerRestorer func(context.Context, string) error
+}
+
+// SetContainerRestorer attaches optional application recovery after a missing
+// project container has been recreated. The caller wires this after both
+// services exist, avoiding a construction cycle.
+func (s *Service) SetContainerRestorer(restore func(context.Context, string) error) {
+	s.containerRestorer = restore
 }
 
 func New(
@@ -152,6 +160,14 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
 		return Meta{}, ErrNameRequired
+	}
+	// Refuse before anything is recorded, so a full disk surfaces as a clear
+	// error on the create request rather than a project stuck in an error
+	// state carrying the transcript of a failed image unpack.
+	if s.containerLifecycle != nil {
+		if err := s.containerLifecycle.CheckCapacity(ctx); err != nil {
+			return Meta{}, err
+		}
 	}
 
 	m, err := s.repo.Create(ctx, Meta{
@@ -354,6 +370,11 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 		if state == ContainerStateMissing {
 			if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 				log.Printf("projects: sync env to %s after ensure: %v", m.ContainerName, syncErr)
+			}
+			if s.containerRestorer != nil {
+				if restoreErr := s.containerRestorer(ctx, string(id)); restoreErr != nil {
+					log.Printf("projects: restore applications in %s: %v", m.ContainerName, restoreErr)
+				}
 			}
 		}
 	}

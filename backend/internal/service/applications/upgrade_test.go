@@ -95,6 +95,42 @@ func upgradeService(
 	)
 }
 
+func TestRestoreProjectReinstallsOnlyRunningApplications(t *testing.T) {
+	store := &fakeStore{byProject: map[string][]Instance{
+		"p1": {
+			installedAt("running", "p1", "1", StatusRunning),
+			installedAt("stopped", "p1", "1", StatusStopped),
+		},
+	}}
+	installer := &recordingInstaller{}
+	service := New(&versionedRegistry{application: serviceApplicationAt("1")}, store, installer, nil, nil)
+	if err := service.RestoreProject(context.Background(), "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(installer.installed) != 1 || installer.installed[0].Instance.ID != "running" {
+		t.Fatalf("restored instances = %+v", installer.installed)
+	}
+	if len(installer.stopped) != 0 {
+		t.Fatalf("stopped applications changed: %+v", installer.stopped)
+	}
+}
+
+func TestRestoreProjectSkipsAnInstanceWhoseLifecycleIsAlreadyRunning(t *testing.T) {
+	store := &fakeStore{byProject: map[string][]Instance{
+		"p1": {installedAt("running", "p1", "1", StatusRunning)},
+	}}
+	installer := &recordingInstaller{}
+	service := New(&versionedRegistry{application: serviceApplicationAt("1")}, store, installer, nil, nil)
+	unlock := service.instanceLocks.lock("running")
+	defer unlock()
+	if err := service.RestoreProject(context.Background(), "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if len(installer.installed) != 0 {
+		t.Fatalf("concurrent lifecycle was interrupted: %+v", installer.installed)
+	}
+}
+
 // The whole point of the version field: a package whose version moved
 // re-provisions what it already installed.
 func TestUploadReinstallsInstancesWhenTheVersionChanges(t *testing.T) {

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { terminalApi } from "../../../api/terminalApi";
 import type { TerminalConnection, TerminalStatus } from "../../../types/terminal";
@@ -8,9 +9,22 @@ import {
   TERMINAL_DEFAULT_TITLE,
   TERMINAL_INITIAL_FIT_DELAY_MS,
   TERMINAL_OPTIONS,
+  TERMINAL_SEARCH_DECORATIONS,
   TERMINAL_STATUS,
   TERMINAL_THEME,
 } from "../../../config/terminal";
+import { shortcutService } from "../../../services/platform/shortcutService";
+import type { TerminalSearchResults } from "./terminalFindState";
+
+const SEARCH_OPTIONS: ISearchOptions = { decorations: TERMINAL_SEARCH_DECORATIONS };
+
+/** Steps through matches in the terminal's buffer, scrollback included. */
+export interface TerminalSearch {
+  /** Finds `term` from the current match onward; `incremental` extends it while typing. */
+  next(term: string, incremental?: boolean): void;
+  previous(term: string): void;
+  clear(): void;
+}
 
 function createTerminal(): XTerm {
   return new XTerm({
@@ -23,18 +37,25 @@ export function useTerminalSession({
   chatId,
   enabled,
   title,
+  onFindShortcut,
 }: {
   chatId: string;
   enabled: boolean;
   title?: string;
+  /** Cmd/Ctrl+F while the terminal has focus. */
+  onFindShortcut?: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const titleRef = useRef(title);
+  const onFindShortcutRef = useRef(onFindShortcut);
+  onFindShortcutRef.current = onFindShortcut;
   const [status, setStatus] = useState<TerminalStatus>(TERMINAL_STATUS.closed);
   const [error, setError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<TerminalSearchResults | null>(null);
 
   useEffect(() => {
     titleRef.current = title;
@@ -74,10 +95,25 @@ export function useTerminalSession({
     let disposed = false;
     const terminal = createTerminal();
     const fit = new FitAddon();
+    const search = new SearchAddon();
     terminal.loadAddon(fit);
+    terminal.loadAddon(search);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
     fitRef.current = fit;
+    searchRef.current = search;
+    const searchResultsSub = search.onDidChangeResults(({ resultIndex, resultCount }) => {
+      setSearchResults({ index: resultIndex, count: resultCount });
+    });
+    // Cmd/Ctrl+F opens find-in-terminal instead of reaching the shell (Ctrl+F
+    // is ^F there) or bubbling up to find-in-chat, which only searches messages.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (!shortcutService.isFind(event)) return true;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === "keydown") onFindShortcutRef.current?.();
+      return false;
+    });
 
     const connection = terminalApi.connect(chatId, {
       onOpen() {
@@ -126,18 +162,37 @@ export function useTerminalSession({
       window.clearTimeout(initialFitTimer);
       resizeObserver.disconnect();
       inputSub.dispose();
+      searchResultsSub.dispose();
       connection.close();
       terminal.dispose();
       connectionRef.current = null;
       terminalRef.current = null;
       fitRef.current = null;
+      searchRef.current = null;
+      setSearchResults(null);
     };
   }, [chatId, enabled, fitAndResize]);
+
+  const search = useMemo<TerminalSearch>(() => ({
+    next(term, incremental = false) {
+      searchRef.current?.findNext(term, { ...SEARCH_OPTIONS, incremental });
+    },
+    previous(term) {
+      searchRef.current?.findPrevious(term, SEARCH_OPTIONS);
+    },
+    clear() {
+      searchRef.current?.clearDecorations();
+      terminalRef.current?.clearSelection();
+      setSearchResults(null);
+    },
+  }), []);
 
   return {
     hostRef,
     status,
     error,
     focus,
+    search,
+    searchResults,
   };
 }

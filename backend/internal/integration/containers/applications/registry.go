@@ -51,14 +51,17 @@ type catalogView struct {
 	// scripts maps application ID -> install script bytes, including payload staging
 	// when needed.
 	scripts map[string][]byte
-	sorted  []svc.Application
+	// uninstallScripts are optional cleanup programs for project containers.
+	uninstallScripts map[string][]byte
+	sorted           []svc.Application
 }
 
 func newCatalogView() catalogView {
 	return catalogView{
-		byID:    map[string]svc.Application{},
-		sources: map[string]fs.FS{},
-		scripts: map[string][]byte{},
+		byID:             map[string]svc.Application{},
+		sources:          map[string]fs.FS{},
+		scripts:          map[string][]byte{},
+		uninstallScripts: map[string][]byte{},
 	}
 }
 
@@ -187,10 +190,25 @@ func loadCatalogInto(view *catalogView, catalog fs.FS, source svc.ApplicationSou
 			skip(id, err)
 			continue
 		}
+		var cleanup []byte
+		if application.Uninstall != "" {
+			cleanup, err = fs.ReadFile(catalog, path.Join(catalogRoot, id, application.Uninstall))
+			if err != nil {
+				err = fmt.Errorf("read uninstall script for %q: %w", id, err)
+				if reserve == nil {
+					return nil, err
+				}
+				skip(id, err)
+				continue
+			}
+		}
 		application.Source = source
 		view.byID[id] = application
 		view.sources[id] = catalog
 		view.scripts[id] = script
+		if application.Uninstall != "" {
+			view.uninstallScripts[id] = cleanup
+		}
 		view.sorted = append(view.sorted, application)
 	}
 	return skipped, nil
@@ -246,11 +264,22 @@ func loadApplicationManifest(
 			application.ID,
 		)
 	}
+	if err := resolveEnvironmentDefaults(catalog, root, application.Env); err != nil {
+		return svc.Application{}, nil, err
+	}
 	// Container metadata is derived from backend/container/ below. A manifest
 	// cannot claim a build identity or commands that the package does not carry.
 	application.Container = nil
-	if err := validateInstallScriptPath(application.Install); err != nil {
+	if err := validateInfraScriptPath(application.Install, "install"); err != nil {
 		return svc.Application{}, nil, err
+	}
+	if err := validateInfraScriptPath(application.Uninstall, "uninstall"); err != nil {
+		return svc.Application{}, nil, err
+	}
+	if application.Uninstall != "" {
+		if _, err := fs.ReadFile(catalog, path.Join(root, application.Uninstall)); err != nil {
+			return svc.Application{}, nil, fmt.Errorf("read uninstall script %q: %w", application.Uninstall, err)
+		}
 	}
 	ui, err := loadApplicationUI(catalog, path.Join(root, "ui"), application.UI)
 	if err != nil {
@@ -310,6 +339,14 @@ func (r *Registry) Script(id string) ([]byte, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.view.scripts[id]
+	return s, ok
+}
+
+// UninstallScript returns optional project-container cleanup for an application.
+func (r *Registry) UninstallScript(id string) ([]byte, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.view.uninstallScripts[id]
 	return s, ok
 }
 

@@ -14,6 +14,10 @@ func cloneApplication(application svc.Application) svc.Application {
 	cloned.Scopes = cloneSlice(application.Scopes)
 	cloned.Env = cloneSlice(application.Env)
 	cloned.Service = cloneApplicationService(application.Service)
+	if application.Web != nil {
+		web := *application.Web
+		cloned.Web = &web
+	}
 	cloned.UI = cloneApplicationUI(application.UI)
 	cloned.Backend = cloneApplicationBackend(application.Backend)
 	cloned.Publishers = clonePublishers(application.Publishers)

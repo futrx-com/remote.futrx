@@ -1,6 +1,7 @@
 package applications
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -34,6 +35,20 @@ func TestRegistryLoadsCatalog(t *testing.T) {
 	}
 }
 
+func TestRegistryRejectsInvalidUninstallScripts(t *testing.T) {
+	for _, path := range []string{"../other/uninstall.sh", "infra/missing.sh"} {
+		t.Run(path, func(t *testing.T) {
+			catalog := fixtureCatalog()
+			manifest := string(catalog["applications/"+fixtureService+"/application.json"].Data)
+			manifest = strings.Replace(manifest, `"version": "1.0.0",`, `"version": "1.0.0", "uninstall": "`+path+`",`, 1)
+			catalog["applications/"+fixtureService+"/application.json"] = &fstest.MapFile{Data: []byte(manifest)}
+			if _, err := NewRegistry(catalog, nil); err == nil {
+				t.Fatal("accepted an invalid or missing uninstall script")
+			}
+		})
+	}
+}
+
 func assertCatalogInvariants(t *testing.T, r *Registry, wantApplications bool) {
 	t.Helper()
 	applications := r.List()
@@ -50,6 +65,11 @@ func assertCatalogInvariants(t *testing.T, r *Registry, wantApplications bool) {
 		if application.Install != "" || application.Container != nil {
 			if _, ok := r.Script(application.ID); !ok {
 				t.Errorf("application %s missing install script", application.ID)
+			}
+		}
+		if application.Uninstall != "" {
+			if _, ok := r.UninstallScript(application.ID); !ok {
+				t.Errorf("application %s missing uninstall script", application.ID)
 			}
 		}
 		if application.NeedsPort() {

@@ -1,6 +1,8 @@
 package applications
 
-import "context"
+import (
+	"context"
+)
 
 // Upgrading an installed app to a new version of its application.
 //

@@ -16,6 +16,7 @@ export interface AppEnvVar {
   required?: boolean;
   secret?: boolean;
   default?: string;
+  format?: "json";
   generate?: string;
 }
 
@@ -159,6 +160,10 @@ export interface AppApplication {
   port: AppPort;
   env?: AppEnvVar[];
   service?: AppApplicationService;
+  /** Project HTTP service; /apps/<slug>/<application-id>/ launches its isolated app origin. */
+  web?: { port: number };
+  /** Optional script that removes application-owned packages and files on uninstall. */
+  uninstall?: string;
   /** Set when the application ships a `ui/` extension. */
   ui?: AppApplicationUI;
   /** Set when the application ships a `backend/` Go backend. */

@@ -279,3 +279,52 @@ A checklist for reviewing a `ui/` directory:
 - [08 — Scoping and visibility](08-scoping-and-visibility.md) — who sees what.
 - The platform-wide [threat model](../../threat-model.md) — the
   boundaries this sits inside.
+
+## Project application web content
+
+`web.port` serves container HTTP content on a separate origin per installation:
+`https://<instance-id>.apps.<public-host>/`. The main-origin
+`/apps/<project-slug>/<application-id>/` URL only redirects after authorizing
+the caller. Each application-host request verifies a registered session,
+project visibility, a running installation and the current catalog declaration.
+The manifest selects the upstream port. The host backend's `backend.access`
+policy does not apply here; requests do not start stopped apps.
+
+Host dispatch occurs before the platform router. Even `/api`, `/auth`, and
+`/internal` on an app hostname reach only that application's upstream. Unknown
+or malformed app hostnames cannot fall through to Remote's UI or APIs. Each
+reinstallation gets a fresh ID/origin, so a previous installation's service
+worker cannot control the replacement's origin.
+
+The existing `HttpOnly` platform session cookie is still domain-scoped for
+Remote's subdomains. The gateway validates it but removes all cookies and
+`Authorization` before the container, and strips upstream `Set-Cookie` and
+`Clear-Site-Data`. JavaScript cannot read the HttpOnly cookie. Cookie filtering
+alone does not stop the browser from attaching it to requests to Remote, so
+Origin and Fetch Metadata checks also reject cross-origin API reads, writes,
+forms and WebSockets. Safe login and launch navigation remains allowed. Remote's
+main UI rejects cross-origin framing, separates opener windows, and requests
+origin-keyed agent clusters. App responses request origin-keyed clusters too.
+
+These checks use browser-controlled headers. Non-browser clients without
+Origin/Fetch Metadata remain supported and still need authentication and
+endpoint authorization. Browsers must support Fetch Metadata for the full
+navigation/subresource protection; WebSocket Origin checks apply independently.
+This is browser-origin isolation, not OS isolation. Admitted UI extensions
+still execute inside Remote's UI, host backends remain privileged, and project
+services retain the project's existing container permissions. Continue to
+admit packages only from trusted, vetted sources.
+
+The share service rejects ports declared by **any** catalog application's
+`web.port`, irrespective of installation in the requested project. It checks
+the current catalog during share creation and validation, so a newly reserved
+port also invalidates existing anonymous grants. This adds to the existing
+browser/IDE/DevTools reservations while the built-in IDE remains present.
+It does not block authenticated previews or direct container-to-container
+connections on the shared LXD bridge.
+
+An uninstall script runs as root in the project container and may remove
+persistent files; review its exact deletion scope and its use during failed
+install Retry. `secret: true` hides stored env values in ordinary instance
+views, but JSON install editors display values and `defaultFile` contents
+become catalog defaults. Package defaults must not contain real credentials.

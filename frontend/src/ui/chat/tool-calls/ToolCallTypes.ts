@@ -21,5 +21,5 @@ export interface ToolCallProps {
   loadingResponse?: boolean;
   isError?: boolean;
   status: "running" | "done";
-  onAnswerQuestion?: (text: string) => void;
+  onAnswerQuestion?: (text: string) => boolean;
 }

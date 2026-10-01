@@ -8,14 +8,18 @@ import { FileTreeNodes, SearchResultRow } from "./FileTree";
 
 export function FileManagerDrawer({
   chatId,
+  projectId,
+  cwd,
   open,
   onClose,
 }: {
   chatId: string;
+  projectId?: string;
+  cwd: string;
   open: boolean;
   onClose: () => void;
 }) {
-  const files = useWorkspaceFileBrowser({ chatId, active: open });
+  const files = useWorkspaceFileBrowser({ chatId, projectId, cwd, active: open });
 
   const subtitle = files.searchResults
     ? `${files.searchResults.length} result${files.searchResults.length === 1 ? "" : "s"}${files.searchTruncated ? "+" : ""}`
@@ -95,6 +99,7 @@ export function FileManagerDrawer({
               truncated={files.searchTruncated}
               searching={files.searching}
               error={files.searchError}
+              canOpenFile={files.treeState.canOpenFile}
               downloadUrl={files.downloadUrl}
               onOpen={files.openFile}
             />
@@ -152,6 +157,7 @@ function SearchView({
   truncated,
   searching,
   error,
+  canOpenFile,
   downloadUrl,
   onOpen,
 }: {
@@ -159,6 +165,7 @@ function SearchView({
   truncated: boolean;
   searching: boolean;
   error: string | null;
+  canOpenFile: boolean;
   downloadUrl: (node: FileNode) => string;
   onOpen: (node: FileNode) => void;
 }) {
@@ -179,7 +186,7 @@ function SearchView({
       ) : (
         <ul>
           {results.map((node) => (
-            <SearchResultRow key={node.path} node={node} downloadUrl={downloadUrl} onOpen={onOpen} />
+            <SearchResultRow key={node.path} node={node} canOpenFile={canOpenFile} downloadUrl={downloadUrl} onOpen={onOpen} />
           ))}
         </ul>
       )}

@@ -6,7 +6,7 @@ import { MessageBlock } from "./MessageBlock";
 import { MessageSkeleton } from "./MessageSkeleton";
 import { ThreadEmptyState } from "./ThreadEmptyState";
 import { TurnActivity } from "./TurnActivity";
-import { showTurnActivity } from "./turnActivity";
+import { showTurnActivity } from "./turnVisibility";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 const INITIAL_VISIBLE_BLOCKS = 80;
@@ -47,7 +47,7 @@ export function MessageList({
   contentRef: RefObject<HTMLDivElement>;
   bottomRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
-  onAnswerQuestion: (text: string) => void;
+  onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;

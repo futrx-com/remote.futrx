@@ -24,6 +24,9 @@ export const TERMINAL_THEME: ITheme = {
 };
 
 export const TERMINAL_OPTIONS: ITerminalOptions = {
+  // Find-in-terminal highlights every match through the search addon's
+  // decorations, which xterm still ships as proposed API.
+  allowProposedApi: true,
   cursorBlink: true,
   convertEol: true,
   fontFamily: "ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace",
@@ -31,6 +34,14 @@ export const TERMINAL_OPTIONS: ITerminalOptions = {
   lineHeight: 1.18,
   scrollback: 6_000,
 };
+
+/** Find-in-terminal highlights, drawn on the terminal's own dark background. */
+export const TERMINAL_SEARCH_DECORATIONS = {
+  matchBackground: "#4a3f1f",
+  matchOverviewRuler: "#e2b86d",
+  activeMatchBackground: "#8a6d1f",
+  activeMatchColorOverviewRuler: "#f0d28a",
+} as const;
 
 export const TERMINAL_WEB_SOCKET_BINARY_TYPE = "arraybuffer";
 export const TERMINAL_CONNECTION_ERROR_MESSAGE = "Terminal connection failed.";

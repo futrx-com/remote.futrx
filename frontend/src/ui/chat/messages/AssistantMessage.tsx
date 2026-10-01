@@ -1,6 +1,6 @@
 import type { AssistantMessageBlock } from "../../../models/chatMessage";
 import { AssistantPartList } from "./AssistantPartList";
-import { hasVisibleAssistantContent } from "./turnActivity";
+import { hasVisibleAssistantContent } from "./turnVisibility";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 export function AssistantMessage({
@@ -18,7 +18,7 @@ export function AssistantMessage({
   streaming: boolean;
   chatId?: string;
   cwd?: string;
-  onAnswerQuestion?: (text: string) => void;
+  onAnswerQuestion?: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   streamingPresentation: "blocks" | "tokens";
 }) {

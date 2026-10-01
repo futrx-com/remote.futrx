@@ -1,0 +1,42 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    # Gate 1: PR Patch Coverage (>= 80% on new/modified lines)
+    patch:
+      default:
+        target: 80.0%
+        threshold: 0.0%
+
+    # Gate 2: Total Codebase Regression Protection (<= 0.05% drop)
+    project:
+      default:
+        target: auto
+        threshold: 0.05%
+        paths:
+          - backend/
+          - frontend/src/
+          - applications/
+          - catalog.go
+
+ignore:
+  - "backend/cmd"
+  - "infra"
+  - "**/*_test.go"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*_mock.go"
+  - "**/*_gen.go"
+  - "**/*.pb.go"
+  - "frontend/public"
+  - "docs"
+
+comment:
+  layout: "header, diff, flags, components"
+  behavior: default
+  require_changes: false

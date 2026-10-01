@@ -3,7 +3,8 @@ import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown
 import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
 import { ExtensionSlot } from "../../primitives/ExtensionSlot";
 import { EXTENSION_SLOTS } from "../../../config/extensions";
-import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
+import { buildIdeUrl } from "../ideLinks";
+import { DEFAULT_WORKSPACE_PATH } from "../../../config/workspace";
 
 // Two states only, and they never fight over the same property: Tailwind emits
 // utilities in file order, so an "expanded" colour appended after a base colour
@@ -49,7 +50,7 @@ export function WorkspaceActions({
   showSchedules: boolean;
   orientation: "horizontal" | "vertical";
 }) {
-  const workspacePath = cwd && cwd !== "~" ? cwd : defaultWorkspacePath;
+  const workspacePath = cwd && cwd !== "~" ? cwd : DEFAULT_WORKSPACE_PATH;
   const ideUrl = buildIdeUrl(workspacePath);
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
 

@@ -15,6 +15,7 @@ const shareQueryParam = "share"
 
 // shareAuthorizer is the slice of the share service this edge gate needs.
 type shareAuthorizer interface {
+	ShareablePort(port int) error
 	Validate(ctx context.Context, slug string, port int, token string) (serviceshare.AuthorizationGrant, bool)
 	Allows(ctx context.Context, slug string, port int, id serviceshare.ID) bool
 }
@@ -49,7 +50,7 @@ func (h *authVerifyHandler) authorizeShare(
 	}
 	// Guards the agent browser's noVNC port and anything outside the preview
 	// port range; the service refuses these too.
-	if err := serviceshare.ShareablePort(port); err != nil {
+	if err := h.shares.ShareablePort(port); err != nil {
 		return false
 	}
 
@@ -98,7 +99,7 @@ func (h *authVerifyHandler) startShareSession(
 			Exp:     expires.Unix(),
 		}),
 		// No Domain: the browser scopes the cookie to this exact preview
-		// hostname, so it never reaches the base domain, the IDE, or a
+		// hostname, so it never reaches the base domain, application web routes, or a
 		// different project's preview.
 		Path:     "/",
 		HttpOnly: true,

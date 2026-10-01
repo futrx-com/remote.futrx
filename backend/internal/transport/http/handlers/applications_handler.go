@@ -17,9 +17,17 @@ import (
 // infrastructure. Per-project routes are delegated here by ProjectHandler,
 // which has already enforced project membership.
 type ApplicationsHandler struct {
-	apps     *serviceapplications.Service
-	auth     *serviceauth.Service
-	projects visibleProjects
+	apps         *serviceapplications.Service
+	auth         *serviceauth.Service
+	projects     visibleProjects
+	webHost      string
+	webTransport http.RoundTripper
+}
+
+// WithWebHost enables per-installation web origins below apps.<publicHost>.
+func (h *ApplicationsHandler) WithWebHost(publicHost string) *ApplicationsHandler {
+	h.webHost = publicHost
+	return h
 }
 
 // NewApplicationsHandler builds the handler. apps may be nil when the server
@@ -35,6 +43,7 @@ func NewApplicationsHandler(
 func (h *ApplicationsHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/applications", h.handleCollection)
 	mux.HandleFunc("/api/applications/", h.handleResource)
+	mux.HandleFunc("/apps/", h.serveWeb)
 }
 
 // installBody is the shared request shape for installing an app.
@@ -413,6 +422,7 @@ func sendAppError(w http.ResponseWriter, err error) {
 		errors.Is(err, serviceapplications.ErrScope),
 		errors.Is(err, serviceapplications.ErrProjectneeded),
 		errors.Is(err, serviceapplications.ErrRequiredEnv),
+		errors.Is(err, serviceapplications.ErrInvalidEnv),
 		errors.Is(err, serviceapplications.ErrPortRange):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, serviceapplications.ErrUnavailable):

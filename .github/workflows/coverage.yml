@@ -1,0 +1,95 @@
+name: Coverage
+
+on:
+  pull_request:
+    branches: [main, qa]
+  push:
+    branches: [main, qa]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend coverage (go test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend bundle for go:embed
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Go test (backend coverage)
+        run: |
+          go test -coverprofile=coverage-backend.out -covermode=atomic ./...
+
+      - name: Go test (application catalog coverage)
+        working-directory: .
+        run: |
+          go test -coverprofile=coverage-catalog.out -covermode=atomic ./...
+
+      - name: Merge Go coverage profiles
+        run: |
+          head -n 1 coverage-backend.out > coverage.out
+          tail -n +2 coverage-backend.out >> coverage.out
+          if [ -f ../coverage-catalog.out ]; then
+            tail -n +2 ../coverage-catalog.out >> coverage.out
+          fi
+
+      - name: Upload backend coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: backend/coverage.out
+          flags: backend
+          fail_ci_if_error: false
+
+  frontend:
+    name: frontend coverage (npm test:coverage)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: frontend/lcov.info
+          flags: frontend
+          fail_ci_if_error: false

@@ -37,11 +37,15 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	if matchedSlug != "" && h.authorizeShare(w, r, matchedSlug, matchedPort) {
 		return
 	}
+	if h.verifySession(w, r, matchedSlug) {
+		w.WriteHeader(http.StatusOK)
+	}
+}
 
+func (h *authVerifyHandler) verifySession(w http.ResponseWriter, r *http.Request, matchedSlug string) bool {
 	err := h.access.Verify(r.Context(), httptransport.SessionCookieValue(r), matchedSlug)
 	if err == nil {
-		w.WriteHeader(http.StatusOK)
-		return
+		return true
 	}
 
 	switch {
@@ -55,6 +59,7 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+	return false
 }
 
 // matchPreviewHost resolves a forwarded host to the project slug and port

@@ -5,6 +5,7 @@ import type {
   AppInstance,
   AppScope,
 } from "./application";
+import type { FileOpenRequest } from "./files";
 
 export interface ExtensionSlotCatalog {
   sidebarHeaderActions: "sidebar.header.actions";
@@ -243,6 +244,9 @@ export interface ExtensionApi {
   };
   assets: {
     url: (assetPath: string) => string;
+  };
+  files: {
+    registerOpener: (open: (request: FileOpenRequest) => string | null) => () => void;
   };
   backend: ExtensionBackendApi;
   log: (...args: unknown[]) => void;

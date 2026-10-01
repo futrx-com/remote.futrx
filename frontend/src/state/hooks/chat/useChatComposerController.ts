@@ -143,9 +143,10 @@ export function useChatComposerController({
     setTimeout(focusInput, 0);
   }
 
-  function handleAnswerQuestion(answer: string) {
+  function handleAnswerQuestion(answer: string): boolean {
     const sent = sendPrompt(answer);
     if (sent) scroll.unlockAutoScroll();
+    return sent;
   }
 
   return {

@@ -41,6 +41,10 @@ There is no password-reset screen. Host access is required to repair the local-a
 
 Creating a project requires metadata, durable directories, an LXD launch, mounts, limits, and best-effort provisioning.
 
+### Project creation says there is not enough disk space
+
+Before creating a project, Remote checks the LXD storage pool that new containers use. It needs room for the base image plus 2 GiB, and the message shows how much is free and how much is needed. Free up space on the host and try again. With the default `dir` pool, that space comes from the host's root filesystem, which also holds the durable project directories.
+
 ### Project is stopped, missing, or in error
 
 Open **Project settings → Settings** and choose **Start project**. A missing container is recreated from the base image and the durable workspace/provider homes are reattached.

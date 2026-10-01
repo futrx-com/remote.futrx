@@ -101,6 +101,12 @@ describe("application presentation", () => {
     assert.match(message, /project container/);
   });
 
+  it("explains when uninstall removes a project's application files", () => {
+    const cleanup = application({ container: true });
+    cleanup.uninstall = "infra/uninstall.sh";
+    assert.match(uninstallConsequence(instance(), cleanup), /removes application-owned packages and files/);
+  });
+
   it("still reports the released port for a service", () => {
     const message = uninstallConsequence(instance(), application({ container: true, port: true }));
     assert.match(message, /127\.0\.0\.1:5433/);

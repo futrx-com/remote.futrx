@@ -23,6 +23,10 @@
 # Logs
 *.log
 
+# Coverage artifacts
+coverage.out
+coverage-*.out
+lcov.info
 
 # Claude Code runtime artifacts
 /.claude/scheduled_tasks.lock
