@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
@@ -685,6 +686,8 @@ func (h *ProjectHandler) allowed(ctx context.Context, id serviceproject.ID, emai
 
 func sendProjectError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, serviceproject.ErrNameRequired),
 		errors.Is(err, serviceproject.ErrInvalidID),
 		errors.Is(err, serviceproject.ErrInvalidSecretKey),

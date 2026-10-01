@@ -1,3 +1,4 @@
+import { usePermissions } from "../../state/hooks/permissions/usePermissions";
 import { Folder, Menu, MessageSquare, Plus } from "../primitives/icons";
 
 export function NoChatSelected({
@@ -11,6 +12,8 @@ export function NoChatSelected({
   onNewChat: () => void;
   onHamburger: () => void;
 }) {
+  const permissions = usePermissions();
+  const canCreateProject = permissions["projects.project.create"] === true;
   return (
     <div class="flex-1 flex flex-col min-h-0">
       <header class="codex-header top-chrome z-20 flex min-h-[46px] flex-none items-center gap-2 border-b border-line px-2.5 pb-2">
@@ -44,14 +47,14 @@ export function NoChatSelected({
             </div>
           </div>
           <div class="flex gap-2 justify-center">
-            <button
+            {canCreateProject && (<button
               type="button"
               onClick={onNewProject}
               class="btn btn-primary btn-lg"
             >
               <Folder class="w-4 h-4" /> New project
-            </button>
-            {hasProjects && (
+            </button>)}
+            {hasProjects && permissions["chats.host.create"] && (
               <button
                 type="button"
                 onClick={onNewChat}

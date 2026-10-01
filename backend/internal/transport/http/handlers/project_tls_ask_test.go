@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"context"
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -81,7 +82,7 @@ func newTLSAskProjectHandler(t *testing.T, publicHostname string) (*ProjectHandl
 	}
 	projects := serviceproject.New(repo, serviceproject.ContainerDependencies{}, nil, nil)
 	project, err := projects.Create(
-		context.Background(),
+		permission.ContextWithSystemActor(context.Background()),
 		serviceproject.CreateInput{Name: "TLS Ask Project"},
 		"user@example.com",
 	)

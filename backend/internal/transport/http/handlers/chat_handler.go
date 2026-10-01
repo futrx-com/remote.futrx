@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -387,6 +388,8 @@ func int64Query(r *http.Request, key string, fallback int64) int64 {
 
 func sendChatError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),

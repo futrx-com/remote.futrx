@@ -3,6 +3,7 @@ package httphandlers
 import (
 	"context"
 	"encoding/json"
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -180,7 +181,7 @@ func newAgentBrowserProjectHandler(t *testing.T) (*ProjectHandler, *fakeProjectC
 		Listeners:   containers,
 		Browser:     fakeProjectBrowser{containers: containers},
 	}, nil, nil)
-	project, err := projects.Create(context.Background(), serviceproject.CreateInput{Name: "Browser Project"}, "user@example.com")
+	project, err := projects.Create(permission.ContextWithSystemActor(context.Background()), serviceproject.CreateInput{Name: "Browser Project"}, "user@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
