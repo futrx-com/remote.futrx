@@ -18,10 +18,6 @@ type WorkspaceProvisioner interface {
 	EnsureSkillLinks(ctx context.Context, containerName string) error
 }
 
-type CodeServerProvisioner interface {
-	Ensure(ctx context.Context, containerName, displayName string) error
-}
-
 type ScheduleToolsProvisioner interface {
 	Ensure(ctx context.Context, containerName string) error
 }
@@ -33,7 +29,6 @@ type Provisioner struct {
 	credentials   RegisteredCredentialEnsurer
 	workspace     WorkspaceProvisioner
 	browser       BrowserProvisioner
-	codeServer    CodeServerProvisioner
 	scheduleTools ScheduleToolsProvisioner
 }
 
@@ -41,7 +36,6 @@ func NewProvisioner(
 	credentials RegisteredCredentialEnsurer,
 	workspace WorkspaceProvisioner,
 	browser BrowserProvisioner,
-	codeServer CodeServerProvisioner,
 	scheduleTools ...ScheduleToolsProvisioner,
 ) *Provisioner {
 	var scheduled ScheduleToolsProvisioner
@@ -52,13 +46,12 @@ func NewProvisioner(
 		credentials:   credentials,
 		workspace:     workspace,
 		browser:       browser,
-		codeServer:    codeServer,
 		scheduleTools: scheduled,
 	}
 }
 
 // Provision applies launch-time capabilities in their stable order.
-func (p *Provisioner) Provision(ctx context.Context, containerName, displayName string) {
+func (p *Provisioner) Provision(ctx context.Context, containerName, _ string) {
 	_ = p.credentials.EnsureRegistered(ctx, containerName)
 	_ = p.workspace.EnsureSkillLinks(ctx, containerName)
 	_ = p.browser.EnsureScript(ctx, containerName)
@@ -67,5 +60,4 @@ func (p *Provisioner) Provision(ctx context.Context, containerName, displayName 
 	if p.scheduleTools != nil {
 		_ = p.scheduleTools.Ensure(ctx, containerName)
 	}
-	_ = p.codeServer.Ensure(ctx, containerName, displayName)
 }

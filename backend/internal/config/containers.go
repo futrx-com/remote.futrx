@@ -8,7 +8,6 @@ import (
 	containerbaseimage "github.com/futrx-com/remote.futrx.com/internal/integration/containers/baseimage"
 	containerbrowser "github.com/futrx-com/remote.futrx.com/internal/integration/containers/browser"
 	containercli "github.com/futrx-com/remote.futrx.com/internal/integration/containers/cli"
-	containercodeserver "github.com/futrx-com/remote.futrx.com/internal/integration/containers/codeserver"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	containercredentials "github.com/futrx-com/remote.futrx.com/internal/integration/containers/credentials"
 	containerenvironment "github.com/futrx-com/remote.futrx.com/internal/integration/containers/environment"
@@ -115,7 +114,6 @@ func NewContainerStack(
 		Runtime:     browserAdapter,
 		Tooling:     browserAdapter,
 	}, configconstants.ProjectPreviewAgentBrowserPort)
-	codeServer := containercodeserver.NewProvisioner(runner)
 	scheduleTools := containerscheduletools.NewAdapter(runner, publisher)
 	workspace := containerworkspace.NewProvisioner(
 		runner,
@@ -128,14 +126,12 @@ func NewContainerStack(
 		containerbaseimage.NewClient(runner),
 		profiles,
 		containerbrowser.InstallScript(),
-		containercodeserver.InstallScript(),
 		options.ImageBuildProgress,
 	)
 	launchProvisioner := containerlaunch.NewProvisioner(
 		credentials,
 		workspace,
 		browser,
-		codeServer,
 		scheduleTools,
 	)
 	resources := containerresources.NewManager(runner)

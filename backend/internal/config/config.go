@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -118,26 +117,6 @@ func Load() Config {
 
 func (c Config) Addr() string {
 	return c.Host + ":" + c.Port
-}
-
-// CodeServerBaseURL derives the IDE origin from the public hostname selected
-// during installation. For example, https://remote.example.com becomes
-// https://code.remote.example.com/.
-func CodeServerBaseURL(baseURL string) (string, error) {
-	parsed, err := parseBaseURL(baseURL)
-	if err != nil {
-		return "", err
-	}
-	host := "code." + parsed.Hostname()
-	if port := parsed.Port(); port != "" {
-		host = net.JoinHostPort(host, port)
-	}
-	parsed.Host = host
-	parsed.Path = "/"
-	parsed.RawPath = ""
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	return parsed.String(), nil
 }
 
 // PublicHostname returns the hostname selected during installation.

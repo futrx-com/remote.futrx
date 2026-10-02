@@ -24,12 +24,10 @@ current workspace checks. It does not perform filesystem realpath/symlink
 authorization; the target route must enforce file access.
 
 Media still uses the media viewer and archives/unsupported media download.
-On this core branch, non-media requests with no matching opener fall back to
-the built-in IDE. #256 removes that fallback; the generic link helper can
-instead return the chat download route. The Files drawer's availability
-selector currently also checks for a `chatHeaderActions` slot entry. An
-opener-only extension should be checked in the drawer separately from Markdown;
-the current built-in fallback makes the drawer available regardless.
+Non-media requests with no matching opener use the download fallback. The Code
+Server migration removes the built-in IDE fallback. The Files drawer's
+availability selector currently also checks for a `chatHeaderActions` slot entry.
+An opener-only extension should be checked in the drawer separately from Markdown.
 
 ## Source and verification
 
@@ -48,8 +46,6 @@ the current built-in fallback makes the drawer available regardless.
 - [frontend/src/ui/chat/files/FileManagerDrawer.tsx](../../../frontend/src/ui/chat/files/FileManagerDrawer.tsx)
 - [frontend/src/ui/chat/files/FileTree.tsx](../../../frontend/src/ui/chat/files/FileTree.tsx)
 - [frontend/src/ui/chat/header/WorkspaceActions.tsx](../../../frontend/src/ui/chat/header/WorkspaceActions.tsx)
-- [frontend/src/ui/chat/ideLinks.test.ts](../../../frontend/src/ui/chat/ideLinks.test.ts)
-- [frontend/src/ui/chat/ideLinks.ts](../../../frontend/src/ui/chat/ideLinks.ts)
 - [frontend/src/ui/chat/markdown/Markdown.tsx](../../../frontend/src/ui/chat/markdown/Markdown.tsx)
 - [frontend/src/ui/chat/markdown/inlineParser.tsx](../../../frontend/src/ui/chat/markdown/inlineParser.tsx)
 - [frontend/src/ui/chat/messages/AttachmentPreviews.tsx](../../../frontend/src/ui/chat/messages/AttachmentPreviews.tsx)
@@ -61,7 +57,7 @@ was performed for this split.
 ## What to verify
 
 Tests check media/application/download classification, registered file-link
-resolution, download fallback and built-in IDE line/column URLs. Multiple opener
+resolution and download fallback. Multiple opener
 ordering/replacement is documented from implementation review rather than
 exhaustively tested. Verify Markdown, attachments and Files while switching
 projects; test an opener-only extension in the Files drawer separately.

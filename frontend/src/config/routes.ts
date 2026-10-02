@@ -37,8 +37,6 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/files/download-folder${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     mediaOpen: (id: string, path: string) =>
       `/api/chats/${encodeURIComponent(id)}/media-open?path=${encodeURIComponent(path)}`,
-    ideOpen: (id: string, path: string) =>
-      `/api/chats/${encodeURIComponent(id)}/ide-open?path=${encodeURIComponent(path)}`,
     transcript: (id: string, query: string) =>
       `/api/chats/${encodeURIComponent(id)}/transcript${query ? `?${query}` : ""}`,
     transcriptContent: (id: string, query: string) =>

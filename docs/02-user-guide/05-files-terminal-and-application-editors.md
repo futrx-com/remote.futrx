@@ -1,8 +1,7 @@
-# Files, Terminal, and IDE
+# Files, Terminal, and application editors
 
-Files, Terminal, and IDE are three views of the same project workspace. Use
-**Files** to inspect and download, **Open Terminal** for direct shell work, and
-**Open in IDE** for code editing.
+Files and Terminal operate on the same project workspace. Installed applications
+can add editing actions and file openers to a project chat.
 
 ![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
 
@@ -10,7 +9,7 @@ Files, Terminal, and IDE are three views of the same project workspace. Use
 
 - Open a chat inside the intended project. These workspace controls are not
   the isolation boundary for a **Loose chat**.
-- Confirm the project is one you are allowed to change. Terminal and IDE
+- Confirm the project is one you are allowed to change. Terminal and application
   actions can modify the durable workspace immediately.
 - Remember that `/workspace` and the provider homes are durable, while
   arbitrary files elsewhere in the container root filesystem may disappear
@@ -20,13 +19,13 @@ Files, Terminal, and IDE are three views of the same project workspace. Use
 
 | Task | Surface | What it changes |
 | --- | --- | --- |
-| Browse directories, open media/code, or download a file | **Files** | Nothing unless the opened IDE file is edited or a download is saved locally |
+| Browse directories, open media/code, or download a file | **Files** | Nothing unless an opened file is edited or a download is saved locally |
 | Find a file by name | **Files** | Nothing |
 | Download a directory as ZIP | **Files** | Creates a temporary server-side archive, then downloads it |
 | Run a command or inspect a process | **Open Terminal** | Whatever the command changes |
-| Read and edit a codebase | **Open in IDE** | Whatever is saved through code-server |
+| Read and edit a codebase | An installed editor application | Whatever the editor saves |
 
-All three start from the chat's current working directory. In a normal project
+These tools start from the chat's current working directory. In a normal project
 chat that is `/workspace`; a chat working in a contained subdirectory opens
 that location where supported.
 
@@ -35,8 +34,8 @@ that location where supported.
 1. Open the project chat.
 2. Select **Files** in the chat header.
 3. Select a folder row to expand it. Subdirectories load as they are opened.
-4. Select a file row to open it in the media viewer, IDE, or download path
-   described below.
+4. Select a file row to open it in the media viewer or an installed application,
+   or to download it as described below.
 5. Hover or focus a file and select **Download _filename_** to download
    directly instead.
 6. To export a directory, hover or focus it and select **Download _folder_ as
@@ -44,10 +43,9 @@ that location where supported.
 7. Select **Refresh** after an agent or terminal command changes the tree.
 8. Select **Close files** when finished.
 
-**Outcome:** supported media opens inside Remote, code/data/text opens in the
-project IDE, unsupported media and archives download, and folders download as
-ZIP archives. Editing still happens in code-server rather than inside the
-Files drawer.
+**Outcome:** supported media opens inside Remote. Code, data, and text files
+use a registered application opener when available; otherwise they download.
+Folders download as ZIP archives.
 
 ### Search by filename
 
@@ -89,7 +87,7 @@ directories.
 | File type | Selection result |
 | --- | --- |
 | Supported image, audio, video, or PDF | Opens in Remote's full-screen media viewer |
-| Code, data, text, log, or unknown non-media file | Opens that exact file in the project IDE |
+| Code, data, text, log, or unknown non-media file | Uses a registered application file opener, or downloads |
 | Archive or unsupported image/audio/video format | Downloads the file |
 
 The media viewer provides **Open in new tab**, **Download**, and **Close**.
@@ -98,9 +96,9 @@ Press Escape or select outside the content to close it.
 ### Open workspace links from chat
 
 Validated absolute workspace links in an agent message follow the same split:
-supported media opens in the in-app viewer; other safe files redirect to the
-project IDE. A path can include `:line` or `:line:column`, and code-server opens
-the file at that exact location.
+supported media opens in the in-app viewer; other safe files use a running
+application's registered file opener or download. A path can include `:line` or
+`:line:column`, which the opener receives.
 
 Examples:
 
@@ -150,38 +148,13 @@ Use a process manager or a terminal multiplexer that you configure inside the
 project for work that must survive the page. Do not treat the Terminal pane
 itself as a durable process supervisor.
 
-## Open the browser IDE
+## Open an application editor
 
-1. Open the intended project chat.
-2. Select **Open in IDE**.
-3. Allow the new tab if the browser blocks it.
-4. Wait for code-server to open the chat path, normally `/workspace`.
-5. Use the IDE's explorer, search, editor, and integrated tools normally.
-
-**Outcome:** the browser opens the project's code-server instance on its
-dedicated IDE endpoint. File rows and agent-produced workspace links can target
-a validated file and optional line/column inside that IDE.
-
-![The project code-server IDE in a browser tab](/assets/docs/screenshots/browser-ide.webp)
-
-### IDE authorization caveat
-
-The current IDE proxy verifies that the browser belongs to a registered Remote
-user, but it does **not** verify membership in the selected project. Any user
-invited to the Remote server can potentially open any project IDE.
-
-This differs from Files, Terminal, and Preview endpoints, which enforce project
-membership or administrator access. Do not place mutually untrusted users on
-the same Remote installation until IDE membership enforcement is added.
-
-### Use the installable IDE launcher
-
-Open `https://code.<your-remote-host>` to see the available project IDEs in a dedicated launcher. That launcher includes a web-app manifest and minimal service worker, so a supporting browser can install it as a PWA for faster access to project editors.
-
-The launcher always loads the live project list and does not provide offline
-project access. The main Remote chat application is also installable as a PWA,
-but it remains network-first: only a self-contained offline status page is
-cached, never the live workspace or agent data.
+Install an editor application in the project and use the action it adds to the
+chat header. The application controls its own URL and file opening behavior;
+Remote checks project membership and that the installation is running before
+serving its declared web route. See the application's own guide for its editor
+controls and settings.
 
 ## How the three paths meet
 
@@ -189,11 +162,11 @@ cached, never the live workspace or agent data.
 flowchart LR
     Files["Files drawer<br/>browse and download"] --> Workspace["Durable /workspace"]
     Terminal["Terminal PTY<br/>fresh bash -l"] --> Workspace
-    IDE["code-server<br/>edit and navigate"] --> Workspace
+    Editor["Installed editor application"] --> Workspace
     Agent["Project agent"] --> Workspace
 ```
 
-A change saved by the agent, terminal, or IDE is visible to the other surfaces
+A change saved by the agent, terminal, or an editor is visible to the other surfaces
 after refresh. The surfaces do not create separate copies or per-chat
 worktrees.
 

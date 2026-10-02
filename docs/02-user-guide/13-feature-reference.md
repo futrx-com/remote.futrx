@@ -106,15 +106,15 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 
 | Feature | How to use it | Limits or lifecycle |
 | --- | --- | --- |
-| Open in IDE | Choose **Open in IDE** in a project chat | code-server in `/workspace`; registered-user auth caveat |
-| Installable apps | Use the browser's install action on Remote or `code.<host>` | Main app is network-first with a cached offline status page; IDE launcher keeps a live project list |
+| Application actions | Install a project application to add its chat actions | Available only while the application runs in that project |
+| Installable apps | Use the Applications page in Remote | App web routes check project membership and installation status |
 | Open Terminal | Choose **Open Terminal** | Resizable pane; hiding it in the same chat preserves the PTY; socket loss or page/chat change ends it |
 | Open History | Choose **History** | Git repositories only |
 | Open Files | Choose **Files** | Lazy workspace tree |
 | Open Browser | Choose **Open Browser** | Preview or Agent Browser |
 | Refresh Files | Use the drawer refresh control | Reloads root |
 | Expand folder | Select folder row | Lazy-loads children |
-| Open file | Select a file or search result | Supported media opens in-app; other non-archives open in IDE; unsupported media/archives download |
+| Open file | Select a file or search result | Supported media opens in-app; an installed application can open source files, otherwise they download; unsupported media/archives download |
 | Search filenames | Type at least two characters | 300 results; 200,000 visited-entry cap |
 | Download file | Hover a file and choose download | Direct file response |
 | Download folder | Hover a folder and choose download | ZIP up to 1 GiB; two concurrent |

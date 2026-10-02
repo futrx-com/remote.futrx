@@ -13,8 +13,6 @@ func ShareablePort(port int) error {
 	// authorization boundary.
 	switch port {
 	case configconstants.ProjectPreviewAgentBrowserPort,
-		configconstants.ProjectPreviewIDEProxyPort,
-		configconstants.ProjectPreviewIDEDirectPort,
 		configconstants.ProjectPreviewBrowserDevToolsPort:
 		return ErrPortNotShareable
 	default:

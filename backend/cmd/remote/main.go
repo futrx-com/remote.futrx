@@ -38,7 +38,6 @@ import (
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/service/versiontelemetry"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
-	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileversiontelemetry"
@@ -245,11 +244,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	codeServerBaseURL, err := config.CodeServerBaseURL(cfg.BaseURL)
-	if err != nil {
-		log.Fatalf("configure IDE URL: %v", err)
-	}
-
 	handler, err := transport.NewHTTPHandler(transport.Dependencies{
 		Services:       serviceSet,
 		TmuxClient:     tmuxClient,
@@ -265,7 +259,6 @@ func main() {
 		SelfUpdate: selfUpdateService,
 		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
 		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),
-		IDE:        serviceworkspaceide.New(codeServerBaseURL, fileproject.WorkspaceRoot),
 	})
 	if err != nil {
 		log.Fatalf("init http handler: %v", err)

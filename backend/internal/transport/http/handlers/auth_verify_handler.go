@@ -29,11 +29,9 @@ func (h *authVerifyHandler) verify(w http.ResponseWriter, r *http.Request) {
 	matchedSlug, matchedPort := h.matchPreviewHost(host)
 
 	// Only the preview host class can be authorized by a public share link.
-	// The IDE hosts and the main application never reach this branch, because
-	// matchPreviewHost leaves the slug empty for them. It runs before the
-	// session check so that a member who opens a share URL themselves also
-	// gets the token stripped from it rather than forwarding it into the
-	// project's own request logs.
+	// It runs before the session check so that a member who opens a share
+	// URL themselves also gets the token stripped from it rather than
+	// forwarding it into the project's own request logs.
 	if matchedSlug != "" && h.authorizeShare(w, r, matchedSlug, matchedPort) {
 		return
 	}

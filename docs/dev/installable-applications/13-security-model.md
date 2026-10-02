@@ -282,7 +282,7 @@ A checklist for reviewing a `ui/` directory:
 
 ## Project application web content
 
-`web.port` serves container HTTP content on a separate origin per installation:
+`web.port` serves container HTTP content on a separate origin per application and project:
 `https://<web.subdomain>--<project-slug>.<public-host>/`. The main-origin
 `/apps/<project-slug>/<application-id>/` URL only redirects after authorizing
 the caller. Each application-host request verifies a registered session,
@@ -292,8 +292,9 @@ policy does not apply here; requests do not start stopped apps.
 
 Host dispatch occurs before the platform router. Even `/api`, `/auth`, and
 `/internal` on an app hostname reach only that application's upstream. Unknown
-or malformed app hostnames cannot fall through to Remote's UI or APIs. Unnamed apps get a fresh ID/origin on reinstallation. Named apps deliberately
-keep their project origin, including existing browser storage and service workers.
+or malformed app hostnames cannot fall through to Remote's UI or APIs. Applications
+keep their manifest-label/project origin across reinstallation, including existing
+browser storage and service workers.
 Uninstalling the server application does not clear that browser state.
 
 The existing `HttpOnly` platform session cookie is still domain-scoped for

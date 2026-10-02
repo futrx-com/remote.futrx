@@ -13,7 +13,6 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
-	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -23,7 +22,6 @@ type ChatHandler struct {
 	auth      *serviceauth.Service
 	files     *serviceworkspacefiles.Service
 	history   *servicegithistory.Service
-	ide       *serviceworkspaceide.Service
 	schedules *ScheduleHandler
 }
 
@@ -33,7 +31,6 @@ func NewChatHandler(
 	auth *serviceauth.Service,
 	files *serviceworkspacefiles.Service,
 	history *servicegithistory.Service,
-	ide *serviceworkspaceide.Service,
 ) *ChatHandler {
 	return &ChatHandler{
 		chats:   chats,
@@ -41,7 +38,6 @@ func NewChatHandler(
 		auth:    auth,
 		files:   files,
 		history: history,
-		ide:     ide,
 	}
 }
 
@@ -124,8 +120,6 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			h.handleMarkRead(w, r, id)
 		case "unread":
 			h.handleMarkUnread(w, r, id)
-		case "ide-open":
-			h.handleIDEOpen(w, r, meta)
 		case "media-open":
 			h.handleMediaOpen(w, r, meta)
 		case "files":
@@ -307,19 +301,6 @@ func (h *ChatHandler) handleMarkUnread(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, meta)
-}
-
-func (h *ChatHandler) handleIDEOpen(w http.ResponseWriter, r *http.Request, meta servicechat.Meta) {
-	if r.Method != http.MethodGet {
-		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	redirectURL, err := h.ide.OpenURL(meta.Cwd, r.URL.Query().Get("path"))
-	if err != nil {
-		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 func (h *ChatHandler) handleMediaOpen(w http.ResponseWriter, r *http.Request, meta servicechat.Meta) {

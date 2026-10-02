@@ -2,10 +2,10 @@
 #
 # Platform and application site blocks:
 #   1. ${HOSTNAME}            main chat UI + backend API
-#   2. code.${HOSTNAME}       code-server (VS Code in browser)
+#   2. *.${HOSTNAME}          named application origins (<label>--<project>.<host>)
 #   3. *.dev.${HOSTNAME}      per-project dev URLs (<slug>--<port>.dev.<host>)
 #
-# All use Remote authentication. Code + dev URLs use forward_auth; the
+# All use Remote authentication. Dev URLs use forward_auth; the
 # application gateway validates sessions and project membership itself.
 
 {
@@ -52,52 +52,6 @@ ${HOSTNAME} {
     }
 }
 
-code.${HOSTNAME} {
-    encode zstd gzip
-    route {
-        # Admin-session gate (same check as the rest of the platform).
-        forward_auth 127.0.0.1:${SERVICE_PORT} {
-            uri /auth/verify
-        }
-        # Futrx IDE launcher PWA shell (one origin => one installable app).
-        handle / {
-            root * ${INSTALL_DIR}/infra/launcher
-            file_server
-        }
-        @launcher path /index.html /manifest.webmanifest /sw.js /icon.svg /favicon.ico
-        handle @launcher {
-            root * ${INSTALL_DIR}/infra/launcher
-            file_server
-        }
-        # Project list for the launcher (backend, session cookie intact).
-        handle /api/* {
-            reverse_proxy 127.0.0.1:${SERVICE_PORT}
-        }
-        # /<slug>/* -> that project's own per-container code-server. Same origin
-        # as the launcher, so the whole thing installs as a single PWA and each
-        # workspace opens in its own window. The slug prefix is stripped;
-        # code-server uses relative asset paths so it works under the sub-path.
-        @ide path_regexp ide ^/(?P<slug>[a-z0-9][a-z0-9-]+)(?P<rest>/.*)$
-        handle @ide {
-            rewrite * {re.ide.rest}
-            reverse_proxy {re.ide.slug}.lxd:8842 {
-                transport http {
-                    keepalive off
-                }
-                # Strip the platform admin-session cookies before entering the
-                # container (forward_auth already validated on loopback).
-                header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
-            }
-        }
-        # Bare /<slug> -> add trailing slash so code-server's relative URLs resolve.
-        @bare path_regexp bare ^/([a-z0-9][a-z0-9-]+)$
-        redir @bare {uri}/ 308
-        handle {
-            respond "Not found" 404
-        }
-    }
-}
-
 # Per-project dev URLs. <slug>--<port>.dev.${HOSTNAME} proxies into the
 # project's LXD container at <slug>.lxd:<port>. The .lxd resolution
 # depends on the systemd-resolved drop-in installed by infra/steps/01-host-deps.sh.
@@ -129,7 +83,7 @@ code.${HOSTNAME} {
             # validated the session against the main backend on loopback, so
             # the gate is unaffected; this stops any code running inside a
             # dev server from harvesting the admin session token (which would
-            # otherwise be replayable against code.${HOSTNAME} for host root).
+            # otherwise be replayable against ${HOSTNAME} for platform access).
             # remote_share is the public-preview grant: host-scoped to this
             # one <slug>--<port> origin, so this is the only block that can
             # ever see it, and the app inside must not be able to read it.

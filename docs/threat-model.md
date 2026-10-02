@@ -36,7 +36,7 @@ machine and guardrails.
 | 1 | Loose (project-less) chat → root code execution on the host, reachable by any invited user | Agent / Web | Elevation of privilege | **Critical** | ✓ |
 | 2 | Host tmux WebSocket / `/api/sessions` → host shell as root, no admin gate | Web | Elevation of privilege | **Critical** | ✓ (direct) |
 | 3 | Operator-selected update ref executes as root without commit/tag signature verification | Supply chain | Elevation of privilege | **High** | cited |
-| 4 | Any invited user reaches any project's code-server IDE (cross-tenant root shell) | Web | Elevation of privilege | **High** | ✓ |
+| 4 | Any invited user reaches another project's application web service | Web | Elevation of privilege | **Resolved at edge** | ✓ |
 | 5 | Cross-container lateral movement over the unsegmented LXD bridge | Container | Elevation of privilege | **High** | ✓ |
 | 6 | Prompt-injected agent exfiltrates secrets over unrestricted egress | Agent | Information disclosure | **High** | cited |
 | 7 | Provider OAuth tokens copied into every container, readable/exfiltrable by an injected agent | Secrets | Information disclosure | **High** | cited |
@@ -69,12 +69,14 @@ External users reach only Caddy, which terminates TLS and forwards to the loopba
 - **Existing mitigations:** session names are validated (`^[a-zA-Z0-9_-]{1,32}$`); the main UI does not surface this route.
 - **Residual gap:** no authorization beyond "registered." This is a full host compromise available to any non-admin invited user. Directly verified.
 
-### 4. Any invited user reaches any project's code-server IDE — **High** ✓ code-verified
+### 4. Any invited user reaches another project's application web service — resolved at edge
 
-**Elevation of privilege.** The `forward_auth` handler ([`auth_verify_handler.go`](../backend/internal/transport/http/handlers/auth_verify_handler.go)) extracts the project slug **only** from the dev-preview host pattern `^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.(.+)$`. For the IDE host classes — `code.<host>/<slug>/` — the slug is never parsed, so [`access.go`](../backend/internal/service/auth/access.go) skips the membership branch and falls through to a **registered-user-only** check. code-server itself runs `auth: none` ([`code-server-up.sh`](../backend/internal/integration/containers/codeserver/assets/code-server-up.sh)) with an integrated root terminal over the bind-mounted project root. So any invited user can hand-craft `https://code.<host>/<victim-slug>/` and get a root shell and full read/write in a project they were never granted.
-
-- **Existing mitigations:** Caddy `forward_auth` does require an authenticated, registered session, and strips platform cookies before proxying. The dev-preview URL path (`--<port>.dev`) *does* enforce membership — proving the mechanism exists and is simply not applied to the IDE host class.
-- **Residual gap:** no per-project membership check for the IDE/code hosts. This is documented as a known gap in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md), but the Caddyfile comments incorrectly call it "the same admin gate as the rest of the platform."
+Project web applications are routed through the authenticated
+`<web.subdomain>--<project-slug>.<public-host>` gateway; `/apps/<project-slug>/<application-id>/`
+is only its launch redirect. The gateway verifies project membership and a
+running installation, then selects the upstream port from the validated
+application manifest. Stopping or uninstalling an app disables its route. The
+direct LXD bridge path remains ungated; see finding 5.
 
 ### 20. Project application content shares the platform browser origin — mitigated
 
@@ -148,9 +150,9 @@ normal authentication and endpoint authorization. Browsers without Fetch
 Metadata do not get the full navigation/subresource protection. These checks
 do not protect against scripts already executing on the platform's own origin.
 
-### 19. `return_to` open redirect into preview/IDE subdomains — **Low**
+### 19. `return_to` open redirect into preview subdomains — **Low**
 
-**Spoofing.** `isSafeReturnTo` ([`auth_redirect.go`](../backend/internal/transport/http/handlers/auth_redirect.go)) accepts any HTTPS URL on the base host **or any subdomain** — including `*.dev.<host>` and application hosts, which serve untrusted container content. A crafted `?return_to=` can bounce a freshly authenticated user onto attacker-influenced content on a trusted-looking origin (e.g. a fake password prompt).
+**Spoofing.** `isSafeReturnTo` ([`auth_redirect.go`](../backend/internal/transport/http/handlers/auth_redirect.go)) accepts any HTTPS URL on the base host **or any subdomain** — including `*.dev.<host>`, which serves untrusted container content. A crafted `?return_to=` can bounce a freshly authenticated user onto attacker-influenced content on a trusted-looking origin (e.g. a fake password prompt).
 
 - **Existing mitigations:** external domains are rejected (https + base-or-subdomain only, ≤2048 chars); the target subdomain is itself `forward_auth`-gated.
 - **Residual gap:** restrict post-login redirects to the main app origin.
@@ -199,10 +201,10 @@ Unprivileged LXC namespaces plus the managed resource profile are the isolation 
 
 ### 5. Cross-container lateral movement over the LXD bridge — **High** ✓ code-verified
 
-**Elevation of privilege.** All project containers share one unsegmented `lxdbr0` with no `security.mac_filtering` and no per-container firewall; the host UFW opens only 80/443, which does not filter peer-to-peer traffic. Each container exposes root-level services reachable on the bridge: code-server on `0.0.0.0:8842` (`auth: none`) and noVNC/websockify on `0.0.0.0:6080` (`x11vnc -nopw`). Code executing in container A can connect to `<B>.lxd:8842` — a root IDE/terminal in B — or `<B>.lxd:6080` — B's live authenticated browser — completely bypassing Caddy's edge auth.
+**Elevation of privilege.** All project containers share one unsegmented `lxdbr0` with no `security.mac_filtering` and no per-container firewall; the host UFW opens only 80/443, which does not filter peer-to-peer traffic. A project application may expose an unauthenticated service socket; browser tooling may expose noVNC/websockify on `0.0.0.0:6080` (`x11vnc -nopw`). Code executing in container A can connect directly to services in container B over the bridge, bypassing the web gateway.
 
-- **Existing mitigations:** code-server binds loopback behind the `:8842` socket-activation proxy; CDP and raw RFB are loopback-only; Caddy gates the *edge*.
-- **Residual gap:** nothing gates the direct bridge path. Precondition is only code execution in one container — the platform's core function — so prompt-injection-to-lateral-movement is a first-class path. Fix with LXD network ACLs or per-container nftables default-deny for peer ingress on 8842/6080/9222/5900, or bind those services host-only.
+- **Existing mitigations:** CDP and raw RFB are loopback-only; Remote gates web access.
+- **Residual gap:** nothing gates the direct bridge path. Precondition is only code execution in one container — the platform's core function — so prompt-injection-to-lateral-movement is a first-class path. Fix with LXD network ACLs or per-container nftables default-deny for peer ingress on application and browser service ports, or bind those services host-only.
 - *Correction to earlier analysis:* `ipv4.firewall` **is** enabled by `lxd init --auto`, but it governs host-bridge NAT/DHCP, not inter-container isolation, so the conclusion stands.
 
 ### 13. A single workspace can exhaust host disk — **High** ✓ code-verified
@@ -281,7 +283,7 @@ project secret once an operator applies it.
 
 ### 12. Unpinned/unverified upstream fetches baked in as root — **High**
 
-**Tampering.** Several root-context fetches have no cryptographic integrity check: NodeSource `curl | bash` (major-version pinned only), the Go tarball (validated only by `tar -tzf` + the reported version string), the code-server `.deb` from GitHub releases (no checksum), `snap install lxd` (unpinned), and the `ubuntu:24.04` base image (floating). All of this is rebuilt on every update and re-run inside live containers via the CLI repair path. A compromise or MITM of any of these upstreams runs as root and propagates into every workspace on the next rebake.
+**Tampering.** Several root-context fetches have no cryptographic integrity check: NodeSource `curl | bash` (major-version pinned only), the Go tarball (validated only by `tar -tzf` + the reported version string), `snap install lxd` (unpinned), and the `ubuntu:24.04` base image (floating). A compromise or MITM of these upstreams runs as root and can propagate into project containers on rebake.
 
 - **Existing mitigations:** Caddy and GitHub CLI apt repos are GPG-signed; the Go install stages with backup/rollback; LXD's `ubuntu:` remote verifies image signatures; agent CLI and host versions are centrally pinned in one canonical manifest (`infra/versions.env` is a symlink).
 - **Residual gap:** no SHA256/signature pinning on the fetches above; the base image is non-reproducible. Also note the npm agent CLIs are pinned by version but installed with lifecycle scripts enabled and no integrity hashes — a backdoored publish *at* the pinned version, or a poisoned pin commit, runs as root host-wide.
@@ -303,8 +305,8 @@ project secret once an operator applies it.
 Roughly in order of risk reduction per unit effort:
 
 1. **Gate the host-shell and loose-chat paths** (findings 1, 2). At minimum require admin for `/ws?session=`, `/api/sessions/*`, and loose-chat runs; better, run loose chats in a disposable container. These are any-invited-user → host-root.
-2. **Enforce project membership on the IDE host class** (finding 4) — parse the slug from `code.<host>/<slug>/` and apply `HasAccess`.
-3. **Segment the container bridge** (finding 5) — LXD network ACLs or per-container nftables default-deny on peer ingress to 8842/6080/9222/5900.
+2. **Isolate application web origins** (finding 20) — keep project-controlled scripts away from the main Remote API origin.
+3. **Segment the container bridge** (finding 5) — LXD network ACLs or per-container nftables default-deny on peer ingress to application and browser service ports.
 4. **Add a default disk quota** (finding 13) — move workspaces to a quota-capable pool or apply a project quota on the bind-mount source.
 5. **Sign the update chain** (finding 3) — require verified signed commits/tags
    before the root updater re-executes selected code; preserve an explicit

@@ -13,7 +13,6 @@ import (
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
-	serviceworkspaceide "github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 	httphandlers "github.com/futrx-com/remote.futrx.com/internal/transport/http/handlers"
 	httpmiddleware "github.com/futrx-com/remote.futrx.com/internal/transport/http/middleware"
@@ -34,7 +33,6 @@ type Dependencies struct {
 	SelfUpdate     *serviceselfupdate.Service
 	Files          *serviceworkspacefiles.Service
 	GitHistory     *servicegithistory.Service
-	IDE            *serviceworkspaceide.Service
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
@@ -93,7 +91,6 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Auth,
 		deps.Files,
 		deps.GitHistory,
-		deps.IDE,
 	).WithSchedules(scheduleHandler)
 
 	applicationsHandler := httphandlers.NewApplicationsHandler(

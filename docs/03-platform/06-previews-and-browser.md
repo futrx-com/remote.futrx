@@ -55,7 +55,7 @@ sequenceDiagram
 
 Properties that make this safe to hand out:
 
-- **One port, one project.** The token is bound to the project slug and the port. It is refused on any other host, on application hosts, on port 6080 (Agent Browser noVNC), and on the main application.
+- **One port, one project.** The token is bound to the project slug and the port. It is refused on any other host, on port 6080 (Agent Browser noVNC), on ports declared by application web services, and on the main application.
 - **Nothing replayable is stored.** `DATA_DIR/projectshares/<projectId>.json` holds only a SHA-256 digest of each token, plus port, label, creator, timestamps, and a revocation stamp.
 - **Time-boxed.** Default lifetime 24 hours; the UI offers 1 hour, 24 hours, and 7 days; the service refuses anything under 1 hour or over 30 days.
 - **Revocable immediately.** Every request re-reads the link from the store, so revoking one stops the next request, cookie or not.
@@ -148,8 +148,8 @@ Backend behavior:
 ```mermaid
 flowchart TD
     Main["https://host"] --> Backend["Main UI and API"]
-    IDELauncher["https://code.host"] --> Launcher["Installable IDE launcher"]
-    IDEProject["https://slug.code.host"] --> CodeServer["slug.lxd:8842"]
+    AppLaunch["https://host/apps/slug/app/"] -->|302| AppWeb["https://label--project.host/"]
+    AppWeb --> WebProxy["Authorized Go web proxy → declared app port"]
     Preview["https://slug--port.dev.host"] --> ProjectApp["slug.lxd:port"]
     AgentView["https://slug--6080.dev.host"] --> NoVNC["slug.lxd:6080"]
 ```
@@ -165,10 +165,10 @@ flowchart LR
     Auth -->|"preview hosts only"| Share["Share link or share cookie check"]
     Auth --> Strip["Strip platform cookies"]
     Share --> Strip
-    Strip --> Container["Untrusted project app, IDE, or noVNC"]
+    Strip --> Container["Untrusted project app or noVNC"]
 ```
 
-Project apps may set and receive their own cookies. Only the platform's session, OAuth-state, return-location, and share cookies are removed.
+Preview apps may set and receive their own cookies. Caddy removes only the platform's session, OAuth-state, return-location, and share cookies from preview traffic. Application web routes remove all cookies and upstream `Set-Cookie` headers.
 
 ## Code map
 

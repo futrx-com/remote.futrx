@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Opening workspace file</title>
+<p>Opening workspace file…</p>
+<script>
+(() => {
+  const query = new URL(location.href).searchParams;
+  const file = query.get("file");
+  const folder = query.get("folder") || "/workspace";
+  const inWorkspace = (path) => path === "/workspace" || path?.startsWith("/workspace/");
+  if (!inWorkspace(file) || !inWorkspace(folder)) {
+    document.querySelector("p").textContent = "Invalid workspace file.";
+    return;
+  }
+  const target = new URL("/", location.origin);
+  target.searchParams.set("folder", folder);
+  let uri = `vscode-remote://${location.host}${file.split("/").map(encodeURIComponent).join("/")}`;
+  const payload = [];
+  const line = Number(query.get("line"));
+  const column = Number(query.get("column"));
+  if (Number.isInteger(line) && line > 0) {
+    uri += `:${line}`;
+    if (Number.isInteger(column) && column > 0) uri += `:${column}`;
+    payload.push(["openFile", uri], ["gotoLineMode", "true"]);
+  } else {
+    payload.push(["openFile", uri]);
+  }
+  target.searchParams.set("payload", JSON.stringify(payload));
+  location.replace(target.toString());
+})();
+</script>

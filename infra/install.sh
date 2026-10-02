@@ -438,7 +438,7 @@ cat <<EOF
 ═══════════════════════════════════════════════════════════════
  ✓ Installed at:  $INSTALL_DIR
  ✓ Main UI:       https://$HOSTNAME
- ✓ Code editor:   https://code.$HOSTNAME
+ ✓ Web apps:      https://<app-subdomain>--<project-slug>.$HOSTNAME/
  ✓ Dev URLs:      https://<slug>--<port>.dev.$HOSTNAME
  ✓ DB viewers:    lazy per project at https://<slug>--18080.dev.$HOSTNAME
  ✓ Base image:    futrx-remote-dev-base (project containers launch from this)

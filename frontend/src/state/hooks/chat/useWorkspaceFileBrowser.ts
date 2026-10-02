@@ -1,5 +1,4 @@
 import { resolveFileOpener } from "../../../services/files/resolveFileOpener.ts";
-import { builtinEditorAvailable } from "../../../ui/chat/ideLinks.ts";
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "preact/hooks";
 import { useStore } from "zustand";
 import { chatFilesApi } from "../../../api/chat/chatFilesApi";
@@ -37,7 +36,7 @@ export function useWorkspaceFileBrowser({
 }) {
   const canOpenFile = useStore(extensionStore, (state) => Boolean(
     state.bySlot.get(EXTENSION_SLOTS.chatHeaderActions) && fileOpenerStore.getState().canOpen(projectId),
-  )) || builtinEditorAvailable;
+  ));
   const [state, dispatch] = useReducer(
     workspaceFileBrowserState.reduce,
     workspaceFileBrowserState.createInitial()
@@ -146,8 +145,7 @@ export function useWorkspaceFileBrowser({
           kind: target.kind,
         });
       } else if (target.action === "application" && canOpenFile) {
-        const url = resolveFileOpener(fileOpenerStore.getState().forProject(projectId), { cwd, path: containerPath })
-          ?? API_ROUTES.chats.ideOpen(chatId, containerPath);
+        const url = resolveFileOpener(fileOpenerStore.getState().forProject(projectId), { cwd, path: containerPath });
         if (url) window.open(url, "_blank", "noopener");
         else window.location.assign(chatFilesApi.fileDownloadUrl(chatId, node.path));
       } else {

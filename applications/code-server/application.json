@@ -1,0 +1,41 @@
+{
+  "id": "code-server",
+  "name": "Code Server",
+  "description": "Optional VS Code editor for a project workspace.",
+  "category": "development",
+  "version": "12",
+  "icon": "code",
+  "scopes": ["project"],
+  "install": "infra/install.sh",
+  "uninstall": "infra/uninstall.sh",
+  "env": [
+    {
+      "key": "CODE_SERVER_VERSION",
+      "label": "Code Server version",
+      "required": true,
+      "default": "4.121.0"
+    },
+    {
+      "key": "CODE_SERVER_SETTINGS_JSON",
+      "label": "VS Code settings.json",
+      "required": true,
+      "secret": true,
+      "format": "json",
+      "defaultFile": "infra/settings.json"
+    }
+  ],
+  "service": {
+    "name": "code-server",
+    "description": "Code Server workspace editor",
+    "command": ["/usr/bin/code-server", "/workspace"],
+    "restart": "on-failure",
+    "restartSec": 2
+  },
+  "web": { "port": 8842, "subdomain": "code" },
+  "backend": {
+    "timeoutMs": 30000
+  },
+  "ui": {
+    "entry": "scripts/main.js"
+  }
+}

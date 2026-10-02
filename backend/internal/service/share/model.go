@@ -1,7 +1,7 @@
 // Package share owns public preview links: time-boxed, revocable grants that
 // let someone without a platform account open one project's
-// <slug>--<port>.dev.<host> preview. A share never widens access to the IDE,
-// the agent browser, or the main application.
+// <slug>--<port>.dev.<host> preview. A share never widens access to installed
+// application web routes, the agent browser, or the main application.
 package share
 
 // ID identifies one share link inside a project.

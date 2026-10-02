@@ -5,7 +5,7 @@
 `remote.futrx` is a self-hosted browser workspace for Claude Code, Codex,
 MiniMax, Kimi Code, and Antigravity. Users create project-scoped containers, run interactive
 or scheduled agent turns against those projects, and inspect the result through
-chat, files, Git, a terminal, an IDE, or a live app preview.
+chat, files, Git, a terminal, installed applications, or a live app preview.
 
 Read [Philosophy](00-philosophy.md) for the design rationale behind project-scoped authority, durable project and provider homes, the host control plane, and the isolation contract.
 
@@ -27,11 +27,10 @@ flowchart LR
     LXD --> P1["Project container A"]
     LXD --> P2["Project container B"]
     P1 --> Agent["Agent CLI"]
-    P1 --> IDE["code-server"]
     P1 --> Apps["Project web apps"]
     P1 --> Chromium["Agent Browser"]
 
-    Caddy -->|"code host"| IDE
+    Go -->|"authenticated /apps route"| Apps
     Caddy -->|"slug--port.dev host"| Apps
     Caddy -->|"slug--6080.dev host"| Chromium
 ```

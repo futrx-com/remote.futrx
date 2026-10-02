@@ -1,7 +1,7 @@
 # Workspace tools
 
-The chat header opens Terminal, Files, Git History, Schedules, Browser, and the
-project IDE. Most are views over the same project workspace; Schedules is a
+The chat header opens Terminal, Files, Git History, Schedules, Browser, and
+installed application actions. Most are views over the same project workspace; Schedules is a
 host-control-plane view whose runs return to the same chat.
 
 ## Tool map
@@ -12,14 +12,14 @@ flowchart TD
     Chat --> Files["File manager"]
     Chat --> History["Git history"]
     Chat --> Browser["Browser drawer"]
-    Chat --> IDE["Browser IDE links"]
+    Chat --> Apps["Installed application actions"]
     Chat --> Schedules["Scheduled tasks drawer"]
     Chat --> Upload["Attachments"]
 
     Terminal --> Workspace["/workspace"]
     Files --> Workspace
     History --> Repos["Git repositories under workspace"]
-    IDE --> CodeServer["Project code-server"]
+    Apps --> Workspace
     Upload --> UploadDir["/workspace/.uploads"]
     Schedules --> ScheduleStore["Host scheduled-task store"]
 ```
@@ -69,7 +69,7 @@ flowchart LR
     Expand --> Download["Download file"]
     Expand --> Zip["Download folder as ZIP"]
     Expand --> Media["Open supported media inline"]
-    Expand --> IDE["Open path in IDE"]
+    Expand --> Editor["Open in installed application"]
 ```
 
 The backend resolves all paths relative to the chat working directory and
@@ -79,12 +79,12 @@ than returning unbounded data.
 Selecting a file routes by type:
 
 - supported image/audio/video/PDF opens in the full-screen media overlay;
-- code, data, text, logs, and unknown non-media files redirect to code-server;
-  and
+- a running project application may register a file opener for text and code;
+- when no opener is registered, those files download;
 - archives and unsupported media download.
 
-The same routing applies to validated absolute workspace links in chat. IDE
-targets preserve optional `:line[:column]` suffixes. Inline media receives a
+The same routing applies to validated absolute workspace links in chat. File
+openers receive optional `:line[:column]` suffixes. Inline media receives a
 restrictive content security policy.
 
 ## Terminal
@@ -145,7 +145,7 @@ run; **History** stays hidden until at least one exists. Commit patches render
 as collapsible per-file cards with line numbers, hunks, change counts, and file
 status badges, with raw-text fallback.
 
-The checkout API supports the checkpoint message, but the current History drawer does not render the dirty-tree checkpoint form even though its component state is present. In the visible UI, commit or stash dirty work through Terminal or IDE, refresh History, and then switch. Clean-tree switching works directly.
+The checkout API supports the checkpoint message, but the current History drawer does not render the dirty-tree checkpoint form even though its component state is present. In the visible UI, commit or stash dirty work through Terminal or an installed editor, refresh History, and then switch. Clean-tree switching works directly.
 
 ## Scheduled tasks
 
@@ -158,28 +158,19 @@ Schedule timers do not run inside the container. The backend persists claims,
 starts the project if needed, and injects the stored prompt through the normal
 chat run path. See [Scheduled tasks](06-scheduled-tasks.md).
 
-## Browser IDE
+## Application web routes and workspace links
 
-Each project has an on-demand code-server instance on container port `8842`.
+Project applications can declare a web port in their manifest. Remote exposes a
+running installation at `<label>--<project>.<host>` after checking
+project access. It selects the upstream port from the validated application
+manifest, removes platform cookies before forwarding, and stops routing when
+the application stops or is uninstalled. The `/apps/<project-slug>/<application-id>/` launch URL redirects to that origin. The application owns its browser UI,
+file URL format, and any chat actions it contributes.
 
-```mermaid
-flowchart LR
-    Link["Open IDE or file link"] --> Auth["Caddy forward-auth"]
-    Auth --> Host["code.<host>/<slug>/"]
-    Host --> Socket["In-container socket activation"]
-    Socket --> Code["code-server"]
-    Code --> Workspace["/workspace"]
-```
-
-Caddy disables upstream keep-alive so code-server can stop after its idle window. Platform session cookies are removed before requests reach the container.
-
-## IDE and media links in chat
-
-Markdown links are inspected by the frontend. Workspace paths can be converted
-into backend `ide-open` or `media-open` routes. The backend validates the path,
-then either redirects to code-server—using the workbench payload for an exact
-file and optional line/column—or serves supported image/audio/video/PDF media
-in the in-app viewer.
+Workspace links in chat are inspected by the frontend. Supported media uses
+the authenticated `media-open` route and opens in the in-app viewer. For other
+files, an installed application's file opener can supply a URL with optional
+line and column. Without one, the file downloads.
 
 ## Code map
 
@@ -187,5 +178,5 @@ in the in-app viewer.
 - Workspace files: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
 - Terminal socket: [`backend/internal/transport/ws/container_terminal_socket.go`](../../backend/internal/transport/ws/container_terminal_socket.go)
 - Git history: [`backend/internal/service/githistory/service.go`](../../backend/internal/service/githistory/service.go)
-- IDE service: [`backend/internal/service/workspaceide/service.go`](../../backend/internal/service/workspaceide/service.go)
+- Application web routes: [`backend/internal/transport/http/handlers/applications_web_handler.go`](../../backend/internal/transport/http/handlers/applications_web_handler.go)
 - Schedules UI: [`frontend/src/ui/chat/schedules/ScheduleDrawer.tsx`](../../frontend/src/ui/chat/schedules/ScheduleDrawer.tsx)

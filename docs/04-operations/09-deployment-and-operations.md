@@ -39,7 +39,6 @@ one convergence cannot mix policy from two commits.
 | `.lxd` DNS integration | Resolves container names through the LXD bridge |
 | `lxc-ipv4-heal.timer` | Repairs running containers that lose IPv4 |
 | Main application PWA | Installable chat/control surface, Web Push, and a network-failure offline page |
-| code-server launcher PWA | One installable entry point for project IDEs |
 
 ## Build flow
 
@@ -109,19 +108,17 @@ convergence or rebuild project images.
 flowchart TD
     Internet["Internet"] --> Caddy
     Caddy --> Main["host → Go backend"]
-    Caddy --> Launcher["code.host → IDE launcher or slug path"]
-    Caddy --> ProjectIDE["slug.code.host → slug.lxd:8842"]
+    Main --> Launch["/apps/slug/app → redirect to installation origin"]
+    Caddy --> AppWeb["label--project.host → Go gateway → declared project web port"]
     Caddy --> Preview["slug--port.dev.host → slug.lxd:port"]
     Caddy --> Inspector["preview /__remote_inspector → Go backend"]
 
-    ProjectIDE --> Auth["forward_auth /auth/verify"]
-    Preview --> Auth
-    Launcher --> Auth
-    ProjectIDE --> TLS["on-demand TLS checked by /internal/tls-ask"]
-    Preview --> TLS
+    Preview --> Auth["forward_auth /auth/verify"]
+    AppWeb --> Membership["project membership and running install"]
+    Preview --> TLS["on-demand TLS checked by /internal/tls-ask"]
 ```
 
-Caddy validates its rendered configuration before replacing the live file. On-demand certificate requests are accepted only for existing project slugs and permitted hostname formats.
+Caddy validates its rendered configuration before replacing the live file. On-demand certificate requests are accepted only for existing project previews and running web installations with permitted hostname formats. Configure `*.<host>` DNS for installed applications.
 
 ## Base-image build
 
@@ -136,7 +133,6 @@ sequenceDiagram
     Builder->>Ubuntu: Launch temporary container
     Builder->>Ubuntu: Install system tools, Node, GitHub CLI, catalog-declared project CLIs
     Builder->>Ubuntu: Install Chromium and Agent Browser
-    Builder->>Ubuntu: Install code-server
     Builder->>Ubuntu: Stop container
     Builder->>Alias: Publish reusable image
     Builder->>LXD: Remove temporary builder
@@ -325,14 +321,14 @@ The server-info settings page reports host, CPU, memory, storage, network, and G
 
 - The backend listens on loopback by default; Caddy is the public entry point.
 - Platform sessions use secure, HTTP-only cookies.
-- Preview and IDE requests use forward authentication; preview authorization is project-aware, while IDE authorization currently accepts any registered user.
+- Preview requests use forward authentication; application web routes check project membership and a running installation.
 - Platform cookies are removed before container proxying.
 - Internal Caddy helper routes are denied externally.
 - Secret, auth, access, and user files use restrictive permissions.
 - SSH password and keyboard-interactive authentication are disabled after install.
 - On-demand TLS issuance is restricted to valid, existing project hosts.
 - Project containers are unprivileged and receive host workspaces through mapped ownership.
-- Project containers currently share the LXD bridge without lateral ACLs; code-server and noVNC rely on Caddy for public authentication and do not independently authenticate direct bridge traffic.
+- Project containers currently share the LXD bridge without lateral ACLs; application web services and noVNC rely on Remote for public authentication and do not independently authenticate direct bridge traffic.
 
 ## Operational commands
 

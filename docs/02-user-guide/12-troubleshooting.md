@@ -192,17 +192,19 @@ page kills that shell, and there is no reconnect. Run durable processes under
 an appropriate project process manager or terminal multiplexer that you
 configure inside the project.
 
-### IDE opens the wrong place
+### An application file opener opens the wrong place
 
-Open **Open in IDE** from the intended project chat, or use an
-agent-generated validated absolute workspace path. The default path is
-`/workspace`. Links can include `:line` or `:line:column`; Remote validates the
-path and passes a code-server workbench payload so the cursor opens at that
-location.
+Open the application action from the intended project chat, or use a validated
+absolute workspace path. Links can include `:line` or `:line:column`; the
+installed application decides how to open that location.
 
-### A user can open an IDE for a project they do not belong to
+### A user can open an application web route for another project
 
-This is a known authorization gap: the IDE proxy currently checks registered-user status but not project membership. Remove the person from the global user directory if access must stop, and do not invite mutually untrusted users to the same server.
+Application web routes require project membership and a running installation.
+If a removed member still has an open connection, close that browser session or
+stop the application. Project containers share a bridge, so processes in another
+container may reach application sockets directly; see the
+[known limitations](../known-limitations.md).
 
 ## Preview and browser
 

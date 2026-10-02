@@ -8,7 +8,7 @@
 
 <p align="center">
   Run Codex, MiniMax, Claude Code, Kimi, and Antigravity in separate, always-on Linux workspaces on your own server.
-  Use everything from one browser: chat, IDE, terminal, files, Git, live previews, and a shared browser.
+  Use everything from one browser: chat, terminal, files, Git, live previews, and a shared browser.
 </p>
 
 <p align="center">
@@ -46,13 +46,13 @@ for Remote to discover and preview.
 
 <table>
   <tr>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/readme/feature-create-project.webp" alt="Creating a new isolated project in Remote">
       <br>
       <strong>Isolated project computers</strong><br>
       Name a project and Remote prepares its durable workspace, container, ports, and provider homes.
     </td>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/readme/feature-agent-chat.webp" alt="A completed Codex run in a Remote project chat">
       <br>
       <strong>Durable agent conversations</strong><br>
@@ -73,7 +73,7 @@ mark it read or unread, fork its history, or delete it.
 
 <table>
   <tr>
-    <td width="50%" valign="top">
+    <td width="33%" valign="top">
       <img src="docs/assets/readme/feature-model-picker.webp" alt="Remote provider and model picker showing Codex, Claude, MiniMax, Kimi, and Antigravity">
       <br>
       <strong>Five agent integrations</strong><br>
@@ -119,16 +119,8 @@ controls switch ports, resize or reload the pane, and open the app in a new tab.
       <img src="docs/assets/readme/feature-files.webp" alt="Remote workspace file browser showing the demo project files">
       <br>
       <strong>Files without leaving the chat</strong><br>
-      Browse a lazy-loaded tree, search by filename, download files or folders, preview supported media, and open source files in the IDE.
+      Browse a lazy-loaded tree, search by filename, download files or folders, preview supported media, and use an installed application's file opener when available.
     </td>
-    <td width="50%" valign="top">
-      <img src="docs/assets/readme/feature-ide.webp" alt="Orbit Tasks source code open in Remote's browser IDE">
-      <br>
-      <strong>A complete browser IDE</strong><br>
-      Every project includes code-server rooted at the same durable workspace the agents use.
-    </td>
-  </tr>
-  <tr>
     <td width="50%" valign="top">
       <img src="docs/assets/readme/feature-terminal.webp" alt="Remote container terminal verifying Git commits and a running service">
       <br>
@@ -250,7 +242,7 @@ See the continuous five-step product tour at [remote.futrx.com](https://remote.f
 - **One project computer per project** — an unprivileged LXC container with durable files and agent homes.
 - **Your choice of agent** — use Codex, MiniMax, Claude Code, Kimi, or Antigravity with provider-specific models, thinking, speed, mode, approval, and sandbox controls where supported.
 - **Durable, inspectable conversations** — stream Markdown, reasoning, tools, questions, errors, and usage; queue, cancel, rewind, fork, mark unread, or continue later.
-- **A complete development surface** — chat, browser IDE, root terminal, files, uploads, Git history, structured diffs, and reusable skills.
+- **A complete development surface** — chat, root terminal, files, uploads, Git history, structured diffs, reusable skills, and optional editor applications.
 - **Live applications** — Remote finds listening ports, creates project URLs, adds HTTPS, and shows the app beside the conversation.
 - **A browser agents and humans can share** — reuse authenticated sessions, let an agent browse visually, watch it work, or take over.
 - **Scheduled work** — create reviewed one-time or recurring prompts that run later, even when your browser is closed.
@@ -263,7 +255,7 @@ flowchart LR
     A["You<br>any browser"] --> B["Remote host<br>identity, routing, lifecycle"]
     B --> C["Project computer<br>one unprivileged LXC container"]
     C --> D["Codex · MiniMax · Claude · Kimi · Antigravity"]
-    C --> E["IDE · terminal · Git · files"]
+    C --> E["Terminal · Git · files · optional editors"]
     C --> F["Browser · apps · HTTPS previews"]
 ```
 
@@ -291,7 +283,6 @@ Every project gets its own HTTPS address, so Remote needs a hostname with wildca
 | DNS name | Purpose |
 | --- | --- |
 | `remote.example.com` | Remote web app |
-| `code.remote.example.com` | Browser IDE |
 | `*.dev.remote.example.com` | Per-project application previews |
 | `*.remote.example.com` | Installed project applications at `<label>--<project>` |
 
@@ -353,7 +344,7 @@ for cadence and counting limitations.
    (address plus an app password; the Google account needs 2-Step Verification
    enabled to generate a 16-character app password) or configure a custom SMTP server.
 
-Remote will show the agent's progress. When the work is ready, review it in the chat, IDE, terminal, file manager, Git history, or live preview.
+Remote will show the agent's progress. When the work is ready, review it in the chat, terminal, file manager, Git history, live preview, or an installed editor.
 
 ## Security in plain language
 

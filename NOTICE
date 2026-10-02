@@ -22,7 +22,7 @@ source available to those users. See section 13 of the license.
 
 This software depends on third-party components distributed under their own
 licenses, including but not limited to the Go and Node.js toolchains, Caddy,
-LXD, code-server, and the Claude Code, Codex, and Kimi Code agent CLIs. Those
+LXD, and the Claude Code, Codex, and Kimi Code agent CLIs. Those
 components remain the property of their respective copyright holders and are
 governed by their own license terms; nothing in this NOTICE or the AGPL grant
 applies to them.

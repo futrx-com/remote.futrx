@@ -36,7 +36,5 @@ export const PROJECT_SHARE_DEFAULT_TTL_HOURS = 24;
 /** In-container platform listeners that must never be offered as public previews. */
 export const PROJECT_RESERVED_PREVIEW_PORTS = {
   agentBrowser: 6080,
-  ideProxy: 8842,
-  codeServer: 8081,
   browserDevtools: 9222,
 } as const;
