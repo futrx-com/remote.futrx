@@ -4,6 +4,7 @@ package inspection
 
 import (
 	"context"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
@@ -19,6 +20,7 @@ const inspectQuickTimeout = 5 * time.Second
 // Snapshot sequencing and lifecycle-state policy live in the application
 // service.
 type Adapter struct {
+	resources   *resources.Manager
 	lxd         containerLXDInspector
 	guest       containerGuestInspector
 	agents      containerAgentInspector
@@ -34,8 +36,9 @@ func NewAdapter(
 ) *Adapter {
 	commands := &quickCommandRunner{runner: runner, timeout: inspectQuickTimeout}
 	return &Adapter{
-		lxd:   containerLXDInspector{commands: commands},
-		guest: containerGuestInspector{commands: commands},
+		resources: resources.NewManager(runner),
+		lxd:       containerLXDInspector{commands: commands},
+		guest:     containerGuestInspector{commands: commands},
 		agents: containerAgentInspector{
 			commands:        commands,
 			profiles:        profileSource,
@@ -49,6 +52,11 @@ func NewAdapter(
 // fields available for a stopped or running container.
 func (a *Adapter) InspectConfiguration(ctx context.Context, containerName string, out *serviceproject.ContainerInspect) {
 	a.lxd.inspectConfiguration(ctx, containerName, out)
+	cap, _, err := a.resources.DiskCapability(ctx, containerName)
+	out.DiskQuota = &serviceproject.DiskQuotaInfo{Pool: cap.Pool, Driver: cap.Driver, Supported: cap.Supported, Detail: cap.Detail}
+	if err != nil {
+		out.DiskQuota.Detail = "storage quota capability unavailable"
+	}
 }
 
 // InspectRuntime adds live LXD state and resource fields.

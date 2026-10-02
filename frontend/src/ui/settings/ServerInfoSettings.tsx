@@ -178,6 +178,7 @@ export function ServerInfoSettings({
       </div>
 
       <InfoSection title="Storage" Icon={HardDrive}>
+        {info.storage.mounts.filter((mount) => mount.warning).map((mount) => <p role="alert" class="mb-2 text-accent-red" key={mount.mountPath}>Disk pressure on {mount.mountPath}: {mount.usagePercent.toFixed(1)}% of space used{mount.inodePercent === undefined ? "" : `, ${mount.inodePercent.toFixed(1)}% of inodes used`}.</p>)}
         {info.storage.mounts.length === 0 ? (
           <EmptyInfo>Filesystem metrics are unavailable on this host.</EmptyInfo>
         ) : (

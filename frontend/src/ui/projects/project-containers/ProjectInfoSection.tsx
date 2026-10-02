@@ -68,6 +68,21 @@ export function ProjectInfoSection({
       </Panel>
       {info.os && <OSPanel os={info.os} />}
       {info.resources && <ResourcesPanel res={info.resources} />}
+      {info.diskQuota && <Panel title="Root disk quota"><Grid>
+        <Field label="Storage pool" value={`${info.diskQuota.pool || "Unknown"} (${info.diskQuota.driver || "unknown driver"})`} />
+        <Field label="Quota" value={info.diskQuota.supported ? (info.limits?.disk || "Not reported") : (info.diskQuota.detail || "Unsupported")} />
+      </Grid></Panel>}
+      {info.persistentStorage && <Panel title="Persistent project storage"><>
+        {info.persistentStorage.warning && <p role="alert" class="text-accent-red">The filesystem holding this project's data is approaching capacity.</p>}
+        <Grid>
+          <Field label="Workspace and provider homes" value={info.persistentStorage.bytes === undefined ? "Unknown" : formatBytes(info.persistentStorage.bytes)} />
+          <Field label="Sample" value={info.persistentStorage.pending ? "Sampling; refresh shortly" : (info.persistentStorage.sampledAt ? new Date(info.persistentStorage.sampledAt * 1000).toLocaleString() : "Not sampled")} />
+          <Field label="Filesystem available" value={info.persistentStorage.availableBytes === undefined ? "Unknown" : formatBytes(info.persistentStorage.availableBytes)} />
+          <Field label="Filesystem usage" value={info.persistentStorage.usagePercent === undefined ? "Unknown" : `${info.persistentStorage.usagePercent.toFixed(1)}%`} />
+        </Grid>
+        <p class="mt-2 text-xs text-ink-300">Host-mounted data is separate from the root quota. Allocated-byte totals can include blocks shared by copy-on-write snapshots.</p>
+        {info.persistentStorage.error && <p class="text-xs text-accent-red">{info.persistentStorage.error}</p>}
+      </></Panel>}
       {info.disks && info.disks.length > 0 && <DisksPanel disks={info.disks} />}
       {info.network && info.network.length > 0 && <NetworkPanel ifaces={info.network} onRepair={onRepairNetwork} />}
       {info.workspace && <WorkspacePanel ws={info.workspace} />}
@@ -115,7 +130,7 @@ function ResourcesPanel({ res }: { res: ResourceInfo }) {
         <Field label="Memory used" value={`${formatBytes(res.memoryCurrentBytes)} / ${formatBytes(res.memoryTotalBytes)}`} mono />
         <Field label="Memory peak" value={formatBytes(res.memoryPeakBytes)} mono />
         <Field label="Swap" value={formatBytes(res.swapCurrentBytes)} mono />
-        <Field label="Disk (rootfs)" value={formatBytes(res.diskUsageBytes)} mono />
+        <Field label="Disk (rootfs)" value={res.diskUsageKnown ? formatBytes(res.diskUsageBytes) : "Unknown"} mono />
         <Field label="CPU time" value={res.cpuUsageSeconds ? `${res.cpuUsageSeconds.toLocaleString()} s` : "—"} mono />
         <Field label="Processes" value={res.processes ? String(res.processes) : "—"} mono />
       </Grid>

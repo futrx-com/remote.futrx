@@ -21,6 +21,7 @@ import (
 	containerscheduletools "github.com/futrx-com/remote.futrx.com/internal/integration/containers/scheduletools"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
+	"github.com/futrx-com/remote.futrx.com/internal/integration/storagemetrics"
 	servicebrowser "github.com/futrx-com/remote.futrx.com/internal/service/container/browser"
 	servicecli "github.com/futrx-com/remote.futrx.com/internal/service/container/cli"
 	servicecredentials "github.com/futrx-com/remote.futrx.com/internal/service/container/credentials"
@@ -30,6 +31,7 @@ import (
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 )
 
 const hostMappedUID = 1000000
@@ -37,6 +39,7 @@ const hostMappedUID = 1000000
 // ContainerStack is the composition root for container application services
 // and their LXD/host-filesystem adapters.
 type ContainerStack struct {
+	Storage       *storagemetrics.Reader
 	Lifecycle     *servicelifecycle.Service
 	Inspection    *serviceinspection.Service
 	Credentials   *servicecredentials.Service
@@ -56,8 +59,10 @@ type ContainerStack struct {
 // ContainerStackOptions supplies presentation and installation-specific
 // dependencies to the container composition root.
 type ContainerStackOptions struct {
-	AgentInstructions  []byte
-	ImageBuildProgress serviceimage.ProgressReporter
+	DiskWarningPercent   float64
+	DefaultRootDiskQuota string
+	AgentInstructions    []byte
+	ImageBuildProgress   serviceimage.ProgressReporter
 	// AppRegistry is the installable-application catalog. When non-nil the stack
 	// builds the application installer/port-allocator over the same lxc runner.
 	AppRegistry *containerapplications.Registry
@@ -72,6 +77,7 @@ type ContainerStackOptions struct {
 // different runtime adapter.
 func (s ContainerStack) ProjectDependencies() serviceproject.ContainerDependencies {
 	return serviceproject.ContainerDependencies{
+		Storage:     s.Storage,
 		Lifecycle:   s.Lifecycle,
 		Environment: s.Environment,
 		Inspector:   s.Inspection,
@@ -138,7 +144,7 @@ func NewContainerStack(
 		codeServer,
 		scheduleTools,
 	)
-	resources := containerresources.NewManager(runner)
+	resources := containerresources.NewManager(runner).WithDefaultDisk(options.DefaultRootDiskQuota)
 	lifecycle := servicelifecycle.NewService(
 		containerlifecycle.NewClient(runner),
 		serviceimage.Alias,
@@ -169,6 +175,7 @@ func NewContainerStack(
 	}
 
 	return ContainerStack{
+		Storage:       storagemetrics.New(fileproject.WorkspaceRoot, options.DiskWarningPercent),
 		Lifecycle:     lifecycle,
 		Inspection:    inspection,
 		Credentials:   credentials,

@@ -118,6 +118,7 @@ func (i *containerLXDInspector) inspectRuntime(ctx context.Context, name string,
 		CPUUsageSeconds:    state.CPU.Usage / 1_000_000_000,
 	}
 	if root, ok := state.Disk["root"]; ok {
+		out.Resources.DiskUsageKnown = true
 		out.Resources.DiskUsageBytes = root.Usage
 	}
 	for name, network := range state.Network {

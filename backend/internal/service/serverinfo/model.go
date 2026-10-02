@@ -65,13 +65,15 @@ type StorageInfo struct {
 }
 
 type StorageMount struct {
-	Device         string  `json:"device,omitempty"`
-	MountPath      string  `json:"mountPath"`
-	Filesystem     string  `json:"filesystem,omitempty"`
-	TotalBytes     uint64  `json:"totalBytes"`
-	UsedBytes      uint64  `json:"usedBytes"`
-	AvailableBytes uint64  `json:"availableBytes"`
-	UsagePercent   float64 `json:"usagePercent"`
+	InodePercent   *float64 `json:"inodePercent,omitempty"`
+	Warning        bool     `json:"warning"`
+	Device         string   `json:"device,omitempty"`
+	MountPath      string   `json:"mountPath"`
+	Filesystem     string   `json:"filesystem,omitempty"`
+	TotalBytes     uint64   `json:"totalBytes"`
+	UsedBytes      uint64   `json:"usedBytes"`
+	AvailableBytes uint64   `json:"availableBytes"`
+	UsagePercent   float64  `json:"usagePercent"`
 }
 
 type NetworkInfo struct {

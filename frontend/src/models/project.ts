@@ -33,6 +33,7 @@ export interface WorkspaceInfo {
 }
 
 export interface ResourceInfo {
+ diskUsageKnown?: boolean;
   processes?: number;
   diskUsageBytes?: number;
   memoryCurrentBytes?: number;
@@ -115,6 +116,8 @@ export interface AuthBundleStatus {
 }
 
 export interface ProjectContainerInfo {
+  persistentStorage?: { bytes?: number; sampledAt?: number; pending: boolean; error?: string; availableBytes?: number; usagePercent?: number; inodePercent?: number; warning: boolean };
+  diskQuota?: { pool?: string; driver?: string; supported: boolean; detail?: string };
   name: string;
   state: ContainerState;
   bootAutostart: boolean;

@@ -206,7 +206,13 @@ func readStorageInfo() serviceserverinfo.StorageInfo {
 		if total > free {
 			used = total - free
 		}
+		var inodePercent *float64
+		if stat.Files > 0 {
+			value := percent(stat.Files-stat.Ffree, stat.Files)
+			inodePercent = &value
+		}
 		storage.Mounts = append(storage.Mounts, serviceserverinfo.StorageMount{
+			InodePercent:   inodePercent,
 			Device:         target.device,
 			MountPath:      target.mountPath,
 			Filesystem:     target.filesystem,
