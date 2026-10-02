@@ -95,6 +95,16 @@ type ApplicationService struct {
 	RestartSec  int                  `json:"restartSec,omitempty"`
 	Environment []ServiceEnvironment `json:"environment,omitempty"`
 	Hardening   ServiceHardening     `json:"hardening,omitempty"`
+	// SocketProxy keeps the application process stopped until a connection reaches
+	// the declared socket. Remote owns both the socket and its proxy unit.
+	SocketProxy *SocketProxy `json:"socketProxy,omitempty"`
+}
+
+type SocketProxy struct {
+	ListenPort  int    `json:"listenPort"`
+	TargetPort  int    `json:"targetPort"`
+	IdleSeconds int    `json:"idleSeconds"`
+	ReadyPath   string `json:"readyPath,omitempty"`
 }
 
 // ServiceEnvironment maps one resolved install input into the service's

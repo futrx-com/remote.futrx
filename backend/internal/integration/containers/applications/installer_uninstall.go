@@ -32,6 +32,7 @@ func (in *Installer) Uninstall(ctx context.Context, spec svc.InstallSpec) error 
 		return err
 	}
 	if svcName := spec.Application.ServiceName(); svcName != "" {
+		in.stopSocketProxy(ctx, spec, svcName)
 		_, _ = in.exec(ctx, inst.ContainerName, nil, controlTimeout, "systemctl", "disable", "--now", svcName)
 	}
 	if err := in.runProjectUninstallScript(ctx, spec); err != nil {

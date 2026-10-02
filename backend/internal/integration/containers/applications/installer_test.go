@@ -200,6 +200,45 @@ func TestInstallMaterializesAndStartsTheManifestService(t *testing.T) {
 	}
 }
 
+func TestSocketProxyStartsOnDemandAndStopsWithTheApplication(t *testing.T) {
+	runner := newFakeRunner("my-project")
+	installer := testInstaller(t, runner)
+	spec := serviceSpec(svc.ScopeProject, "my-project")
+	spec.Application.Service.SocketProxy = &svc.SocketProxy{
+		ListenPort: 8400, TargetPort: 8401, IdleSeconds: 600, ReadyPath: "/healthz",
+	}
+	spec.Application.Port = svc.Port{}
+	spec.Instance.DeviceName = ""
+	if err := installer.Install(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl enable --now fixture.socket") || runner.contains("systemctl restart fixture") {
+		t.Fatalf("install should arm only the socket: %v", runner.commands())
+	}
+	unit := string(serviceUnit(spec, "/etc/remote/applications/fixture/environment"))
+	if !strings.Contains(unit, "StopWhenUnneeded=yes") || !strings.Contains(unit, "ExecStartPost=") {
+		t.Fatalf("service does not stop when idle or wait for readiness: %s", unit)
+	}
+	if !strings.Contains(string(socketUnit("fixture", *spec.Application.Service.SocketProxy)), "ListenStream=0.0.0.0:8400") ||
+		!strings.Contains(string(socketProxyUnit("fixture", *spec.Application.Service.SocketProxy)), "--exit-idle-time=600s 127.0.0.1:8401") {
+		t.Fatal("socket proxy does not preserve the declared endpoints")
+	}
+	runner.calls = nil
+	if err := installer.Stop(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl disable --now fixture.socket") || !runner.contains("systemctl stop fixture-proxy.service") || !runner.contains("systemctl stop fixture") {
+		t.Fatalf("stop left a socket or process active: %v", runner.commands())
+	}
+	runner.calls = nil
+	if err := installer.Start(context.Background(), spec); err != nil {
+		t.Fatal(err)
+	}
+	if !runner.contains("systemctl enable --now fixture.socket") || runner.contains("systemctl start fixture") {
+		t.Fatalf("start should re-arm the socket without starting the editor: %v", runner.commands())
+	}
+}
+
 func TestStartReinstallsStoppedServiceAfterProjectContainerReplacement(t *testing.T) {
 	runner := newFakeRunner("my-project")
 	runner.missingUnit = true

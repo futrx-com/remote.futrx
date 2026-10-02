@@ -14,6 +14,7 @@ var (
 	serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@-]*$`)
 	environmentPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	identityPattern    = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+	readyPathPattern   = regexp.MustCompile(`^/[A-Za-z0-9/_-]*$`)
 	eventNamePattern   = regexp.MustCompile(`^[a-z0-9]+(?:[.-][a-z0-9]+)*$`)
 )
 
@@ -81,6 +82,9 @@ func validateApplication(application svc.Application) error {
 			len(application.Scopes) != 1 || application.Scopes[0] != svc.ScopeProject ||
 			application.Service == nil {
 			return fmt.Errorf("web.port requires a project-scoped service and a non-privileged port")
+		}
+		if socket := application.Service.SocketProxy; socket != nil && socket.ListenPort != application.Web.Port {
+			return fmt.Errorf("web.port must match service.socketProxy.listenPort when socketProxy is declared")
 		}
 	}
 	if err := validateApplicationEvents(application); err != nil {
@@ -254,6 +258,19 @@ func validateService(application svc.Application) error {
 	}
 	if service.RestartSec < 0 {
 		return fmt.Errorf("service.restartSec cannot be negative")
+	}
+	if socket := service.SocketProxy; socket != nil {
+		if socket.ListenPort < 1024 || socket.ListenPort > 65535 ||
+			socket.TargetPort < 1024 || socket.TargetPort > 65535 ||
+			socket.ListenPort == socket.TargetPort || socket.IdleSeconds < 1 {
+			return fmt.Errorf("service.socketProxy requires distinct non-privileged ports and a positive idleSeconds")
+		}
+		if application.Port.Internal != 0 && application.Port.Internal != socket.ListenPort {
+			return fmt.Errorf("service.socketProxy.listenPort must match port.internal when exposed")
+		}
+		if socket.ReadyPath != "" && !readyPathPattern.MatchString(socket.ReadyPath) {
+			return fmt.Errorf("service.socketProxy.readyPath must be a plain absolute HTTP path")
+		}
 	}
 	if protect := service.Hardening.ProtectSystem; protect != "" && protect != "true" && protect != "full" && protect != "strict" {
 		return fmt.Errorf("service.hardening.protectSystem %q is invalid", protect)

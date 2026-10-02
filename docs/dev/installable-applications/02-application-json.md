@@ -532,3 +532,8 @@ source files, and verification limits.
 
 See [JSON installation settings](22-application-json-settings.md) for behavior, validation, failure cases,
 source files, and verification limits.
+### Optional service idle shutdown
+
+`service.socketProxy` enables start-on-connection and shutdown after all
+connections close. See [Application idle shutdown](20-application-idle-shutdown.md)
+for fields, generated units, lifecycle and validation.
