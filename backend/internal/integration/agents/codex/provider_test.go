@@ -563,7 +563,7 @@ func (f *fakeCodexCredentials) SyncFromContainer(_ context.Context, _ string, sp
 
 type fakeCodexWorkspace struct{}
 
-func (fakeCodexWorkspace) EnsureAgentInstructions(context.Context, string) error { return nil }
+func (fakeCodexWorkspace) EnsureAgentInstructions(context.Context, string, string) error { return nil }
 
 func (fakeCodexWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 

@@ -147,7 +147,7 @@ type preparationProjects struct{ recorder *preparationRecorder }
 
 func (p preparationProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
 	p.recorder.calls = append(p.recorder.calls, "get")
-	return agent.Project{ID: "project-id", ContainerName: "project-container", Status: "stopped"}, nil
+	return agent.Project{ID: "project-id", ContainerName: "project-container", Slug: "routing-slug", Status: "stopped"}, nil
 }
 
 func (p preparationProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
@@ -181,7 +181,10 @@ func (p preparationCredentials) SyncFromContainer(context.Context, string, provi
 
 type preparationWorkspace struct{ recorder *preparationRecorder }
 
-func (p preparationWorkspace) EnsureAgentInstructions(context.Context, string) error {
+func (p preparationWorkspace) EnsureAgentInstructions(_ context.Context, containerName, slug string) error {
+	if containerName != "project-container" || slug != "routing-slug" {
+		return errors.New("instructions did not receive the project routing slug")
+	}
 	p.recorder.calls = append(p.recorder.calls, "instructions")
 	return nil
 }

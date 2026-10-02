@@ -479,7 +479,7 @@ func (fakeClaudeCredentials) SyncFromContainer(context.Context, string, provisio
 
 type fakeClaudeWorkspace struct{}
 
-func (fakeClaudeWorkspace) EnsureAgentInstructions(context.Context, string) error { return nil }
+func (fakeClaudeWorkspace) EnsureAgentInstructions(context.Context, string, string) error { return nil }
 
 func (fakeClaudeWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 
