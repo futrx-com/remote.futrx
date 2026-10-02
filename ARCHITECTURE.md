@@ -5,7 +5,7 @@ This document describes how remote.futrx is put together: its runtime topology, 
 ## What it is
 
 remote.futrx is a **single-server, self-hosted** workspace for Claude Code,
-Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity. A user creates a project,
+Codex, MiniMax through the Codex harness, Kimi Code, Antigravity, and Devin. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -127,7 +127,8 @@ Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-wor
    a time. The saved-account vault (`agent-accounts.json`) and its activation
    rules belong to [`service/agent/auth`](backend/internal/service/agent/auth);
    provider adapters supply only credential placement, validation, identity,
-   and isolated login. MiniMax instead reads `MINIMAX_API_KEY` from each
+   and isolated login. Devin uses a host-managed manual token flow. 
+   MiniMax instead reads `MINIMAX_API_KEY` from each
    project's secret store, while Antigravity authenticates through `agy`
    inside one project and stores that state in its project-specific durable
    provider mount.
@@ -279,9 +280,9 @@ JSON and metadata writes use temp-file + rename. Chat events are different: they
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Six bind mounts per project:** `workspace` → `/workspace`, plus the
+- **Seven bind mounts per project:** `workspace` → `/workspace`, plus the
   provider-declared persistent directories for Claude, Codex, MiniMax, Kimi,
-  and Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+  Antigravity, and Devin. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
   whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
   unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
   races.

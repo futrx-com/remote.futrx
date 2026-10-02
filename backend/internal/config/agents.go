@@ -8,6 +8,7 @@ import (
 	antigravityagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/antigravity"
 	claudeagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/claude"
 	codexagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/codex"
+	devinagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/devin"
 	kimiagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/kimi"
 	minimaxagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/minimax"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -20,6 +21,7 @@ func NewAgentModules() (*agentmodule.Catalog, error) {
 		minimaxagent.NewFactory,
 		kimiagent.NewFactory,
 		antigravityagent.NewFactory,
+		devinagent.NewFactory,
 	}
 	factories := make([]agentmodule.Factory, 0, len(builders))
 	for _, build := range builders {
