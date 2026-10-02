@@ -20,6 +20,7 @@ type Middleware interface {
 }
 
 type Handlers struct {
+	AgentInstructions RouteRegistrar
 	Sessions          RouteRegistrar
 	Chats             RouteRegistrar
 	Projects          RouteRegistrar
@@ -63,6 +64,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Projects)
 	register(handlers.Applications)
 	register(handlers.Users)
+	register(handlers.AgentInstructions)
 	register(handlers.AgentAuth)
 	register(handlers.AgentCapabilities)
 	register(handlers.UserSettings)

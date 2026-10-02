@@ -353,3 +353,9 @@ sudo bash /opt/remote.futrx/infra/upgrade-workspaces.sh --dry-run
 - Workspace upgrade: [`infra/upgrade-workspaces.sh`](../../infra/upgrade-workspaces.sh)
 - Systemd template: [`infra/templates/remote.futrx.service.tmpl`](../../infra/templates/remote.futrx.service.tmpl)
 - Base-image builder: [`backend/internal/service/container/image/builder.go`](../../backend/internal/service/container/image/builder.go)
+
+## Project agent instructions
+
+Operators can add global and provider-specific instructions without rebuilding
+Remote. See [configurable agent instructions](10-agent-instructions.md) for the
+`AGENT_INSTRUCTIONS_FILE` format, activation and project-file behavior.

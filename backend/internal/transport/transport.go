@@ -25,16 +25,17 @@ type TmuxClient interface {
 }
 
 type Dependencies struct {
-	Services       service.Services
-	TmuxClient     TmuxClient
-	Static         fs.FS
-	DataDir        string
-	PublicHostname string
-	ServerInfo     *serviceserverinfo.Service
-	SelfUpdate     *serviceselfupdate.Service
-	Files          *serviceworkspacefiles.Service
-	GitHistory     *servicegithistory.Service
-	IDE            *serviceworkspaceide.Service
+	AgentInstructions httphandlers.AgentInstructionsStore
+	Services          service.Services
+	TmuxClient        TmuxClient
+	Static            fs.FS
+	DataDir           string
+	PublicHostname    string
+	ServerInfo        *serviceserverinfo.Service
+	SelfUpdate        *serviceselfupdate.Service
+	Files             *serviceworkspacefiles.Service
+	GitHistory        *servicegithistory.Service
+	IDE               *serviceworkspaceide.Service
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
@@ -112,8 +113,9 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			deps.PublicHostname,
 			applicationsHandler,
 		).WithUsage(usageHandler).WithShares(deps.Services.Shares),
-		Applications: applicationsHandler,
-		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
+		Applications:      applicationsHandler,
+		AgentInstructions: httphandlers.NewAgentInstructionsHandler(deps.AgentInstructions, deps.Services.Auth),
+		Users:             httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,

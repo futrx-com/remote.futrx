@@ -6,6 +6,7 @@ package workspace
 // declared by the configured profiles.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -76,24 +77,32 @@ func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName
 	type batch struct {
 		hashPath string
 		paths    []string
+		content  []byte
 	}
 	var batches []batch
 	for _, target := range targets {
+		content := target.Content
+		if len(content) == 0 {
+			content = p.instructions
+		}
 		index := -1
 		for i := range batches {
 			if batches[i].hashPath == target.HashPath {
+				if !bytes.Equal(batches[i].content, content) {
+					return fmt.Errorf("conflicting instruction content for marker %s", target.HashPath)
+				}
 				index = i
 				break
 			}
 		}
 		if index < 0 {
-			batches = append(batches, batch{hashPath: target.HashPath})
+			batches = append(batches, batch{hashPath: target.HashPath, content: content})
 			index = len(batches) - 1
 		}
 		batches[index].paths = append(batches[index].paths, target.Path)
 	}
 	for _, batch := range batches {
-		if err := p.publisher.Push(ctx, containerName, p.instructions,
+		if err := p.publisher.Push(ctx, containerName, batch.content,
 			batch.hashPath, "644", batch.paths...); err != nil {
 			return err
 		}
