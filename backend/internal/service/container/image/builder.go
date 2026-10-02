@@ -38,7 +38,7 @@ const (
 	baseImageNetworkTimeout  = 90 * time.Second
 	baseImageNetworkPoll     = 2 * time.Second
 	baseImageProgressTick    = 30 * time.Second
-	baseImageBuildStageCount = 6
+	baseImageBuildStageCount = 7
 	deleteTimeout            = 30 * time.Second
 )
 
@@ -217,7 +217,14 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return fmt.Errorf("code-server install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(5, "Finalizing the builder container", func() (string, error) {
+	out, err = b.runBuildStage(5, "Removing disposable installation caches", func() (string, error) {
+		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, cleanupScript)
+	})
+	if err != nil {
+		return fmt.Errorf("image cleanup: %w; output: %s", err, output.TruncateTail(out, 2000))
+	}
+
+	out, err = b.runBuildStage(6, "Finalizing the builder container", func() (string, error) {
 		return b.runtime.StopContainer(bctx, baseImageBuilderName)
 	})
 	if err != nil {
@@ -226,7 +233,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 
 	pctx, pcancel := context.WithTimeout(ctx, baseImagePublishTimeout)
 	defer pcancel()
-	out, err = b.runBuildStage(6, "Publishing the reusable workspace image", func() (string, error) {
+	out, err = b.runBuildStage(7, "Publishing the reusable workspace image", func() (string, error) {
 		return b.runtime.PublishImage(
 			pctx,
 			baseImageBuilderName,
