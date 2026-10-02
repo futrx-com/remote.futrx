@@ -44,6 +44,7 @@ type AuthStore interface {
 // project it into each service's narrower repository and transcript contracts.
 type ChatStore interface {
 	servicechat.Repository
+	servicechat.EventStreamCopier
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
 	servicechat.TranscriptProjectionSource
@@ -92,8 +93,11 @@ func (stores Stores) WarmRecentChatIndexes(ctx context.Context, limit int) error
 	return stores.chatIndexWarmer.WarmRecentChatIndexes(ctx, limit)
 }
 
-func New(dataDir string) (Stores, error) {
-	chats, err := filechat.New(dataDir)
+// New opens every store under dataDir. chatBackend selects the chat event
+// engine: callers resolve it from configuration so an unknown name fails
+// before anything is opened.
+func New(dataDir string, chatBackend filechat.Backend) (Stores, error) {
+	chats, err := filechat.NewWithBackend(dataDir, chatBackend)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init chat store: %w", err)
 	}

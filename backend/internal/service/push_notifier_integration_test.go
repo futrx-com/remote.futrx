@@ -86,8 +86,8 @@ func (r *chatRepoStub) TruncateEventsBefore(
 	context.Context,
 	servicechat.ID,
 	int64,
-) ([]servicechat.Event, error) {
-	return nil, nil
+) error {
+	return nil
 }
 
 type userRepoStub struct {

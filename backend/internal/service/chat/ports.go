@@ -13,7 +13,7 @@ type Repository interface {
 	ReadEventsPage(ctx context.Context, id ID, query EventPageQuery) (EventPage, error)
 	ReadEventsAfter(ctx context.Context, id ID, afterSeq int64) ([]Event, error)
 	AppendEvent(ctx context.Context, id ID, ev Event) (Event, error)
-	TruncateEventsBefore(ctx context.Context, id ID, beforeT int64) ([]Event, error)
+	TruncateEventsBefore(ctx context.Context, id ID, beforeT int64) error
 }
 
 // TranscriptEventSource exposes storage-order events without making the
@@ -52,6 +52,13 @@ type TranscriptProjectionSource interface {
 // through Repository.
 type CopiedEventAppender interface {
 	AppendCopiedEvent(ctx context.Context, id ID, event Event) (Event, error)
+}
+
+// EventStreamCopier copies one chat's stored history onto another in batches,
+// assigning fresh sequence numbers. Fork prefers it over appending copied
+// events one at a time, so a large conversation is never loaded whole.
+type EventStreamCopier interface {
+	CopyEventStream(ctx context.Context, from ID, to ID) (int, error)
 }
 
 type ProjectResolver interface {

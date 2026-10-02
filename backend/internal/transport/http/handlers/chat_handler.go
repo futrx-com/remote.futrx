@@ -249,7 +249,7 @@ func (h *ChatHandler) handleRewind(w http.ResponseWriter, r *http.Request, id se
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if _, err := h.chats.Rewind(r.Context(), id, body.BeforeT); err != nil {
+	if err := h.chats.Rewind(r.Context(), id, body.BeforeT); err != nil {
 		sendChatError(w, err)
 		return
 	}

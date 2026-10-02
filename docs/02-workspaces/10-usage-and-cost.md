@@ -155,7 +155,7 @@ When an account cannot be read, for example because its sign-in has expired, it 
 
 ## Rebuilding
 
-A rebuild re-derives the entire ledger from `DATA_DIR/chats/*/events.jsonl`. Use it to backfill an install that upgraded into this feature with existing chat history, or to reprice history after editing `prices.json`.
+A rebuild re-derives the entire ledger from the chat event store: `DATA_DIR/chats.sqlite` by default, or `DATA_DIR/chats/*/events.jsonl` when `CHAT_STORE=jsonl`. Use it to backfill an install that upgraded into this feature with existing chat history, or to reprice history after editing `prices.json`.
 
 ```bash
 # Online, as an administrator
@@ -171,7 +171,7 @@ sudo systemctl start remote.futrx
 cd /opt/remote.futrx/backend && go run ./cmd/usage-rebuild -data-dir /opt/remote.futrx/data -dry-run
 ```
 
-The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebuild/main.go) and reads `DATA_DIR` from the environment when `-data-dir` is omitted.
+The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebuild/main.go) and reads `DATA_DIR` from the environment when `-data-dir` is omitted, and `CHAT_STORE` when `-chat-store` is omitted.
 
 **A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. New completion events preserve `userEmail`, the turn ID and the scheduled-task marker. Rebuilds use those durable values, with matching live ledger records as a fallback for older events.
 
