@@ -1,7 +1,16 @@
+import type { RbacAssignmentTarget, RbacBindingTarget, RbacScope } from "../models/rbac";
 import type { ApplicationPath } from "../types/transport";
 
 function applicationPath(path: ApplicationPath): ApplicationPath {
   return path;
+}
+
+/** Natural-key query for a permission-policy DELETE; platform scope sends no scopeId. */
+function scopeQuery(keys: Record<string, string>, scope: RbacScope): string {
+  const query = new URLSearchParams(keys);
+  query.set("scopeKind", scope.kind);
+  if (scope.id) query.set("scopeId", scope.id);
+  return query.toString();
 }
 
 /**
@@ -147,6 +156,24 @@ export const API_ROUTES = {
     regenerateRecoveryCodes: "/api/me/security/2fa/recovery-codes/regenerate",
     preferences: "/api/me/security/preferences",
     ackAlert: "/api/me/security/alerts/ack",
+  },
+  permissions: {
+    definitions: "/api/admin/permissions/definitions",
+    roles: "/api/admin/permissions/roles",
+    role: (id: string, unbind = false) =>
+      `/api/admin/permissions/roles/${encodeURIComponent(id)}${unbind ? "?unbind=true" : ""}`,
+    assignments: "/api/admin/permissions/assignments",
+    assignmentTarget: (target: RbacAssignmentTarget) =>
+      `/api/admin/permissions/assignments?${scopeQuery(
+        { userEmail: target.userEmail, permission: target.permission },
+        target.scope
+      )}`,
+    bindings: "/api/admin/permissions/bindings",
+    bindingTarget: (target: RbacBindingTarget) =>
+      `/api/admin/permissions/bindings?${scopeQuery(
+        { userEmail: target.userEmail, roleId: target.roleId },
+        target.scope
+      )}`,
   },
   usage: {
     summary: (query: string) => `/api/usage/summary${query ? `?${query}` : ""}`,

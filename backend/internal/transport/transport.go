@@ -137,6 +137,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Schedules:        scheduleHandler,
 		Usage:            usageHandler,
 		AgentQuota:       agentQuotaHandler,
+		Permissions:      httphandlers.NewPermissionsHandler(deps.Services.Permissions),
 		Uploads:          uploads,
 		TmuxWS:           wstransport.NewTmuxSocket(deps.TmuxClient),
 		TerminalWS:       terminalSocket,

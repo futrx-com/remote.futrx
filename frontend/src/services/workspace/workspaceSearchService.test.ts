@@ -263,8 +263,11 @@ test("stays fast on a large workspace", () => {
 
   // Measures ~5ms for 2000 chats with a typo query (the slow path); a real
   // workspace of ~500 chats is under 2ms. The ceiling is loose enough for slow
-  // CI while still catching an order-of-magnitude regression.
-  assert.ok(perRunMs < 40, `search took ${perRunMs.toFixed(1)}ms per run`);
+  // CI while still catching an order-of-magnitude regression. Coverage
+  // instrumentation slows execution ~10x, so allow more headroom when Node
+  // sets NODE_V8_COVERAGE for --experimental-test-coverage.
+  const ceilingMs = process.env.NODE_V8_COVERAGE ? 150 : 40;
+  assert.ok(perRunMs < ceilingMs, `search took ${perRunMs.toFixed(1)}ms per run (ceiling ${ceilingMs}ms)`);
 });
 
 test("picking a provider scopes the model and mode facets to it", () => {

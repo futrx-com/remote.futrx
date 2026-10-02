@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -65,7 +66,11 @@ func (m *Auth) Wrap(next http.Handler) http.Handler {
 			http.Error(w, "AI provider authentication required", http.StatusPreconditionRequired)
 			return
 		}
-		next.ServeHTTP(w, r)
+		// Services authorize by the actor in the context, so it is attached only
+		// here, after the session and registration are verified, and always
+		// from the session, never from anything the client sent.
+		actor := permission.UserActor(session.Email)
+		next.ServeHTTP(w, r.WithContext(permission.ContextWithActor(r.Context(), actor)))
 	})
 }
 
