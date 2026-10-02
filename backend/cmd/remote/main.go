@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
@@ -73,6 +72,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
+	instructionProfiles, agentInstructions, err := config.AgentInstructionProfiles(
+		cfg.Agent.InstructionsFile, publicHostname, agentModules.Profiles(),
+	)
+	if err != nil {
+		log.Fatalf("configure agent instructions: %v", err)
+	}
 	// Uploaded application packages live in the server's state directory, not
 	// in the binary and not in the checkout. That is what makes them survive an
 	// update: updating replaces the program and its built-in catalog, and never
@@ -113,9 +118,9 @@ func main() {
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
-		agentModules.Profiles(),
+		instructionProfiles,
 		config.ContainerStackOptions{
-			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AgentInstructions: agentInstructions,
 			AppRegistry:       appRegistry,
 			DataDir:           cfg.DataDir,
 		},
