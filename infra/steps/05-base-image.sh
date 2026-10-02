@@ -31,15 +31,25 @@ for _ in 1 2 3 4 5; do
     sleep 2
 done
 
-if [ -z "${FORCE_REBUILD_BASE_IMAGE:-}" ] \
+SOFTWARE_CHANGED=""
+if [ -n "${SANDBOX_SOFTWARE_FILE:-}" ]; then
+    [ -r "$SANDBOX_SOFTWARE_FILE" ] || { err "Cannot read SANDBOX_SOFTWARE_FILE"; return 1; }
+    SOFTWARE_DIGEST=$(sha256sum -- "$SANDBOX_SOFTWARE_FILE")
+    SOFTWARE_DIGEST=${SOFTWARE_DIGEST%% *}
+    if ! lxc image info "$BASE_IMAGE_ALIAS" --format json 2>/dev/null | jq -e --arg digest "software-sha256=$SOFTWARE_DIGEST" '.properties.description | endswith($digest)' >/dev/null; then
+        SOFTWARE_CHANGED=1
+    fi
+fi
+
+if [ -z "${SOFTWARE_CHANGED:-}" ] && [ -z "${FORCE_REBUILD_BASE_IMAGE:-}" ] \
    && lxc image list --format csv "$BASE_IMAGE_ALIAS" 2>/dev/null | grep -q "^${BASE_IMAGE_ALIAS},"; then
     ok "$BASE_IMAGE_ALIAS already published — skipping build"
     return 0 2>/dev/null || exit 0
 fi
 
-CLI_ARGS=()
-if [ -n "${FORCE_REBUILD_BASE_IMAGE:-}" ]; then
-    warn "FORCE_REBUILD_BASE_IMAGE set — rebuilding from scratch"
+CLI_ARGS=(-alias "$BASE_IMAGE_ALIAS")
+if [ -n "${FORCE_REBUILD_BASE_IMAGE:-}${SOFTWARE_CHANGED:-}" ]; then
+    warn "Base-image recipe changed or rebuild requested — rebuilding from scratch"
     CLI_ARGS+=(-overwrite)
 fi
 
