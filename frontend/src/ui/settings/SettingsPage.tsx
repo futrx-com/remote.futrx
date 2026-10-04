@@ -21,6 +21,7 @@ import {
 } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
+import { AgentInstructionsSettings } from "./AgentInstructionsSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { EmailSettings } from "./email/EmailSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
@@ -249,6 +250,7 @@ export function SettingsPage({
                   </div>
                   <div class="p-3 space-y-3">
                     <AgentAuthSettingsList />
+                    <AgentInstructionsSettings />
                   </div>
                 </div>
               ) : (

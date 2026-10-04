@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
+
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
@@ -37,7 +39,11 @@ func (i *containerAgentInspector) inspect(ctx context.Context, containerName str
 				status.InstructionsInstalled = true
 			}
 			if hash, err := i.commands.run(ctx, "exec", containerName, "--", "cat", profile.Instructions.HashPath); err == nil {
-				status.InstructionsInSync = strings.TrimSpace(hash) == i.instructionHash
+				want := i.instructionHash
+				if len(profile.Instructions.Content) > 0 {
+					want = assets.Hash(profile.Instructions.Content)
+				}
+				status.InstructionsInSync = strings.TrimSpace(hash) == want
 			}
 		}
 		statuses = append(statuses, status)
