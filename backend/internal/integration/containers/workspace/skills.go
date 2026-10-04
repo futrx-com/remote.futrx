@@ -43,7 +43,7 @@ func (p *Provisioner) EnsureSkillLinks(ctx context.Context, containerName string
 }
 
 func (p *Provisioner) ensureSkillTopology(ctx context.Context, containerName string, profiles []provisioning.Profile) error {
-	script := workspaceSkillLinksScript(profiles)
+	script := "mkdir -p /workspace/.remote-cache/npm /workspace/.remote-cache/go-mod\n" + workspaceSkillLinksScript(profiles)
 	if _, err := command.RunWithTimeout(ctx, p.runner, ensureWorkspaceSymlinksTimeout, "exec", containerName, "--", "sh", "-c", script); err != nil {
 		return fmt.Errorf("ensure workspace skill topology: %w", err)
 	}

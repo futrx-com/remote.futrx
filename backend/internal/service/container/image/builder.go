@@ -38,7 +38,7 @@ const (
 	baseImageNetworkTimeout  = 90 * time.Second
 	baseImageNetworkPoll     = 2 * time.Second
 	baseImageProgressTick    = 30 * time.Second
-	baseImageBuildStageCount = 6
+	baseImageBuildStageCount = 7
 	deleteTimeout            = 30 * time.Second
 )
 
@@ -108,6 +108,7 @@ func (b *Builder) reportProgress(progress Progress) {
 // Builder owns the disposable builder lifecycle and publishes the
 // profile-derived development image consumed by project containers.
 type Builder struct {
+	software                Software
 	runtime                 Runtime
 	profiles                ProfileSource
 	browserInstallScript    string
@@ -146,6 +147,9 @@ func NewBuilder(
 // Any previous publish at alias is NOT removed automatically. Callers that
 // want a clean overwrite must delete the image first.
 func (b *Builder) Build(ctx context.Context, alias string) error {
+	if err := b.software.Validate(); err != nil {
+		return err
+	}
 	if !b.runtime.Available() {
 		return errors.New("lxc CLI not found on PATH - install LXD on the host first")
 	}
@@ -156,6 +160,20 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 	installScript, err := InstallScript(profiles)
 	if err != nil {
 		return err
+	}
+
+	installScript += b.software.Script()
+	browserScript := b.browserInstallScript
+	if b.software.PrebakeBrowser != nil && !*b.software.PrebakeBrowser {
+		browserScript = ":"
+	}
+	ideScript := string(b.codeServerInstallScript)
+	if b.software.PrebakeIDE != nil && !*b.software.PrebakeIDE {
+		ideScript = ":"
+	}
+	imageDescription := description(profiles)
+	if b.software.Digest != "" {
+		imageDescription += " software-sha256=" + b.software.Digest
 	}
 
 	// Clean up any leftover builder from a previous interrupted run before
@@ -204,20 +222,27 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 	}
 
 	out, err = b.runBuildStage(3, "Installing the agent browser and Chromium", func() (string, error) {
-		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, b.browserInstallScript)
+		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, browserScript)
 	})
 	if err != nil {
 		return fmt.Errorf("agent browser install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
 	out, err = b.runBuildStage(4, "Installing the browser IDE", func() (string, error) {
-		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, string(b.codeServerInstallScript))
+		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, ideScript)
 	})
 	if err != nil {
 		return fmt.Errorf("code-server install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(5, "Finalizing the builder container", func() (string, error) {
+	out, err = b.runBuildStage(5, "Removing disposable installation caches", func() (string, error) {
+		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, cleanupScript)
+	})
+	if err != nil {
+		return fmt.Errorf("image cleanup: %w; output: %s", err, output.TruncateTail(out, 2000))
+	}
+
+	out, err = b.runBuildStage(6, "Finalizing the builder container", func() (string, error) {
 		return b.runtime.StopContainer(bctx, baseImageBuilderName)
 	})
 	if err != nil {
@@ -226,12 +251,12 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 
 	pctx, pcancel := context.WithTimeout(ctx, baseImagePublishTimeout)
 	defer pcancel()
-	out, err = b.runBuildStage(6, "Publishing the reusable workspace image", func() (string, error) {
+	out, err = b.runBuildStage(7, "Publishing the reusable workspace image", func() (string, error) {
 		return b.runtime.PublishImage(
 			pctx,
 			baseImageBuilderName,
 			alias,
-			description(profiles),
+			imageDescription,
 		)
 	})
 	if err != nil {
