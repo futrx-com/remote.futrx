@@ -106,6 +106,7 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 		"script " + baseImageBuilderName + " " + installScript,
 		"script " + baseImageBuilderName + " browser-install",
 		"script " + baseImageBuilderName + " code-server-install",
+		"script " + baseImageBuilderName + " " + cleanupScript,
 		"stop " + baseImageBuilderName,
 		"publish " + baseImageBuilderName + " " + Alias + " futrx remote dev base: ubuntu 24.04 + node 22 + alpha-cli",
 		"delete " + baseImageBuilderName,
@@ -113,6 +114,30 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 	assertEvents(t, runtime.events, want)
 	if profiles.snapshots != 1 {
 		t.Fatalf("profile snapshots = %d, want 1", profiles.snapshots)
+	}
+}
+
+func TestBuildCleanupFailurePreventsPublication(t *testing.T) {
+	runtime := &recordingRuntime{
+		available: true,
+		scriptResponses: []runtimeResponse{
+			{}, {}, {}, {}, // egress probe and all three installers
+			{output: "cleanup failed", err: errors.New("exit 1")},
+		},
+	}
+	builder := NewBuilder(runtime, &recordingProfileSource{profiles: configuredProfiles()}, "browser-install", []byte("code-server-install"), nil)
+	builder.networkWarmup = 0
+	err := builder.Build(context.Background(), "")
+	if err == nil || !strings.Contains(err.Error(), "image cleanup: exit 1; output: cleanup failed") {
+		t.Fatalf("Build error = %v", err)
+	}
+	for _, event := range runtime.events {
+		if strings.HasPrefix(event, "publish ") || strings.HasPrefix(event, "stop ") {
+			t.Fatalf("build continued after cleanup failure: %s", event)
+		}
+	}
+	if runtime.events[len(runtime.events)-1] != "delete "+baseImageBuilderName {
+		t.Fatal("failed builder was not removed")
 	}
 }
 
