@@ -49,6 +49,7 @@ type TmuxClient interface {
 // individual services receive only the narrower contracts they consume.
 type ChatStore interface {
 	servicechat.Repository
+	servicechat.EventStreamCopier
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
 	servicechat.TranscriptProjectionSource
@@ -202,7 +203,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		running: func(id servicechat.ID) bool {
 			return runs != nil && runs.IsRunning(id)
 		},
-		push: pushNotifier,
+		copier: deps.Chats,
+		push:   pushNotifier,
 	}
 	projects := notifyingProjectRepository{Repository: deps.Projects, workspace: workspace}
 	projectService := serviceproject.New(
@@ -250,6 +252,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
 		servicechat.WithTranscriptProjectionSource(deps.Chats),
 		servicechat.WithCopiedEventAppender(chats),
+		servicechat.WithEventStreamCopier(chats),
 		servicechat.WithSessionPolicy(agentRuntime),
 		servicechat.WithProviderPolicy(agentRuntime),
 	)

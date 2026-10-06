@@ -1,15 +1,16 @@
 # Data and frontend state
 
-The application does not use an external database service. Durable metadata is stored as JSON files; chat events use append-only JSONL. A disposable embedded SQLite database indexes chat event offsets and transcript turns for bounded reads. Project source files live in a separate host workspace tree.
+The application does not use an external database service. Durable metadata is stored as JSON files. Chat events default to one embedded SQLite database, `chats.sqlite`, which is authoritative and keeps a best-effort JSONL mirror per chat. `CHAT_STORE=jsonl` selects the original layout instead, where each chat's `events.jsonl` is authoritative and a second, disposable embedded SQLite database indexes event offsets and transcript turns for bounded reads. Project source files live in a separate host workspace tree.
 
 ## Host storage layout
 
 ```text
 /opt/remote.futrx/data/                 DATA_DIR
+├── chats.sqlite                        authoritative event log, transcript projection, and readiness state
 ├── chats/<chat-id>/
 │   ├── meta.json
-│   └── events.jsonl
-├── transcript-index.sqlite              derived chat event offsets and transcript turns
+│   └── events.jsonl                    authoritative in jsonl mode; best-effort mirror otherwise
+├── transcript-index.sqlite             jsonl mode only: derived chat event offsets and transcript turns
 ├── projects/<project-id>/meta.json
 ├── projectaccess/<project-id>.json
 ├── projectsecrets/<project-id>.json
@@ -111,15 +112,14 @@ A chat's project relationship is optional. Project membership is stored as norma
 
 ```mermaid
 flowchart LR
-    Run["Prompt run"] --> Append["Append event to events.jsonl"]
+    Run["Prompt run"] --> Append["Append event to the chat store"]
     Append --> Seq["Assign next monotonic seq"]
     Seq --> Meta["Update lastMessageAt for visible events"]
     Meta --> Cache["Refresh in-memory metadata index"]
-    Append -.-> Index["Refresh derived SQLite offset/turn index"]
     Append --> Replay["Replay live events after seq"]
     Append --> Transcript["Project complete, compacted turn pages"]
-    Index -.-> Replay
-    Index -.-> Transcript
+    Append -.->|"sqlite mode"| Mirror["Mirror event to events.jsonl<br/>(best effort)"]
+    Append -.->|"jsonl mode"| Index["Refresh derived SQLite<br/>offset/turn index"]
     Replay --> Client["Chat UI"]
     Transcript --> Client
 ```
@@ -131,17 +131,36 @@ a read-time transcript projection by `turnId` (or legacy `user` boundaries) and
 coalesce adjacent streaming text/reasoning deltas. The cursor is still a raw
 event sequence, so existing chat files require no migration.
 
-`DATA_DIR/transcript-index.sqlite` is derived from the chat JSONL logs. At
-startup, a background worker backfills up to the 10 most recently active chats;
-other chats are backfilled lazily on first access. The result persists across
-backend restarts and is refreshed incrementally as bytes are appended. File
-size and modification time, incomplete-tail state, and a prefix fingerprint
-checked before untrusted growth decide when to rebuild transactionally. A
-rewind requests an immediate rebuild, while deletion removes the chat's rows.
+`CHAT_STORE` selects the event engine and defaults to `sqlite`.
+
+In `sqlite` mode, `DATA_DIR/chats.sqlite` is the authoritative event log for
+every chat. It holds one row per event keyed by `(chat_id, seq)`, the compacted
+transcript projection for each chat, and the state that tells a reader whether
+the projection is complete. Committing an event writes the row, advances the
+projection, and mirrors the same payload to
+`DATA_DIR/chats/<chat-id>/events.jsonl` afterwards. The mirror is best effort:
+its failure is logged and never fails the commit, because the commit already
+happened. The JSONL files exist as a recovery copy. A database that fails to
+open is renamed with a `.corrupt-<timestamp>` suffix and rebuilt by
+re-importing every chat from those archives, so the damaged file stays on disk
+for inspection. A page is only served as complete when the projection's last
+sequence and projected payload bytes match every event stored for the chat and
+the archive import has finished; otherwise the response reports indexing
+progress instead of a partial transcript.
+
+In `jsonl` mode, `DATA_DIR/chats/<chat-id>/events.jsonl` is authoritative and
+`DATA_DIR/transcript-index.sqlite` is derived from it. At startup, a background
+worker backfills up to the 10 most recently active chats; other chats are
+backfilled lazily on first access. The result persists across backend restarts
+and is refreshed incrementally as bytes are appended. File size and
+modification time, incomplete-tail state, and a prefix fingerprint checked
+before untrusted growth decide when to rebuild transactionally. A rewind
+requests an immediate rebuild, while deletion removes the chat's rows.
 Indexed-read failures fall back to scanning canonical JSONL. The index can be
-deleted while the service is stopped and will rebuild automatically. The
-browser initially requests 10 complete turns and requests older history in
-20-turn pages. See the
+deleted while the service is stopped and will rebuild automatically.
+
+In both modes the browser initially requests 10 complete turns and requests
+older history in 20-turn pages. See the
 [durable chat transcript index developer guide](../dev/chat-transcript-index/)
 for the layer ownership and read, write, and recovery flows.
 
@@ -151,7 +170,7 @@ claims, pending occurrence state, retry deadline, counts, and last result.
 Writes atomically replace the document. The scheduler loop is in-memory, but it
 reconstructs deadlines and abandons stale claims after a backend restart.
 
-Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
+Rewind keeps only events before the selected timestamp, streaming the retained history in bounded batches so a large conversation is never held in memory. In `jsonl` mode it rewrites `events.jsonl` through a temporary file and best-effort rebuilds that chat's derived index rows; in `sqlite` mode it drops the tail that follows the cutoff with one delete, best-effort rewrites the JSONL mirror from the rows that survived, and re-projects from the database. Chat deletion removes the chat directory and the corresponding database rows.
 
 ## Agent quota snapshots
 

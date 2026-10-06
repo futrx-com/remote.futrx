@@ -304,6 +304,33 @@ Use a maintenance window. Before raising the limits, account for the fact that
 each scheduled occurrence can start a project container and consume provider
 quota, CPU, memory, network, and disk without an open browser.
 
+## Chat event storage
+
+Chat events live in one embedded SQLite database, `DATA_DIR/chats.sqlite`, with
+a best-effort JSONL mirror per chat under `DATA_DIR/chats/<chat-id>/events.jsonl`.
+
+| Environment variable | Default | Meaning |
+| --- | ---: | --- |
+| `CHAT_STORE` | `sqlite` | Chat event backend: `sqlite` (authoritative `chats.sqlite`) or `jsonl` (authoritative `events.jsonl` with a derived `transcript-index.sqlite`) |
+
+```ini
+[Service]
+Environment=CHAT_STORE=jsonl
+```
+
+The value is validated at startup, so a typo fails the service instead of
+silently falling back to another engine. Existing `events.jsonl` files are
+imported into `chats.sqlite` automatically — during the startup warm-up for the
+most recently active chats, then lazily on first access — so moving an install
+to the default needs no manual migration step. The reverse direction only works
+as far as the mirror does: `jsonl` mode reads the per-chat JSONL files, which in
+`sqlite` mode are written best effort after the database commit, so a directory
+written in `sqlite` mode is complete for `jsonl` mode only where every mirror
+write succeeded.
+
+Restarting the backend applies the change, and switching engines does not move
+or delete the other engine's files.
+
 ## Health and recovery
 
 ```mermaid

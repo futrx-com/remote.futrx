@@ -39,6 +39,7 @@ import (
 	serviceversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/service/versiontelemetry"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileversiontelemetry"
 	"github.com/futrx-com/remote.futrx.com/internal/transport"
@@ -123,7 +124,11 @@ func main() {
 	////////////////////////////////////////
 	// Persistence
 	////////////////////////////////////////
-	storeSet, err := stores.New(cfg.DataDir)
+	chatBackend, err := filechat.ParseBackend(cfg.ChatStore)
+	if err != nil {
+		log.Fatalf("configure chat store: %v", err)
+	}
+	storeSet, err := stores.New(cfg.DataDir, chatBackend)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}

@@ -25,14 +25,28 @@ func chatIndexPrefixMatches(
 	eventsPath string,
 	state chatIndexState,
 ) (bool, error) {
-	file, err := os.Open(eventsPath)
+	return prefixHashMatches(ctx, eventsPath, state.indexedBytes, state.prefixHash)
+}
+
+// archivePrefixMatches reports whether the imported prefix of a rollback
+// archive is still byte-for-byte what the database recorded.
+func archivePrefixMatches(
+	ctx context.Context,
+	path string,
+	state archiveState,
+) (bool, error) {
+	return prefixHashMatches(ctx, path, state.sourceBytes, state.prefixHash)
+}
+
+func prefixHashMatches(ctx context.Context, path string, size int64, expected uint64) (bool, error) {
+	file, err := os.Open(path)
 	if err != nil {
 		return false, err
 	}
 	defer file.Close()
 
 	value := indexPrefixHashOffset64
-	remaining := state.indexedBytes
+	remaining := size
 	buffer := make([]byte, 32*1024)
 	for remaining > 0 {
 		if err := ctx.Err(); err != nil {
@@ -54,5 +68,33 @@ func chatIndexPrefixMatches(
 			return false, readErr
 		}
 	}
-	return value == state.prefixHash, nil
+	return value == expected, nil
+}
+
+// hashArchiveFile fingerprints an entire archive. It is only used after the
+// archive is rewritten wholesale, where an incremental fingerprint is useless.
+func hashArchiveFile(ctx context.Context, path string) (uint64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	value := indexPrefixHashOffset64
+	buffer := make([]byte, 256*1024)
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		count, readErr := file.Read(buffer)
+		if count > 0 {
+			value = updateIndexPrefixHash(value, buffer[:count])
+		}
+		if errors.Is(readErr, io.EOF) {
+			return value, nil
+		}
+		if readErr != nil {
+			return 0, readErr
+		}
+	}
 }
