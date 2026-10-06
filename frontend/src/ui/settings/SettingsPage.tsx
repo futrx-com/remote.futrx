@@ -1,3 +1,4 @@
+import type { ProjectMeta } from "../../models/project";
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
 import type { ServerInfo } from "../../models/serverInfo";
@@ -24,14 +25,17 @@ import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { EmailSettings } from "./email/EmailSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
+import { PermissionsSettings } from "./PermissionsSettings";
 import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
 import { UsersPanel } from "../account/UsersPanel";
+import { PLATFORM_SCOPE } from "../../config/constants/user-roles";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { ApplicationsSection } from "../applications/ApplicationsSection";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import type { PermissionsController } from "../../state/hooks/permissions/usePermissions";
 
 import type { SettingsTab } from "../../models/workspace";
 import type { ReleaseNotesController } from "../../state/hooks/server/useReleaseNotes";
@@ -72,6 +76,12 @@ const tabs: Array<{
     label: "Users",
     description: "Control who can access this server.",
     Icon: Users,
+  },
+  {
+    id: "permissions",
+    label: "Permissions",
+    description: "Roles, assignments, and bindings.",
+    Icon: ShieldCheck,
   },
   {
     id: "security",
@@ -140,6 +150,8 @@ export function SettingsPage({
   onApplyUpdate,
   onAppearanceThemeChange,
   applications,
+  permissions,
+  projects,
 }: {
   activeTab: SettingsTab;
   currentEmail: string;
@@ -175,6 +187,8 @@ export function SettingsPage({
   onApplyUpdate: (tag?: string) => Promise<void>;
   onAppearanceThemeChange: (theme: AppearanceTheme) => void;
   applications: ApplicationsController;
+  permissions: PermissionsController;
+  projects: ProjectMeta[];
 }) {
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
@@ -284,11 +298,28 @@ export function SettingsPage({
                   onAdd={userDirectory.add}
                   onRemove={userDirectory.remove}
                   onSetRole={userDirectory.setRole}
+                  customRoles={permissions.roles}
+                  bindings={permissions.bindings}
+                  onBindRole={(userEmail, roleId) =>
+                    permissions.addBinding({ roleId, userEmail, scope: PLATFORM_SCOPE })
+                  }
+                  onUnbindRole={(userEmail, roleId) =>
+                    permissions.removeBinding({ roleId, userEmail, scope: PLATFORM_SCOPE })
+                  }
                 />
               </div>
             )}
 
             {activeTab === "security" && <SecuritySettings controller={security} />}
+
+            {activeTab === "permissions" &&
+              (isAdmin ? (
+                <PermissionsSettings permissions={permissions} projects={projects} />
+              ) : (
+                <SettingsNotice>
+                  Permissions are managed by server administrators.
+                </SettingsNotice>
+              ))}
 
             {activeTab === "applications" &&
               (isAdmin ? (

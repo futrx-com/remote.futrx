@@ -1,7 +1,11 @@
 import { useState } from "preact/hooks";
+import type { RbacBinding, RbacRole } from "../../models/rbac";
 import type { User, UserRole } from "../../models/user";
+import { DEFAULT_USER_ROLE } from "../../config/constants/user-roles";
 import { useConfirm } from "../../state/context/ConfirmContext";
 import { AlertCircle, Check, Loader, X } from "../primitives/icons";
+import { RoleSelect } from "./RoleSelect";
+import { boundCustomRoles, type RoleChoice } from "./roleChoice";
 
 interface UsersPanelProps {
   currentEmail: string;
@@ -10,9 +14,13 @@ interface UsersPanelProps {
   loading: boolean;
   error: string | null;
   canAddUsers: boolean;
+  customRoles: RbacRole[];
+  bindings: RbacBinding[];
   onAdd: (email: string, role: UserRole) => Promise<void>;
   onRemove: (email: string) => Promise<void>;
   onSetRole: (email: string, role: UserRole) => Promise<void>;
+  onBindRole: (email: string, roleId: string) => Promise<void>;
+  onUnbindRole: (email: string, roleId: string) => Promise<void>;
 }
 
 // UsersPanel is the admin-only directory for sign-in eligibility. Mirrors
@@ -27,9 +35,13 @@ export function UsersPanel({
   loading,
   error,
   canAddUsers,
+  customRoles,
+  bindings,
   onAdd,
   onRemove,
   onSetRole,
+  onBindRole,
+  onUnbindRole,
 }: UsersPanelProps) {
   const confirm = useConfirm();
 
@@ -73,7 +85,11 @@ export function UsersPanel({
           </div>
         )}
         {canAddUsers ? (
-          <AddUserForm onAdd={onAdd} />
+          <AddUserForm
+            customRoles={customRoles}
+            onAdd={onAdd}
+            onBindRole={onBindRole}
+          />
         ) : (
           <div class="rounded-md border border-accent-yellow/25 bg-accent-yellow/[0.08] px-3 py-2.5 text-[12.5px] text-accent-yellow">
             Configure Google sign-in above before adding users.
@@ -84,7 +100,11 @@ export function UsersPanel({
           loading={loading && users == null}
           currentEmail={currentEmail}
           onRemove={removeUser}
+          customRoles={customRoles}
+          bindings={bindings}
           onSetRole={onSetRole}
+          onBindRole={onBindRole}
+          onUnbindRole={onUnbindRole}
         />
       </div>
     </section>
@@ -92,12 +112,19 @@ export function UsersPanel({
 }
 
 function AddUserForm({
+  customRoles,
   onAdd,
+  onBindRole,
 }: {
+  customRoles: RbacRole[];
   onAdd: (email: string, role: UserRole) => Promise<void>;
+  onBindRole: (email: string, roleId: string) => Promise<void>;
 }) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<UserRole>("member");
+  const [choice, setChoice] = useState<RoleChoice>({
+    kind: "base",
+    role: DEFAULT_USER_ROLE,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -115,9 +142,10 @@ function AddUserForm({
     setErr(null);
     setSubmitting(true);
     try {
-      await onAdd(em, role);
+      await onAdd(em, choice.kind === "base" ? choice.role : DEFAULT_USER_ROLE);
       setEmail("");
-      setRole("member");
+      setChoice({ kind: "base", role: DEFAULT_USER_ROLE });
+      if (choice.kind === "custom") await onBindRole(em, choice.roleId);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -140,14 +168,13 @@ function AddUserForm({
           autoComplete="off"
           class="h-9 px-2.5 rounded border border-line bg-inset text-[13px] text-ink-50 placeholder-ink-400 focus:outline-none focus:border-accent-blue/50"
         />
-        <select
-          value={role}
-          onChange={(e) => setRole((e.target as HTMLSelectElement).value as UserRole)}
+        <RoleSelect
+          value={choice}
+          customRoles={customRoles}
+          onSelect={setChoice}
+          ariaLabel="Role for new user"
           class="h-9 px-2 rounded border border-line bg-inset text-[13px] text-ink-50 focus:outline-none focus:border-accent-blue/50"
-        >
-          <option value="member">member</option>
-          <option value="admin">admin</option>
-        </select>
+        />
         <button
           type="submit"
           disabled={submitting}
@@ -165,14 +192,22 @@ function UserList({
   users,
   loading,
   currentEmail,
+  customRoles,
+  bindings,
   onRemove,
   onSetRole,
+  onBindRole,
+  onUnbindRole,
 }: {
   users: User[];
   loading: boolean;
   currentEmail: string;
+  customRoles: RbacRole[];
+  bindings: RbacBinding[];
   onRemove: (email: string) => Promise<void>;
   onSetRole: (email: string, role: UserRole) => Promise<void>;
+  onBindRole: (email: string, roleId: string) => Promise<void>;
+  onUnbindRole: (email: string, roleId: string) => Promise<void>;
 }) {
   if (loading) {
     return (
@@ -195,8 +230,12 @@ function UserList({
           key={u.email}
           user={u}
           isSelf={u.email === currentEmail.toLowerCase()}
+          customRoles={customRoles}
+          boundRoles={boundCustomRoles(bindings, customRoles, u.email)}
           onRemove={() => onRemove(u.email)}
           onSetRole={(r) => onSetRole(u.email, r)}
+          onBindRole={(roleId) => onBindRole(u.email, roleId)}
+          onUnbindRole={(roleId) => onUnbindRole(u.email, roleId)}
         />
       ))}
     </div>
@@ -206,23 +245,30 @@ function UserList({
 function UserRow({
   user,
   isSelf,
+  customRoles,
+  boundRoles,
   onRemove,
   onSetRole,
+  onBindRole,
+  onUnbindRole,
 }: {
   user: User;
   isSelf: boolean;
+  customRoles: RbacRole[];
+  boundRoles: RbacRole[];
   onRemove: () => Promise<void>;
   onSetRole: (role: UserRole) => Promise<void>;
+  onBindRole: (roleId: string) => Promise<void>;
+  onUnbindRole: (roleId: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const toggleRole = async () => {
-    const next: UserRole = user.role === "admin" ? "member" : "admin";
+  const run = async (action: () => Promise<void>) => {
     setBusy(true);
     setErr(null);
     try {
-      await onSetRole(next);
+      await action();
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -230,16 +276,10 @@ function UserRow({
     }
   };
 
-  const remove = async () => {
-    setBusy(true);
-    setErr(null);
-    try {
-      await onRemove();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+  const changeRole = (next: RoleChoice) => {
+    if (next.kind === "custom") return run(() => onBindRole(next.roleId));
+    if (next.role === user.role) return;
+    return run(() => onSetRole(next.role));
   };
 
   return (
@@ -257,24 +297,44 @@ function UserRow({
         >
           {user.role}
         </span>
+        {boundRoles.map((role) => (
+          <span
+            key={role.id}
+            class="inline-flex items-center h-5 pl-1.5 pr-0.5 rounded text-[11px] font-medium text-accent-blue bg-accent-blue/[0.14]"
+            title={role.description || role.name}
+          >
+            {role.name}
+            <button
+              type="button"
+              onClick={() => run(() => onUnbindRole(role.id))}
+              disabled={busy}
+              class="ml-0.5 h-4 w-4 grid place-items-center rounded hover:bg-tint-strong disabled:opacity-50"
+              aria-label={`Unbind ${role.name} from ${user.email}`}
+              title="Unbind role"
+            >
+              <X class="w-3 h-3" />
+            </button>
+          </span>
+        ))}
         {isSelf && (
           <span class="inline-flex items-center h-5 px-1.5 rounded text-[11px] text-accent-green bg-accent-green/[0.10]">
             <Check class="w-3 h-3 mr-1" /> you
           </span>
         )}
         <div class="ml-auto flex items-center gap-1">
-          <button
-            type="button"
-            onClick={toggleRole}
+          <RoleSelect
+            value={{ kind: "base", role: user.role }}
+            customRoles={customRoles}
+            boundRoleIds={new Set(boundRoles.map((role) => role.id))}
             disabled={busy}
-            class="h-7 px-2 rounded text-[11px] text-ink-300 hover:text-ink-100 hover:bg-tint-strong disabled:opacity-50"
-            title={user.role === "admin" ? "Demote to member" : "Promote to admin"}
-          >
-            {user.role === "admin" ? "demote" : "promote"}
-          </button>
+            onSelect={changeRole}
+            ariaLabel={`Role for ${user.email}`}
+            title="Change role"
+            class="h-7 px-1.5 rounded border border-line bg-inset text-[11.5px] text-ink-50 focus:outline-none focus:border-accent-blue/50 disabled:opacity-50"
+          />
           <button
             type="button"
-            onClick={remove}
+            onClick={() => run(onRemove)}
             disabled={busy}
             class="h-7 w-7 rounded text-ink-300 hover:text-accent-red hover:bg-tint-strong grid place-items-center disabled:opacity-50"
             aria-label={`Remove ${user.email}`}

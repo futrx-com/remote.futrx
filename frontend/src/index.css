@@ -780,7 +780,24 @@ html[data-theme="light"] {
   transform-origin: bottom;
 }
 
+@keyframes branch-card-flip {
+  from {
+    opacity: 0;
+    transform: perspective(900px) rotateY(-70deg) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.branch-card-flip {
+  animation: branch-card-flip 0.32s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+  transform-origin: left center;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .branch-card-flip,
   .modal-card-pop,
   .modal-backdrop-fade,
   .menu-pop,

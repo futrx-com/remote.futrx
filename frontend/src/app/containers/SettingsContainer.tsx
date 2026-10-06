@@ -3,9 +3,11 @@ import {
   SettingsPage,
   type SettingsTab,
 } from "../../ui/settings/SettingsPage";
+import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { usePermissions } from "../../state/hooks/permissions/usePermissions";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
@@ -30,6 +32,7 @@ export function SettingsContainer({
   onTabChange: (tab: SettingsTab) => void;
 }) {
   const { auth } = useAuthContext();
+  const { projects } = useWorkspaceContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
   const serverInfo = useServerInfo(activeTab === "info");
@@ -38,6 +41,9 @@ export function SettingsContainer({
     selfUpdate.status?.lastCheck?.latestTag,
   );
   const security = useSecuritySettings(activeTab === "security");
+  const permissions = usePermissions(
+    (activeTab === "permissions" || activeTab === "users") && auth.isAdmin
+  );
   const applications = useGlobalApplications({
     enabled: activeTab === "applications" && auth.isAdmin,
     managesPackages: auth.isAdmin,
@@ -105,6 +111,8 @@ export function SettingsContainer({
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
       applications={applications}
+      permissions={permissions}
+      projects={projects}
     />
   );
 }
