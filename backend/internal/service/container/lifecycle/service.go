@@ -221,7 +221,7 @@ func (s *Service) Ensure(ctx context.Context, project serviceproject.Meta) error
 		}
 	}
 
-	_ = s.resources.Ensure(ctx, project.ContainerName)
+	if err:=s.resources.Ensure(ctx, project.ContainerName);err!=nil {return s.launchError(ctx,project.ContainerName,created,fmt.Errorf("apply workspace resource defaults: %w",err))}
 	if project.ResourceLimits != nil {
 		if err := s.resources.SetLimits(
 			ctx,

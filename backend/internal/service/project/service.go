@@ -12,6 +12,7 @@ import (
 )
 
 type Service struct {
+	storage            StorageReader
 	repo               Repository
 	chats              ChatCleanup
 	containerLifecycle ContainerLifecycle
@@ -53,6 +54,7 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
+		storage:            containers.Storage,
 		repo:               repo,
 		containerLifecycle: containers.Lifecycle,
 		containerInspector: containers.Inspector,
@@ -514,6 +516,10 @@ func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect
 		return ContainerInspect{}, err
 	}
 	info.LimitOverrides = m.ResourceLimits
+	if s.storage != nil {
+		usage := s.storage.Read(ctx, m.Cwd)
+		info.PersistentStorage = &usage
+	}
 	return info, nil
 }
 

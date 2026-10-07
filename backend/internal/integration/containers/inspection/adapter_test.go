@@ -88,6 +88,10 @@ func TestAdapterLXDProbeFailuresLeaveExistingSnapshotUntouched(t *testing.T) {
 	adapter.InspectConfiguration(context.Background(), "c1", &got)
 	adapter.InspectRuntime(context.Background(), "c1", &got)
 
+	if got.DiskQuota == nil || got.DiskQuota.Detail != "storage quota capability unavailable" {
+		t.Fatal("missing explicit unavailable quota state")
+	}
+	got.DiskQuota = nil
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("snapshot = %#v, want %#v", got, want)
 	}

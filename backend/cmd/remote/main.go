@@ -114,9 +114,11 @@ func main() {
 		lxc.New(),
 		agentModules.Profiles(),
 		config.ContainerStackOptions{
-			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
-			AppRegistry:       appRegistry,
-			DataDir:           cfg.DataDir,
+			DiskWarningPercent:   float64(cfg.DiskWarningPercent),
+			DefaultRootDiskQuota: cfg.DefaultRootDiskQuota,
+			AgentInstructions:    provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:          appRegistry,
+			DataDir:              cfg.DataDir,
 		},
 	)
 
@@ -255,7 +257,7 @@ func main() {
 			version.Version,
 			cfg.DataDir,
 			fileproject.WorkspaceRoot,
-		),
+		).WithStorageWarningThreshold(float64(cfg.DiskWarningPercent)),
 		SelfUpdate: selfUpdateService,
 		Files:      serviceworkspacefiles.New(hostfs.NewWorkspaceFileStore()),
 		GitHistory: servicegithistory.New(gitcli.NewHistoryClient()),

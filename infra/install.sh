@@ -31,11 +31,16 @@
 #   --github-token=ghp_xxx                      private-repo PAT; prefer the
 #                                               GITHUB_TOKEN environment variable
 #                                               to avoid placing it in shell history.
+#   --storage-driver=auto|zfs|btrfs|dir          fresh-install storage driver (default auto).
+#   --storage-pool=NAME                         new LXD pool name (default default).
+#   --storage-source=SOURCE                     explicit source; requires an explicit driver.
+#   --storage-size=SIZE                         loop pool size, e.g. 100GiB; excludes source.
 #   --google-client-id=...                      optional; can be added in Settings later.
 #   --google-client-secret=...                  optional; can be added in Settings later.
 #
 # Environment:
 #   GITHUB_TOKEN                                same as --github-token.
+#   FUTRX_STORAGE_DRIVER / POOL / SOURCE / SIZE   same as --storage-* flags.
 #   FUTRX_INSTALL_DIR                           override /opt/remote.futrx (QA/tests).
 
 set -euo pipefail
@@ -224,6 +229,10 @@ remote_parse_install_arguments() {
 # ───────────────── args ─────────────────
 for a in "$@"; do
     case "$a" in
+        --storage-driver=*)       export FUTRX_STORAGE_DRIVER="${a#*=}" ;;
+        --storage-pool=*)         export FUTRX_STORAGE_POOL="${a#*=}" ;;
+        --storage-source=*)       export FUTRX_STORAGE_SOURCE="${a#*=}" ;;
+        --storage-size=*)         export FUTRX_STORAGE_SIZE="${a#*=}" ;;
         --skip-dns-check)         SKIP_DNS_CHECK=1 ;;
         --ref=*)                  TARGET_REF="${a#*=}" ;;
         --google-client-id=*)     GOOGLE_CLIENT_ID="${a#*=}" ;;
