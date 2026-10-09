@@ -75,6 +75,16 @@ func (f *notificationSummaryFilter) finish() (visible, summary string) {
 	return visible, summary
 }
 
+// stripNotificationSummary removes the private trailer from one complete
+// message. Subagent replies arrive whole instead of as streaming deltas, so
+// they can be filtered in a single pass.
+func stripNotificationSummary(message string) string {
+	var filter notificationSummaryFilter
+	visible := filter.text(message)
+	last, _ := filter.finish()
+	return visible + last
+}
+
 func markerSuffixLength(text, marker string) int {
 	limit := min(len(text), len(marker)-1)
 	for n := limit; n > 0; n-- {

@@ -51,6 +51,20 @@ func TestNotificationSummaryIsByteBoundedAndValidUTF8(t *testing.T) {
 	}
 }
 
+func TestStripNotificationSummaryFromCompleteMessage(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"trailer at end", "Fixed the route. <notification_summary>Chat links survive refresh.</notification_summary>", "Fixed the route. "},
+		{"unclosed trailer", "Answer. <notification_summary>private unfinished text", "Answer. "},
+		{"text after trailer", "Before <notification_summary>private.</notification_summary>After", "Before After"},
+		{"no trailer", "Plain reply", "Plain reply"},
+	}
+	for _, tc := range cases {
+		if got := stripNotificationSummary(tc.in); got != tc.want {
+			t.Fatalf("%s: stripNotificationSummary(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestPromptPersistsOnlyVisibleAnswerAndCompletionSummary(t *testing.T) {
 	ctx := context.Background()
 	store, err := filechat.New(t.TempDir())
