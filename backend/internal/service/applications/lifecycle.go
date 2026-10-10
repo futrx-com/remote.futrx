@@ -2,7 +2,6 @@ package applications
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
 
@@ -96,26 +95,6 @@ func (s *Service) uninstallLocked(ctx context.Context, id string) (Instance, err
 		}
 	}
 	return inst, nil
-}
-
-// uninstallFromEveryProject removes an application's copy from each project,
-// which is what uninstalling its global in-projects record means. A failure
-// leaves that record in place so the uninstall can be repeated.
-func (s *Service) uninstallFromEveryProject(ctx context.Context, applicationID string) error {
-	instances, err := s.store.ListAll(ctx)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for _, inst := range instances {
-		if inst.Scope != ScopeProject || inst.ApplicationID != applicationID {
-			continue
-		}
-		if err := s.Uninstall(ctx, inst.ID); err != nil && !errors.Is(err, ErrNotFound) {
-			failures = append(failures, fmt.Errorf("project %s: %w", inst.ProjectID, err))
-		}
-	}
-	return errors.Join(failures...)
 }
 
 // teardown removes an instance's footprint: its container side, and its backend
