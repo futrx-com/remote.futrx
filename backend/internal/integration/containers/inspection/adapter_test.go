@@ -318,3 +318,18 @@ func (r *inspectionRecordingRunner) Run(_ context.Context, args ...string) (stri
 func (*inspectionRecordingRunner) RunStdin(context.Context, io.Reader, ...string) (string, error) {
 	return "", nil
 }
+
+func TestInspectorUsesProviderSpecificInstructionHash(t *testing.T) {
+	content := []byte("global instructions plus provider addition")
+	runner := &inspectionRecordingRunner{responses: map[string]inspectionResponse{
+		"exec c1 -- cat /root/.claude/hash": {output: assets.Hash(content)},
+	}}
+	profiles := serviceprofiles.NewCatalog([]provisioning.Profile{{
+		ID: "claude", CLI: provisioning.CLISpec{Binary: "claude"},
+		Instructions: &provisioning.InstructionTarget{Path: "/root/.claude/CLAUDE.md", HashPath: "/root/.claude/hash", Content: content},
+	}})
+	statuses := NewAdapter(runner, profiles, testAgentInstructions).InspectAgents(context.Background(), "c1")
+	if len(statuses) != 1 || !statuses[0].InstructionsInSync {
+		t.Fatalf("provider instructions reported stale: %#v", statuses)
+	}
+}

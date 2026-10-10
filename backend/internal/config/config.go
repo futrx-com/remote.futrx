@@ -27,6 +27,9 @@ type ApplicationOptions struct {
 
 // AgentOptions are application-wide policies for the agent subsystem.
 type AgentOptions struct {
+	// InstructionsFile is an optional operator-owned JSON configuration loaded
+	// at startup (AGENT_INSTRUCTIONS_FILE). Empty preserves built-in guidance.
+	InstructionsFile string
 	// CapabilityTimeout bounds one provider's complete model/capability probe
 	// (AGENT_CAPABILITY_TIMEOUT, Go duration, default 30s, "0" disables).
 	CapabilityTimeout time.Duration
@@ -73,6 +76,7 @@ func Load() Config {
 		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
 		BaseURL:    envDefault("BASE_URL", ""),
 		Agent: AgentOptions{
+			InstructionsFile:           envDefault("AGENT_INSTRUCTIONS_FILE", ""),
 			CapabilityTimeout:          envDuration("AGENT_CAPABILITY_TIMEOUT", 30*time.Second),
 			HostCLIVersionTimeout:      15 * time.Second,
 			CapabilityCacheTTL:         24 * time.Hour,
