@@ -27,6 +27,17 @@ export const DEFAULT_EXTENSION_VISIBILITY: ExtensionVisibility = {
   projectIds: [],
 };
 
+export const EXTENSION_DRAWER_WIDTH = {
+  default: 560,
+  min: 420,
+  max: 1100,
+  /** Width always left for the chat beside an open drawer. */
+  minChat: 360,
+} as const;
+
+/** Accepted `id` of a drawer: it becomes part of a DOM id and a storage key. */
+export const EXTENSION_DRAWER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 const CHROME_ICON: SlotIconAppearance = { button: "h-8 w-8", icon: "h-4 w-4" };
 const COMPACT_ICON: SlotIconAppearance = {
   button: "h-7 w-7",

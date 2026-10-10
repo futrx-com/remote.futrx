@@ -117,9 +117,9 @@ function Preview() {
 
   const workspaceActions = {
     cwd: "/opt/remote.futrx/gamerhead",
-    onToggleTerminal: noop, onToggleBrowser: noop, onToggleHistory: noop,
+    extensionDrawers: [], onToggleBrowser: noop, onToggleHistory: noop,
     onToggleFiles: noop,
-    terminalOpen: false, browserOpen: true, historyOpen: false,
+    browserOpen: true, historyOpen: false,
     filesOpen: false, showHistory: true,
     orientation: "horizontal" as const,
   };

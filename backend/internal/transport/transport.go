@@ -67,7 +67,6 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		return nil, err
 	}
 	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt)
-	terminalSocket := wstransport.NewContainerTerminalSocket(deps.Services.Chats, deps.Services.Projects)
 	workspaceSocket := wstransport.NewWorkspaceSocket(
 		deps.Services.Chats,
 		deps.Services.Projects,
@@ -75,7 +74,6 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	)
 	if deps.Services.Auth != nil {
 		chatSocket = chatSocket.WithAccessChecker(gate)
-		terminalSocket = terminalSocket.WithAccessChecker(gate)
 		workspaceSocket = workspaceSocket.WithVisibility(gate)
 	}
 	var agentApplications httphandlers.AgentApplications
@@ -137,7 +135,6 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		AgentQuota:        agentQuotaHandler,
 		Uploads:           uploads,
 		TmuxWS:            wstransport.NewTmuxSocket(deps.TmuxClient),
-		TerminalWS:        terminalSocket,
 		ChatWS:            chatSocket,
 		WorkspaceWS:       workspaceSocket,
 		AgentAuthWS:       wstransport.NewAgentAuthSocket(agentAuthBindings),

@@ -1,6 +1,9 @@
 import type {
   ExtensionContribution,
+  ExtensionDrawerContribution,
+  ExtensionDrawerTarget,
   ExtensionSlotContext,
+  ExtensionVisibility,
 } from "../../../models/extension.ts";
 
 export function visibleExtensionContributions(
@@ -23,9 +26,27 @@ export function visibleExtensionContributions(
   });
 }
 
+/** Drawers a chat should offer: in install scope, and wanted by their `when`. */
+export function visibleExtensionDrawers(
+  drawers: ExtensionDrawerContribution[],
+  target: ExtensionDrawerTarget,
+  activeProjectId: string | null,
+): ExtensionDrawerContribution[] {
+  return drawers.filter((drawer) => {
+    if (!isInScope(drawer, target, activeProjectId)) return false;
+    if (!drawer.when) return true;
+    try {
+      return drawer.when(target);
+    } catch (error) {
+      console.error(`[extensions] ${drawer.applicationId}: drawer predicate failed`, error);
+      return false;
+    }
+  });
+}
+
 function isInScope(
-  contribution: ExtensionContribution,
-  context: ExtensionSlotContext,
+  contribution: { visibility: ExtensionVisibility },
+  context: Pick<ExtensionSlotContext, "scope" | "projectId">,
   activeProjectId: string | null,
 ): boolean {
   const { global, projectIds } = contribution.visibility;

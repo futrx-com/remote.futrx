@@ -23,7 +23,7 @@ degrades on an older one instead of failing to load.
 
 | Constant | Name | Where it renders | Context |
 |---|---|---|---|
-| `chatHeaderActions` | `chat.header.actions` | Chat header rail, ahead of terminal / files / preview icons; installed applications can contribute actions here | `chatId`, `projectId`, `cwd`, `tooltipPlacement` |
+| `chatHeaderActions` | `chat.header.actions` | Chat header rail, ahead of drawer toggles and the files / preview icons; installed applications can contribute actions here | `chatId`, `projectId`, `cwd`, `tooltipPlacement` |
 | `composerActions` | `chat.composer.actions` | Composer control deck, beside the attach (`+`) button | `projectId` |
 | `projectRowActions` | `sidebar.project.actions` | A project row's hover actions, ahead of container info and "New chat" | `projectId`, `projectName` |
 | `sidebarHeaderActions` | `sidebar.header.actions` | Sidebar header, beside "New project" | — |
@@ -34,6 +34,10 @@ degrades on an older one instead of failing to load.
 
 Always reference them through `remote.slots.<constant>` rather than typing the
 string, so a rename is caught at the API boundary.
+
+A docked pane beside the chat is not a slot. Register it with
+[`remote.ui.registerDrawer`](06-extension-api.md#remoteuiregisterdraweroptions);
+the app renders its toggle directly after the `chatHeaderActions` contributions.
 
 ## Slot context
 

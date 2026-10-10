@@ -3,10 +3,15 @@ import test from "node:test";
 
 import { EXTENSION_SLOTS } from "../../../config/extensions.ts";
 import type {
+  ExtensionDrawerOptions,
+  ExtensionDrawerTarget,
   ExtensionSlotContext,
   ExtensionSlotName,
 } from "../../../models/extension.ts";
-import { visibleExtensionContributions } from "../../hooks/extensions/extensionContributionState.ts";
+import {
+  visibleExtensionContributions,
+  visibleExtensionDrawers,
+} from "../../hooks/extensions/extensionContributionState.ts";
 import { createExtensionStore } from "./extensionStore.ts";
 
 const noop = () => {};
@@ -41,6 +46,13 @@ function createRegistry() {
     setActiveProject: store.getState().setActiveProject,
     removeApplication: store.getState().removeApplication,
     subscribe: store.subscribe,
+    registerDrawer: store.getState().registerDrawer,
+    drawers(target?: ExtensionDrawerTarget) {
+      const state = store.getState();
+      return target
+        ? visibleExtensionDrawers(state.drawers, target, state.activeProjectId)
+        : state.drawers;
+    },
     contributions(
       slot: ExtensionSlotName,
       context?: ExtensionSlotContext,
@@ -315,4 +327,98 @@ test("project settings contributions follow installation scope and disappear on 
   assert.equal(registry.contributions(slot, { slot, scope: "project", projectId: "p2" }).length, 0);
   registry.removeApplication("addon");
   assert.equal(registry.contributions(slot, { slot, scope: "project", projectId: "p1" }).length, 0);
+});
+
+function drawer(id: string, options: Partial<ExtensionDrawerOptions> = {}): ExtensionDrawerOptions {
+  return { id, title: id, icon: "<svg/>", mount: noop, ...options };
+}
+
+test("a drawer is registered with defaults, ordered, and removed by its disposer", () => {
+  const registry = createRegistry();
+  registry.registerDrawer("terminal", drawer("late", { order: 5 }));
+  const dispose = registry.registerDrawer("terminal", drawer("shell", { title: "Terminal" }));
+
+  assert.deepEqual(registry.drawers().map((entry) => entry.id), ["terminal-shell", "terminal-late"]);
+  const shell = registry.drawers()[0];
+  assert.equal(shell.label, "Terminal", "the toggle is named after the title unless told otherwise");
+  assert.equal(shell.defaultWidth, 560);
+  assert.equal(shell.minWidth, 420);
+
+  dispose();
+  dispose();
+  assert.deepEqual(registry.drawers().map((entry) => entry.id), ["terminal-late"]);
+});
+
+test("a drawer's default width is never below its minimum", () => {
+  const registry = createRegistry();
+  registry.registerDrawer("terminal", drawer("shell", { defaultWidth: 300, minWidth: 480 }));
+  assert.equal(registry.drawers()[0].defaultWidth, 480);
+});
+
+test("a drawer id that cannot name a DOM element is dropped instead of throwing", () => {
+  const registry = createRegistry();
+  for (const id of ["", "Shell", "a b", "a_b", "-a", "a-", "a--b", "a.b", "a/b"]) {
+    assert.equal(typeof registry.registerDrawer("terminal", drawer(id)), "function", id);
+  }
+  assert.equal(registry.drawers().length, 0);
+});
+
+test("registering the same drawer twice keeps the first, and the second disposer is inert", () => {
+  const registry = createRegistry();
+  registry.registerDrawer("terminal", drawer("shell", { title: "First" }));
+  const disposeSecond = registry.registerDrawer("terminal", drawer("shell", { title: "Second" }));
+
+  assert.deepEqual(registry.drawers().map((entry) => entry.title), ["First"]);
+  disposeSecond();
+  assert.equal(registry.drawers().length, 1, "the duplicate's disposer must not remove the original");
+});
+
+test("a project install's drawer shows only in that project's chats", () => {
+  const registry = createRegistry();
+  registry.setVisibility("terminal", { global: false, projectIds: ["p1"] });
+  registry.registerDrawer("terminal", drawer("shell"));
+
+  registry.setActiveProject("p1");
+  assert.equal(registry.drawers({ chatId: "c1", projectId: "p1" }).length, 1);
+  registry.setActiveProject("p2");
+  assert.equal(registry.drawers({ chatId: "c2", projectId: "p2" }).length, 0);
+  registry.setActiveProject(null);
+  assert.equal(registry.drawers({ chatId: "c3" }).length, 0);
+});
+
+test("a drawer follows its application being installed in another project later", () => {
+  const registry = createRegistry();
+  registry.setVisibility("terminal", { global: false, projectIds: ["p1"] });
+  registry.registerDrawer("terminal", drawer("shell"));
+  registry.setActiveProject("p2");
+  assert.equal(registry.drawers({ chatId: "c2", projectId: "p2" }).length, 0);
+
+  registry.setVisibility("terminal", { global: false, projectIds: ["p1", "p2"] });
+  assert.equal(registry.drawers({ chatId: "c2", projectId: "p2" }).length, 1);
+});
+
+test("a drawer's `when` decides per chat, and one that throws hides only itself", () => {
+  const registry = createRegistry();
+  registry.registerDrawer("terminal", drawer("shell", { when: (target) => Boolean(target.projectId) }));
+  registry.registerDrawer("broken", drawer("pane", {
+    when: () => {
+      throw new Error("boom");
+    },
+  }));
+  registry.registerDrawer("healthy", drawer("pane"));
+
+  assert.deepEqual(
+    registry.drawers({ chatId: "c1", projectId: "p1" }).map((entry) => entry.id),
+    ["terminal-shell", "healthy-pane"],
+  );
+  assert.deepEqual(registry.drawers({ chatId: "c2" }).map((entry) => entry.id), ["healthy-pane"]);
+});
+
+test("removing an application removes its drawers and leaves the others", () => {
+  const registry = createRegistry();
+  registry.registerDrawer("terminal", drawer("shell"));
+  registry.registerDrawer("other", drawer("pane"));
+
+  registry.removeApplication("terminal");
+  assert.deepEqual(registry.drawers().map((entry) => entry.id), ["other-pane"]);
 });

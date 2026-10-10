@@ -217,9 +217,9 @@ html[data-theme="light"] {
       width: min(560px, calc(100vw - 320px));
       max-width: none;
     }
-    .workspace-terminal-pane[aria-hidden="false"] {
-      width: var(--workspace-terminal-width, 560px);
-      max-width: var(--workspace-terminal-max-width, max(420px, calc(100% - 320px)));
+    .workspace-extension-pane[aria-hidden="false"] {
+      width: var(--workspace-extension-width, 560px);
+      max-width: var(--workspace-extension-max-width, max(420px, calc(100% - 320px)));
     }
     .workspace-browser-pane[aria-hidden="false"] {
       width: var(--workspace-browser-width, 720px);

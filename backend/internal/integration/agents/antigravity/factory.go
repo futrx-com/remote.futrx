@@ -17,7 +17,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		Label:            "Antigravity",
 		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
 		Auth:             agentmodule.AuthExternal,
-		AuthInstructions: "Open the project terminal, run `agy`, and complete its sign-in flow.",
+		AuthInstructions: "Open the project's Terminal application, run `agy`, and complete its sign-in flow.",
 		Features: agentmodule.Features{
 			Sessions:              agentmodule.SessionSupport{Resume: true},
 			Skills:                agentmodule.SkillsInstructions,

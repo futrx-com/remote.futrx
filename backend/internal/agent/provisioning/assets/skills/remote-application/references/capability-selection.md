@@ -31,7 +31,7 @@ The host backend and container programs are different build contexts. Do not add
 
 | User requirement | Select | Do not invent |
 |---|---|---|
-| Browser button, panel, popup, or contextual action | `ui/` | backend or container infrastructure when no server work exists |
+| Browser button, panel, popup, docked drawer, or contextual action | `ui/` | backend or container infrastructure when no server work exists |
 | Server-side computation or protected host operation called by the UI | `backend/main.go` plus `backend/api/` | LXD container, port, or service |
 | Command that must execute inside the project/application container | `backend/container/` | host backend unless the browser or Remote server must call it |
 | Long-running process inside a container | manifest `service`; usually a container-built or provisioned executable | a systemd unit written by `infra/install.sh` |

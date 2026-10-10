@@ -4,7 +4,7 @@
 // Backend serves:
 //   - Static SPA (Preact/Vite bundle) embedded via go:embed
 //   - HTTP APIs for users, agents, chats, projects, files, and operations
-//   - WebSockets for workspace state, agent runs, auth status, and terminals
+//   - WebSockets for workspace state, agent runs, and auth status
 
 package main
 
