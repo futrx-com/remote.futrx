@@ -253,6 +253,8 @@ contract, so it depends on nothing but the standard library.
 | `app/extensions/extensionBackend.ts` | resolves which running backend a call reaches, and calls it |
 | `config/extensions.ts` | the closed set of slot names and their icon sizing |
 | `app/extensions/extensionPopup.ts` | the modal an extension can open |
+| `ui/chat/extensions/ExtensionDrawer.tsx` | the docked pane an extension can register, with its header and resize handle |
+| `state/hooks/chat/extensionDrawerState.ts` | a drawer's pane name, stored width and width limits |
 | `ui/primitives/ExtensionSlot.tsx` | renders a slot's contributions into plain DOM nodes |
 
 ## What installing does

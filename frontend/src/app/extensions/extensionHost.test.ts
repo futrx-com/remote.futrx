@@ -92,6 +92,7 @@ function createRegistry() {
   const store = createExtensionStore();
   const registry: ExtensionRegistry = {
     register: (...args) => store.getState().register(...args),
+    registerDrawer: (...args) => store.getState().registerDrawer(...args),
     setVisibility: (...args) => store.getState().setVisibility(...args),
     removeApplication: (...args) => store.getState().removeApplication(...args),
   };
@@ -99,6 +100,7 @@ function createRegistry() {
     registry,
     panelContributions: () =>
       store.getState().bySlot.get(EXTENSION_SLOTS.applicationsPanel) ?? [],
+    drawers: () => store.getState().drawers,
   };
 }
 
@@ -133,6 +135,7 @@ function entryModuleLoader(): {
     return {
       default: (remote: ExtensionApi) => {
         remote.ui.register(remote.slots.applicationsPanel, () => {});
+        remote.ui.registerDrawer({ id: "panel", title: "Panel", icon: "", mount: () => {} });
         remote.events.on("upload.completed", () => {
           events.push(remote.application.id);
         });
@@ -185,18 +188,20 @@ test("watching syncs immediately and loads the installed extension", async (t) =
 test("returning to the foreground drops an extension uninstalled elsewhere", async (t) => {
   const browser = installDocument(t);
   serveExtensions(t, [[helloExtension()], []]);
-  const { registry, panelContributions } = createRegistry();
+  const { registry, panelContributions, drawers } = createRegistry();
   const entry = entryModuleLoader();
   const host = new ExtensionHost(registry, entry.load);
 
   const stopWatching = host.watch();
   await settled();
   assert.equal(panelContributions().length, 1);
+  assert.deepEqual(drawers().map((drawer) => drawer.id), ["hello-remote-panel"]);
 
   browser.dispatch("visibilitychange");
   await settled();
 
   assert.equal(panelContributions().length, 0);
+  assert.equal(drawers().length, 0, "its drawer goes with it");
   emitUploadCompleted();
   assert.deepEqual(entry.events, [], "its event handlers go with it");
 

@@ -186,3 +186,11 @@ const ICON =
 close button — using the app's tokens. Style only the **body** you fill, and
 keep it to the app's type scale. `width` sets the body's max width in pixels
 and is clamped to the viewport, so a popup stays usable on a phone.
+
+## Drawers
+
+`remote.ui.registerDrawer` provides the pane, header, close button and resize
+handle. Style the **body** your extension fills. It takes up the remaining
+space and has no default padding. Use inline SVG with `currentColor` for
+`icon`, as you would in the chrome slots. Remote sizes it for the header
+toggle and pane heading.

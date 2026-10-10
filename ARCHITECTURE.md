@@ -338,7 +338,8 @@ are injected, `scripts/main.js` is dynamically imported, and it registers
 contributions into a closed set of named slots ([`frontend/src/app/extensions/`](frontend/src/app/extensions/)):
 the chat header rail, the composer deck, project rows, the sidebar header and
 its search field, and the applications surfaces. This is what lets a backend add
-interface — an icon that opens a workspace in another editor, a panel, a popup —
+interface — an icon that opens a workspace in another editor, a panel, a popup,
+a pane docked beside the chat —
 alongside whatever its `install.sh` provisions in a container. Each slot carries
 its own icon sizing, so a contributed button matches its neighbours without the
 extension knowing the app's chrome densities.

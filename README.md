@@ -125,7 +125,7 @@ controls switch ports, resize or reload the pane, and open the app in a new tab.
       <img src="docs/assets/readme/feature-terminal.webp" alt="Remote container terminal verifying Git commits and a running service">
       <br>
       <strong>A live container terminal</strong><br>
-      Install dependencies, inspect processes, run tests, or take over manually in a resizable terminal attached to the project computer.
+      Install the Terminal application to install dependencies, inspect processes, run tests, or take over manually in a resizable terminal attached to the project computer.
     </td>
     <td width="50%" valign="top">
       <img src="docs/assets/readme/feature-git-history.webp" alt="Remote Git history showing commits and a structured source diff">
@@ -238,7 +238,7 @@ See the continuous five-step product tour at [remote.futrx.com](https://remote.f
 - **One project computer per project** — an unprivileged LXC container with durable files and agent homes.
 - **Your choice of agent** — use Codex, MiniMax, Claude Code, Kimi, or Antigravity with provider-specific models, thinking, speed, mode, approval, and sandbox controls where supported.
 - **Durable, inspectable conversations** — stream Markdown, reasoning, tools, questions, errors, and usage; queue, cancel, rewind, fork, mark unread, or continue later.
-- **A complete development surface** — chat, root terminal, files, uploads, Git history, structured diffs, reusable skills, and optional editor applications.
+- **A complete development surface** — chat, files, uploads, Git history, structured diffs, reusable skills, and optional terminal and editor applications.
 - **Live applications** — Remote finds listening ports, creates project URLs, adds HTTPS, and shows the app beside the conversation.
 - **A browser agents and humans can share** — reuse authenticated sessions, let an agent browse visually, watch it work, or take over.
 - **Scheduled work** — install Scheduled Tasks and create one-time or recurring prompts that run later, even when your browser is closed.

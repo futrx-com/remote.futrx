@@ -109,7 +109,7 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 | Application actions | Install a project application to add its chat actions | Available only while the application runs in that project |
 | Installable apps | Use the Applications page in Remote | App web routes check project membership and installation status |
 | Application agent workflows | An enabled app can start work in an existing chat, read its results, and offer its own commands to the agent | Requires the app's declared capabilities, a running installation, and the owner's current access; uses the chat's existing agent settings |
-| Open Terminal | Choose **Open Terminal** | Resizable pane; hiding it in the same chat preserves the PTY; socket loss or page/chat change ends it |
+| Open Terminal | Install the **Terminal** application, then choose **Container terminal** | Resizable pane; one shell per chat that survives closing the pane, reloads, and dropped connections; ended after 10 minutes with no viewer |
 | Open History | Choose **History** | Git repositories only |
 | Open Files | Choose **Files** | Lazy workspace tree |
 | Open Browser | Choose **Open Browser** | Preview or Agent Browser |
@@ -214,7 +214,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Antigravity sign-in and conversation state | Yes | Yes |
 | Container root filesystem additions | Yes until replacement | No |
 | Active run control and event streaming | No; an `lxc exec` child can remain alive but orphaned after backend restart | No reattachment |
-| Active Terminal PTY | No | No |
+| Active Terminal shell | Yes, while the Terminal application keeps running | No |
 | Composer draft | Yes, in the same browser tab session | Not applicable |
 | Prompt queue | Yes, in the same browser tab session | Not applicable |
 | Active chat and open drawers | No | Not applicable |
@@ -229,7 +229,6 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 - enforced approval prompts for agent tools;
 - durable server-side prompt queues;
 - run reattachment after backend restart;
-- terminal reconnect;
 - the visible Git dirty-tree checkpoint form, despite backend support;
 - project IDE membership enforcement;
 - built-in backup/restore, audit log, metrics endpoint, or high availability;

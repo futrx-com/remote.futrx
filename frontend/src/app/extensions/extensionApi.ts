@@ -91,6 +91,7 @@ export function createExtensionApi(
           { order: button.order, when: button.when },
         ),
       openPopup: openExtensionPopup,
+      registerDrawer: (options) => registry.registerDrawer(application.id, options),
     },
     events: {
       on: (name, handler) => extensionEventService.on(application.id, name, handler),

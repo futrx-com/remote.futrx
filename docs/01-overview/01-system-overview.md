@@ -59,7 +59,7 @@ flowchart TD
     Chat --> Composer["Provider, model, mode, skills, attachments"]
     Chat --> Messages["Text, reasoning, tools, usage"]
     Chat --> Drawers["History, files, schedules, browser"]
-    Chat --> Terminal["Resizable Terminal pane"]
+    Chat --> Terminal["Terminal application drawer"]
 
     Projects --> Lifecycle["Start, stop, restart, delete"]
     Projects --> Inspect["Resources, network, agent status"]

@@ -17,13 +17,10 @@ const stepButtonClass =
 export function ChatFindBar({
   find,
   hasUnloadedMessages,
-  label = "Find in chat",
 }: {
   find: ChatFind;
   /** Older messages exist on the server, so the thread is not all here yet. */
   hasUnloadedMessages: boolean;
-  /** The bar's placeholder and accessible name; the terminal reuses this bar. */
-  label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +43,7 @@ export function ChatFindBar({
       class="absolute right-3 top-3 z-30 flex max-w-[calc(100%-1.5rem)] flex-col gap-1
              rounded-card border border-line bg-raised px-2 py-1.5 shadow-pop"
       role="search"
-      aria-label={label}
+      aria-label="Find in chat"
     >
       <div class="flex items-center gap-1.5">
         <Search class="h-3.5 w-3.5 flex-none text-ink-400" />
@@ -68,11 +65,11 @@ export function ChatFindBar({
               event.currentTarget.select();
             }
           }}
-          placeholder={label}
+          placeholder="Find in chat"
           class="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
           autocomplete="off"
           spellcheck={false}
-          aria-label={label}
+          aria-label="Find in chat"
         />
         <span
           class={`flex-none tabular-nums text-[11px] ${

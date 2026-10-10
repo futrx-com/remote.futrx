@@ -226,12 +226,11 @@ The upload access check happens when the random upload URL is created. Later chu
 | --- | --- | --- |
 | `/ws/workspace` | Server to client | Snapshot, chat upsert/delete, project upsert/delete |
 | `/ws/chat/{id}?since=<seq>` | Both | Client `prompt` or `cancel`; server chat events and `sync` |
-| `/ws/terminal?chat={id}` | Both | PTY binary data; JSON input and resize control |
 | `/ws/agent-auth/{provider}` | Server to client | Normalized auth snapshots for an available managed auth binding |
 | `/ws/{provider}/auth-status` | Server to client | Legacy provider-specific auth status payloads |
 | `/ws?session={name}` | Both | Auxiliary tmux PTY binary data and control messages |
 
-Chat and project-terminal membership is checked before the WebSocket upgrade. Removing a member prevents future checked connections, but the backend does not currently close or reauthorize that member's already-open sockets.
+Chat membership is checked before the WebSocket upgrade. The Terminal application's socket is not a core route: it is served on the project's application host, where the [web gateway](../dev/installable-applications/19-project-application-web-routes.md) checks project membership before the upgrade. Removing a member prevents future checked connections, but the backend does not currently close or reauthorize that member's already-open sockets.
 
 ## Realtime channels
 
@@ -239,12 +238,12 @@ Chat and project-terminal membership is checked before the WebSocket upgrade. Re
 flowchart TD
     Browser["Browser"] --> WorkspaceWS["Workspace WebSocket"]
     Browser --> ChatWS["Active chat WebSocket"]
-    Browser --> TerminalWS["Optional terminal WebSocket"]
+    Browser --> TerminalWS["Terminal application WebSocket on its application host"]
     Browser --> AuthWS["/ws/agent-auth/provider while onboarding or in Settings"]
 
     WorkspaceWS --> WorkspaceHub["Workspace hub"]
     ChatWS --> RunHub["Per-chat run hub"]
-    TerminalWS --> PTY["lxc exec PTY"]
+    TerminalWS --> PTY["Application web gateway to the in-container terminal service"]
     AuthWS --> AuthService["Provider auth subscription"]
 
     WorkspaceHub --> Repositories["Repository notifications"]

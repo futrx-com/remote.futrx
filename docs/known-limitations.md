@@ -176,5 +176,6 @@ These are the constraints worth understanding before you deploy or rely on remot
   service worker caches only a self-contained offline status page, not the app
   shell, chats, API data, or project content. Work cannot continue without a
   connection.
-- **The terminal has no reconnect logic.** A network blip ends the terminal view (unlike the chat/workspace sockets, which reconnect).
+- **Terminal shells are not durable.** The Terminal application reconnects to the same shell after a dropped connection, but ends a shell that has had no viewer for 10 minutes, and ends every shell when the application is stopped, restarted, or upgraded.
+- **The Terminal application's port is not authenticated inside the container network.** Remote's gateway checks project membership, but the service itself listens on the project container's network without credentials, as other application web services do.
 - **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite.

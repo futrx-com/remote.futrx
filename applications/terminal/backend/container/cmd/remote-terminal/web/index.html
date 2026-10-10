@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  <title>Terminal</title>
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="terminal.css">
+</head>
+<body>
+  <div class="find" id="find" role="search" aria-label="Find in terminal" hidden>
+    <input id="find-input" type="text" placeholder="Find in terminal" aria-label="Find in terminal"
+           autocomplete="off" spellcheck="false">
+    <span class="find-status" id="find-status" aria-live="polite"></span>
+    <button type="button" id="find-previous" aria-label="Previous match" title="Previous match (Shift+Enter)" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+    <button type="button" id="find-next" aria-label="Next match" title="Next match (Enter)" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </button>
+    <button type="button" id="find-close" aria-label="Close find" title="Close (Esc)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="terminal-host" id="terminal"></div>
+  <script type="module" src="terminal.js"></script>
+</body>
+</html>

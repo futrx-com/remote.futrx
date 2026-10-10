@@ -40,6 +40,7 @@ remote.ui.register(slot, render, options?)      → dispose
 remote.ui.addButton(slot, button)               → dispose
 remote.ui.addIconButton(slot, button)           → dispose
 remote.ui.openPopup(options?)                   → { body, close }
+remote.ui.registerDrawer(options)               → dispose
 
 remote.views.load(name)        // Promise<string>
 remote.views.url(name)         // string | null
@@ -191,6 +192,60 @@ handle.close() // close it yourself
 ```
 
 Use `mount` whenever the content needs wiring; use `html` for static markup.
+
+## `remote.ui.registerDrawer(options)`
+
+Adds a pane on the right of the chat, alongside the built-in files, history
+and preview panes. Remote provides a toggle after the `chatHeaderActions`
+slot, a header with a close button, and a resize handle on the left edge.
+Your extension fills the body.
+
+```js
+const dispose = remote.ui.registerDrawer({
+  id: "logs",                     // lowercase letters, digits, hyphens
+  title: "Logs",                  // the pane's heading
+  label: "Service logs",          // the toggle's name; defaults to title
+  icon: '<svg viewBox="0 0 24 24">…</svg>',
+  order: 0,                       // optional; among drawer toggles
+  defaultWidth: 560,              // optional; px until the user drags
+  minWidth: 420,                  // optional
+  when: (target) => Boolean(target.projectId),   // optional
+  mount: (body, context) => {
+    // context: { chatId, projectId, cwd, setStatus }
+    context.setStatus({ label: "Connected", active: true });
+    body.append(…);
+    return () => { /* cleanup */ };
+  },
+});
+```
+
+| Behaviour | Detail |
+|---|---|
+| Scope | A project installation's drawer appears only in that project's chats, following the same scope rules as slots. Use `when` to limit it further; it receives `{ chatId, projectId, cwd }`. If `when` throws, the drawer is hidden. |
+| One pane at a time | Opening a drawer closes any other open workspace pane. Opening files, history, preview or another drawer closes it. On a phone, the pane covers the chat. |
+| `mount` lifecycle | Runs the first time the drawer is opened for a chat. The body then **stays mounted while the pane is closed**, so a connection or an editor in it survives closing and reopening. The cleanup runs when the user switches chat, when `chatId`, `projectId` or `cwd` changes, or when the drawer is removed. |
+| Closed pane | A closed pane has zero width. Use a `ResizeObserver` to watch the body size if your content needs to pause while hidden. |
+| `setStatus` | `setStatus({ label, active })` puts a line under the title and a dot beside it, green when `active`. `setStatus(null)` removes both. |
+| Width | The user's width is remembered per browser under `remote.futrx.extensionDrawerWidth.<applicationId>-<id>`, clamped between `minWidth` and 1100 px, and always leaves 360 px for the chat. |
+| `<iframe>` bodies | Remote disables pointer events on the body while resizing so an iframe cannot interrupt the drag. |
+| Errors | If `mount` or cleanup throws, Remote logs the error and continues rendering the pane and chat. |
+| Removal | The returned function removes the drawer. Uninstalling the application removes it too. |
+
+If `id` is invalid or already registered by this application, Remote logs the
+error and skips the drawer. The returned function does nothing.
+
+Older hosts may report `apiVersion` 1 without supporting drawers. Check that
+the method exists if your application needs to support them, as with
+`files.registerOpener`:
+
+```js
+if (!remote.ui.registerDrawer) return;
+```
+
+The host backend API does not support WebSocket connections. If your drawer
+needs one, load a page from the application's
+[web route](19-project-application-web-routes.md) in an iframe. The page and
+WebSocket then share an origin. See `applications/terminal` for an example.
 
 ## `remote.views.load(name)`
 

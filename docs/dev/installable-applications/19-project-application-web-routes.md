@@ -2,8 +2,9 @@
 
 ## Reaching the application's HTTP server
 
-Declare `"web": { "port": 8400, "subdomain": "editor" }`, scope `["project"]`, and a service
-listening on `0.0.0.0:8400`. A signed-in project member opens:
+Add `"web": { "port": 8400, "subdomain": "editor" }` to the manifest, include
+`project` in `scopes`, and declare a service listening on `0.0.0.0:8400`.
+A signed-in project member can open it through this URL:
 
 ```text
 https://remote.example/apps/my-project/editor/src/main.ts?line=12
@@ -32,11 +33,18 @@ Upstream `Set-Cookie` and `Clear-Site-Data` are removed, and responses use
 are not supported by this gateway. Service workers are confined to the app's
 origin; they cannot control Remote or another installation.
 
-`web.port` must be 1024–65535, with a declared service and exactly project
-scope. No host port is allocated. Without `port.internal`, `APP_INTERNAL_PORT`
-is zero and `healthcheck.command` must be omitted. Requests do not start
-stopped installations or recreate containers. Missing/stopped installations
-return 404; unavailable upstreams return 502. Upstream keep-alives are disabled.
+`web.port` must be between 1024 and 65535. The application needs a declared
+service and `project` in `scopes`. You can also include `global` when
+`globallyInstalledInsideContainers` is `true`. In that case, a global install
+adds a copy to every project, and each copy uses its own project web route.
+Applications whose global install uses a dedicated container cannot declare
+`web`.
+
+Remote does not allocate a host port for the web route. Without `port.internal`,
+`APP_INTERNAL_PORT` is zero and you must omit `healthcheck.command`. Opening
+the URL does not start a stopped installation or recreate its container.
+Missing or stopped installations return 404; unavailable upstreams return 502.
+Upstream keep-alives are disabled.
 See [12 — HTTP API](12-http-api.md#project-application-web-routes) for all statuses.
 
 ## Infrastructure

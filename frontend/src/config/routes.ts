@@ -191,8 +191,6 @@ export const WEB_SOCKET_ROUTES = {
       ? applicationPath(`${route}?since=${sinceSeq}`)
       : route;
   },
-  terminal: (chatId: string): ApplicationPath =>
-    applicationPath(`/ws/terminal?chat=${encodeURIComponent(chatId)}`),
 } as const;
 
 // The chat media-open URL is the only chat route an embedded image or link

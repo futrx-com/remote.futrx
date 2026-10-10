@@ -81,8 +81,7 @@ func validateApplication(application svc.Application) error {
 			return fmt.Errorf("web.subdomain must be a lowercase DNS label of at most 63 characters without consecutive hyphens (--)")
 		}
 		if application.Web.Port < 1024 || application.Web.Port > 65535 ||
-			len(application.Scopes) != 1 || application.Scopes[0] != svc.ScopeProject ||
-			application.Service == nil {
+			!webScopesReachProjects(application) || application.Service == nil {
 			return fmt.Errorf("web.port requires a project-scoped service and a non-privileged port")
 		}
 	}
@@ -100,6 +99,25 @@ func validateApplication(application svc.Application) error {
 		return fmt.Errorf("application has no infra, backend, ui, or skills")
 	}
 	return nil
+}
+
+// webScopesReachProjects reports whether every installation the declared scopes
+// can produce is a project instance, which is the only kind the web gateway
+// routes to. A global scope qualifies only when its install lands as project
+// copies rather than in a dedicated container.
+func webScopesReachProjects(application svc.Application) bool {
+	project := false
+	for _, scope := range application.Scopes {
+		switch scope {
+		case svc.ScopeProject:
+			project = true
+		case svc.ScopeGlobal:
+			if !application.GloballyInstalledInsideContainers {
+				return false
+			}
+		}
+	}
+	return project
 }
 
 func validateApplicationEvents(application svc.Application) error {

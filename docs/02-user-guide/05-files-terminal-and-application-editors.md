@@ -1,7 +1,8 @@
 # Files, Terminal, and application editors
 
-Files and Terminal operate on the same project workspace. Installed applications
-can add editing actions and file openers to a project chat.
+Files and Terminal use the same project workspace. Files is built in; install
+the **Terminal** application to run shell commands. Other applications can add
+editing actions and file openers to a project chat.
 
 ![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
 
@@ -22,7 +23,7 @@ can add editing actions and file openers to a project chat.
 | Browse directories, open media/code, or download a file | **Files** | Nothing unless an opened file is edited or a download is saved locally |
 | Find a file by name | **Files** | Nothing |
 | Download a directory as ZIP | **Files** | Creates a temporary server-side archive, then downloads it |
-| Run a command or inspect a process | **Open Terminal** | Whatever the command changes |
+| Run a command or inspect a process | **Container terminal** (Terminal application) | Whatever the command changes |
 | Read and edit a codebase | An installed editor application | Whatever the editor saves |
 
 These tools start from the chat's current working directory. In a normal project
@@ -120,33 +121,48 @@ rejected.
 
 ## Run a terminal command
 
-1. Select **Open Terminal** in a project chat.
-2. Wait until the header reads **Terminal** and the status becomes
-   **Connected**.
-3. Check the path shown beside the status before running a command.
-4. Run the command in the interactive login shell.
-5. Select **Close terminal** when finished.
+Install the **Terminal** application before opening a shell. An administrator
+can install it for every project from the global Applications page, or a
+project member can install it for their project. The terminal button appears
+in the chat header once the application is installed and running.
 
-**Outcome:** Remote starts a fresh `bash -l` through a PTY inside the project
-container. The shell begins in the chat working directory when that path maps
-into the container, otherwise it falls back to `/workspace`.
+1. Select **Container terminal** in a project chat's header.
+2. Wait until the pane's status reads **Connected**.
+3. Check the path shown beside the status before running a command. It is the
+   path inside the container, for example `/workspace`.
+4. Run the command in the interactive login shell.
+5. Select **Close Terminal** when finished.
+
+**Outcome:** Terminal runs `bash -l` as root inside the project container.
+It starts in the chat's working directory if that directory is inside
+`/workspace`. Otherwise, it starts in `/workspace`.
 
 On desktop, Terminal opens as a pane beside the chat. Drag its left edge to
 resize it; Remote remembers that width in this browser. Opening Files, History,
-Schedules, or Browser hides Terminal because workspace panes are mutually
-exclusive.
+or Browser hides Terminal. Only one workspace pane can be open at a time.
 
-The status can read **Connecting**, **Connected**, **Error**, or **Closed**.
-If the project is stopped, opening the terminal first starts it.
+The status reads **Connecting**, **Connected**, **Reconnecting**, or
+**Closed**.
 
-> The PTY is intentionally tied to its WebSocket. Hiding and reopening the
-> Terminal pane in the same loaded chat preserves its shell and current input.
-> Switching chats, losing the socket, reloading, or closing the page kills that
-> shell. There is no reconnect after the socket is lost.
+Each chat has its own shell. You can return to it after a dropped connection
+or a page reload:
 
-Use a process manager or a terminal multiplexer that you configure inside the
-project for work that must survive the page. Do not treat the Terminal pane
-itself as a durable process supervisor.
+- If the connection drops while the pane is open, Terminal reconnects by itself
+  and returns to the same shell, with its recent output replayed.
+- Closing and reopening the pane, reloading the page, or switching chats and
+  coming back also returns to the same shell.
+- A shell ends after 10 minutes without a viewer. Stopping, restarting,
+  or upgrading the Terminal application ends every shell in that project.
+- When the shell exits, the status reads **Closed**. Press **Enter** in the
+  terminal to start a new one.
+- Press **Ctrl+F** (**Cmd+F** on macOS) in the terminal to search its output.
+
+The terminal does not start a stopped project or a stopped Terminal
+application; start it from the project's Applications page.
+
+Use a service manager inside the project for commands that need to keep
+running unattended. Terminal reconnects to shells, but does not keep them
+running indefinitely.
 
 ## Open an application editor
 
@@ -161,7 +177,7 @@ controls and settings.
 ```mermaid
 flowchart LR
     Files["Files drawer<br/>browse and download"] --> Workspace["Durable /workspace"]
-    Terminal["Terminal PTY<br/>fresh bash -l"] --> Workspace
+    Terminal["Terminal application<br/>bash -l per chat"] --> Workspace
     Editor["Installed editor application"] --> Workspace
     Agent["Project agent"] --> Workspace
 ```

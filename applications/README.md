@@ -12,6 +12,8 @@ Applications in this directory ship in the server binary. The
 [`hello-remote/`](hello-remote/) example composes infrastructure, a backend,
 events, UI, and skills. [`scheduled-tasks/`](scheduled-tasks/) demonstrates
 application-owned workflows using the shared agent runtime.
+[`terminal/`](terminal/) is the project shell: a service inside the project
+container, reached through its web route and shown in a drawer beside the chat.
 Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
 repositories and reach a server as uploaded packages, so the catalog format can
 change here without a database application riding along in the same review.
@@ -38,7 +40,7 @@ applications/
   ui-playground/
     README.md
     application.json
-    ui/              browser extension: buttons, panels, popups
+    ui/              browser extension: buttons, panels, popups, drawers
       views/*.html
       style/*.css
       scripts/main.js

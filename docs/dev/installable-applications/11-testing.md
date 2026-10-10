@@ -107,7 +107,8 @@ npm run build     # tsc -b + vite; type errors fail here
 
 | File | Covers |
 |---|---|
-| `state/stores/extensions/extensionStore.test.ts` | ordering, unknown slots, `when` predicates, disposal, `removeImage`, and all the scoping rules |
+| `state/stores/extensions/extensionStore.test.ts` | ordering, unknown slots, `when` predicates, disposal, `removeImage`, all the scoping rules, and drawer registration |
+| `state/hooks/chat/extensionDrawerState.test.ts` | a drawer's stored width, its limits, and its pane naming |
 | `config/extensions.test.ts` | slot names are unique, and every slot declares an icon appearance |
 | `app/extensions/extensionBackend.test.ts` | which running backend a call resolves to, and the URL it builds |
 

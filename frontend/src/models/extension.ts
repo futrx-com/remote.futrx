@@ -107,6 +107,64 @@ export interface ExtensionRegisterOptions {
   when?: ExtensionPredicate;
 }
 
+/** The chat a drawer is docked beside. */
+export interface ExtensionDrawerTarget {
+  chatId: string;
+  projectId?: string;
+  cwd?: string;
+}
+
+/** The line under a drawer's title, and the dot beside it. */
+export interface ExtensionDrawerStatus {
+  label: string;
+  /** Green dot when true, grey when false. */
+  active: boolean;
+}
+
+export interface ExtensionDrawerContext extends ExtensionDrawerTarget {
+  /** Replace the header's status line; `null` removes it. */
+  setStatus: (status: ExtensionDrawerStatus | null) => void;
+}
+
+export type ExtensionDrawerPredicate = (target: ExtensionDrawerTarget) => boolean;
+
+export interface ExtensionDrawerOptions {
+  /** Lowercase letters, digits and hyphens; unique within the application. */
+  id: string;
+  /** Heading of the pane. */
+  title: string;
+  /** Name of the header toggle. Defaults to `title`. */
+  label?: string;
+  /** Inline SVG for the header toggle and the pane heading. */
+  icon: string;
+  order?: number;
+  when?: ExtensionDrawerPredicate;
+  /** Starting width in pixels until the user drags the pane. */
+  defaultWidth?: number;
+  minWidth?: number;
+  /**
+   * Fill the pane's body. Runs the first time the drawer is opened for a chat;
+   * the body then stays mounted while the pane is closed, and the returned
+   * cleanup runs when the chat changes or the drawer is removed.
+   */
+  mount: (body: HTMLElement, context: ExtensionDrawerContext) => void | (() => void);
+}
+
+export interface ExtensionDrawerContribution {
+  /** `<applicationId>-<options.id>`, safe to use in a DOM id. */
+  id: string;
+  applicationId: string;
+  title: string;
+  label: string;
+  icon: string;
+  order: number;
+  when?: ExtensionDrawerPredicate;
+  defaultWidth: number;
+  minWidth: number;
+  mount: ExtensionDrawerOptions["mount"];
+  visibility: ExtensionVisibility;
+}
+
 export interface ExtensionRegistry {
   register: (
     applicationId: string,
@@ -114,12 +172,17 @@ export interface ExtensionRegistry {
     render: ExtensionRender,
     options?: ExtensionRegisterOptions,
   ) => () => void;
+  registerDrawer: (
+    applicationId: string,
+    options: ExtensionDrawerOptions,
+  ) => () => void;
   setVisibility: (applicationId: string, visibility: ExtensionVisibility) => void;
   removeApplication: (applicationId: string) => void;
 }
 
 export interface ExtensionStoreState {
   bySlot: ReadonlyMap<ExtensionSlotName, ExtensionContribution[]>;
+  drawers: ExtensionDrawerContribution[];
   activeProjectId: string | null;
 }
 
@@ -226,6 +289,11 @@ export interface ExtensionApi {
     addButton: (slot: string, button: ExtensionButton) => () => void;
     addIconButton: (slot: string, button: ExtensionIconButton) => () => void;
     openPopup: (options?: ExtensionPopupOptions) => ExtensionPopupHandle;
+    /**
+     * Dock a resizable pane beside the chat, with its own toggle in the chat
+     * header. Returns a function that removes it.
+     */
+    registerDrawer: (options: ExtensionDrawerOptions) => () => void;
   };
   /**
    * Subscribe to something the SPA finished doing. `on` returns an

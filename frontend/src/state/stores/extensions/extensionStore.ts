@@ -1,10 +1,13 @@
 import { createStore } from "zustand/vanilla";
 import {
   DEFAULT_EXTENSION_VISIBILITY,
+  EXTENSION_DRAWER_ID_PATTERN,
+  EXTENSION_DRAWER_WIDTH,
   EXTENSION_SLOT_NAMES,
 } from "../../../config/extensions.ts";
 import type {
   ExtensionContribution,
+  ExtensionDrawerContribution,
   ExtensionRegisterOptions,
   ExtensionRegistry,
   ExtensionRender,
@@ -20,6 +23,7 @@ export function createExtensionStore() {
 
   return createStore<ExtensionStoreState & ExtensionStoreActions>()((set) => ({
     bySlot: new Map(),
+    drawers: [],
     activeProjectId: null,
 
     setVisibility: (applicationId, visibility) => {
@@ -31,6 +35,9 @@ export function createExtensionStore() {
           contribution.applicationId === applicationId
             ? { ...contribution, visibility }
             : contribution,
+        ),
+        drawers: state.drawers.map((drawer) =>
+          drawer.applicationId === applicationId ? { ...drawer, visibility } : drawer,
         ),
       }));
     },
@@ -72,8 +79,55 @@ export function createExtensionStore() {
       };
     },
 
+    registerDrawer: (applicationId, options) => {
+      if (!EXTENSION_DRAWER_ID_PATTERN.test(options.id)) {
+        console.warn(`[extensions] ${applicationId}: invalid drawer id "${options.id}"`);
+        return () => {};
+      }
+      const id = `${applicationId}-${options.id}`;
+      const minWidth = Math.max(options.minWidth ?? EXTENSION_DRAWER_WIDTH.min, 1);
+      const drawer: ExtensionDrawerContribution = {
+        id,
+        applicationId,
+        title: options.title,
+        label: options.label ?? options.title,
+        icon: options.icon,
+        order: options.order ?? 0,
+        when: options.when,
+        defaultWidth: Math.max(options.defaultWidth ?? EXTENSION_DRAWER_WIDTH.default, minWidth),
+        minWidth,
+        mount: options.mount,
+        visibility: visibilityByImage.get(applicationId) ?? DEFAULT_EXTENSION_VISIBILITY,
+      };
+      let registered = false;
+      set((state) => {
+        // Two panes sharing an id would share a DOM id and a stored width.
+        if (state.drawers.some((candidate) => candidate.id === id)) {
+          console.warn(`[extensions] ${applicationId}: drawer "${options.id}" is already registered`);
+          return state;
+        }
+        registered = true;
+        const drawers = [...state.drawers, drawer];
+        drawers.sort((left, right) => left.order - right.order);
+        return { drawers };
+      });
+      if (!registered) return () => {};
+
+      let disposed = false;
+      return () => {
+        if (disposed) return;
+        disposed = true;
+        set((state) => state.drawers.includes(drawer)
+          ? { drawers: state.drawers.filter((candidate) => candidate !== drawer) }
+          : state);
+      };
+    },
+
     removeApplication: (applicationId) => {
       visibilityByImage.delete(applicationId);
+      set((state) => state.drawers.some((drawer) => drawer.applicationId === applicationId)
+        ? { drawers: state.drawers.filter((drawer) => drawer.applicationId !== applicationId) }
+        : state);
       set((state) => {
         const bySlot = new Map<ExtensionSlotName, ExtensionContribution[]>();
         let changed = false;
@@ -132,6 +186,7 @@ export const extensionStore = createExtensionStore();
 
 export const extensionRegistry: ExtensionRegistry = {
   register: (...args) => extensionStore.getState().register(...args),
+  registerDrawer: (...args) => extensionStore.getState().registerDrawer(...args),
   setVisibility: (...args) => extensionStore.getState().setVisibility(...args),
   removeApplication: (...args) => extensionStore.getState().removeApplication(...args),
 };

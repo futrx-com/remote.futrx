@@ -1,10 +1,12 @@
+import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
-import { Clock, Folder, Monitor, Terminal } from "../../primitives/icons";
+import { Clock, Folder, Monitor } from "../../primitives/icons";
 import { ExtensionSlot } from "../../primitives/ExtensionSlot";
 import { workspaceActionTooltipClass } from "../../primitives/workspaceActionTooltip.ts";
 import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { DEFAULT_WORKSPACE_PATH } from "../../../config/workspace";
+import { extensionDrawerState } from "../../../state/hooks/chat/extensionDrawerState";
 
 // Two states only, and they never fight over the same property: Tailwind emits
 // utilities in file order, so an "expanded" colour appended after a base colour
@@ -13,17 +15,28 @@ const actionBase =
   "workspace-action relative inline-flex h-8 w-8 flex-none items-center justify-center " +
   "rounded-control transition-colors";
 const actionIdle = `${actionBase} text-ink-400 hover:bg-tint-strong hover:text-ink-50`;
+const actionIcon = "h-4 w-4 flex-none";
+
+/** One drawer an installed application docks beside the chat. */
+export interface ExtensionDrawerAction {
+  id: string;
+  label: string;
+  /** Inline SVG supplied by the application. */
+  icon: string;
+  open: boolean;
+  onToggle: () => void;
+}
+
 const actionExpanded = `${actionBase} bg-accent-blue/[0.14] text-accent-blue hover:bg-accent-blue/20`;
 
 export function WorkspaceActions({
   cwd,
   chatId,
   projectId,
-  onToggleTerminal,
+  extensionDrawers,
   onToggleBrowser,
   onToggleHistory,
   onToggleFiles,
-  terminalOpen,
   browserOpen,
   historyOpen,
   filesOpen,
@@ -33,11 +46,10 @@ export function WorkspaceActions({
   cwd: string;
   chatId?: string;
   projectId?: string;
-  onToggleTerminal: () => void;
+  extensionDrawers: ExtensionDrawerAction[];
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
   onToggleFiles: () => void;
-  terminalOpen: boolean;
   browserOpen: boolean;
   historyOpen: boolean;
   filesOpen: boolean;
@@ -56,19 +68,28 @@ export function WorkspaceActions({
         cwd={workspacePath}
         tooltipPlacement={tooltipPlacement}
       />
-      <WorkspaceAction
-        Icon={Terminal}
-        onClick={onToggleTerminal}
-        label={terminalOpen ? "Close container terminal" : "Container terminal"}
-        tooltip={terminalOpen ? "Close container terminal" : "Open container terminal"}
-        expanded={terminalOpen}
-        controls="workspace-terminal-pane"
-        action="terminal"
-        tooltipPlacement={tooltipPlacement}
-      />
+      {extensionDrawers.map((drawer) => (
+        <WorkspaceAction
+          key={drawer.id}
+          icon={
+            <span
+              aria-hidden="true"
+              class={`grid place-items-center ${actionIcon} [&>svg]:h-full [&>svg]:w-full`}
+              dangerouslySetInnerHTML={{ __html: drawer.icon }}
+            />
+          }
+          onClick={drawer.onToggle}
+          label={drawer.open ? `Close ${drawer.label}` : drawer.label}
+          tooltip={drawer.open ? `Close ${drawer.label}` : `Open ${drawer.label}`}
+          expanded={drawer.open}
+          controls={extensionDrawerState.paneElementId(drawer.id)}
+          action={extensionDrawerState.paneName(drawer.id)}
+          tooltipPlacement={tooltipPlacement}
+        />
+      ))}
       {showHistory && (
         <WorkspaceAction
-          Icon={Clock}
+          icon={<Clock aria-hidden="true" focusable="false" class={actionIcon} />}
           onClick={onToggleHistory}
           label={historyOpen ? "Close git history" : "Git history"}
           tooltip={historyOpen ? "Close git history" : "Review git history"}
@@ -79,7 +100,7 @@ export function WorkspaceActions({
         />
       )}
       <WorkspaceAction
-        Icon={Folder}
+        icon={<Folder aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleFiles}
         label={filesOpen ? "Close workspace files" : "Workspace files"}
         tooltip={filesOpen ? "Close workspace files" : "Browse workspace files"}
@@ -89,7 +110,7 @@ export function WorkspaceActions({
         tooltipPlacement={tooltipPlacement}
       />
       <WorkspaceAction
-        Icon={Monitor}
+        icon={<Monitor aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleBrowser}
         label={browserOpen ? "Close browser preview" : "Browser preview"}
         tooltip={browserOpen ? "Close browser preview" : "Open browser preview"}
@@ -103,7 +124,7 @@ export function WorkspaceActions({
 }
 
 function WorkspaceAction({
-  Icon,
+  icon,
   label,
   tooltip,
   onClick,
@@ -112,13 +133,13 @@ function WorkspaceAction({
   action,
   tooltipPlacement,
 }: {
-  Icon: typeof Terminal;
+  icon: ComponentChildren;
   label: string;
   tooltip: string;
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
-  action?: "history" | "files" | "browser" | "terminal";
+  action?: string;
   tooltipPlacement: "below" | "left";
 }) {
   const tooltipId = useId();
@@ -150,7 +171,7 @@ function WorkspaceAction({
   };
   const content = (
     <>
-      <Icon aria-hidden="true" focusable="false" class="h-4 w-4 flex-none" />
+      {icon}
       <span
         id={tooltipId}
         role="tooltip"
