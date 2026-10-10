@@ -14,6 +14,11 @@ spawned by [remote.futrx](https://{{PUBLIC_HOSTNAME}}). Other projects do
 not share this filesystem or process namespace: fresh `apt` installs,
 crashed processes, and deleted files stay within this project.
 
+## Project context
+
+The authoritative project slug is `{{PROJECT_SLUG}}`. Use this value for
+project dev-server URLs; the display name and container name may differ.
+
 ## Filesystem
 
 - `/workspace` - your project files. Persistent, survives container
@@ -122,8 +127,8 @@ is**:
 https://<this-project-slug>--<port>.dev.{{PUBLIC_HOSTNAME}}
 ```
 
-Replace `<this-project-slug>` with the project slug shown in the environment
-context and `<port>` with the port the application uses. Do not guess or derive
+Replace `<this-project-slug>` with the project slug in the Project context section
+above and `<port>` with the port the application uses. Do not guess or derive
 the slug from OAuth configuration, repository names, or user data.
 
 `localhost:<port>` is useful for health checks inside the container, but never

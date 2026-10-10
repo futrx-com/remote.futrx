@@ -46,7 +46,7 @@ func NewProvisioner(
 
 // EnsureAgentInstructions pushes the shared system-instructions template to
 // all configured targets, grouped by hash marker. Idempotent.
-func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName string) error {
+func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName, projectSlug string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}
@@ -57,6 +57,8 @@ func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName
 	if len(p.instructions) == 0 {
 		return errors.New("agent instructions not configured")
 	}
+
+	instructions := provisioning.ProjectInstructions(p.instructions, projectSlug)
 
 	dctx, cancelD := context.WithTimeout(ctx, 30*time.Second)
 	defer cancelD()
@@ -93,7 +95,7 @@ func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName
 		batches[index].paths = append(batches[index].paths, target.Path)
 	}
 	for _, batch := range batches {
-		if err := p.publisher.Push(ctx, containerName, p.instructions,
+		if err := p.publisher.Push(ctx, containerName, instructions,
 			batch.hashPath, "644", batch.paths...); err != nil {
 			return err
 		}

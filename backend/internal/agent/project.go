@@ -23,6 +23,7 @@ const ProjectStatusRunning ProjectStatus = "running"
 // Project contains only the project state an agent needs to prepare and run a
 // CLI inside its workspace container.
 type Project struct {
+	Slug          string
 	ID            ProjectID
 	ContainerName string
 	Status        ProjectStatus

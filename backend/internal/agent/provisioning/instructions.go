@@ -18,3 +18,9 @@ func InstructionsTemplate(publicHostname string) []byte {
 		hostname,
 	))
 }
+
+// ProjectInstructions renders project-owned routing metadata without mutating
+// the shared template reused by other projects.
+func ProjectInstructions(template []byte, slug string) []byte {
+	return []byte(strings.ReplaceAll(string(template), "{{PROJECT_SLUG}}", slug))
+}
