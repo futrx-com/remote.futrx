@@ -111,9 +111,6 @@ export function uninstallConsequence(
   instance: AppInstance,
   application: AppApplication | undefined,
 ): string {
-  if (instance.status === "in-projects") {
-    return `“${instance.name}” is uninstalled from every project, and new projects no longer get it.`;
-  }
   if (!hasContainer(application)) {
     return `“${instance.name}” stops contributing to the interface, and any backend it runs is stopped and its data deleted. Nothing is removed from any container.`;
   }

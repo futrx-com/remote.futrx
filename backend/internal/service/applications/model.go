@@ -346,10 +346,6 @@ const (
 	StatusRunning    InstanceStatus = "running"
 	StatusStopped    InstanceStatus = "stopped"
 	StatusError      InstanceStatus = "error"
-	// StatusInProjects marks the global record of an application installed
-	// inside every project container. Nothing runs under the record itself;
-	// each project's own instance carries the real status.
-	StatusInProjects InstanceStatus = "in-projects"
 )
 
 // Instance is one installed copy of an application.

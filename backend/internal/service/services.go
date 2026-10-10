@@ -340,7 +340,6 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithAgentToolURL(deps.AuthBaseURL),
 		)
 		projectService.SetContainerRestorer(applicationsService.RestoreProject)
-		projectService.SetApplicationInstaller(applicationsService.InstallGlobalApplications)
 	}
 
 	if applicationsService != nil {

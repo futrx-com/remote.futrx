@@ -82,7 +82,7 @@ func (s *Service) upgradeInstance(
 	defer unlock()
 
 	inst, application, err := s.load(ctx, instanceID)
-	if err != nil || inst.ApplicationID != applicationID || inst.Status == StatusStopped || inst.Status == StatusInProjects {
+	if err != nil || inst.ApplicationID != applicationID || inst.Status == StatusStopped {
 		return UpgradeOutcome{}, false
 	}
 	if !needsUpgrade(inst, application) {

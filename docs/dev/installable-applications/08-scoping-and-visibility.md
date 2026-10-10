@@ -48,43 +48,36 @@ scope of each install, the host records it before the entry module runs, and
 
 ## Where a global install lands
 
-The `globallyInstalledInsideContainers` field decides where a global install
-runs:
+Installing at global scope does not always create a global instance. The
+application's `globallyInstalledInsideContainers` field decides:
 
 | `globallyInstalledInsideContainers` | A global install creates |
 |---|---|
-| `true` (default, also when omitted) | an ordinary **project** instance in every project, plus one global record with status `in-projects` |
+| `true` (default, also when omitted) | one ordinary **project** instance in every project that exists at that moment |
 | `false` | one **global** instance in a dedicated `futrx-app-*` container |
 
-With `true`, Remote installs a copy in each project using the same name and
-environment inputs, then saves a global record:
+With `true`, the global install is a bulk action, not a scope. Remote runs the
+normal project install once per project, with the same name, env, port, and
+bind address inputs, and what it leaves behind is indistinguishable from
+installing the application in each project by hand:
 
-- **Each copy is a project instance.** It is listed, started, stopped,
-  upgraded, and uninstalled from its project, and has its own host port and
-  generated secrets. A requested `externalPort` is only the starting point:
-  the first copy takes it if it is free and the others take the next free
-  ports after it.
-- **The global record is what the global Applications page shows.** Its status
-  is `in-projects`, shown as *in every project*. The record has no
-  container, port, backend, or UI of its own. You cannot start or stop it,
-  and it emits no lifecycle events. Each project copy emits its own.
-- **New projects inherit it.** Creating a project installs every application
-  that has a global `in-projects` record, with the name and env inputs given
-  at the global install and a port allocated automatically. If installation
-  fails, Remote logs the error and records it on the new project's instance.
-  The project is still created.
-- **UI follows each project copy.** The *in project P* rule above applies,
-  so the application's UI appears only within its projects.
-- **A stopped project container is started**, exactly as a project install
-  does.
-- **Projects that already have the application are skipped.**
-- **If any project fails, Remote does not save a global record.** The request
-  returns one `project <id>: …` line per failed project. Successful copies
-  stay installed. Run the global install again to retry the failed projects.
-- **Uninstalling the global record uninstalls every project's copy**,
-  including copies installed manually. New projects stop getting the
-  application. Uninstalling a copy from one project keeps the global record
-  and other project copies.
+- Each copy is a project instance. It is listed, started, stopped, upgraded,
+  and uninstalled from its project, has its own generated secrets, and is
+  absent from the global instance list.
+- Each copy gets its own host port. A requested `externalPort` is only the
+  starting point: the first copy takes it if it is free and the others take
+  the next free ports after it.
+- It renders by the *in project P* row above, not the *globally* row: there is
+  no global instance, so nothing draws outside a project.
+- A stopped project container is started, exactly as a project install does.
+- A project that already holds the application is skipped, so repeating the
+  install after a partial failure retries only the projects where it failed
+  or is missing.
+- A project created afterwards does not inherit the application. Run the
+  global install again to add it there.
+- One project failing does not stop the rest. The request then fails with one
+  `project <id>: …` line per failed project, and the copies that did install
+  stay installed.
 
 The application still needs `global` in its `scopes` for the action to be
 offered, but it does not need `project`: the per-project copies are placed

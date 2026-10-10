@@ -50,24 +50,3 @@ func TestProjectNameRejectsReservedSeparator(t *testing.T) {
 		}
 	}
 }
-
-func TestCreateInstallsGlobalApplicationsWithoutFailingOnTheirErrors(t *testing.T) {
-	repo := &startTestRepository{}
-	service := New(repo, ContainerDependencies{}, nil, nil)
-	var installedIn []string
-	service.SetApplicationInstaller(func(_ context.Context, projectID string) error {
-		installedIn = append(installedIn, projectID)
-		return errors.New("one application failed")
-	})
-
-	created, err := service.Create(context.Background(), CreateInput{Name: "demo"}, "owner@example.com")
-	if err != nil {
-		t.Fatalf("Create() error = %v, want the project despite the application failure", err)
-	}
-	if len(installedIn) != 1 || installedIn[0] != string(created.ID) {
-		t.Fatalf("installed in %v, want only the new project %q", installedIn, created.ID)
-	}
-	if created.Status != StatusRunning {
-		t.Fatalf("status = %s, want running", created.Status)
-	}
-}

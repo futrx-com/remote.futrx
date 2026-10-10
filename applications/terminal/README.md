@@ -4,8 +4,9 @@ Terminal opens a shell in your project container, beside the chat. It replaces
 the terminal that used to be built into Remote.
 
 Install Terminal from a project's Applications page, or install it globally
-to add it to every project, including new projects. Global installs use the
-project containers because `globallyInstalledInsideContainers` is `true`.
+to add it to every existing project. Run the global install again to add it
+to projects created later. Global installs use the project containers because
+`globallyInstalledInsideContainers` is `true`.
 Once Terminal is running in a project, its chats show a **Container terminal**
 button in the header.
 

@@ -323,20 +323,21 @@ port.
 
 #### Global install placement
 
-`POST /api/applications` installs into a dedicated container only when the
-application declares `"globallyInstalledInsideContainers": false`. Otherwise —
-the default — it installs a project instance into every existing project and
-responds `201` with a global record whose `status` is `in-projects`. That
-record has no container or port. The copies it created are reached through the
-project routes.
+`POST /api/applications` creates a global instance only when the application
+declares `"globallyInstalledInsideContainers": false`. Otherwise — the default —
+it installs a project instance into every existing project, and the instances
+it creates are reached through the project routes, not the global ones.
 
-A project that already holds the application is skipped. If any project fails,
-the request fails with an error naming each one as `project <id>: …`, no
-global record is written, and repeating the request retries the failures. Once
-the record exists, another install is `409`.
+In that case the `201` body is the view of the last project copy installed,
+with `"scope": "project"` and that project's `projectId`. When there was
+nothing to install — no projects, or every project already holds the
+application — it is still `201`, with an empty view whose `id` is `""`. Treat
+the response as an acknowledgement and list the project instances to see the
+result.
 
-On an `in-projects` record, `DELETE /api/applications/{id}` uninstalls the
-application from every project, and `start` and `stop` are `409`.
+A project that already holds the application is skipped rather than reported
+as `409`. If any other project fails, the request fails with an error naming
+each one as `project <id>: …`; copies installed in the other projects remain.
 
 ### Change port
 
@@ -365,10 +366,7 @@ non-secret ones:
 }
 ```
 
-`status` is one of `installing`, `running`, `stopped`, `error`, `in-projects`.
-`in-projects` appears only on the global record of an application installed
-inside every project container — see
-[Global install placement](#global-install-placement). A `ui` application's
+`status` is one of `installing`, `running`, `stopped`, `error`. A `ui` application's
 instance has `internalPort: 0`, `externalPort: 0`, and an empty
 `containerName`.
 

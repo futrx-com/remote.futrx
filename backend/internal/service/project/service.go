@@ -36,16 +36,6 @@ type Service struct {
 	// recovery. Different projects remain independent.
 	runState          keyedMutex
 	containerRestorer func(context.Context, string) error
-	// applicationInstaller gives a newly created project the applications
-	// that are installed globally inside project containers.
-	applicationInstaller func(context.Context, string) error
-}
-
-// SetApplicationInstaller attaches the optional step that installs globally
-// installed applications into a newly created project. Like the restorer, it
-// is wired after both services exist.
-func (s *Service) SetApplicationInstaller(install func(context.Context, string) error) {
-	s.applicationInstaller = install
 }
 
 // SetContainerRestorer attaches optional application recovery after a missing
@@ -206,18 +196,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 			log.Printf("projects: sync env to %s after launch: %v", m.ContainerName, syncErr)
 		}
 	}
-	m, err = s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
-	if err != nil {
-		return m, err
-	}
-	// A failed application is recorded on its own instance in the project, so
-	// it does not fail the creation of a project that is otherwise ready.
-	if s.applicationInstaller != nil {
-		if installErr := s.applicationInstaller(ctx, string(m.ID)); installErr != nil {
-			log.Printf("projects: install global applications in %s: %v", m.ContainerName, installErr)
-		}
-	}
-	return m, nil
+	return s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
