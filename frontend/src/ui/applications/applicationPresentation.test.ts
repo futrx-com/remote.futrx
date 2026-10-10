@@ -117,6 +117,15 @@ describe("application presentation", () => {
     assert.match(message, /Nothing is removed from any container/);
   });
 
+  it("says a global install inside project containers is removed from every project", () => {
+    const message = uninstallConsequence(
+      instance({ scope: "global", status: "in-projects" }),
+      application({ container: true, port: true }),
+    );
+    assert.match(message, /uninstalled from every project/);
+    assert.doesNotMatch(message, /port/i);
+  });
+
 });
 
 // The uploader is shown wherever an admin manages applications — Settings and

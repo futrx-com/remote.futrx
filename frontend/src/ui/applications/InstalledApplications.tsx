@@ -175,7 +175,12 @@ function InstalledRow({
         </div>
       </div>
 
-      {connectionAssigned ? (
+      {instance.status === "in-projects" ? (
+        <div class="text-[12px] text-ink-400">
+          Installed inside every project container, and added to new projects automatically.
+          Manage each copy from its project.
+        </div>
+      ) : connectionAssigned ? (
         <div class="flex items-center gap-2 text-[12px] text-ink-300 flex-wrap">
           <span class="text-ink-400">host</span>
           {editingPort ? (
@@ -392,10 +397,11 @@ function StatusBadge({ status }: { status: AppInstanceStatus }) {
     stopped: "text-ink-300 border-white/15 bg-white/[0.04]",
     installing: "text-accent-blue border-accent-blue/30 bg-accent-blue/[0.08]",
     error: "text-accent-red border-accent-red/30 bg-accent-red/[0.08]",
+    "in-projects": "text-accent-green border-accent-green/30 bg-accent-green/[0.08]",
   };
   return (
     <span class={`text-[10.5px] px-1.5 py-0.5 rounded border ${styles[status]}`}>
-      {status}
+      {status === "in-projects" ? "in every project" : status}
     </span>
   );
 }

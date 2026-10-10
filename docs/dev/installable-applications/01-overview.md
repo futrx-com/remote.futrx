@@ -160,7 +160,7 @@ flowchart TB
     end
 
     subgraph Service["service/applications — policy"]
-        S_Service["service.go / install.go<br/>lifecycle.go / upgrade.go"]
+        S_Service["service.go / install.go<br/>lifecycle.go / upgrade.go<br/>global_projects.go"]
         S_UIExt["ui_extensions.go"]
         S_Backend["backend.go"]
         S_Packages["packages.go"]
@@ -233,6 +233,7 @@ is what keeps the domain testable without LXD, a Go toolchain, or a disk.
 | integration | `applications/` | everything toolchain- and process-facing: generating a module for the backend root and its child host packages, compiling `.`, running it, and forwarding calls |
 | contract | `pkg/applications` | the types and interface a backend is written against |
 | service | `service/applications/service.go` | policy: install, lifecycle, which extensions a caller may load |
+| service | [global_projects.go](../../../backend/internal/service/applications/global_projects.go) | global installs inside project containers: install into existing projects, inherit into new projects, and uninstall every project copy; delegates each copy to the ordinary instance workflow |
 | service | `service/applications/backend.go` | policy: who may call a backend, and when |
 | transport | `transport/http/handlers/applications_handler.go` | routes, authorization, JSON |
 | transport | `transport/http/handlers/applications_backend_handler.go` | forwarding a request to a backend and its answer back |
