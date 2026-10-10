@@ -48,36 +48,45 @@ scope of each install, the host records it before the entry module runs, and
 
 ## Where a global install lands
 
-Installing at global scope does not always create a global instance. The
-application's `globallyInstalledInsideContainers` field decides:
+Installing at global scope does not always put the application in a container
+of its own. The application's `globallyInstalledInsideContainers` field
+decides:
 
 | `globallyInstalledInsideContainers` | A global install creates |
 |---|---|
-| `true` (default, also when omitted) | one ordinary **project** instance in every project that exists at that moment |
+| `true` (default, also when omitted) | an ordinary **project** instance in every project, plus one global record with status `in-projects` |
 | `false` | one **global** instance in a dedicated `futrx-app-*` container |
 
-With `true`, the global install is a bulk action, not a scope. Remote runs the
-normal project install once per project, with the same name, env, port, and
-bind address inputs, and what it leaves behind is indistinguishable from
-installing the application in each project by hand:
+With `true`, Remote runs the normal project install once per project, with the
+same name and env inputs, and then records the global install:
 
-- Each copy is a project instance. It is listed, started, stopped, upgraded,
-  and uninstalled from its project, has its own generated secrets, and is
-  absent from the global instance list.
-- Each copy gets its own host port. A requested `externalPort` is only the
-  starting point: the first copy takes it if it is free and the others take
-  the next free ports after it.
-- It renders by the *in project P* row above, not the *globally* row: there is
-  no global instance, so nothing draws outside a project.
-- A stopped project container is started, exactly as a project install does.
-- A project that already holds the application is skipped, so repeating the
-  install after a partial failure retries only the projects where it failed
-  or is missing.
-- A project created afterwards does not inherit the application. Run the
-  global install again to add it there.
-- One project failing does not stop the rest. The request then fails with one
-  `project <id>: …` line per failed project, and the copies that did install
-  stay installed.
+- **Each copy is a project instance.** It is listed, started, stopped,
+  upgraded, and uninstalled from its project, and has its own host port and
+  generated secrets. A requested `externalPort` is only the starting point:
+  the first copy takes it if it is free and the others take the next free
+  ports after it.
+- **The global record is what the global Applications page shows.** Its status
+  is `in-projects`, shown as *in every project*. Nothing runs under it: it has
+  no container, port, backend, or UI of its own, it cannot be started or
+  stopped, and it emits no lifecycle events — each copy emits its own.
+- **New projects inherit it.** Creating a project installs every application
+  that has a global `in-projects` record, with the name and env inputs given
+  at the global install and a port allocated automatically. A failure there is
+  logged and recorded on the new project's instance; it does not fail the
+  creation of the project.
+- **Rendering follows the copies.** The application renders by the *in project
+  P* row above, not the *globally* row, so nothing draws outside a project.
+- **A stopped project container is started**, exactly as a project install
+  does.
+- **A project that already holds the application is skipped.**
+- **A failure in any project records nothing globally.** The request fails
+  with one `project <id>: …` line per failed project, the copies that did
+  install stay installed, and repeating the global install retries only the
+  projects that failed.
+- **Uninstalling the global record uninstalls every project's copy**,
+  including a copy that was installed in a project by hand, and new projects
+  stop getting the application. Uninstalling one project's copy leaves the
+  global record and the other projects alone.
 
 The application still needs `global` in its `scopes` for the action to be
 offered, but it does not need `project`: the per-project copies are placed

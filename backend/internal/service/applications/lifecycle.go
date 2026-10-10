@@ -2,6 +2,7 @@ package applications
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -60,7 +61,11 @@ func (s *Service) Uninstall(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	s.publishApplicationUninstalled(ctx, inst)
+	// An in-projects record was never announced as installed; each project
+	// copy publishes its own lifecycle.
+	if inst.Status != StatusInProjects {
+		s.publishApplicationUninstalled(ctx, inst)
+	}
 	return nil
 }
 
@@ -72,7 +77,11 @@ func (s *Service) uninstallLocked(ctx context.Context, id string) (Instance, err
 	if err != nil {
 		return Instance{}, err
 	}
-	if err := s.teardown(ctx, application, inst); err != nil {
+	if inst.Status == StatusInProjects {
+		if err := s.uninstallFromEveryProject(ctx, inst.ApplicationID); err != nil {
+			return Instance{}, err
+		}
+	} else if err := s.teardown(ctx, application, inst); err != nil {
 		return Instance{}, err
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
@@ -87,6 +96,26 @@ func (s *Service) uninstallLocked(ctx context.Context, id string) (Instance, err
 		}
 	}
 	return inst, nil
+}
+
+// uninstallFromEveryProject removes an application's copy from each project,
+// which is what uninstalling its global in-projects record means. A failure
+// leaves that record in place so the uninstall can be repeated.
+func (s *Service) uninstallFromEveryProject(ctx context.Context, applicationID string) error {
+	instances, err := s.store.ListAll(ctx)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, inst := range instances {
+		if inst.Scope != ScopeProject || inst.ApplicationID != applicationID {
+			continue
+		}
+		if err := s.Uninstall(ctx, inst.ID); err != nil && !errors.Is(err, ErrNotFound) {
+			failures = append(failures, fmt.Errorf("project %s: %w", inst.ProjectID, err))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // teardown removes an instance's footprint: its container side, and its backend
@@ -135,6 +164,10 @@ func (s *Service) transitionLocked(
 	if inst.Status == StatusError || inst.Status == StatusInstalling {
 		return View{}, Instance{}, "", fmt.Errorf(
 			"%w: %s instances must be retried or uninstalled", ErrInvalidState, inst.Status)
+	}
+	if inst.Status == StatusInProjects {
+		return View{}, Instance{}, "", fmt.Errorf(
+			"%w: start or stop this application in each project", ErrInvalidState)
 	}
 	previousStatus := inst.Status
 	// An application without infrastructure may be purely a record: stopped
