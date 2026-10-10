@@ -33,6 +33,17 @@ func TestWebRouteRequiresProjectService(t *testing.T) {
 	if err := validateApplication(global); err == nil {
 		t.Fatal("accepted global web route")
 	}
+	everyProject := valid
+	everyProject.Scopes = []svc.Scope{svc.ScopeProject, svc.ScopeGlobal}
+	everyProject.GloballyInstalledInsideContainers = true
+	if err := validateApplication(everyProject); err != nil {
+		t.Fatalf("global install into project containers: %v", err)
+	}
+	dedicated := everyProject
+	dedicated.GloballyInstalledInsideContainers = false
+	if err := validateApplication(dedicated); err == nil {
+		t.Fatal("accepted web route for a dedicated global container")
+	}
 }
 
 func TestWebSubdomainValidation(t *testing.T) {

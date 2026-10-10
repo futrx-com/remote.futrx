@@ -2,7 +2,7 @@
 
 ## Reaching the application's HTTP server
 
-Declare `"web": { "port": 8400, "subdomain": "editor" }`, scope `["project"]`, and a service
+Declare `"web": { "port": 8400, "subdomain": "editor" }`, a scope that includes `project`, and a service
 listening on `0.0.0.0:8400`. A signed-in project member opens:
 
 ```text
@@ -32,8 +32,12 @@ Upstream `Set-Cookie` and `Clear-Site-Data` are removed, and responses use
 are not supported by this gateway. Service workers are confined to the app's
 origin; they cannot control Remote or another installation.
 
-`web.port` must be 1024–65535, with a declared service and exactly project
-scope. No host port is allocated. Without `port.internal`, `APP_INTERNAL_PORT`
+`web.port` must be 1024–65535, with a declared service and `project` in
+`scopes`. `global` may be listed too, but only when
+`globallyInstalledInsideContainers` is `true`: a global install then lands as a
+project copy in every project, and each copy is routed like any other project
+installation. An application whose global install uses a dedicated container
+cannot declare `web`. No host port is allocated. Without `port.internal`, `APP_INTERNAL_PORT`
 is zero and `healthcheck.command` must be omitted. Requests do not start
 stopped installations or recreate containers. Missing/stopped installations
 return 404; unavailable upstreams return 502. Upstream keep-alives are disabled.
