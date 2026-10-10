@@ -148,5 +148,6 @@ done
 
 bash "$TESTS_DIR/qa-resolve-test.sh"
 bash "$TESTS_DIR/lxd-host-test.sh"
+bash "$TESTS_DIR/lxd-storage-test.sh"
 
 echo "QA install/update/app-deploy/local-deploy script tests passed"
