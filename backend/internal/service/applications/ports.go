@@ -102,6 +102,8 @@ type ProjectContainers interface {
 	ContainerName(ctx context.Context, projectID string) (string, error)
 	// EnsureRunning converges the project container to a running state.
 	EnsureRunning(ctx context.Context, projectID string) error
+	// ListProjectIDs returns every project, for global installs into projects.
+	ListProjectIDs(ctx context.Context) ([]string, error)
 }
 
 // PortAllocator picks a free host port for a new proxy device.

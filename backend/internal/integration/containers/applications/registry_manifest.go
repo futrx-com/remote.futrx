@@ -19,6 +19,11 @@ import (
 // package archive itself has a much larger, payload-oriented limit.
 const maxApplicationManifestBytes = 256 << 10
 
+// globallyInstalledInsideContainersDefault is what a manifest that omits
+// globallyInstalledInsideContainers means, for the current and the legacy
+// schema alike: a global install goes into every project container.
+const globallyInstalledInsideContainersDefault = true
+
 // applicationManifestSchema is the declarative application.json surface. It
 // intentionally excludes Source, Container, and Skills: those values are
 // derived from the catalog/package contents and a manifest cannot set them.
@@ -26,6 +31,8 @@ const maxApplicationManifestBytes = 256 << 10
 // explicit compatibility decision instead of exposing every field later added
 // to the service model automatically.
 type applicationManifestSchema struct {
+	GloballyInstalledInsideContainers bool `json:"globallyInstalledInsideContainers"`
+
 	HostTools     []svc.HostTool                        `json:"hostTools,omitempty"`
 	ID            string                                `json:"id"`
 	Name          string                                `json:"name"`
@@ -127,6 +134,7 @@ func decodeApplicationManifest(raw []byte, application *svc.Application) error {
 		return err
 	}
 
+	application.GloballyInstalledInsideContainers = globallyInstalledInsideContainersDefault
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(application); err != nil {
@@ -161,6 +169,8 @@ func decodePersistedApplicationManifest(raw []byte, application *svc.Application
 
 func (legacy legacyApplicationManifestSchema) application() svc.Application {
 	return svc.Application{
+		GloballyInstalledInsideContainers: globallyInstalledInsideContainersDefault,
+
 		HostTools:   legacy.HostTools,
 		ID:          legacy.ID,
 		Name:        legacy.Name,

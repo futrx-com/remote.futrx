@@ -145,7 +145,7 @@ for loading.
 | Method | Path | Does |
 |---|---|---|
 | `GET` | `/api/applications` | List global instances |
-| `POST` | `/api/applications` | Install at global scope |
+| `POST` | `/api/applications` | Install at global scope — see [Global install placement](#global-install-placement) |
 | `GET` | `/api/applications/{id}` | One instance |
 | `DELETE` | `/api/applications/{id}` | Uninstall |
 | `GET` | `/api/applications/{id}/credentials` | Full connection detail, secrets included |
@@ -320,6 +320,24 @@ Responds `201` with the instance view.
 
 For a `ui` application, `externalPort` and `bindAddress` are ignored — there is no
 port.
+
+#### Global install placement
+
+`POST /api/applications` creates a global instance only when the application
+declares `"globallyInstalledInsideContainers": false`. Otherwise — the default —
+it installs a project instance into every existing project, and the instances
+it creates are reached through the project routes, not the global ones.
+
+In that case the `201` body is the view of the last project copy installed,
+with `"scope": "project"` and that project's `projectId`. When there was
+nothing to install — no projects, or every project already holds the
+application — it is still `201`, with an empty view whose `id` is `""`. Treat
+the response as an acknowledgement and list the project instances to see the
+result.
+
+A project that already holds the application is skipped rather than reported
+as `409`. If any other project fails, the request fails with an error naming
+each one as `project <id>: …`; copies installed in the other projects remain.
 
 ### Change port
 

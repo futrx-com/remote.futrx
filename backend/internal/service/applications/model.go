@@ -236,6 +236,13 @@ type Application struct {
 	Scopes []Scope           `json:"scopes"`
 	Port   Port              `json:"port"`
 	Env    []EnvVar          `json:"env,omitempty"`
+
+	// GloballyInstalledInsideContainers decides where a global install lands:
+	// true installs a project instance into every existing project container,
+	// false installs one global instance into a dedicated container. A manifest
+	// that omits it gets true.
+	GloballyInstalledInsideContainers bool `json:"globallyInstalledInsideContainers"`
+
 	// Service is the complete systemd service Remote realizes and controls in
 	// the target container.
 	Service *ApplicationService `json:"service,omitempty"`

@@ -41,12 +41,18 @@ func (a *countingAllocator) Allocate(context.Context, string, int, map[int]bool)
 	return 9999, nil
 }
 
-type staticProjects struct{ container string }
+type staticProjects struct {
+	container  string
+	projectIDs []string
+}
 
 func (p *staticProjects) ContainerName(context.Context, string) (string, error) {
 	return p.container, nil
 }
 func (p *staticProjects) EnsureRunning(context.Context, string) error { return nil }
+func (p *staticProjects) ListProjectIDs(context.Context) ([]string, error) {
+	return p.projectIDs, nil
+}
 
 func portlessInfrastructureApplication() Application {
 	return Application{

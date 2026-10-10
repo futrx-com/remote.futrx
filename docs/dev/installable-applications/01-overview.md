@@ -284,14 +284,14 @@ sequenceDiagram
     alt application has infrastructure
         alt project scope
             Svc->>Proj: container name, and ready it
-        else global scope
+        else global scope, dedicated container
             Svc->>Svc: name a dedicated container
         end
         opt port.internal is declared
             Svc->>Svc: allocate a free host port, from defaultExternal up
         end
         Svc->>Store: persist as installing — a crash here stays recoverable
-        Inst->>LXD: launch the dedicated container (global scope only)
+        Inst->>LXD: launch the dedicated container (global instance only)
         Inst->>LXD: build/provision, materialize the manifest service, then run its healthcheck
         opt port.internal is declared
             Inst->>LXD: add the proxy device that maps the host port

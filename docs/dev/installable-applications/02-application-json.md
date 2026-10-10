@@ -199,14 +199,15 @@ An application with only a UI capability:
 | `version` | string | **yes** | A string, not a number — `"8.0"`, `"16"`, `"1.2.3-rc1"`. Shown next to the name, and the signal that reconverges an installed copy's container programs, custom installer, and manifest service when it changes. See [17 — Versions and upgrades](17-versions-and-upgrades.md). |
 | `icon` | string | no | Built-in key or a path into this application's `ui/`. See [09 — Styling and icons](09-styling-and-icons.md). |
 | `scopes` | string[] | yes | Any of `global`, `project`. At least one. |
-| `base` | string | no | LXD image for a dedicated global infrastructure container. Default `ubuntu:24.04`. |
+| `globallyInstalledInsideContainers` | boolean | no | Where a global install lands. `true` (the default) installs a project copy into every existing project container; `false` installs one global copy into a dedicated container. See [08 — Scoping and visibility](08-scoping-and-visibility.md#where-a-global-install-lands). |
+| `base` | string | no | LXD image for the dedicated container of a global install with `globallyInstalledInsideContainers: false`. Default `ubuntu:24.04`. |
 | `port` | object | no | See below. Requires infrastructure; omit it when nothing is exposed. |
 | `env` | object[] | no | Install-time inputs. See below. |
 | `service` | object | no | Complete systemd service declaration. It is itself a container capability; Remote creates and owns the unit. See below. |
 | `connection` | object | no | Maps env vars to user/password/database. See below. |
 | `install` | string | no | Override for the install-script path inside `infra/`. When omitted, `infra/install.sh` is detected automatically. |
 | `web` | object | no | Project HTTP route: `{ "port": 8400, "subdomain": "editor" }` exposes a running project service at `https://<web.subdomain>--<project-slug>.<public-host>/`; required `subdomain` selects the application label; `/apps/<project-slug>/<application-id>/` is its launch redirect. Requires project-only scope, a service, and a port between 1024 and 65535. |
-| `uninstall` | string | no | Optional cleanup script inside `infra/`, run in a project container after its service stops and before Remote removes the service files. Global uninstall deletes the dedicated container instead. |
+| `uninstall` | string | no | Optional cleanup script inside `infra/`, run in a project container after its service stops and before Remote removes the service files. Uninstalling a global copy deletes its dedicated container instead. |
 | `healthcheck` | object | no | `{ "command": "…" }` run inside the container. Requires `port.internal`. |
 | `ui` | object | no | Overrides what is loaded from `ui/`. See below. |
 | `backend` | object | no | Overrides the defaults for the Go backend whose executable entry point is `backend/main.go`. See below. |

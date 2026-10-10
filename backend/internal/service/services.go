@@ -406,6 +406,18 @@ func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID s
 	return err
 }
 
+func (a projectContainersAdapter) ListProjectIDs(ctx context.Context) ([]string, error) {
+	projects, err := a.projects.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(projects))
+	for _, project := range projects {
+		ids = append(ids, string(project.ID))
+	}
+	return ids, nil
+}
+
 // newPush builds the Web Push service. A deployment without a usable VAPID key
 // simply has notifications switched off; it is not a reason to refuse to boot.
 func newPush(store PushStore, baseURL string) *servicepush.Service {
