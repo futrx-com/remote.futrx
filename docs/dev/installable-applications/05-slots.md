@@ -35,9 +35,9 @@ degrades on an older one instead of failing to load.
 Always reference them through `remote.slots.<constant>` rather than typing the
 string, so a rename is caught at the API boundary.
 
-A docked pane beside the chat is not a slot. Register it with
-[`remote.ui.registerDrawer`](06-extension-api.md#remoteuiregisterdraweroptions);
-the app renders its toggle directly after the `chatHeaderActions` contributions.
+To add a pane beside the chat, use
+[`remote.ui.registerDrawer`](06-extension-api.md#remoteuiregisterdraweroptions).
+Remote places its toggle directly after the `chatHeaderActions` contributions.
 
 ## Slot context
 

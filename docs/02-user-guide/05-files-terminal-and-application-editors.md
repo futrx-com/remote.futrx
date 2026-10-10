@@ -1,8 +1,8 @@
 # Files, Terminal, and application editors
 
-Files and Terminal operate on the same project workspace. Files is built in.
-Terminal is the **Terminal** application, and other installed applications can
-add editing actions and file openers to a project chat.
+Files and Terminal use the same project workspace. Files is built in; install
+the **Terminal** application to run shell commands. Other applications can add
+editing actions and file openers to a project chat.
 
 ![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
 
@@ -121,10 +121,10 @@ rejected.
 
 ## Run a terminal command
 
-The terminal is the **Terminal** application. An administrator can install it
-for every project from the global Applications page, or a project member can
-install it in one project. Until it is installed and running in the project,
-the chat header has no terminal button.
+Install the **Terminal** application before opening a shell. An administrator
+can install it for every project from the global Applications page, or a
+project member can install it for their project. The terminal button appears
+in the chat header once the application is installed and running.
 
 1. Select **Container terminal** in a project chat's header.
 2. Wait until the pane's status reads **Connected**.
@@ -133,25 +133,25 @@ the chat header has no terminal button.
 4. Run the command in the interactive login shell.
 5. Select **Close Terminal** when finished.
 
-**Outcome:** a `bash -l` runs as root inside the project container. The shell
-begins in the chat working directory when that is a directory inside
-`/workspace`, otherwise in `/workspace`.
+**Outcome:** Terminal runs `bash -l` as root inside the project container.
+It starts in the chat's working directory if that directory is inside
+`/workspace`. Otherwise, it starts in `/workspace`.
 
 On desktop, Terminal opens as a pane beside the chat. Drag its left edge to
 resize it; Remote remembers that width in this browser. Opening Files, History,
-or Browser hides Terminal because workspace panes are mutually exclusive.
+or Browser hides Terminal. Only one workspace pane can be open at a time.
 
 The status reads **Connecting**, **Connected**, **Reconnecting**, or
 **Closed**.
 
-Each chat has its own shell, and the shell outlives the connection that shows
-it:
+Each chat has its own shell. You can return to it after a dropped connection
+or a page reload:
 
 - If the connection drops while the pane is open, Terminal reconnects by itself
   and returns to the same shell, with its recent output replayed.
 - Closing and reopening the pane, reloading the page, or switching chats and
   coming back also returns to the same shell.
-- A shell nobody is looking at is ended after 10 minutes. Stopping, restarting,
+- A shell ends after 10 minutes without a viewer. Stopping, restarting,
   or upgrading the Terminal application ends every shell in that project.
 - When the shell exits, the status reads **Closed**. Press **Enter** in the
   terminal to start a new one.
@@ -160,9 +160,9 @@ it:
 The terminal does not start a stopped project or a stopped Terminal
 application; start it from the project's Applications page.
 
-Use a service manager inside the project for work that must keep running with
-nobody watching. Do not treat the Terminal pane as a durable process
-supervisor.
+Use a service manager inside the project for commands that need to keep
+running unattended. Terminal reconnects to shells, but does not keep them
+running indefinitely.
 
 ## Open an application editor
 

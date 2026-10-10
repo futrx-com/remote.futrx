@@ -195,10 +195,10 @@ Use `mount` whenever the content needs wiring; use `html` for static markup.
 
 ## `remote.ui.registerDrawer(options)`
 
-A pane docked on the right of the chat, beside the built-in files, history and
-preview panes. The app supplies the chrome: a toggle in the chat header rail
-after the `chatHeaderActions` slot, the pane's header with a close button, and
-a drag handle on its left edge. You fill the body.
+Adds a pane on the right of the chat, alongside the built-in files, history
+and preview panes. Remote provides a toggle after the `chatHeaderActions`
+slot, a header with a close button, and a resize handle on the left edge.
+Your extension fills the body.
 
 ```js
 const dispose = remote.ui.registerDrawer({
@@ -221,30 +221,31 @@ const dispose = remote.ui.registerDrawer({
 
 | Behaviour | Detail |
 |---|---|
-| Scope | Follows the install like a slot contribution: a project install's drawer exists only in that project's chats. `when` narrows it further per chat and receives `{ chatId, projectId, cwd }`. A `when` that throws hides the drawer. |
-| One pane at a time | Opening a drawer closes the files, history, preview and any other drawer pane, and they close it. On a phone the open pane covers the chat. |
+| Scope | A project installation's drawer appears only in that project's chats, following the same scope rules as slots. Use `when` to limit it further; it receives `{ chatId, projectId, cwd }`. If `when` throws, the drawer is hidden. |
+| One pane at a time | Opening a drawer closes any other open workspace pane. Opening files, history, preview or another drawer closes it. On a phone, the pane covers the chat. |
 | `mount` lifecycle | Runs the first time the drawer is opened for a chat. The body then **stays mounted while the pane is closed**, so a connection or an editor in it survives closing and reopening. The cleanup runs when the user switches chat, when `chatId`, `projectId` or `cwd` changes, or when the drawer is removed. |
-| Closed pane | A closed pane has zero width. A body that should pause while hidden can watch its own size with a `ResizeObserver`. |
+| Closed pane | A closed pane has zero width. Use a `ResizeObserver` to watch the body size if your content needs to pause while hidden. |
 | `setStatus` | `setStatus({ label, active })` puts a line under the title and a dot beside it, green when `active`. `setStatus(null)` removes both. |
 | Width | The user's width is remembered per browser under `remote.futrx.extensionDrawerWidth.<applicationId>-<id>`, clamped between `minWidth` and 1100 px, and always leaves 360 px for the chat. |
-| `<iframe>` bodies | Pointer events on the body are suspended during a drag, so a framed page does not swallow it. |
-| Errors | A `mount` or cleanup that throws is logged; the pane and the chat still render. |
+| `<iframe>` bodies | Remote disables pointer events on the body while resizing so an iframe cannot interrupt the drag. |
+| Errors | If `mount` or cleanup throws, Remote logs the error and continues rendering the pane and chat. |
 | Removal | The returned function removes the drawer. Uninstalling the application removes it too. |
 
-An invalid `id`, or one the application already registered, is logged and
-ignored; the returned function then does nothing.
+If `id` is invalid or already registered by this application, Remote logs the
+error and skips the drawer. The returned function does nothing.
 
-The method is newer than `apiVersion` 1 itself. An application that also runs
-on older hosts guards it, as with `files.registerOpener`:
+Older hosts may report `apiVersion` 1 without supporting drawers. Check that
+the method exists if your application needs to support them, as with
+`files.registerOpener`:
 
 ```js
 if (!remote.ui.registerDrawer) return;
 ```
 
-A drawer body that needs a WebSocket cannot reach the application's host
-backend with one. Frame a page served from the application's own
-[web route](19-project-application-web-routes.md) instead: the page and its
-socket then share that origin. `applications/terminal` is the reference.
+The host backend API does not support WebSocket connections. If your drawer
+needs one, load a page from the application's
+[web route](19-project-application-web-routes.md) in an iframe. The page and
+WebSocket then share an origin. See `applications/terminal` for an example.
 
 ## `remote.views.load(name)`
 

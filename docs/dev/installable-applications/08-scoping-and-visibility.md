@@ -48,17 +48,16 @@ scope of each install, the host records it before the entry module runs, and
 
 ## Where a global install lands
 
-Installing at global scope does not always put the application in a container
-of its own. The application's `globallyInstalledInsideContainers` field
-decides:
+The `globallyInstalledInsideContainers` field decides where a global install
+runs:
 
 | `globallyInstalledInsideContainers` | A global install creates |
 |---|---|
 | `true` (default, also when omitted) | an ordinary **project** instance in every project, plus one global record with status `in-projects` |
 | `false` | one **global** instance in a dedicated `futrx-app-*` container |
 
-With `true`, Remote runs the normal project install once per project, with the
-same name and env inputs, and then records the global install:
+With `true`, Remote installs a copy in each project using the same name and
+environment inputs, then saves a global record:
 
 - **Each copy is a project instance.** It is listed, started, stopped,
   upgraded, and uninstalled from its project, and has its own host port and
@@ -66,27 +65,26 @@ same name and env inputs, and then records the global install:
   the first copy takes it if it is free and the others take the next free
   ports after it.
 - **The global record is what the global Applications page shows.** Its status
-  is `in-projects`, shown as *in every project*. Nothing runs under it: it has
-  no container, port, backend, or UI of its own, it cannot be started or
-  stopped, and it emits no lifecycle events — each copy emits its own.
+  is `in-projects`, shown as *in every project*. The record has no
+  container, port, backend, or UI of its own. You cannot start or stop it,
+  and it emits no lifecycle events. Each project copy emits its own.
 - **New projects inherit it.** Creating a project installs every application
   that has a global `in-projects` record, with the name and env inputs given
-  at the global install and a port allocated automatically. A failure there is
-  logged and recorded on the new project's instance; it does not fail the
-  creation of the project.
-- **Rendering follows the copies.** The application renders by the *in project
-  P* row above, not the *globally* row, so nothing draws outside a project.
+  at the global install and a port allocated automatically. If installation
+  fails, Remote logs the error and records it on the new project's instance.
+  The project is still created.
+- **UI follows each project copy.** The *in project P* rule above applies,
+  so the application's UI appears only within its projects.
 - **A stopped project container is started**, exactly as a project install
   does.
-- **A project that already holds the application is skipped.**
-- **A failure in any project records nothing globally.** The request fails
-  with one `project <id>: …` line per failed project, the copies that did
-  install stay installed, and repeating the global install retries only the
-  projects that failed.
+- **Projects that already have the application are skipped.**
+- **If any project fails, Remote does not save a global record.** The request
+  returns one `project <id>: …` line per failed project. Successful copies
+  stay installed. Run the global install again to retry the failed projects.
 - **Uninstalling the global record uninstalls every project's copy**,
-  including a copy that was installed in a project by hand, and new projects
-  stop getting the application. Uninstalling one project's copy leaves the
-  global record and the other projects alone.
+  including copies installed manually. New projects stop getting the
+  application. Uninstalling a copy from one project keeps the global record
+  and other project copies.
 
 The application still needs `global` in its `scopes` for the action to be
 offered, but it does not need `project`: the per-project copies are placed
