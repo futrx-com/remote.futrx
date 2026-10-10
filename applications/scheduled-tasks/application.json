@@ -6,7 +6,8 @@
   "version": "5",
   "icon": "clock",
   "scopes": [
-    "project"
+    "project",
+    "global"
   ],
   "install": "infra/install.sh",
   "uninstall": "infra/uninstall.sh",
