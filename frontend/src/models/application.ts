@@ -8,7 +8,10 @@ export type AppInstanceStatus =
   | "installing"
   | "running"
   | "stopped"
-  | "error";
+  | "error"
+  // The global record of an application installed inside every project
+  // container. Nothing runs under it; each project owns its own copy.
+  | "in-projects";
 
 export interface AppEnvVar {
   key: string;

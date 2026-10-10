@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -34,35 +33,6 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (View, error)
 		return s.installIntoEveryProject(ctx, req, application)
 	}
 	return s.installInstance(ctx, req, application)
-}
-
-// installIntoEveryProject is the global placement for an application that
-// lives inside project containers: it creates an ordinary project instance in
-// each existing project rather than one instance in a dedicated container.
-// A project that already holds the application is skipped, so the request can
-// be repeated after a partial failure. The view is the last copy installed.
-func (s *Service) installIntoEveryProject(ctx context.Context, req InstallRequest, application Application) (View, error) {
-	if s.projects == nil {
-		return View{}, ErrUnavailable
-	}
-	projectIDs, err := s.projects.ListProjectIDs(ctx)
-	if err != nil {
-		return View{}, err
-	}
-	var installed View
-	var failures []error
-	for _, projectID := range projectIDs {
-		projectReq := req
-		projectReq.Scope, projectReq.ProjectID = ScopeProject, projectID
-		view, err := s.installInstance(ctx, projectReq, application)
-		switch {
-		case err == nil:
-			installed = view
-		case !errors.Is(err, ErrAlreadyInstalled):
-			failures = append(failures, fmt.Errorf("project %s: %w", projectID, err))
-		}
-	}
-	return installed, errors.Join(failures...)
 }
 
 // installInstance provisions and persists one instance at the request's

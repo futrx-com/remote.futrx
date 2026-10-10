@@ -60,7 +60,11 @@ func (s *Service) Uninstall(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	s.publishApplicationUninstalled(ctx, inst)
+	// An in-projects record was never announced as installed; each project
+	// copy publishes its own lifecycle.
+	if inst.Status != StatusInProjects {
+		s.publishApplicationUninstalled(ctx, inst)
+	}
 	return nil
 }
 
@@ -72,7 +76,11 @@ func (s *Service) uninstallLocked(ctx context.Context, id string) (Instance, err
 	if err != nil {
 		return Instance{}, err
 	}
-	if err := s.teardown(ctx, application, inst); err != nil {
+	if inst.Status == StatusInProjects {
+		if err := s.uninstallFromEveryProject(ctx, inst.ApplicationID); err != nil {
+			return Instance{}, err
+		}
+	} else if err := s.teardown(ctx, application, inst); err != nil {
 		return Instance{}, err
 	}
 	if err := s.store.Delete(ctx, id); err != nil {
@@ -135,6 +143,10 @@ func (s *Service) transitionLocked(
 	if inst.Status == StatusError || inst.Status == StatusInstalling {
 		return View{}, Instance{}, "", fmt.Errorf(
 			"%w: %s instances must be retried or uninstalled", ErrInvalidState, inst.Status)
+	}
+	if inst.Status == StatusInProjects {
+		return View{}, Instance{}, "", fmt.Errorf(
+			"%w: start or stop this application in each project", ErrInvalidState)
 	}
 	previousStatus := inst.Status
 	// An application without infrastructure may be purely a record: stopped
