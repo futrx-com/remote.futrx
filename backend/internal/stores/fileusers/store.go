@@ -62,6 +62,7 @@ func (s *Store) loadLocked() (map[string]user.User, error) {
 			continue
 		}
 		u.Email = em
+		u.Role = user.NormalizeRole(string(u.Role))
 		m[em] = u
 	}
 	return m, nil

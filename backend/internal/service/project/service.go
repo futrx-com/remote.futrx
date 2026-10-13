@@ -19,6 +19,14 @@ type Service struct {
 	containerNetwork   ContainerNetwork
 	containerListeners ContainerListeners
 
+	// authorizer guards the entry points that carry a project permission.
+	authorizer Authorizer
+
+	// requireLifecycle and requireAccess are the bound permission checks. They
+	// are built in New after options, so they capture the final authorizer.
+	requireLifecycle projectAuthorizer
+	requireAccess    projectAuthorizer
+
 	// access owns per-project membership and email normalization.
 	access *accessList
 
@@ -58,6 +66,7 @@ func New(
 		containerInspector: containers.Inspector,
 		containerNetwork:   containers.Network,
 		containerListeners: containers.Listeners,
+		authorizer:         systemOnlyAuthorizer{},
 		access:             newAccessList(access),
 		secrets:            newSecretStore(secrets, containers.Environment),
 		browsers:           newAgentBrowsers(containers.Browser, repo),
@@ -65,6 +74,8 @@ func New(
 	for _, option := range options {
 		option(service)
 	}
+	service.requireLifecycle = bind(service.authorizer, PermissionLifecycleManage)
+	service.requireAccess = bind(service.authorizer, PermissionAccessManage)
 	return service
 }
 
@@ -348,7 +359,20 @@ func (s *Service) Delete(ctx context.Context, id ID) error {
 	return s.repo.Delete(ctx, id)
 }
 
+// Start converges one project to RUNNING on behalf of the actor in ctx, who
+// must hold projects.lifecycle.manage for it. Trusted internal callers that
+// need the container running use an explicit system context or the
+// unexported start.
 func (s *Service) Start(ctx context.Context, id ID) (Meta, error) {
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
+	}
+	return s.start(ctx, id)
+}
+
+// start is Start without authorization, for callers inside this package that
+// are already acting under another permission.
+func (s *Service) start(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -451,8 +475,8 @@ func (s *Service) setStartError(ctx context.Context, id ID, cause error) (Meta, 
 }
 
 func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
-	if !ValidID(id) {
-		return Meta{}, ErrInvalidID
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
@@ -474,8 +498,8 @@ func (s *Service) Stop(ctx context.Context, id ID) (Meta, error) {
 // missing container is launched instead, so Restart always converges on a
 // running workspace.
 func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
-	if !ValidID(id) {
-		return Meta{}, ErrInvalidID
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return Meta{}, err
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
@@ -522,8 +546,8 @@ func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect
 // short grace period if DHCP is slow). Manual recovery for the
 // networkd-dropped-lease failure mode.
 func (s *Service) RepairNetwork(ctx context.Context, id ID) (ContainerInspect, error) {
-	if !ValidID(id) {
-		return ContainerInspect{}, ErrInvalidID
+	if err := s.requireLifecycle(ctx, id); err != nil {
+		return ContainerInspect{}, err
 	}
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -584,7 +608,7 @@ func (s *Service) TouchAgentBrowserActivity(ctx context.Context, id ID) {
 // Agent Browser as starting, and provisions the stack in the background.
 // Idempotent while a start is already in flight.
 func (s *Service) StartAgentBrowser(ctx context.Context, id ID) (AgentBrowserInfo, error) {
-	m, err := s.Start(ctx, id)
+	m, err := s.start(ctx, id)
 	if err != nil {
 		return AgentBrowserInfo{}, err
 	}
@@ -682,6 +706,9 @@ func (s *Service) HasAccess(ctx context.Context, id ID, email string) (bool, err
 
 // ListAccess returns the sorted, normalized membership list for a project.
 func (s *Service) ListAccess(ctx context.Context, id ID) ([]string, error) {
+	if err := s.requireAccess(ctx, id); err != nil {
+		return nil, err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return nil, err
 	}
@@ -691,6 +718,9 @@ func (s *Service) ListAccess(ctx context.Context, id ID) ([]string, error) {
 // AddAccess adds email to the project's membership list. Caller is
 // responsible for verifying the email belongs to a registered user.
 func (s *Service) AddAccess(ctx context.Context, id ID, email string) error {
+	if err := s.requireAccess(ctx, id); err != nil {
+		return err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}
@@ -699,6 +729,9 @@ func (s *Service) AddAccess(ctx context.Context, id ID, email string) error {
 
 // RemoveAccess deletes email from the project's membership list.
 func (s *Service) RemoveAccess(ctx context.Context, id ID, email string) error {
+	if err := s.requireAccess(ctx, id); err != nil {
+		return err
+	}
 	if _, err := s.Get(ctx, id); err != nil {
 		return err
 	}

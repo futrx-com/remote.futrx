@@ -131,6 +131,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Skills:            httphandlers.NewSkillHandler(deps.Services.Skills),
 		BrowserInspector:  httphandlers.NewBrowserInspectorHandler(),
 		AgentApplications: agentApplicationsHandler,
+		Permissions:       httphandlers.NewPermissionsHandler(deps.Services.Permissions),
 		Usage:             usageHandler,
 		AgentQuota:        agentQuotaHandler,
 		Uploads:           uploads,
