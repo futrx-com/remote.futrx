@@ -3,6 +3,7 @@ package filechat
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -24,13 +25,21 @@ func (s *Store) ReadTranscriptPage(
 	if !servicechat.ValidID(id) {
 		return servicechat.TranscriptPage{}, servicechat.ErrInvalidID
 	}
-	if err := s.index.availabilityError(); err != nil {
+	return s.transcript.readPage(ctx, id, query)
+}
+
+func (p *jsonlTranscriptProjection) readPage(
+	ctx context.Context,
+	id servicechat.ID,
+	query servicechat.TranscriptPageQuery,
+) (servicechat.TranscriptPage, error) {
+	if err := p.availabilityError(); err != nil {
 		return servicechat.TranscriptPage{}, fmt.Errorf(
 			"%w: %v", servicechat.ErrTranscriptProjectionUnavailable, err,
 		)
 	}
 
-	info, err := os.Stat(s.eventsPath(id))
+	info, err := os.Stat(p.store.eventsPath(id))
 	var totalBytes, mtimeNS int64
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -40,20 +49,20 @@ func (s *Store) ReadTranscriptPage(
 		totalBytes = info.Size()
 		mtimeNS = info.ModTime().UnixNano()
 	}
-	state, found, err := s.index.readState(ctx, id)
+	state, found, err := p.index.readState(ctx, id)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
 	ready := found && state.indexedBytes == totalBytes && state.fileMtimeNS == mtimeNS
 	if !ready {
-		s.startTranscriptIndex(id)
+		p.store.startTranscriptIndex(id)
 		indexedBytes := state.indexedBytes
 		if indexedBytes < 0 || indexedBytes > totalBytes {
 			indexedBytes = 0
 		}
 		lastSeq := state.lastSeq
 		tailSeqKnown := totalBytes == 0
-		if tailSeq, tailErr := lastStoredEventSeq(s.eventsPath(id), totalBytes); tailErr == nil && tailSeq > 0 {
+		if tailSeq, tailErr := lastStoredEventSeq(p.store.eventsPath(id), totalBytes); tailErr == nil && tailSeq > 0 {
 			tailSeqKnown = true
 			if tailSeq > lastSeq {
 				lastSeq = tailSeq
@@ -69,7 +78,7 @@ func (s *Store) ReadTranscriptPage(
 			},
 		}, nil
 	}
-	return s.index.readProjectedTranscriptPage(ctx, id, state, query)
+	return readProjectedTranscriptPage(ctx, p.index.db, id, state, query)
 }
 
 func lastStoredEventSeq(eventsPath string, fileSize int64) (int64, error) {
@@ -126,15 +135,28 @@ func (s *Store) startTranscriptIndex(id servicechat.ID) {
 		if _, err := os.Stat(s.chatDir(id)); err != nil {
 			return
 		}
-		if _, err := s.index.syncChat(s.indexContext, id, s.eventsPath(id)); err != nil &&
+		// SQLite needs the archive folded in before it can project it. The
+		// JSONL log has nothing to import, so this is a no-op there.
+		if err := s.events.Prepare(s.indexContext, id); err != nil {
+			log.Printf("preparing transcript projection for chat %s failed: %v", id, err)
+			return
+		}
+		if _, err := s.transcript.sync(s.indexContext, id); err != nil &&
 			!errors.Is(err, context.Canceled) {
 			log.Printf("background transcript projection for chat %s failed: %v", id, err)
 		}
 	}()
 }
 
-func (index *chatEventIndex) readProjectedTranscriptPage(
+// sqlQueryer is satisfied by both the JSONL transcript index and chats.sqlite,
+// which hold the same projected turn and item tables.
+type sqlQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+func readProjectedTranscriptPage(
 	ctx context.Context,
+	db sqlQueryer,
 	id servicechat.ID,
 	state chatIndexState,
 	query servicechat.TranscriptPageQuery,
@@ -154,7 +176,7 @@ func (index *chatEventIndex) readProjectedTranscriptPage(
 		byteLimit = configconstants.MaxChatTranscriptByteLimit
 	}
 
-	rows, err := index.db.QueryContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 		SELECT i.turn_ordinal, t.source_turn_id, t.start_seq,
 		       i.start_seq, i.end_seq, i.payload_json, i.payload_bytes
 		FROM chat_transcript_items AS i

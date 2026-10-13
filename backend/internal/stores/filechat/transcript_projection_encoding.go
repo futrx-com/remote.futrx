@@ -18,6 +18,7 @@ type transcriptContentRef struct {
 	fieldKey     string
 	sourceOffset int64
 	sourceLength int64
+	sourceSeq    int64
 	contentBytes int64
 }
 
@@ -77,6 +78,7 @@ func compactTranscriptEvent(
 			fieldKey:     fieldKey,
 			sourceOffset: sourceOffset,
 			sourceLength: sourceLength,
+			sourceSeq:    event.Seq,
 			contentBytes: int64(contentBytes),
 		}
 	}

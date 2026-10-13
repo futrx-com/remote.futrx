@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/url"
 	"path/filepath"
 
 	sqlite "modernc.org/sqlite"
@@ -28,30 +27,18 @@ func newChatEventIndex(root string) (*chatEventIndex, error) {
 	if !isCorruptIndexError(err) {
 		return nil, err
 	}
-	if removeErr := removeChatEventIndexFiles(path); removeErr != nil {
+	if removeErr := removeSQLiteFiles(path); removeErr != nil {
 		return nil, errors.Join(err, removeErr)
 	}
 	return openChatEventIndex(path)
 }
 
 func openChatEventIndex(path string) (*chatEventIndex, error) {
-	if err := createPrivateIndexFile(path); err != nil {
+	if err := createPrivateSQLiteFile(path); err != nil {
 		return nil, err
 	}
 
-	databaseURL := &url.URL{Scheme: "file", Path: path}
-	query := databaseURL.Query()
-	query.Set("_busy_timeout", "5000")
-	query.Set("_defensive", "1")
-	query.Set("_dqs", "0")
-	query.Set("_foreign_keys", "on")
-	query.Set("_journal_mode", "WAL")
-	query.Set("_synchronous", "NORMAL")
-	query.Set("_txlock", "immediate")
-	query.Add("_pragma", "trusted_schema(OFF)")
-	databaseURL.RawQuery = query.Encode()
-
-	db, err := sql.Open("sqlite", databaseURL.String())
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +52,7 @@ func openChatEventIndex(path string) (*chatEventIndex, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("initialize chat event index: %w", err)
 	}
-	if err := index.restrictFiles(); err != nil {
+	if err := chmodPrivateSQLiteFiles(index.path); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("secure chat event index: %w", err)
 	}

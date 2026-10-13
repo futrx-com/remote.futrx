@@ -234,12 +234,8 @@ func TestStoreRewindClearsProviderSessionIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	kept, err := store.TruncateEventsBefore(context.Background(), "abcd", 30)
-	if err != nil {
+	if err := store.TruncateEventsBefore(context.Background(), "abcd", 30); err != nil {
 		t.Fatal(err)
-	}
-	if len(kept) != 1 || kept[0].Text != "keep" {
-		t.Fatalf("kept events = %#v", kept)
 	}
 
 	events, err := store.ReadEvents(context.Background(), "abcd")

@@ -19,6 +19,7 @@ import (
 )
 
 var _ servicechat.Repository = (*Store)(nil)
+var _ servicechat.EventStreamCopier = (*Store)(nil)
 var _ servicechat.TranscriptEventSource = (*Store)(nil)
 var _ servicechat.TranscriptEventWindowSource = (*Store)(nil)
 var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
@@ -27,7 +28,8 @@ var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
 // map; concurrent access across different chats is fine.
 type Store struct {
 	root         string
-	index        *chatEventIndex
+	events       eventLog
+	transcript   transcriptProjection
 	mu           sync.Mutex
 	locks        map[servicechat.ID]*sync.Mutex
 	metaMu       sync.RWMutex
@@ -40,38 +42,74 @@ type Store struct {
 }
 
 func New(root string) (*Store, error) {
+	return newStore(root, BackendJSONL)
+}
+
+// NewWithBackend opens the store with an explicit event storage engine.
+func NewWithBackend(root string, backend Backend) (*Store, error) {
+	return newStore(root, backend)
+}
+
+func newStore(root string, backend Backend) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(root, "chats"), 0o755); err != nil {
 		return nil, err
 	}
-	index, err := newChatEventIndex(root)
-	if err != nil {
-		log.Printf("chat event index unavailable; using canonical JSONL scans: %v", err)
-		index = unavailableChatEventIndex(root, err)
+	var index *chatEventIndex
+	if backend == BackendJSONL {
+		var err error
+		index, err = newChatEventIndex(root)
+		if err != nil {
+			log.Printf("chat event index unavailable; using canonical JSONL scans: %v", err)
+			index = unavailableChatEventIndex(root, err)
+		}
 	}
 	indexContext, indexCancel := context.WithCancel(context.Background())
 	store := &Store{
 		root:         root,
-		index:        index,
 		locks:        map[servicechat.ID]*sync.Mutex{},
 		metas:        map[servicechat.ID]servicechat.Meta{},
 		indexContext: indexContext,
 		indexCancel:  indexCancel,
 		indexing:     map[servicechat.ID]struct{}{},
 	}
+	closeIndex := func() {
+		if index != nil {
+			_ = index.close()
+		}
+	}
 	if err := store.loadMetaIndex(); err != nil {
 		indexCancel()
-		_ = index.close()
+		closeIndex()
 		return nil, err
+	}
+	switch backend {
+	case BackendJSONL:
+		store.events = newJSONLLog(store, index)
+		store.transcript = newJSONLTranscriptProjection(store, index)
+	case BackendSQLite:
+		events, err := openSQLiteLog(store)
+		if err != nil {
+			indexCancel()
+			closeIndex()
+			return nil, err
+		}
+		store.events = events
+		store.transcript = newSQLiteTranscriptProjection(store, events.db)
+	default:
+		indexCancel()
+		closeIndex()
+		return nil, fmt.Errorf("unknown chat store backend %q", backend)
 	}
 	return store, nil
 }
 
-// Close releases the derived chat event index. Callers that create a bounded
-// Store lifetime (notably commands and tests) should call it explicitly.
+// Close releases the event log and its derived transcript projection. Callers
+// that create a bounded Store lifetime (notably commands and tests) should call
+// it explicitly.
 func (s *Store) Close() error {
 	s.indexCancel()
 	s.indexWG.Wait()
-	return s.index.close()
+	return errors.Join(s.events.Close(), s.transcript.close())
 }
 
 // WarmRecentChatIndexes best-effort synchronizes the most recently active
@@ -82,7 +120,7 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 	if limit <= 0 {
 		return nil
 	}
-	if err := s.index.availabilityError(); err != nil {
+	if err := s.transcript.availabilityError(); err != nil {
 		return err
 	}
 	metas, err := s.List(ctx)
@@ -99,7 +137,10 @@ func (s *Store) WarmRecentChatIndexes(ctx context.Context, limit int) error {
 		}
 		lk := s.lock(meta.ID)
 		lk.Lock()
-		_, err := s.index.syncChat(ctx, meta.ID, s.eventsPath(meta.ID))
+		err := s.events.Prepare(ctx, meta.ID)
+		if err == nil {
+			_, err = s.transcript.sync(ctx, meta.ID)
+		}
 		lk.Unlock()
 		if err != nil {
 			warmErrors = append(warmErrors, fmt.Errorf("chat %s: %w", meta.ID, err))
@@ -165,7 +206,7 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 	if meta.Mode == "" {
 		meta.Mode = "default"
 	}
-	_ = s.index.deleteChat(ctx, meta.ID)
+	_ = s.transcript.delete(ctx, meta.ID)
 	dir := s.chatDir(meta.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return meta, err
@@ -174,11 +215,10 @@ func (s *Store) Create(ctx context.Context, meta servicechat.Meta) (servicechat.
 		return meta, err
 	}
 	s.setCachedMeta(meta)
-	f, err := os.OpenFile(s.eventsPath(meta.ID), os.O_CREATE|os.O_WRONLY, 0o644)
-	if err == nil {
-		err = f.Close()
+	if err := s.events.Remove(ctx, meta.ID); err != nil {
+		return meta, err
 	}
-	if err != nil {
+	if err := s.events.Create(ctx, meta.ID); err != nil {
 		return meta, err
 	}
 	return meta, nil
@@ -250,7 +290,10 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	lk.Lock()
 	defer lk.Unlock()
 
-	_ = s.index.deleteChat(ctx, id)
+	_ = s.transcript.delete(ctx, id)
+	if err := s.events.Remove(ctx, id); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(s.chatDir(id)); err != nil {
 		return err
 	}
@@ -262,8 +305,9 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
 	return nil
 }
 
-// AppendEvent writes one event to events.jsonl and bumps lastMessageAt.
-// Safe for concurrent calls on the same chat (serialized via per-id lock).
+// AppendEvent writes one event through the configured event log and bumps
+// lastMessageAt. Safe for concurrent calls on the same chat (serialized via
+// per-id lock).
 func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicechat.Event) (servicechat.Event, error) {
 	if !servicechat.ValidID(id) {
 		return servicechat.Event{}, servicechat.ErrInvalidID
@@ -276,60 +320,85 @@ func (s *Store) AppendEvent(ctx context.Context, id servicechat.ID, ev servicech
 	lk.Lock()
 	defer lk.Unlock()
 
-	seq, indexErr := s.index.lastEventSeq(ctx, id, s.eventsPath(id))
-	var err error
-	if indexErr != nil {
-		seq, err = s.lastEventSeqLocked(id)
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return servicechat.Event{}, err
 	}
+	next, err := s.events.Append(ctx, id, ev)
 	if err != nil {
 		return servicechat.Event{}, err
 	}
-	ev.Seq = seq + 1
-
-	line, err := json.Marshal(eventRecordFromDomain(ev))
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	line = append(line, '\n')
-
-	f, err := os.OpenFile(
-		s.eventsPath(id),
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
-		0o644,
-	)
-	if err != nil {
-		return servicechat.Event{}, err
-	}
-	defer f.Close()
-	if _, err := f.Write(line); err != nil {
-		return servicechat.Event{}, err
-	}
-	// JSONL is authoritative. If this derived update fails, the next indexed
-	// read or append retries from the last cached byte offset.
-	if indexErr == nil {
-		_ = s.index.refreshAfterAppend(context.Background(), id, s.eventsPath(id))
-	} else {
-		// The fallback scan assigned the sequence from canonical JSONL, but it
-		// did not validate the cached prefix. Revalidate before extending it.
-		_ = s.index.refreshAfterFallback(context.Background(), id, s.eventsPath(id))
-	}
-	if eventTouchesChatMeta(ev.Type) {
+	if eventTouchesChatMeta(next.Type) {
 		meta, err := s.Get(ctx, id)
 		if err == nil {
-			meta.LastMessageAt = ev.T
+			meta.LastMessageAt = next.T
 			if err := s.writeMeta(meta); err == nil {
 				s.setCachedMeta(meta)
 			}
 		}
 	}
-	return ev, nil
+	return next, nil
+}
+
+// CopyEventStream copies from's stored history onto to, assigning fresh
+// sequence numbers, in batches bounded by memory. Fork uses it so a large
+// conversation is never loaded whole just to be reappended event by event.
+func (s *Store) CopyEventStream(
+	ctx context.Context,
+	from servicechat.ID,
+	to servicechat.ID,
+) (int, error) {
+	if !servicechat.ValidID(from) || !servicechat.ValidID(to) {
+		return 0, servicechat.ErrInvalidID
+	}
+	if from == to {
+		return 0, nil
+	}
+	// Both chats are held for the whole copy so an append on either side
+	// cannot interleave. Locking in identifier order keeps two concurrent
+	// copies from deadlocking against each other.
+	locks := [2]*sync.Mutex{s.lock(from), s.lock(to)}
+	if string(from) > string(to) {
+		locks[0], locks[1] = locks[1], locks[0]
+	}
+	locks[0].Lock()
+	defer locks[0].Unlock()
+	locks[1].Lock()
+	defer locks[1].Unlock()
+
+	if err := s.events.Prepare(ctx, from); err != nil {
+		return 0, err
+	}
+	if err := s.events.Prepare(ctx, to); err != nil {
+		return 0, err
+	}
+	copied, last, err := s.events.CopyEvents(ctx, from, to)
+	if err != nil || copied == 0 {
+		return copied, err
+	}
+	// A per-event append would have refreshed this once at the end too.
+	if eventTouchesChatMeta(last.Type) {
+		if meta, err := s.Get(ctx, to); err == nil {
+			meta.LastMessageAt = last.T
+			if err := s.writeMeta(meta); err == nil {
+				s.setCachedMeta(meta)
+			}
+		}
+	}
+	return copied, nil
 }
 
 func (s *Store) ReadEvents(ctx context.Context, id servicechat.ID) ([]servicechat.Event, error) {
 	if !servicechat.ValidID(id) {
 		return nil, servicechat.ErrInvalidID
 	}
-	return s.readEventsFile(id)
+	lk := s.lock(id)
+	lk.Lock()
+	defer lk.Unlock()
+
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.events.ReadAll(ctx, id)
 }
 
 // ScanEvents visits the raw append-only event stream in storage order. The
@@ -342,7 +411,14 @@ func (s *Store) ScanEvents(
 	if !servicechat.ValidID(id) {
 		return servicechat.ErrInvalidID
 	}
-	return s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+	lk := s.lock(id)
+	lk.Lock()
+	defer lk.Unlock()
+
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return err
+	}
+	return s.events.Scan(ctx, id, func(event servicechat.Event) bool {
 		visit(event)
 		return true
 	})
@@ -367,12 +443,10 @@ func (s *Store) ReadEventsPage(
 	lk.Lock()
 	defer lk.Unlock()
 
-	page, err := s.index.readEventPage(ctx, id, s.eventsPath(id), query.BeforeSeq, limit)
-	if err == nil {
-		return page, nil
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return servicechat.EventPage{}, err
 	}
-	s.discardInvalidChatIndex(ctx, id, err)
-	return s.readEventsPageFile(ctx, id, query, limit)
+	return s.events.ReadPage(ctx, id, query.BeforeSeq, limit)
 }
 
 func (s *Store) readEventsPageFile(
@@ -428,12 +502,10 @@ func (s *Store) ReadEventsAfter(
 	lk.Lock()
 	defer lk.Unlock()
 
-	events, err := s.index.readEventsAfter(ctx, id, s.eventsPath(id), afterSeq)
-	if err == nil {
-		return events, nil
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return nil, err
 	}
-	s.discardInvalidChatIndex(ctx, id, err)
-	return s.readEventsAfterFile(ctx, id, afterSeq)
+	return s.events.ReadAfter(ctx, id, afterSeq)
 }
 
 func (s *Store) readEventsAfterFile(
@@ -467,16 +539,19 @@ func (s *Store) ReadTranscriptEventWindow(
 	lk.Lock()
 	defer lk.Unlock()
 
-	window, err := s.index.readTranscriptWindow(ctx, id, s.eventsPath(id), beforeSeq, turnLimit)
+	window, err := s.transcript.readWindow(ctx, id, beforeSeq, turnLimit)
 	if err == nil {
 		return window, nil
 	}
 	s.discardInvalidChatIndex(ctx, id, err)
 
-	// The index is disposable. Preserve availability by falling back to the
-	// canonical log if it cannot be synchronized or read.
+	// The projection is disposable. Preserve availability by falling back to
+	// the canonical stream if it cannot be synchronized or read.
 	window = servicechat.TranscriptEventWindow{}
-	err = s.scanEventsFile(ctx, id, func(event servicechat.Event) bool {
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return window, err
+	}
+	err = s.events.Scan(ctx, id, func(event servicechat.Event) bool {
 		window.Events = append(window.Events, event)
 		if event.Seq > window.LastSeq {
 			window.LastSeq = event.Seq
@@ -486,70 +561,53 @@ func (s *Store) ReadTranscriptEventWindow(
 	return window, err
 }
 
+// discardInvalidChatIndex drops a projection that described its source
+// incorrectly. It is disposable in both backends, so the next read rebuilds it.
 func (s *Store) discardInvalidChatIndex(
 	ctx context.Context,
 	id servicechat.ID,
 	readErr error,
 ) {
-	if ctx.Err() == nil && errors.Is(readErr, errInvalidChatEventIndex) {
-		_ = s.index.deleteChat(ctx, id)
+	if ctx.Err() != nil || !errors.Is(readErr, errInvalidChatEventIndex) {
+		return
 	}
+	_ = s.transcript.delete(ctx, id)
+}
+
+// rebuildProjection discards the derived rows and republishes them from the
+// canonical event stream. A rewind replaces that stream wholesale.
+func (s *Store) rebuildProjection(ctx context.Context, id servicechat.ID) error {
+	if err := s.transcript.delete(ctx, id); err != nil {
+		return err
+	}
+	_, err := s.transcript.sync(ctx, id)
+	return err
 }
 
 // TruncateEventsBefore rewinds a chat by removing the selected event and every
-// event after it. The returned slice is the complete remaining history.
-func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, beforeT int64) ([]servicechat.Event, error) {
+// event after it. The retained history is rewritten in bounded batches, so the
+// conversation is never held in memory as a whole.
+func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, beforeT int64) error {
 	if !servicechat.ValidID(id) {
-		return nil, servicechat.ErrInvalidID
+		return servicechat.ErrInvalidID
 	}
 	if beforeT <= 0 {
-		return nil, servicechat.ErrInvalidRewindTimestamp
+		return servicechat.ErrInvalidRewindTimestamp
 	}
 	lk := s.lock(id)
 	lk.Lock()
 	defer lk.Unlock()
 
-	events, err := s.readEventsFile(id)
+	if err := s.events.Prepare(ctx, id); err != nil {
+		return err
+	}
+	lastT, err := s.events.TruncateBefore(ctx, id, beforeT)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	kept := make([]servicechat.Event, 0, len(events))
-	var lastT int64
-	for _, ev := range events {
-		if ev.T >= beforeT {
-			continue
-		}
-		kept = append(kept, ev)
-		if ev.T > lastT {
-			lastT = ev.T
-		}
-	}
-
-	tmp := filepath.Join(s.chatDir(id), "events.jsonl.tmp")
-	final := filepath.Join(s.chatDir(id), "events.jsonl")
-	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	enc := json.NewEncoder(f)
-	for _, ev := range kept {
-		if err := enc.Encode(eventRecordFromDomain(ev)); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
-			return nil, err
-		}
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	if err := os.Rename(tmp, final); err != nil {
-		_ = os.Remove(tmp)
-		return nil, err
-	}
-	// A rewind replaces the JSONL file. Rebuild the cached offsets now;
+	// A rewind replaces the stored stream. Rebuild the cached projection now;
 	// size-based recovery on the next read remains a backstop.
-	_ = s.index.rebuildChat(context.Background(), id, final)
+	_ = s.rebuildProjection(context.Background(), id)
 
 	if meta, err := s.Get(ctx, id); err == nil {
 		if lastT == 0 {
@@ -561,8 +619,7 @@ func (s *Store) TruncateEventsBefore(ctx context.Context, id servicechat.ID, bef
 			s.setCachedMeta(meta)
 		}
 	}
-
-	return kept, nil
+	return nil
 }
 
 func (s *Store) writeMeta(meta servicechat.Meta) error {

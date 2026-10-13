@@ -94,14 +94,37 @@ func writeChatIndexState(
 	return err
 }
 
+// chatEventIndexTables are the derived rows of the JSONL transcript index,
+// deleted in dependency order when a chat's projection is discarded.
+var chatEventIndexTables = [...]string{
+	"chat_transcript_content_refs",
+	"chat_transcript_items",
+	"chat_event_offsets",
+	"chat_transcript_turns",
+	"chat_event_index_state",
+}
+
+// chatSQLiteProjectionTables are the equivalent derived rows inside
+// chats.sqlite. It has no byte-offset index: the event stream is addressed by
+// sequence, and its projection checkpoint lives in its own table.
+var chatSQLiteProjectionTables = [...]string{
+	"chat_transcript_content_refs",
+	"chat_transcript_items",
+	"chat_transcript_turns",
+	"chat_transcript_projection_state",
+}
+
 func deleteChatIndexRows(ctx context.Context, tx *sql.Tx, id servicechat.ID) error {
-	for _, table := range []string{
-		"chat_transcript_content_refs",
-		"chat_transcript_items",
-		"chat_event_offsets",
-		"chat_transcript_turns",
-		"chat_event_index_state",
-	} {
+	return deleteChatRows(ctx, tx, id, chatEventIndexTables[:])
+}
+
+func deleteChatRows(
+	ctx context.Context,
+	tx *sql.Tx,
+	id servicechat.ID,
+	tables []string,
+) error {
+	for _, table := range tables {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE chat_id = ?", id); err != nil {
 			return err
 		}
