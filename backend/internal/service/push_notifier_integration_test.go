@@ -262,7 +262,7 @@ func TestAppendingATerminalEventRaisesANotification(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("captured %d notifications, want 1", len(sent))
 	}
-	if sent[0].Title != "Remote - Agent finished" || sent[0].Body != "Open the chat to see the result." {
+	if sent[0].Title != "Remote - Agent finished ✅" || sent[0].Body != "Open the chat to see the result." {
 		t.Fatalf("notification = %+v", sent[0])
 	}
 	if sent[0].ChatID != "beefcafe" {
@@ -290,7 +290,7 @@ func TestProjectCompletionUsesProjectNameAndPrivateSummary(t *testing.T) {
 	}
 	repo.push.push.Wait()
 	sent := sender.captured()
-	if len(sent) != 1 || sent[0].Title != "Website - Agent finished" || sent[0].Body != "Fixed settings refresh and chat links." || sent[0].ChatID != "abcdef12" {
+	if len(sent) != 1 || sent[0].Title != "Website - Agent finished ✅" || sent[0].Body != "Fixed settings refresh and chat links." || sent[0].ChatID != "abcdef12" {
 		t.Fatalf("notification = %+v", sent)
 	}
 }
@@ -411,7 +411,7 @@ func TestScheduledRunsAreLabelledSeparately(t *testing.T) {
 	if len(sent) != 1 || sent[0].Kind != servicepush.KindScheduled {
 		t.Fatalf("notifications = %+v", sent)
 	}
-	if sent[0].Title != "Remote - Agent finished" || sent[0].Body != "A scheduled task finished." {
+	if sent[0].Title != "Remote - Agent finished ✅" || sent[0].Body != "A scheduled task finished." {
 		t.Fatalf("body = %q", sent[0].Body)
 	}
 }
@@ -669,9 +669,187 @@ func TestDeletingAChatForgetsItsNotificationState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo.push.mu.Lock()
-	defer repo.push.mu.Unlock()
-	if len(repo.push.parked) != 0 || len(repo.push.notified) != 0 {
-		t.Fatalf("parked = %v, notified = %v; want both empty", repo.push.parked, repo.push.notified)
+	repo.push.state.mu.Lock()
+	defer repo.push.state.mu.Unlock()
+	if len(repo.push.state.parked) != 0 || len(repo.push.state.notified) != 0 || len(repo.push.state.questionBatches) != 0 {
+		t.Fatalf("parked = %v, notified = %v, batches = %v; want all empty", repo.push.state.parked, repo.push.state.notified, repo.push.state.questionBatches)
+	}
+}
+
+func TestNativeQuestionBatchNotifiesOnceAndAnswerResumesCompletion(t *testing.T) {
+	for _, method := range []string{"item/tool/requestUserInput", "tool/requestUserInput"} {
+		t.Run(method, func(t *testing.T) {
+			repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+			appendEvent := func(event servicechat.Event) {
+				t.Helper()
+				event.TurnID = "turn"
+				if _, err := repo.AppendEvent(context.Background(), "beefcafe", event); err != nil {
+					t.Fatal(err)
+				}
+				repo.push.push.Wait()
+			}
+			question := servicechat.Event{
+				Type: "interaction_request", Status: "user_input", InteractionID: "request-1", Name: method,
+				Input: json.RawMessage(`{"questions":[{"question":"Which region?"},{"question":"How many replicas?"}]}`),
+			}
+			appendEvent(question)
+			appendEvent(question)
+			if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion || sent[0].Body != "Which region? · How many replicas?" {
+				t.Fatalf("question batch notifications = %+v", sent)
+			}
+			appendEvent(servicechat.Event{Type: "interaction_resolved", Status: "answered", InteractionID: "request-1"})
+			appendEvent(servicechat.Event{Type: "complete", NotificationSummary: "Deployed two replicas."})
+			if sent := sender.captured(); len(sent) != 2 || sent[1].Kind != servicepush.KindComplete || sent[1].Body != "Deployed two replicas." {
+				t.Fatalf("resumed completion notifications = %+v", sent)
+			}
+		})
+	}
+}
+
+func TestUnrelatedResolutionDoesNotReplaceQuestionNotification(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	for _, event := range []servicechat.Event{
+		{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "question"},
+		{Type: "interaction_resolved", Status: "approved", TurnID: "turn", ID: "approval"},
+		{Type: "complete", TurnID: "turn"},
+	} {
+		if _, err := repo.AppendEvent(context.Background(), "beefcafe", event); err != nil {
+			t.Fatal(err)
+		}
+		repo.push.push.Wait()
+	}
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion {
+		t.Fatalf("unrelated resolution replaced the question: %+v", sent)
+	}
+}
+
+func TestFreshQuestionBatchInTheSameRunNotifiesAgain(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	for _, event := range []servicechat.Event{
+		{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "first"},
+		{Type: "interaction_resolved", Status: "answered", TurnID: "turn", ID: "first"},
+		{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "second"},
+		{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "second"},
+	} {
+		if _, err := repo.AppendEvent(context.Background(), "beefcafe", event); err != nil {
+			t.Fatal(err)
+		}
+		repo.push.push.Wait()
+	}
+	if sent := sender.captured(); len(sent) != 2 || sent[0].Kind != servicepush.KindQuestion || sent[1].Kind != servicepush.KindQuestion {
+		t.Fatalf("fresh question batches = %+v", sent)
+	}
+}
+
+func TestFailedQuestionDeliveryReleasesItsBatchClaim(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	question := servicechat.Event{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "question"}
+	sender.failWith(errors.New("503 unavailable"))
+	if _, err := repo.AppendEvent(context.Background(), "beefcafe", question); err != nil {
+		t.Fatal(err)
+	}
+	repo.push.push.Wait()
+	sender.failWith(nil)
+	if _, err := repo.AppendEvent(context.Background(), "beefcafe", question); err != nil {
+		t.Fatal(err)
+	}
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion {
+		t.Fatalf("failed delivery kept question suppressed: %+v", sent)
+	}
+}
+
+func TestConcurrentDuplicateQuestionsSendOnlyOneAlert(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	question := servicechat.Event{Type: "interaction_request", Status: "user_input", TurnID: "turn", ID: "question"}
+	var wg sync.WaitGroup
+	errors := make(chan error, 32)
+	for range 32 {
+		wg.Go(func() {
+			_, err := repo.AppendEvent(context.Background(), "beefcafe", question)
+			errors <- err
+		})
+	}
+	wg.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 1 {
+		t.Fatalf("concurrent question requests sent %d alerts, want 1", len(sent))
+	}
+}
+
+func TestReadingAnUnansweredLegacyQuestionDoesNotAllowCompletionToReplaceIt(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	ctx := context.Background()
+	for _, event := range []servicechat.Event{
+		{Type: "tool_use_start", TurnID: "turn", ID: "question", Name: "AskUserQuestion"},
+		{Type: "complete", TurnID: "turn"},
+	} {
+		if _, err := repo.AppendEvent(ctx, "beefcafe", event); err != nil {
+			t.Fatal(err)
+		}
+		repo.push.push.Wait()
+	}
+	if _, err := repo.Update(ctx, "beefcafe", func(meta *servicechat.Meta) { meta.LastReadAt = 100 }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.AppendEvent(ctx, "beefcafe", servicechat.Event{Type: "complete", TurnID: "turn"}); err != nil {
+		t.Fatal(err)
+	}
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion {
+		t.Fatalf("reading replaced an unanswered question: %+v", sent)
+	}
+}
+
+func TestRetryingAnUnansweredQuestionPreservesItsAlertAndResumedCompletion(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	ctx := context.Background()
+	appendEvent := func(event servicechat.Event) {
+		t.Helper()
+		event.TurnID = "turn"
+		if _, err := repo.AppendEvent(ctx, "beefcafe", event); err != nil {
+			t.Fatal(err)
+		}
+		repo.push.push.Wait()
+	}
+	appendEvent(servicechat.Event{Type: "interaction_request", Status: "user_input", InteractionID: "question"})
+	if _, err := repo.Update(ctx, "beefcafe", func(meta *servicechat.Meta) { meta.LastReadAt = 100 }); err != nil {
+		t.Fatal(err)
+	}
+	appendEvent(servicechat.Event{Type: "error", Status: "retrying", Message: "Reconnecting to the provider."})
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindQuestion {
+		t.Fatalf("retry replaced an unanswered question: %+v", sent)
+	}
+	answer := servicechat.Event{Type: "interaction_resolved", Status: "answered", TurnID: "turn", InteractionID: "question"}
+	meta, err := repo.Get(ctx, "beefcafe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !meta.QuestionState.AnsweredBy(answer) {
+		t.Fatalf("retry cleared the pending question: %+v", meta.QuestionState)
+	}
+	appendEvent(answer)
+	appendEvent(servicechat.Event{Type: "complete", NotificationSummary: "Applied your answer."})
+	if sent := sender.captured(); len(sent) != 2 || sent[1].Kind != servicepush.KindComplete || sent[1].Body != "Applied your answer." {
+		t.Fatalf("resumed completion after retry = %+v", sent)
+	}
+}
+
+func TestRetryingWithoutAPendingQuestionStillNotifies(t *testing.T) {
+	repo, sender := newNotifyingChat(t, servicechat.Meta{ID: "beefcafe"})
+	if _, err := repo.AppendEvent(context.Background(), "beefcafe", servicechat.Event{
+		Type: "error", Status: "retrying", Message: "Reconnecting to the provider.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	repo.push.push.Wait()
+	if sent := sender.captured(); len(sent) != 1 || sent[0].Kind != servicepush.KindError {
+		t.Fatalf("retry without a question = %+v", sent)
 	}
 }

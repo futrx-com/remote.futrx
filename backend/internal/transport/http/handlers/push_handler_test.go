@@ -255,7 +255,7 @@ func TestTestNotificationGoesOnlyToTheCaller(t *testing.T) {
 	if err := json.Unmarshal(sender.payloads[0], &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Kind != servicepush.KindTest || payload.Title == "" {
+	if payload.Kind != servicepush.KindTest || payload.Title != "Notifications are working 🔔" {
 		t.Fatalf("payload = %+v", payload)
 	}
 }
