@@ -33,7 +33,7 @@ type CredentialSynchronizer interface {
 
 // WorkspaceProvisioner publishes shared agent instructions and workspace links.
 type WorkspaceProvisioner interface {
-	EnsureAgentInstructions(context.Context, string) error
+	EnsureAgentInstructions(context.Context, string, string) error
 	EnsureSkillLinks(context.Context, string) error
 }
 

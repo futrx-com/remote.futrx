@@ -43,6 +43,7 @@ var _ agent.ProjectResolver = agentProjectResolver{}
 func projectForAgent(project serviceproject.Meta) agent.Project {
 	return agent.Project{
 		ID:            agent.ProjectID(project.ID),
+		Slug:          project.Slug,
 		ContainerName: project.ContainerName,
 		Status:        agent.ProjectStatus(project.Status),
 	}
