@@ -107,6 +107,9 @@ func (s CredentialSpec) Empty() bool {
 type InstructionTarget struct {
 	Path     string
 	HashPath string
+	// Content overrides the shared template for this provider when configured.
+	// It includes the built-in guidance and operator additions, never project files.
+	Content []byte
 }
 
 type WorkspaceSkills struct {
@@ -259,6 +262,7 @@ func (p Profile) Clone() Profile {
 	p.PersistentState = append([]PersistentDirectory(nil), p.PersistentState...)
 	if p.Instructions != nil {
 		instructions := *p.Instructions
+		instructions.Content = append([]byte(nil), instructions.Content...)
 		p.Instructions = &instructions
 	}
 	if p.WorkspaceSkills != nil {
