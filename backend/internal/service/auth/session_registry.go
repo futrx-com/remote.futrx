@@ -59,7 +59,14 @@ func (r *sessionRegistry) load(ctx context.Context, email string) (*SessionRegis
 	if err != nil {
 		return nil, err
 	}
-	r.setCache(email, record)
+	// Another cold reader may have published and then updated this account
+	// while Get was in flight. Never replace that newer cached state.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if current, ok := r.cache[email]; ok {
+		return current, nil
+	}
+	r.cache[email] = record
 	return record, nil
 }
 
@@ -157,19 +164,44 @@ func (r *sessionRegistry) IssueForAccount(ctx context.Context, email string, met
 	return sid, nil
 }
 
-// IsActive reports whether sid is still the account's active session. Only
-// meaningful (and only ever false for a previously-issued sid) once
-// SingleSessionEnabled is on; before that, or for an account with no
-// record, every issued sid is treated as active.
-func (r *sessionRegistry) IsActive(ctx context.Context, email, sid string) bool {
-	record, err := r.load(ctx, email)
+// IsActive checks password-change revocation before the optional single-session
+// rule. Registry read errors retain the existing fail-open behavior.
+func (r *sessionRegistry) IsActive(ctx context.Context, session Session) error {
+	record, err := r.load(ctx, session.Email)
 	if err != nil || record == nil {
-		return true
+		return nil
 	}
-	if !record.Preferences.SingleSessionEnabled {
-		return true
+	if session.Iat < record.SessionsValidAfter {
+		return ErrSessionRevoked
 	}
-	return record.ActiveSessionID == sid
+	if record.Preferences.SingleSessionEnabled && record.ActiveSessionID != session.SID {
+		return ErrSessionSuperseded
+	}
+	return nil
+}
+
+// RevokeSessionsBefore rejects sessions issued before cutoff without changing
+// the account's independent preferences, history, or alert.
+func (r *sessionRegistry) RevokeSessionsBefore(ctx context.Context, email string, cutoff time.Time) error {
+	email = normalizeEmail(email)
+	defer r.account.lock(email)()
+	record, err := r.load(ctx, email)
+	if err != nil {
+		return err
+	}
+	updated := SessionRegistryRecord{}
+	if record != nil {
+		updated = *record
+	}
+	if cutoff.Unix() <= updated.SessionsValidAfter {
+		return nil
+	}
+	updated.SessionsValidAfter = cutoff.Unix()
+	if err := r.store.Save(ctx, email, updated); err != nil {
+		return err
+	}
+	r.setCache(email, &updated)
+	return nil
 }
 
 // Revoke replaces email's active session id with an unissued id (used on

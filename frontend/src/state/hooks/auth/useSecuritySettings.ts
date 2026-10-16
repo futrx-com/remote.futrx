@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { securityApi } from "../../../api/securityApi";
 import type {
+  PasswordChangeInput,
   SecurityPreferencesInput,
   SecuritySettings,
   TwoFactorEnrollment,
@@ -21,6 +22,7 @@ export interface SecuritySettingsController extends TwoFactorSettingsActions {
   setHistoryEnabled: (enabled: boolean) => Promise<void>;
   setRecoveryCodeAlertEnabled: (enabled: boolean) => Promise<void>;
   acknowledgeAlert: () => Promise<void>;
+  changePassword: (input: PasswordChangeInput) => Promise<void>;
 }
 
 export function useSecuritySettings(enabled: boolean): SecuritySettingsController {
@@ -75,6 +77,14 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     [refresh]
   );
 
+  const changePassword = useCallback(
+    async (input: PasswordChangeInput) => {
+      await securityApi.changePassword(input);
+      await refresh();
+    },
+    [refresh]
+  );
+
   const updatePreferences = useCallback(async (input: SecurityPreferencesInput) => {
     setSettings(await securityApi.updatePreferences(input));
   }, []);
@@ -111,5 +121,6 @@ export function useSecuritySettings(enabled: boolean): SecuritySettingsControlle
     setHistoryEnabled,
     setRecoveryCodeAlertEnabled,
     acknowledgeAlert,
+    changePassword,
   };
 }
