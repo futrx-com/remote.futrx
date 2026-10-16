@@ -41,13 +41,18 @@ func (p pendingLogin) expired(now time.Time) bool {
 	return now.Unix() > p.Exp
 }
 
-// LoginResult is returned by the Complete*Login methods: either a login
-// completed outright (CookieValue set) or it needs a second factor
-// (PendingToken set, to be presented back to CompleteTwoFactorChallenge).
+// LoginResult is returned by the Complete*Login methods: a login completed
+// outright (CookieValue set), one that needs a second factor (PendingToken
+// set, to be presented back to CompleteTwoFactorChallenge), or one whose
+// account still holds a temporary password (PasswordChangeRequired set, with
+// PasswordChangeToken to be presented back to CompleteInitialPasswordChange).
+// Only the first carries a session.
 type LoginResult struct {
-	Completed    bool
-	CookieValue  string
-	PendingToken string
+	Completed              bool
+	CookieValue            string
+	PendingToken           string
+	PasswordChangeRequired bool
+	PasswordChangeToken    string
 }
 
 // Options are application-wide account security policies supplied by the
@@ -82,6 +87,7 @@ func (o Options) validate() error {
 type Service struct {
 	users             UserDirectory
 	local             *LocalAdminAuthenticator
+	accounts          *accountPasswordAuthenticator
 	google            *GoogleAuthenticator
 	setupTokenIssuer  *SetupTokenIssuer
 	baseURL           string
@@ -91,10 +97,19 @@ type Service struct {
 	registry          *sessionRegistry
 	pendingLoginCodec signedPayload[pendingLogin]
 	pendingLoginTTL   time.Duration
+	// passwordChangeCodec signs the token of a sign-in that must still choose
+	// a new password. It shares the session key but not the session.
+	passwordChangeCodec signedPayload[pendingPasswordChange]
 	// sharePasses signs the cookie a public preview link is exchanged for.
 	// It shares the session key but not the session: a share pass proves one
 	// slug and port were once granted, never who the caller is.
 	sharePasses *sharePassCodec
+	// verifyPassword is VerifyPassword; tests count its calls to prove a
+	// login costs exactly one verification whichever credential answers.
+	verifyPassword func(encoded, password string) (bool, error)
+	// temporaryPassword is GenerateTemporaryPassword; tests fix it to know
+	// the plaintext they must prove never leaks.
+	temporaryPassword func() (string, error)
 }
 
 func NormalizeBaseURL(baseURL string) (string, error) {
@@ -113,6 +128,7 @@ func New(
 	sessionKey []byte,
 	twoFactorStore TwoFactorStore,
 	sessionRegistryStore SessionRegistryStore,
+	accountCredentialStore AccountCredentialStore,
 	options Options,
 ) (*Service, error) {
 	if store == nil {
@@ -126,6 +142,9 @@ func New(
 	}
 	if sessionRegistryStore == nil {
 		return nil, errors.New("session registry store is required")
+	}
+	if accountCredentialStore == nil {
+		return nil, errors.New("account credential store is required")
 	}
 	if err := options.validate(); err != nil {
 		return nil, fmt.Errorf("auth options: %w", err)
@@ -153,6 +172,10 @@ func New(
 		return nil, err
 	}
 	local.setDummyHash(dummyHash)
+	accounts, err := newAccountPasswordAuthenticator(ctx, accountCredentialStore)
+	if err != nil {
+		return nil, err
+	}
 
 	cookieDomain := ""
 	if u, err := url.Parse(baseURL); err == nil {
@@ -160,13 +183,16 @@ func New(
 	}
 
 	service := &Service{
-		users:            users,
-		local:            local,
-		setupTokenIssuer: setupTokenIssuer,
-		google:           google,
-		baseURL:          baseURL,
-		cookieDomain:     cookieDomain,
-		codec:            newSessionCodec(sessionKey),
+		users:             users,
+		local:             local,
+		accounts:          accounts,
+		verifyPassword:    VerifyPassword,
+		temporaryPassword: GenerateTemporaryPassword,
+		setupTokenIssuer:  setupTokenIssuer,
+		google:            google,
+		baseURL:           baseURL,
+		cookieDomain:      cookieDomain,
+		codec:             newSessionCodec(sessionKey),
 		twoFactor: newTwoFactorAuthenticator(
 			twoFactorStore,
 			"remote.futrx",
@@ -174,10 +200,11 @@ func New(
 			options.EnrollmentTTL,
 			options.RecoveryCodeCount,
 		),
-		registry:          newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
-		pendingLoginCodec: newPendingLoginPayload(sessionKey),
-		pendingLoginTTL:   options.PendingLoginTTL,
-		sharePasses:       newSharePassCodec(sessionKey),
+		registry:            newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
+		pendingLoginCodec:   newPendingLoginPayload(sessionKey),
+		pendingLoginTTL:     options.PendingLoginTTL,
+		passwordChangeCodec: newPasswordChangePayload(sessionKey),
+		sharePasses:         newSharePassCodec(sessionKey),
 	}
 	return service, nil
 }
@@ -232,8 +259,20 @@ func (s *Service) ClaimLocalAdmin(ctx context.Context, req ClaimRequest) (User, 
 	return s.local.claim(ctx, req)
 }
 
-func (s *Service) LoginLocal(_ context.Context, email, password string) (User, error) {
-	return s.local.login(email, password)
+// LoginLocal checks an email and password against the local administrator's
+// credential or an invited account's. An account that still holds a temporary
+// password proves its owner with it but may not sign in yet, so it is told to
+// change it instead. Sign-in flows use CompletePasswordLogin, which hands such
+// an account a password-change token.
+func (s *Service) LoginLocal(ctx context.Context, email, password string) (User, error) {
+	credential, err := s.authenticatePassword(ctx, email, password)
+	if err != nil {
+		return User{}, err
+	}
+	if credential.mustChange() {
+		return User{}, ErrPasswordChangeRequired
+	}
+	return credential.user(), nil
 }
 
 func (s *Service) ConfigureGoogleOAuth(ctx context.Context, cfg OAuthConfig) error {
@@ -242,6 +281,15 @@ func (s *Service) ConfigureGoogleOAuth(ctx context.Context, cfg OAuthConfig) err
 
 func (s *Service) GoogleOAuthEnabled() bool {
 	return s.google.enabled()
+}
+
+// RequireGoogleSignIn is the policy that new users can only be added while
+// Google sign-in is configured, since Google is how they authenticate.
+func (s *Service) RequireGoogleSignIn() error {
+	if !s.GoogleOAuthEnabled() {
+		return ErrGoogleSignInRequired
+	}
+	return nil
 }
 
 func (s *Service) GoogleClientID() string {
@@ -279,20 +327,31 @@ func (s *Service) IssueSession(ctx context.Context, user User, method SignInMeth
 
 // CompletePasswordLogin verifies credentials and either issues a session
 // outright (2FA off for this account) or returns a pending token that must
-// be completed via CompleteTwoFactorChallenge.
+// be completed via CompleteTwoFactorChallenge. A correct temporary password
+// issues neither: it returns a password-change token, and the session (or the
+// second-factor step) comes only from CompleteInitialPasswordChange.
 func (s *Service) CompletePasswordLogin(ctx context.Context, email, password, ip, userAgent string) (LoginResult, error) {
-	user, err := s.LoginLocal(ctx, email, password)
+	credential, err := s.authenticatePassword(ctx, email, password)
 	if err != nil {
 		return LoginResult{}, err
+	}
+	user := credential.user()
+	if credential.mustChange() {
+		return s.passwordChangeLogin(user, SignInMethodPassword, credential.account), nil
 	}
 	return s.completeLogin(ctx, user, SignInMethodPassword, ip, userAgent)
 }
 
-// CompleteGoogleLogin is the Google analogue of CompletePasswordLogin.
+// CompleteGoogleLogin is the Google analogue of CompletePasswordLogin. An
+// account that still holds a temporary password is held at the set-password
+// step here too, so Google is not a way around it.
 func (s *Service) CompleteGoogleLogin(ctx context.Context, code, ip, userAgent string) (LoginResult, error) {
 	user, err := s.LoginGoogle(ctx, code)
 	if err != nil {
 		return LoginResult{}, err
+	}
+	if account, ok := s.accounts.credential(user.Email); ok && account.MustChangePassword {
+		return s.passwordChangeLogin(user, SignInMethodGoogle, account), nil
 	}
 	return s.completeLogin(ctx, user, SignInMethodGoogle, ip, userAgent)
 }
@@ -362,14 +421,13 @@ func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Sess
 	// Once the local administrator exists, invalidate any older Google-backed
 	// sessions for that email. The owner account must remain password-only;
 	// invited users may continue using Google.
-	if s.IsLocalAdmin(session.Email) && session.Sub != "local-admin" {
+	if s.IsLocalAdmin(session.Email) && session.Sub != subjectLocalAdmin {
 		return nil, ErrLocalAdminPasswordOnly
 	}
-	// Single active session is one more account-scoped rule here, consulted
-	// only when the account has independently turned SingleSessionEnabled on
-	// (sessionRegistry.IsActive treats every session as active otherwise).
-	if !s.registry.IsActive(ctx, session.Email, session.SID) {
-		return nil, ErrSessionSuperseded
+	// The registry owns password-change revocation and the optional
+	// single-session rule for every authenticated entry point.
+	if err := s.registry.IsActive(ctx, *session); err != nil {
+		return nil, err
 	}
 	return session, nil
 }

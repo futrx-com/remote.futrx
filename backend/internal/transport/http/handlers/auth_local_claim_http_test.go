@@ -72,6 +72,7 @@ func newClaimTestServer(t *testing.T) (*http.ServeMux, *serviceauth.Service, str
 		[]byte("0123456789abcdef0123456789abcdef"),
 		twoFactorStore,
 		sessionRegistryStore,
+		accountCredentialStoreForTest(t),
 		serviceauth.Options{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

@@ -51,6 +51,10 @@ func newPendingLoginPayload(key []byte) signedPayload[pendingLogin] {
 	return signedPayload[pendingLogin]{key: key, domain: "pending-login/v1"}
 }
 
+func newPasswordChangePayload(key []byte) signedPayload[pendingPasswordChange] {
+	return signedPayload[pendingPasswordChange]{key: key, domain: "password-change/v1"}
+}
+
 func newPendingEnrollmentPayload(key []byte) signedPayload[pendingEnrollment] {
 	return signedPayload[pendingEnrollment]{key: key, domain: "2fa-enrollment/v1"}
 }

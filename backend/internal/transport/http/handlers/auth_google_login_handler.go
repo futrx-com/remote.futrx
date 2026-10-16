@@ -91,6 +91,12 @@ func (h *googleLoginHandler) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if result.PasswordChangeRequired {
+		setPasswordChangeCookie(w, h.auth, result.PasswordChangeToken)
+		http.Redirect(w, r, h.auth.BaseURL()+"/?passwordChangeRequired=1", http.StatusFound)
+		return
+	}
+
 	if !result.Completed {
 		setPendingCookie(w, h.auth, result.PendingToken)
 		http.Redirect(w, r, h.auth.BaseURL()+"/?twoFactorRequired=1", http.StatusFound)

@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useState } from "preact/hooks";
 import { userApi } from "../../../api/userApi";
-import type { User, UserRole } from "../../../models/user";
+import type {
+  DirectoryUser,
+  InviteInput,
+  InviteResult,
+  PasswordInviteResult,
+  UserRole,
+} from "../../../models/user";
+import { userDirectoryState } from "./userDirectoryState";
 
 export interface UserDirectory {
-  users: User[] | null;
+  users: DirectoryUser[] | null;
   loading: boolean;
   error: string | null;
-  add: (email: string, role: UserRole) => Promise<void>;
+  /** Invites an account. Credentials of a password invite are returned, never stored here. */
+  add: (input: InviteInput) => Promise<InviteResult>;
+  resetTemporaryPassword: (email: string, sendEmail: boolean) => Promise<PasswordInviteResult>;
   remove: (email: string) => Promise<void>;
   setRole: (email: string, role: UserRole) => Promise<void>;
 }
 
 export function useUserDirectory(enabled: boolean): UserDirectory {
-  const [users, setUsers] = useState<User[] | null>(null);
+  const [users, setUsers] = useState<DirectoryUser[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,29 +41,30 @@ export function useUserDirectory(enabled: boolean): UserDirectory {
     if (enabled) void load();
   }, [enabled, load]);
 
-  async function add(email: string, role: UserRole): Promise<void> {
-    const created = await userApi.add({ email, role });
-    setUsers((current) => {
-      const next = current ? [...current] : [];
-      next.push(created);
-      next.sort((left, right) => left.email.localeCompare(right.email));
-      return next;
-    });
+  async function add(input: InviteInput): Promise<InviteResult> {
+    const result = await userApi.add(input);
+    setUsers((current) => userDirectoryState.withInvited(current, result));
+    return result;
+  }
+
+  async function resetTemporaryPassword(
+    email: string,
+    sendEmail: boolean
+  ): Promise<PasswordInviteResult> {
+    const result = await userApi.resetTemporaryPassword(email, sendEmail);
+    setUsers((current) => userDirectoryState.withTemporaryPassword(current, email));
+    return result;
   }
 
   async function remove(email: string): Promise<void> {
     await userApi.remove(email);
-    setUsers((current) => current?.filter((user) => user.email !== email) ?? []);
+    setUsers((current) => userDirectoryState.without(current, email));
   }
 
   async function setRole(email: string, role: UserRole): Promise<void> {
-    const updated = await userApi.setRole(email, role);
-    setUsers((current) =>
-      current?.map((user) =>
-        user.email === email ? { ...user, role: updated.role } : user
-      ) ?? []
-    );
+    await userApi.setRole(email, role);
+    setUsers((current) => userDirectoryState.withRole(current, email, role));
   }
 
-  return { users, loading, error, add, remove, setRole };
+  return { users, loading, error, add, resetTemporaryPassword, remove, setRole };
 }

@@ -91,6 +91,7 @@ func newEmailTestHandler(t *testing.T, admins map[string]bool) (*EmailSettingsHa
 		[]byte("test-session-key"),
 		twoFactorStore,
 		sessionRegistryStore,
+		accountCredentialStoreForTest(t),
 		serviceauth.Options{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

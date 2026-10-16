@@ -11,6 +11,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileaccountcredentials"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
@@ -43,6 +44,10 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init session registry store: %v", err)
 	}
+	accountCredentialStore, err := fileaccountcredentials.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init account credentials store: %v", err)
+	}
 	auth, err := newAuth(
 		context.Background(),
 		fileauth.New(t.TempDir()),
@@ -50,6 +55,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 		"https://remote.example.com",
 		twoFactorStore,
 		sessionRegistryStore,
+		accountCredentialStore,
 		AuthOptions{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

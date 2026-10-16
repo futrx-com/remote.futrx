@@ -13,21 +13,79 @@ import (
 // SecurityPreferences toggles, and alert acknowledgement under
 // /api/me/security/*, mirroring how UserSettingsHandler owns /api/me/settings.
 type SecurityHandler struct {
-	auth *serviceauth.Service
+	auth            *serviceauth.Service
+	passwordChanges *localLoginLimiter
 }
 
 func NewSecurityHandler(auth *serviceauth.Service) *SecurityHandler {
-	return &SecurityHandler{auth: auth}
+	return &SecurityHandler{auth: auth, passwordChanges: newLocalLoginLimiter()}
 }
 
 func (h *SecurityHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/me/security", h.handleSummary)
+	mux.HandleFunc("/api/me/security/password", h.handlePasswordChange)
 	mux.HandleFunc("/api/me/security/2fa/enroll", h.handleEnroll)
 	mux.HandleFunc("/api/me/security/2fa/confirm", h.handleConfirm)
 	mux.HandleFunc("/api/me/security/2fa/disable", h.handleDisable)
 	mux.HandleFunc("/api/me/security/2fa/recovery-codes/regenerate", h.handleRegenerate)
 	mux.HandleFunc("/api/me/security/preferences", h.handlePreferences)
 	mux.HandleFunc("/api/me/security/alerts/ack", h.handleAckAlert)
+}
+
+func (h *SecurityHandler) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	session, ok := h.requireSession(w, r)
+	if !ok {
+		return
+	}
+	key := localClientIP(r) + "|" + session.Email + "|password-change"
+	if !h.passwordChanges.Allow(key) {
+		w.Header().Set("Retry-After", "300")
+		httptransport.SendErr(w, http.StatusTooManyRequests, "too many attempts; try again in a few minutes")
+		return
+	}
+	var body *struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+		Code            string `json:"code"`
+	}
+	if err := readJSONBody(r, &body); err != nil || body == nil {
+		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	cookieValue, err := h.auth.ChangePassword(r.Context(), serviceauth.User{Email: session.Email, Sub: session.Sub},
+		serviceauth.PasswordChange{Current: body.CurrentPassword, New: body.NewPassword, Code: body.Code},
+		localClientIP(r), r.UserAgent())
+	if err != nil {
+		status, message := http.StatusInternalServerError, serviceauth.ErrPasswordNotChanged.Error()
+		switch {
+		case errors.Is(err, serviceauth.ErrPasswordSignInUnavailable):
+			status, message = http.StatusConflict, serviceauth.ErrPasswordSignInUnavailable.Error()
+		case errors.Is(err, serviceauth.ErrLocalAdminCredentialChanged), errors.Is(err, serviceauth.ErrAccountCredentialChanged):
+			status, message = http.StatusConflict, "password was changed elsewhere; reload and try again"
+		case errors.Is(err, serviceauth.ErrCurrentPasswordIncorrect):
+			h.passwordChanges.Failure(key)
+			status, message = http.StatusForbidden, serviceauth.ErrCurrentPasswordIncorrect.Error()
+		case errors.Is(err, serviceauth.ErrInvalidTwoFactorCode), errors.Is(err, serviceauth.ErrTwoFactorCodeReused):
+			h.passwordChanges.Failure(key)
+			status, message = http.StatusForbidden, serviceauth.ErrInvalidTwoFactorCode.Error()
+		case errors.Is(err, serviceauth.ErrTwoFactorCodeRequired), errors.Is(err, serviceauth.ErrPasswordReuse),
+			errors.Is(err, serviceauth.ErrPasswordTooShort), errors.Is(err, serviceauth.ErrPasswordTooLong):
+			status, message = http.StatusBadRequest, err.Error()
+		case errors.Is(err, serviceauth.ErrPasswordNotChangedSessionsRevoked):
+			message = serviceauth.ErrPasswordNotChangedSessionsRevoked.Error()
+		case errors.Is(err, serviceauth.ErrPasswordChangedSessionFailed):
+			message = serviceauth.ErrPasswordChangedSessionFailed.Error()
+		}
+		httptransport.SendErr(w, status, message)
+		return
+	}
+	h.passwordChanges.Success(key)
+	setSessionCookie(w, h.auth, cookieValue)
+	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), cookieValue))
 }
 
 func (h *SecurityHandler) session(r *http.Request) (*serviceauth.Session, error) {

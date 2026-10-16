@@ -10,6 +10,17 @@ export interface AuthSession {
   isRegistered: boolean;
 }
 
+/** What a password sign-in asks for next, short of an outright session. */
+export type LocalLoginResult =
+  | { outcome: "session"; session: AuthSession }
+  | { outcome: "two-factor" }
+  | { outcome: "password-change" };
+
+/** How the first-login (temporary password) change ended. */
+export type InitialPasswordResult =
+  | { outcome: "session"; session: AuthSession }
+  | { outcome: "two-factor" };
+
 export interface GoogleOAuthSettings {
   configured: boolean;
   clientId: string;

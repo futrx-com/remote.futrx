@@ -53,6 +53,7 @@ func newTwoFactorTestMux(t *testing.T) (*http.ServeMux, *serviceauth.Service) {
 		[]byte("test-session-key"),
 		twoFactorStore,
 		sessionRegistryStore,
+		accountCredentialStoreForTest(t),
 		serviceauth.Options{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

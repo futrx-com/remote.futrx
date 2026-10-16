@@ -1,3 +1,5 @@
+import { pdfContentStream, pdfDocument, type PdfLine } from "../files/pdfDocument.ts";
+
 export type RecoveryCodeFileFormat = "txt" | "pdf";
 
 /** What a saved recovery-code file is called and what it holds. */
@@ -58,7 +60,7 @@ class RecoveryCodeFileService {
 
   private pdfBytes(codes: string[], generatedAt: Date): Uint8Array {
     const lines = this.pdfLines(codes, generatedAt);
-    const content = this.pdfContentStream(lines);
+    const content = pdfContentStream(lines);
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -68,7 +70,7 @@ class RecoveryCodeFileService {
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
       "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>",
     ];
-    return new TextEncoder().encode(this.pdfDocument(objects));
+    return new TextEncoder().encode(pdfDocument(objects));
   }
 
   /** The page as positioned lines, top-down: title, date, the codes in two
@@ -96,50 +98,6 @@ class RecoveryCodeFileService {
     return lines;
   }
 
-  private pdfContentStream(lines: PdfLine[]): string {
-    return lines
-      .map(
-        (line) =>
-          `BT /${line.font} ${line.size} Tf 1 0 0 1 ${line.x} ${line.y} Tm ` +
-          `(${this.escapePdfText(line.text)}) Tj ET`
-      )
-      .join("\n");
-  }
-
-  /** Assembles numbered objects into a document, recording each one's byte
-   *  offset in the cross-reference table a reader uses to find it. */
-  private pdfDocument(objects: string[]): string {
-    const header = "%PDF-1.4\n";
-    let body = "";
-    const offsets: number[] = [];
-    objects.forEach((object, index) => {
-      offsets.push(header.length + body.length);
-      body += `${index + 1} 0 obj\n${object}\nendobj\n`;
-    });
-    const xrefOffset = header.length + body.length;
-    const xref = [
-      "xref",
-      `0 ${objects.length + 1}`,
-      "0000000000 65535 f ",
-      ...offsets.map((offset) => `${String(offset).padStart(10, "0")} 00000 n `),
-    ].join("\n");
-    const trailer =
-      `\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n` +
-      `startxref\n${xrefOffset}\n%%EOF\n`;
-    return header + body + xref + trailer;
-  }
-
-  /** Backslash, parentheses and non-ASCII bytes cannot travel raw inside a
-   *  PDF string literal. Recovery codes are ASCII, but the notes and product
-   *  name pass through here too. */
-  private escapePdfText(text: string): string {
-    return text
-      .replace(/\\/g, "\\\\")
-      .replace(/\(/g, "\\(")
-      .replace(/\)/g, "\\)")
-      .replace(/[^\x20-\x7e]/g, "-");
-  }
-
   private isoDate(date: Date): string {
     return [
       date.getFullYear(),
@@ -147,14 +105,6 @@ class RecoveryCodeFileService {
       String(date.getDate()).padStart(2, "0"),
     ].join("-");
   }
-}
-
-interface PdfLine {
-  text: string;
-  x: number;
-  y: number;
-  font: "F1" | "F2";
-  size: number;
 }
 
 export const recoveryCodeFileService = new RecoveryCodeFileService();

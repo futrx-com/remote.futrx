@@ -110,6 +110,8 @@ export function SettingsPage({
   currentEmail,
   isAdmin,
   googleOAuthEnabled,
+  smtpConfigured,
+  localAdminEmail,
   serverInfo,
   serverInfoLoading,
   serverInfoRefreshing,
@@ -145,6 +147,8 @@ export function SettingsPage({
   currentEmail: string;
   isAdmin: boolean;
   googleOAuthEnabled: boolean;
+  smtpConfigured: boolean;
+  localAdminEmail: string;
   serverInfo: ServerInfo | null;
   serverInfoLoading: boolean;
   serverInfoRefreshing: boolean;
@@ -280,8 +284,11 @@ export function SettingsPage({
                   users={userDirectory.users}
                   loading={userDirectory.loading}
                   error={userDirectory.error}
-                  canAddUsers={googleOAuthEnabled}
+                  googleConfigured={googleOAuthEnabled}
+                  smtpConfigured={smtpConfigured}
+                  localAdminEmail={localAdminEmail}
                   onAdd={userDirectory.add}
+                  onResetPassword={userDirectory.resetTemporaryPassword}
                   onRemove={userDirectory.remove}
                   onSetRole={userDirectory.setRole}
                 />

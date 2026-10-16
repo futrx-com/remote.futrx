@@ -8,6 +8,7 @@ import (
 	"time"
 
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileaccountcredentials"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
@@ -38,6 +39,10 @@ func TestProviderLoginGate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("init session registry store: %v", err)
 	}
+	accountCredentialStore, err := fileaccountcredentials.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("init account credentials store: %v", err)
+	}
 	auth, err := serviceauth.New(
 		context.Background(),
 		fileauth.New(t.TempDir()),
@@ -47,6 +52,7 @@ func TestProviderLoginGate(t *testing.T) {
 		[]byte("test-session-key"),
 		twoFactorStore,
 		sessionRegistryStore,
+		accountCredentialStore,
 		serviceauth.Options{
 			PendingLoginTTL:     5 * time.Minute,
 			EnrollmentTTL:       10 * time.Minute,

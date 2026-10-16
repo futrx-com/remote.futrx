@@ -148,3 +148,49 @@ func TestUserRemovalCleanupToleratesUnwiredSecurityStores(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUserRemovalCleanupDeletesTheInvitedPasswordCredential(t *testing.T) {
+	credentials := &cleanupSecurityStateStub{emails: map[string]bool{
+		"member@example.com": true,
+		"other@example.com":  true,
+	}}
+	cleanup := userRemovalCleanup{credentials: credentials}
+
+	if err := cleanup.CleanupRemovedUser(context.Background(), "member@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if credentials.emails["member@example.com"] {
+		t.Fatal("invited password credential survived user removal")
+	}
+	if !credentials.emails["other@example.com"] {
+		t.Fatal("cleanup removed another account's credential")
+	}
+}
+
+func TestUserRemovalCleanupReportsCredentialFailureWithoutSkippingTheRest(t *testing.T) {
+	sessionRegistry := &cleanupSecurityStateStub{emails: map[string]bool{"member@example.com": true}}
+	cleanup := userRemovalCleanup{
+		sessionRegistry: sessionRegistry,
+		credentials:     &cleanupSecurityStateStub{err: errors.New("disk full")},
+	}
+
+	err := cleanup.CleanupRemovedUser(context.Background(), "member@example.com")
+	if err == nil || !strings.Contains(err.Error(), "remove account credential") {
+		t.Fatalf("expected the credential failure to surface, got %v", err)
+	}
+	if sessionRegistry.emails["member@example.com"] {
+		t.Fatal("session registry cleanup was skipped after the credential delete failed")
+	}
+}
+
+// Without an auth service there is no credential to delete, and the cleanup
+// that holds the binding must not panic before it is bound.
+func TestAccountCredentialRemovalIsANoOpUntilBound(t *testing.T) {
+	var unset *accountCredentialRemoval
+	if err := unset.Delete(context.Background(), "member@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&accountCredentialRemoval{}).Delete(context.Background(), "member@example.com"); err != nil {
+		t.Fatal(err)
+	}
+}
