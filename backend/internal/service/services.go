@@ -465,7 +465,14 @@ type chatProjectResolver struct {
 }
 
 func (r chatProjectResolver) WorkspaceForProject(ctx context.Context, id servicechat.ProjectID) (string, error) {
-	return r.projects.WorkspaceForProject(ctx, serviceproject.ID(id))
+	cwd, err := r.projects.WorkspaceForProject(ctx, serviceproject.ID(id))
+	// The chat service has its own name for a project that is gone, so it can
+	// tell that apart from a workspace it failed to read without importing the
+	// project package.
+	if errors.Is(err, serviceproject.ErrNotFound) {
+		return "", servicechat.ErrProjectNotFound
+	}
+	return cwd, err
 }
 
 type chatTmuxResolver struct {
