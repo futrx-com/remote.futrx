@@ -16,7 +16,7 @@ func TestTranscriptContentPreservesByteOffsetBoundaries(t *testing.T) {
 		{Seq: 1, Type: "tool_use_end", TurnID: "turn", ID: "tool", Output: output},
 	})
 	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
+	if _, err := jsonlIndexForTest(t, store).syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
 		t.Fatal(err)
 	}
 	page, err := store.ReadTranscriptPage(context.Background(), "abcd", servicechat.TranscriptPageQuery{})
@@ -64,10 +64,10 @@ func TestTranscriptPageDecodesOnlyItemsInsideBudget(t *testing.T) {
 		{Seq: 2, Type: "user", TurnID: "newer", Text: "newer prompt"},
 	})
 	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
+	if _, err := jsonlIndexForTest(t, store).syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.index.db.Exec(`UPDATE chat_transcript_items SET payload_json = ? WHERE chat_id = ? AND start_seq = ?`,
+	if _, err := jsonlIndexForTest(t, store).db.Exec(`UPDATE chat_transcript_items SET payload_json = ? WHERE chat_id = ? AND start_seq = ?`,
 		[]byte("invalid JSON"), "abcd", 1); err != nil {
 		t.Fatal(err)
 	}

@@ -5,8 +5,9 @@
 // installs that upgraded into the usage feature with years of chat history:
 // run it once with the service stopped, then start the service again.
 //
-//	usage-rebuild                       # uses $DATA_DIR
+//	usage-rebuild                       # uses $DATA_DIR and $CHAT_STORE
 //	usage-rebuild -data-dir /opt/remote.futrx/data
+//	usage-rebuild -chat-store jsonl     # read events.jsonl instead of chats.sqlite
 //	usage-rebuild -dry-run              # report only, write nothing
 //
 // The rebuild is idempotent, so running it twice is harmless.
@@ -34,16 +35,22 @@ func main() {
 		defaultDataDir = "/opt/remote.futrx/data"
 	}
 	dataDir := flag.String("data-dir", defaultDataDir, "Remote data directory (DATA_DIR)")
+	chatStore := flag.String("chat-store", os.Getenv("CHAT_STORE"),
+		"chat event backend: jsonl or sqlite (CHAT_STORE)")
 	dryRun := flag.Bool("dry-run", false, "report what would be written without touching the ledger")
 	flag.Parse()
 
-	if err := run(context.Background(), *dataDir, *dryRun); err != nil {
+	if err := run(context.Background(), *dataDir, *chatStore, *dryRun); err != nil {
 		log.Fatalf("usage-rebuild: %v", err)
 	}
 }
 
-func run(ctx context.Context, dataDir string, dryRun bool) error {
-	chats, err := filechat.New(dataDir)
+func run(ctx context.Context, dataDir, chatStore string, dryRun bool) error {
+	backend, err := filechat.ParseBackend(chatStore)
+	if err != nil {
+		return err
+	}
+	chats, err := filechat.NewWithBackend(dataDir, backend)
 	if err != nil {
 		return fmt.Errorf("open chat store: %w", err)
 	}

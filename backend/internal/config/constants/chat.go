@@ -24,6 +24,10 @@ const (
 	// StartupChatIndexWarmupChatLimit bounds the recent chats indexed during
 	// startup. It counts chats, not transcript turns.
 	StartupChatIndexWarmupChatLimit = 10
+	// DefaultChatStoreBackend is the chat event storage engine selected when
+	// CHAT_STORE is unset. The service and every offline reader must resolve
+	// to the same engine, so this is the single source of that default.
+	DefaultChatStoreBackend = "sqlite"
 	// PromptInteractionResponseQueueCapacity bounds browser answers waiting for
 	// the active provider turn to consume them.
 	PromptInteractionResponseQueueCapacity = 64

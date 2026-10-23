@@ -5,6 +5,21 @@ chat logs without rescanning an entire conversation on every request. The
 SQLite database is a disposable, durable index over JSONL byte ranges; it is
 not a second copy of the transcript.
 
+## Scope
+
+This guide describes the `CHAT_STORE=jsonl` engine, where
+`DATA_DIR/transcript-index.sqlite` indexes byte ranges of each authoritative
+`events.jsonl`. In the default `CHAT_STORE=sqlite` engine that database is
+never opened: `DATA_DIR/chats.sqlite` is itself the authoritative event log,
+and its compacted transcript projection, readiness state, and payload byte
+counts live in the same file. Both engines share the warm-up breadth, the
+page sizes, and the read-time projection described below; only where the
+projection is stored, and how completeness is decided, differ. In SQLite mode
+completeness means the projection's last sequence and projected payload bytes
+match every event stored for the chat and the JSONL archive import has
+finished, rather than a file size, modification time, and prefix fingerprint
+match.
+
 ## Mental model
 
 | Concern | Value | Meaning |

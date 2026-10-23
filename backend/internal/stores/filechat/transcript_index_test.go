@@ -67,12 +67,12 @@ func TestTranscriptIndexBackfillsExistingChatAndReadsBoundedTurnWindow(t *testin
 	}
 
 	var indexedEvents, indexedTurns int
-	if err := store.index.db.QueryRow(
+	if err := jsonlIndexForTest(t, store).db.QueryRow(
 		"SELECT count(*) FROM chat_event_offsets WHERE chat_id = ?", "abcd",
 	).Scan(&indexedEvents); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.index.db.QueryRow(
+	if err := jsonlIndexForTest(t, store).db.QueryRow(
 		"SELECT count(*) FROM chat_transcript_turns WHERE chat_id = ?", "abcd",
 	).Scan(&indexedTurns); err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestTranscriptIndexBackfillsExistingChatAndReadsBoundedTurnWindow(t *testin
 		t.Fatalf("indexed events = %d, turns = %d", indexedEvents, indexedTurns)
 	}
 
-	locations, err := store.index.transcriptLocations(context.Background(), "abcd", 0, 1)
+	locations, err := jsonlIndexForTest(t, store).transcriptLocations(context.Background(), "abcd", 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestTranscriptIndexIncrementallyRepairsOutOfBandAppend(t *testing.T) {
 		t.Fatalf("events after indexed cursor = %#v", after)
 	}
 
-	state, found, err := store.index.readState(context.Background(), "abcd")
+	state, found, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestTranscriptIndexPersistsAcrossStoreRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	state, found, err := store.index.readState(context.Background(), "abcd")
+	state, found, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestTranscriptIndexPersistsAcrossStoreRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	reopened := newIndexedTestStore(t, root)
-	state, found, err = reopened.index.readState(context.Background(), "abcd")
+	state, found, err = jsonlIndexForTest(t, reopened).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestTranscriptIndexPersistsAcrossStoreRestart(t *testing.T) {
 		t.Fatalf("reopened page = %#v", page)
 	}
 	var turns int
-	if err := reopened.index.db.QueryRow(
+	if err := jsonlIndexForTest(t, reopened).db.QueryRow(
 		"SELECT count(*) FROM chat_transcript_turns WHERE chat_id = ?", "abcd",
 	).Scan(&turns); err != nil {
 		t.Fatal(err)
@@ -274,7 +274,7 @@ func TestWarmRecentChatIndexesHonorsRecencyAndLimit(t *testing.T) {
 		{id: "0001", want: true},
 		{id: "0002", want: true},
 	} {
-		_, found, err := store.index.readState(context.Background(), test.id)
+		_, found, err := jsonlIndexForTest(t, store).readState(context.Background(), test.id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -420,13 +420,13 @@ func TestTranscriptIndexRebuildsObsoleteSchema(t *testing.T) {
 
 	store := newIndexedTestStore(t, root)
 	var version int
-	if err := store.index.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+	if err := jsonlIndexForTest(t, store).db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	if version != chatEventIndexSchemaVersion {
 		t.Fatalf("schema version = %d, want %d", version, chatEventIndexSchemaVersion)
 	}
-	if _, _, err := store.index.readState(context.Background(), "abcd"); err != nil {
+	if _, _, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd"); err != nil {
 		t.Fatalf("read rebuilt schema: %v", err)
 	}
 }
@@ -450,7 +450,7 @@ func TestTranscriptIndexRebuildsIncompleteCurrentSchema(t *testing.T) {
 	}
 
 	store := newIndexedTestStore(t, root)
-	current, err := store.index.hasCurrentSchema()
+	current, err := jsonlIndexForTest(t, store).hasCurrentSchema()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,8 +479,8 @@ func TestTranscriptIndexFilesArePrivate(t *testing.T) {
 			}
 			t.Fatal(err)
 		}
-		if got := info.Mode().Perm(); got != chatEventIndexFileMode {
-			t.Fatalf("%s mode = %o, want %o", filepath.Base(path), got, chatEventIndexFileMode)
+		if got := info.Mode().Perm(); got != sqliteFileMode {
+			t.Fatalf("%s mode = %o, want %o", filepath.Base(path), got, sqliteFileMode)
 		}
 	}
 }
@@ -494,7 +494,7 @@ func TestTranscriptIndexRecoversCorruptDerivedDatabase(t *testing.T) {
 
 	store := newIndexedTestStore(t, root)
 	var version int
-	if err := store.index.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+	if err := jsonlIndexForTest(t, store).db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
 	if version != chatEventIndexSchemaVersion {
@@ -516,7 +516,7 @@ func TestTranscriptIndexRefusesSymlinkAndFallsBack(t *testing.T) {
 	})
 
 	store := newIndexedTestStore(t, root)
-	if store.index.unavailable == nil {
+	if jsonlIndexForTest(t, store).unavailable == nil {
 		t.Fatal("symlinked index unexpectedly opened")
 	}
 	page, err := store.ReadEventsPage(
@@ -558,7 +558,7 @@ func TestTranscriptIndexRebuildsWhenAnIncompleteTailGrows(t *testing.T) {
 	if len(page.Events) != 0 || page.LastSeq != 0 {
 		t.Fatalf("incomplete page = %#v", page)
 	}
-	state, found, err := store.index.readState(context.Background(), "abcd")
+	state, found, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -589,7 +589,7 @@ func TestTranscriptIndexRebuildsWhenAnIncompleteTailGrows(t *testing.T) {
 	if len(page.Events) != 1 || page.Events[0].Seq != 1 || page.Events[0].Text != "hello" {
 		t.Fatalf("completed page = %#v", page)
 	}
-	state, found, err = store.index.readState(context.Background(), "abcd")
+	state, found, err = jsonlIndexForTest(t, store).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -606,10 +606,10 @@ func TestTranscriptIndexDoesNotPublishCanceledBuild(t *testing.T) {
 	store := newIndexedTestStore(t, root)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := store.index.syncChat(ctx, "abcd", store.eventsPath("abcd")); !errors.Is(err, context.Canceled) {
+	if _, err := jsonlIndexForTest(t, store).syncChat(ctx, "abcd", store.eventsPath("abcd")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("sync error = %v, want context.Canceled", err)
 	}
-	if _, found, stateErr := store.index.readState(context.Background(), "abcd"); stateErr != nil || found {
+	if _, found, stateErr := jsonlIndexForTest(t, store).readState(context.Background(), "abcd"); stateErr != nil || found {
 		t.Fatalf("canceled build state found = %t, error = %v", found, stateErr)
 	}
 }
@@ -788,7 +788,7 @@ func TestTranscriptIndexRebuildsAfterRewindAndCleansUpAfterDelete(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.TruncateEventsBefore(context.Background(), "abcd", 30); err != nil {
+	if err := store.TruncateEventsBefore(context.Background(), "abcd", 30); err != nil {
 		t.Fatal(err)
 	}
 
@@ -800,7 +800,7 @@ func TestTranscriptIndexRebuildsAfterRewindAndCleansUpAfterDelete(t *testing.T) 
 		t.Fatalf("rewound indexed window = %#v", window)
 	}
 	var turns int
-	if err := store.index.db.QueryRow(
+	if err := jsonlIndexForTest(t, store).db.QueryRow(
 		"SELECT count(*) FROM chat_transcript_turns WHERE chat_id = ?", "abcd",
 	).Scan(&turns); err != nil {
 		t.Fatal(err)
@@ -812,7 +812,7 @@ func TestTranscriptIndexRebuildsAfterRewindAndCleansUpAfterDelete(t *testing.T) 
 	if err := store.Delete(context.Background(), "abcd"); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := store.index.readState(context.Background(), "abcd"); err != nil || found {
+	if _, found, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd"); err != nil || found {
 		t.Fatalf("deleted chat index state found = %t, error = %v", found, err)
 	}
 }
@@ -842,14 +842,14 @@ func TestTranscriptIndexFailuresFallBackToCanonicalEventLog(t *testing.T) {
 	if appended.Seq != 3 {
 		t.Fatalf("fallback append sequence = %d, want 3", appended.Seq)
 	}
-	state, found, err := store.index.readState(context.Background(), "abcd")
+	state, found, err := jsonlIndexForTest(t, store).readState(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !found || state.eventOrdinal != 3 || state.lastSeq != 3 {
 		t.Fatalf("refreshed index state = %#v, found = %t", state, found)
 	}
-	if _, err := store.index.db.Exec(`
+	if _, err := jsonlIndexForTest(t, store).db.Exec(`
 		UPDATE chat_event_offsets
 		SET byte_length = ?
 		WHERE chat_id = ? AND event_ordinal = ?`, maxEventRecordBytes+3, "abcd", 3,
@@ -878,7 +878,7 @@ func TestTranscriptIndexFailuresFallBackToCanonicalEventLog(t *testing.T) {
 		t.Fatalf("fallback events after cursor = %#v", after)
 	}
 	var repairedLength int64
-	if err := store.index.db.QueryRow(`
+	if err := jsonlIndexForTest(t, store).db.QueryRow(`
 		SELECT byte_length
 		FROM chat_event_offsets
 		WHERE chat_id = ? AND event_ordinal = ?`, "abcd", 3,

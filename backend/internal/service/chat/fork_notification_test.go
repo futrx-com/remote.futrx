@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -13,6 +14,20 @@ type forkRepository struct {
 	copied  []Event
 	source  Meta
 	created Meta
+	reads   int
+}
+
+// recordingForkCopier stands in for the store's bulk copy capability.
+type recordingForkCopier struct {
+	from  ID
+	to    ID
+	count int
+	err   error
+}
+
+func (c *recordingForkCopier) CopyEventStream(_ context.Context, from, to ID) (int, error) {
+	c.from, c.to = from, to
+	return c.count, c.err
 }
 
 type forkSessionPolicy map[string]bool
@@ -115,6 +130,7 @@ func (r *forkRepository) Get(context.Context, ID) (Meta, error) {
 }
 
 func (r *forkRepository) ReadEvents(context.Context, ID) ([]Event, error) {
+	r.reads++
 	return append([]Event(nil), r.events...), nil
 }
 
@@ -229,3 +245,47 @@ func TestForkAppendsEveryHistoryEventThroughTheCopiedEventPort(t *testing.T) {
 		}
 	}
 }
+
+// TestForkStreamsHistoryWhenAnEventStreamCopierIsConfigured pins the bulk
+// path: the whole conversation is handed to the copier instead of being read
+// into memory and reappended event by event.
+func TestForkStreamsHistoryWhenAnEventStreamCopierIsConfigured(t *testing.T) {
+	repo := &forkRepository{events: []Event{
+		{Seq: 1, Type: "user", Text: "question"},
+		{Seq: 2, Type: "complete"},
+	}}
+	copier := &recordingForkCopier{count: len(repo.events)}
+	service := New(repo, nil, nil, nil,
+		WithCopiedEventAppender(repo),
+		WithEventStreamCopier(copier),
+	)
+
+	forked, err := service.Fork(context.Background(), "deadbeef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if copier.from != "deadbeef" || copier.to != forked.ID || copier.to != "fadecafe" {
+		t.Fatalf("copied %s onto %s, want deadbeef onto %s",
+			copier.from, copier.to, forked.ID)
+	}
+	if repo.reads != 0 {
+		t.Fatalf("source history was loaded whole %d time(s)", repo.reads)
+	}
+	if len(repo.copied) != 0 {
+		t.Fatalf("copied %d events through the sequential port", len(repo.copied))
+	}
+}
+
+// TestForkFailsWhenTheEventStreamCopyFails keeps a partially copied
+// conversation from being reported as a successful fork.
+func TestForkFailsWhenTheEventStreamCopyFails(t *testing.T) {
+	repo := &forkRepository{}
+	copier := &recordingForkCopier{err: errForkCopyFailed}
+	service := New(repo, nil, nil, nil, WithEventStreamCopier(copier))
+
+	if _, err := service.Fork(context.Background(), "deadbeef"); !errors.Is(err, errForkCopyFailed) {
+		t.Fatalf("fork error = %v, want %v", err, errForkCopyFailed)
+	}
+}
+
+var errForkCopyFailed = errors.New("copy failed")
