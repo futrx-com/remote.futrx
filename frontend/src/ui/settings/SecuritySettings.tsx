@@ -3,6 +3,7 @@ import { SecurityAlertBanner } from "./security/SecurityAlertBanner";
 import { SecurityPreferenceToggle } from "./security/SecurityPreferenceToggle";
 import { SessionHistoryList } from "./security/SessionHistoryList";
 import { TwoFactorSettings } from "./security/TwoFactorSettings";
+import { PasswordChangeForm } from "./security/PasswordChangeForm";
 import { Loader } from "../primitives/icons";
 
 export function SecuritySettings({ controller }: { controller: SecuritySettingsController }) {
@@ -23,6 +24,12 @@ export function SecuritySettings({ controller }: { controller: SecuritySettingsC
         <SecurityAlertBanner
           alert={settings.securityAlert}
           onAck={controller.acknowledgeAlert}
+        />
+      )}
+      {settings?.passwordSignIn && (
+        <PasswordChangeForm
+          twoFactorEnabled={settings.twoFactorEnabled}
+          changePassword={controller.changePassword}
         />
       )}
       <TwoFactorSettings controller={controller} />

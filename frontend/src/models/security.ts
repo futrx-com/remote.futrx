@@ -27,6 +27,7 @@ export interface SecurityAlertSummary {
 // sign-in history, recovery-code alert - the last only meaningful/settable
 // while 2FA is enabled).
 export interface SecuritySettings {
+  passwordSignIn: boolean;
   twoFactorEnabled: boolean;
   recoveryCodesRemaining: number;
   singleSessionEnabled: boolean;
@@ -48,3 +49,9 @@ export type SecurityPreferencesInput = Partial<
     "singleSessionEnabled" | "historyEnabled" | "recoveryCodeAlertEnabled"
   >
 >;
+
+export interface PasswordChangeInput {
+  currentPassword: string;
+  newPassword: string;
+  code?: string;
+}

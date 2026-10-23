@@ -13,6 +13,9 @@ type LocalAdminStore interface {
 	// DeleteLocalAdmin removes only the credential that exactly matches the
 	// expected value. It is reserved for compensating a failed claim.
 	DeleteLocalAdmin(context.Context, LocalAdminCredential) error
+	// ReplaceLocalAdmin atomically replaces only a credential matching expected.
+	// A missing or changed credential returns ErrLocalAdminCredentialChanged.
+	ReplaceLocalAdmin(ctx context.Context, expected, next LocalAdminCredential) error
 }
 
 // SetupTokenStore persists the single first-boot setup token. SetupToken

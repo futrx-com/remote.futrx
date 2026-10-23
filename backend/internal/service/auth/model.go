@@ -16,6 +16,8 @@ const (
 
 var ErrOAuthConfigNotFound = errors.New("oauth config not found")
 
+var ErrSessionRevoked = errors.New("session revoked by a password change")
+
 var (
 	ErrLocalAdminAlreadyClaimed    = errors.New("local admin is already configured")
 	ErrLocalAdminCredentialChanged = errors.New("local admin credential no longer matches")
@@ -178,16 +180,18 @@ type SecurityPreferences struct {
 // persists: preferences, the currently active session id (single-session
 // enforcement), bounded history, and any pending alert.
 type SessionRegistryRecord struct {
-	Preferences     SecurityPreferences `json:"preferences"`
-	ActiveSessionID string              `json:"activeSessionId,omitempty"`
-	History         SessionHistory      `json:"history"`
-	Alert           *SecurityAlert      `json:"alert,omitempty"`
+	SessionsValidAfter int64               `json:"sessionsValidAfter,omitempty"`
+	Preferences        SecurityPreferences `json:"preferences"`
+	ActiveSessionID    string              `json:"activeSessionId,omitempty"`
+	History            SessionHistory      `json:"history"`
+	Alert              *SecurityAlert      `json:"alert,omitempty"`
 }
 
 // SecuritySummary is the aggregate view the Security settings tab (and its
 // GET /api/me/security endpoint) renders: 2FA status, the three independent
 // SecurityPreferences flags, sign-in history, and any pending alert.
 type SecuritySummary struct {
+	PasswordSignIn           bool            `json:"passwordSignIn"`
 	TwoFactorEnabled         bool            `json:"twoFactorEnabled"`
 	RecoveryCodesRemaining   int             `json:"recoveryCodesRemaining"`
 	SingleSessionEnabled     bool            `json:"singleSessionEnabled"`
