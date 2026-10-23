@@ -74,6 +74,7 @@ class WorkspaceDataProjector {
         left.lastMessageAt !== right.lastMessageAt ||
         left.lastReadAt !== right.lastReadAt ||
         left.running !== right.running ||
+        !!left.awaitingAnswer !== !!right.awaitingAnswer ||
         left.model !== right.model ||
         left.mode !== right.mode ||
         left.reasoningEffort !== right.reasoningEffort ||

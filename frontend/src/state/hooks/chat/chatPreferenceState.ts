@@ -17,6 +17,7 @@ class ChatPreferenceState {
     const selectedSkills = chat.selectedSkills ?? [];
     return {
       ...baseMeta,
+      awaitingAnswer: !!chat.awaitingAnswer,
       // Workspace chat upserts are the live cross-client source. Prefer their
       // preference fields over the one-time detail fetch so a selection made
       // on another browser is reflected while this chat remains open.
