@@ -130,7 +130,8 @@ The trusted UI extension and settings backend remain privileged application
 code. The LXD bridge still permits direct connections from sibling containers
 to the editor socket; origin isolation does not provide container network isolation.
 
-Settings and launch regression checks: `node --test applications/code-server/infra/*.test.mjs`.
+Settings and launch regression checks:
+`node --test applications/code-server/infra/*.test.mjs applications/code-server/ui/scripts/*.test.mjs`.
 The application uses a regular service without idle shutdown and retains the
 subdomain-aware file-launch page without resetting settings.
 In a disposable project, change a setting directly in Code Server, upgrade the
@@ -164,3 +165,6 @@ its reviewable sources so an outdated archive fails validation.
 
 Editor URL parsing and validation live in `ui/scripts/editorUrls.js`;
 `ui/scripts/main.js` registers the editor actions and file opener.
+`ui/scripts/ideWindow.js` opens the editor under a stable window name, so the
+IDE icon focuses the editor that is already open instead of opening another
+copy of it in a new tab.

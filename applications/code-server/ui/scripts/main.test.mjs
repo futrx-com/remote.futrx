@@ -30,9 +30,41 @@ test("editor icon is contributed only for a project workspace", () => {
     assert.equal(button.when({ cwd: "/var/lib/remote/projects/example/workspace" }), false);
     button.onClick({ projectId: "p1", cwd: "/var/lib/remote/projects/example/workspace" });
     assert.equal(globalThis.opened[0], "https://code--example.remote.example.test/?folder=%2Fworkspace");
+    assert.equal(globalThis.opened[1], "futrx-ide-code--example.remote.example.test");
   } finally {
     delete globalThis.window;
     delete globalThis.opened;
+  }
+});
+
+test("clicking the editor icon again focuses the editor instead of opening a new one", () => {
+  let button;
+  activate({
+    application: { id: "code-server", web: { subdomain: "code" } },
+    backend: { instances: [{ instanceId: "abcdef123456", scope: "project", projectId: "p1" }] },
+    slots: { chatHeaderActions: "chat.header.actions", applicationCardActions: "applications.card.actions" },
+    files: { registerOpener: () => {} },
+    ui: {
+      addIconButton: (_slot, contribution) => { button = contribution; },
+      addButton: () => {},
+    },
+  });
+  const editor = { closed: false, opener: {}, focused: 0, focus() { this.focused += 1; } };
+  const calls = [];
+  globalThis.window = {
+    location: { origin: "https://remote.example.test" },
+    open: (...args) => { calls.push(args); return editor; },
+  };
+  try {
+    const context = { projectId: "p1", cwd: "/var/lib/remote/projects/example/workspace" };
+    button.onClick(context);
+    button.onClick(context);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], "https://code--example.remote.example.test/?folder=%2Fworkspace");
+    assert.equal(editor.focused, 1);
+    assert.equal(editor.opener, null);
+  } finally {
+    delete globalThis.window;
   }
 });
 

@@ -1,4 +1,5 @@
 import { fileIdeUrl, workspaceIdeUrl } from "./editorUrls.js";
+import { openIdeWindow } from "./ideWindow.js";
 import { openSettingsForm } from "./settingsForm.js";
 
 const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
@@ -26,7 +27,10 @@ export default function activate(remote) {
       const url = workspaceIdeUrl(
         context.cwd, isInstalled(context.projectId), remote.application.web?.subdomain,
       );
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      // The editor is opened under a stable window name, so clicking the icon
+      // again focuses the editor that is already open instead of stacking
+      // another copy of it in a new tab.
+      if (url) openIdeWindow(url);
     },
   });
 
