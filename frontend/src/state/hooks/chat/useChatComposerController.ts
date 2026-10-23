@@ -5,6 +5,7 @@ import { useConfirm } from "../../context/ConfirmContext";
 import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
 import { chatComposerSessionStore } from "../../stores/chat/composerSessionStore";
 import { promptQueueState } from "./promptQueueState";
+import { runChatRewind } from "./chatRewindFlow";
 import { useAttachmentUpload } from "./useAttachmentUpload";
 import { useAutosizeTextarea } from "./useAutosizeTextarea";
 import { useDragUpload } from "./useDragUpload";
@@ -32,7 +33,7 @@ export function useChatComposerController({
   sendPrompt: (text: string, clientId?: string) => boolean;
   promptOutcome: PromptOutcome | null;
   rewind: (beforeT: number) => Promise<unknown>;
-  refreshMeta: () => Promise<void>;
+  refreshMeta: (throwOnError?: boolean) => Promise<void>;
   attachmentBasePath: string;
   /**
    * Carried through to the upload hook so an extension can tell which
@@ -76,30 +77,23 @@ export function useChatComposerController({
   }, [chatId]);
 
   async function handleRewind(t: number, promptText: string) {
-    if (status === "streaming") {
-      alert("Cancel the current run before rewinding this chat.");
-      return;
-    }
-    const confirmed = await confirm({
-      title: "Rewind chat",
-      description: "This action cannot be undone.",
-      message: "Every message from this prompt forward is removed, and the prompt is put back in the composer.",
-      confirmLabel: "Rewind",
+    await runChatRewind({
+      status,
+      beforeT: t,
+      promptText,
+      confirm,
+      rewind,
+      clearQueuedPrompts: queue.clearQueuedPrompts,
+      restorePrompt: setText,
+      refreshMeta,
+      onComplete: () => {
+        scroll.unlockAutoScroll();
+        setTimeout(() => {
+          scroll.jumpToBottom();
+          focusInput();
+        }, 0);
+      },
     });
-    if (!confirmed) return;
-    try {
-      await rewind(t);
-      queue.clearQueuedPrompts();
-      setText(promptText);
-      await refreshMeta();
-      scroll.unlockAutoScroll();
-      setTimeout(() => {
-        scroll.jumpToBottom();
-        focusInput();
-      }, 0);
-    } catch (rewindError) {
-      alert("rewind failed: " + (rewindError as Error).message);
-    }
   }
 
   function handlePaste(event: ClipboardEvent) {
