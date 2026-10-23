@@ -1,6 +1,7 @@
 import { useLocalAuthController } from "../../state/hooks/auth/useLocalAuthController";
 import type { LoginMode } from "../../models/auth";
 import { Key, Loader, MessageSquare } from "../primitives/icons";
+import { InitialPasswordStep } from "./InitialPasswordStep";
 import { TwoFactorChallengeStep } from "./TwoFactorChallengeStep";
 
 export function LoginScreen({
@@ -32,6 +33,7 @@ export function LoginScreen({
     submit,
     submitting,
     challenge,
+    initialPassword,
   } = useLocalAuthController({ mode, adminEmail, onSuccess });
   // A first-boot claim is authorised solely by the token printed to the
   // server terminal. Without one there is nothing to submit, so offer the
@@ -52,7 +54,24 @@ export function LoginScreen({
       ? "Create a local password so Google is no longer required for administrator access."
       : !localAdminConfigured
         ? "The existing administrator must sign in with Google once, then create a local password."
-        : "Administrators use their local password. Invited users sign in with Google.";
+        : "Sign in with your email and password, or with Google if your administrator set that up.";
+
+  if (initialPassword.pending) {
+    return (
+      <div class="app-shell overflow-y-auto grid place-items-center bg-app text-ink-100 p-5">
+        <InitialPasswordStep
+          newPassword={initialPassword.newPassword}
+          confirmation={initialPassword.confirmation}
+          error={initialPassword.error}
+          submitting={initialPassword.submitting}
+          onNewPasswordChange={initialPassword.setNewPassword}
+          onConfirmationChange={initialPassword.setConfirmation}
+          onSubmit={initialPassword.submit}
+          onBack={initialPassword.cancel}
+        />
+      </div>
+    );
+  }
 
   if (challenge.pending) {
     return (
@@ -85,7 +104,7 @@ export function LoginScreen({
         {!awaitingSetupToken && (setup || localAdminConfigured) && (
           <form onSubmit={submit} class="space-y-3">
             <label class="block space-y-1.5">
-              <span class="text-xs text-ink-300">Admin email</span>
+              <span class="text-xs text-ink-300">{mode === "login" ? "Email" : "Admin email"}</span>
               <input
                 type="email"
                 value={email}
@@ -125,7 +144,7 @@ export function LoginScreen({
               class="btn btn-primary btn-lg btn-block disabled:opacity-50 inline-flex items-center justify-center gap-2"
             >
               {submitting && <Loader class="w-4 h-4 animate-spin" />}
-              {setup ? "Create admin account" : "Sign in as administrator"}
+              {setup ? "Create admin account" : "Sign in"}
             </button>
           </form>
         )}

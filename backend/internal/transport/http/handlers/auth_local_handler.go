@@ -20,6 +20,8 @@ type localAuthHandler struct {
 func (h *localAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/auth/local/claim", h.claim)
 	mux.HandleFunc("/auth/local/login", h.login)
+	mux.HandleFunc("/auth/local/password/initial", h.initialPassword)
+	mux.HandleFunc("/auth/local/password/cancel", h.cancelPasswordChange)
 }
 
 func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +107,11 @@ func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.logins.Success(key)
+	if result.PasswordChangeRequired {
+		setPasswordChangeCookie(w, h.auth, result.PasswordChangeToken)
+		httptransport.SendJSON(w, http.StatusOK, map[string]bool{"passwordChangeRequired": true})
+		return
+	}
 	if !result.Completed {
 		setPendingCookie(w, h.auth, result.PendingToken)
 		httptransport.SendJSON(w, http.StatusOK, map[string]bool{"twoFactorRequired": true})
@@ -112,6 +119,69 @@ func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 	setSessionCookie(w, h.auth, result.CookieValue)
 	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), result.CookieValue))
+}
+
+// initialPassword accepts the new password of an account that signed in with
+// a temporary one. It needs the password-change cookie, which exists only
+// between that sign-in and this call. A bad or stale token is a 400, not a
+// 401: the SPA treats every 401 as "signed out" and would drop the user from
+// the form with no explanation.
+func (h *localAuthHandler) initialPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	key := localClientIP(r) + "|password-initial"
+	if !h.logins.Allow(key) {
+		w.Header().Set("Retry-After", "300")
+		httptransport.SendErr(w, http.StatusTooManyRequests, "too many attempts; try again in a few minutes")
+		return
+	}
+	var body struct {
+		NewPassword string `json:"newPassword"`
+	}
+	if err := readJSONBody(r, &body); err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	result, err := h.auth.CompleteInitialPasswordChange(r.Context(), passwordChangeCookieValue(r), body.NewPassword, localClientIP(r), r.UserAgent())
+	if err != nil {
+		switch {
+		case errors.Is(err, serviceauth.ErrInvalidPasswordChange):
+			h.logins.Failure(key)
+			clearPasswordChangeCookie(w)
+			httptransport.SendErr(w, http.StatusBadRequest, "this sign-in step expired, sign in again")
+		case errors.Is(err, serviceauth.ErrPasswordReuse),
+			errors.Is(err, serviceauth.ErrPasswordTooShort),
+			errors.Is(err, serviceauth.ErrPasswordTooLong):
+			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, serviceauth.ErrPasswordNotChangedSessionsRevoked),
+			errors.Is(err, serviceauth.ErrPasswordChangedSessionFailed):
+			httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
+		default:
+			httptransport.SendErr(w, http.StatusInternalServerError, serviceauth.ErrPasswordNotChanged.Error())
+		}
+		return
+	}
+	h.logins.Success(key)
+	clearPasswordChangeCookie(w)
+	if !result.Completed {
+		setPendingCookie(w, h.auth, result.PendingToken)
+		httptransport.SendJSON(w, http.StatusOK, map[string]bool{"twoFactorRequired": true})
+		return
+	}
+	setSessionCookie(w, h.auth, result.CookieValue)
+	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), result.CookieValue))
+}
+
+// cancelPasswordChange abandons the set-password step ("back to sign-in").
+func (h *localAuthHandler) cancelPasswordChange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	clearPasswordChangeCookie(w)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 const localLoginWindow = 5 * time.Minute

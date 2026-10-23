@@ -16,6 +16,8 @@ const (
 
 var ErrOAuthConfigNotFound = errors.New("oauth config not found")
 
+var ErrSessionRevoked = errors.New("session revoked by a password change")
+
 var (
 	ErrLocalAdminAlreadyClaimed    = errors.New("local admin is already configured")
 	ErrLocalAdminCredentialChanged = errors.New("local admin credential no longer matches")
@@ -25,6 +27,7 @@ var (
 	ErrPasswordTooLong             = errors.New("password is too long")
 	ErrInvalidOAuthConfig          = errors.New("Google OAuth client ID and client secret are required")
 	ErrGoogleOAuthDisabled         = errors.New("Google sign-in is not configured")
+	ErrGoogleSignInRequired        = errors.New("configure Google sign-in before adding users")
 	ErrLocalAdminPasswordOnly      = errors.New("the local administrator must sign in with a password")
 )
 
@@ -36,6 +39,18 @@ type OAuthConfig struct {
 type LocalAdminCredential struct {
 	Email        string `json:"email"`
 	PasswordHash string `json:"passwordHash"`
+}
+
+// AccountCredential is the password credential of an invited account, keyed
+// by normalized email in an AccountCredentialStore. MustChangePassword stays
+// true from the moment a temporary password is issued until its owner picks a
+// new one. Version grows by one on every set, which is what makes a pending
+// password-change token single-use.
+type AccountCredential struct {
+	PasswordHash       string    `json:"passwordHash"`
+	MustChangePassword bool      `json:"mustChangePassword"`
+	Version            int64     `json:"version"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 // ClaimRequest carries the inputs of a local-admin claim. They are all
@@ -104,6 +119,27 @@ type Status struct {
 	IsAdmin              bool           `json:"isAdmin,omitempty"`
 	IsRegistered         bool           `json:"isRegistered,omitempty"`
 	SecurityAlert        *SecurityAlert `json:"securityAlert,omitempty"`
+}
+
+const (
+	// subjectLocalAdmin is the session subject of the password-only local
+	// administrator.
+	subjectLocalAdmin = "local-admin"
+	// subjectPassword is the session subject of an invited account signed in
+	// with its own password. Every other subject is a Google account
+	// identifier, which is numeric and so can never collide with these.
+	subjectPassword = "password"
+)
+
+// signInMethodForSubject infers how a session's owner signed in when no fresh
+// credential check is available: the local administrator and invited
+// password accounts used a password and every other subject came through
+// Google.
+func signInMethodForSubject(subject string) SignInMethod {
+	if subject == subjectLocalAdmin || subject == subjectPassword {
+		return SignInMethodPassword
+	}
+	return SignInMethodGoogle
 }
 
 // SignInMethod records which factor(s) completed a login. The recovery-code
@@ -178,16 +214,18 @@ type SecurityPreferences struct {
 // persists: preferences, the currently active session id (single-session
 // enforcement), bounded history, and any pending alert.
 type SessionRegistryRecord struct {
-	Preferences     SecurityPreferences `json:"preferences"`
-	ActiveSessionID string              `json:"activeSessionId,omitempty"`
-	History         SessionHistory      `json:"history"`
-	Alert           *SecurityAlert      `json:"alert,omitempty"`
+	SessionsValidAfter int64               `json:"sessionsValidAfter,omitempty"`
+	Preferences        SecurityPreferences `json:"preferences"`
+	ActiveSessionID    string              `json:"activeSessionId,omitempty"`
+	History            SessionHistory      `json:"history"`
+	Alert              *SecurityAlert      `json:"alert,omitempty"`
 }
 
 // SecuritySummary is the aggregate view the Security settings tab (and its
 // GET /api/me/security endpoint) renders: 2FA status, the three independent
 // SecurityPreferences flags, sign-in history, and any pending alert.
 type SecuritySummary struct {
+	PasswordSignIn           bool            `json:"passwordSignIn"`
 	TwoFactorEnabled         bool            `json:"twoFactorEnabled"`
 	RecoveryCodesRemaining   int             `json:"recoveryCodesRemaining"`
 	SingleSessionEnabled     bool            `json:"singleSessionEnabled"`

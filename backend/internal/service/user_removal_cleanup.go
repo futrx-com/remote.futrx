@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -26,6 +27,22 @@ type removedUserSecurityState interface {
 	Delete(ctx context.Context, email string) error
 }
 
+// accountCredentialRemoval deletes a removed user's invited password
+// credential through the auth service, which owns the in-memory copy a plain
+// store delete would leave behind. The auth service is built after the user
+// service that holds this cleanup, so it is bound afterwards; until then, and
+// without auth, there is nothing to delete.
+type accountCredentialRemoval struct {
+	auth *serviceauth.Service
+}
+
+func (r *accountCredentialRemoval) Delete(ctx context.Context, email string) error {
+	if r == nil || r.auth == nil {
+		return nil
+	}
+	return r.auth.DeleteAccountCredential(ctx, email)
+}
+
 // userRemovalCleanup removes identity-keyed authorization, delivery, and
 // security state before the user record disappears. Each operation is
 // idempotent, allowing a failed removal to be retried without restoring
@@ -35,6 +52,9 @@ type userRemovalCleanup struct {
 	subscriptions   removedUserSubscriptions
 	twoFactor       removedUserSecurityState
 	sessionRegistry removedUserSecurityState
+	// credentials is the invited password credential. Removing it with the
+	// user means a later re-invite starts without the old password.
+	credentials removedUserSecurityState
 }
 
 func (c userRemovalCleanup) CleanupRemovedUser(ctx context.Context, email string) error {
@@ -64,6 +84,11 @@ func (c userRemovalCleanup) CleanupRemovedUser(ctx context.Context, email string
 	if c.sessionRegistry != nil {
 		if err := c.sessionRegistry.Delete(ctx, email); err != nil {
 			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove session registry entry: %w", err))
+		}
+	}
+	if c.credentials != nil {
+		if err := c.credentials.Delete(ctx, email); err != nil {
+			cleanupErrors = append(cleanupErrors, fmt.Errorf("remove account credential: %w", err))
 		}
 	}
 	return errors.Join(cleanupErrors...)

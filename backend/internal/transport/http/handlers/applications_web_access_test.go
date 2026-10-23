@@ -70,7 +70,7 @@ func newWebFixture(t *testing.T, baseURL string) *webFixture {
 	t.Helper()
 	auth, err := serviceauth.New(context.Background(), fileauth.New(t.TempDir()), webTestUsers{},
 		func(string, string, string) serviceauth.OAuthProvider { return verifyOAuthProvider{} },
-		baseURL, []byte("web-fixture-signing-key"), twoFactorStoreForTest(t), sessionRegistryStoreForTest(t), testAuthOptions())
+		baseURL, []byte("web-fixture-signing-key"), twoFactorStoreForTest(t), sessionRegistryStoreForTest(t), accountCredentialStoreForTest(t), testAuthOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import {
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { useSmtpConfigured } from "../../state/hooks/users/useSmtpConfigured";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
@@ -32,6 +33,7 @@ export function SettingsContainer({
   const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
+  const smtpConfigured = useSmtpConfigured(auth.isAdmin && activeTab === "users");
   const serverInfo = useServerInfo(activeTab === "info");
   const releaseNotes = useReleaseNotes(
     activeTab === "updates" && auth.isAdmin && !selfUpdate.status?.lastCheck?.error,
@@ -75,6 +77,8 @@ export function SettingsContainer({
       currentEmail={auth.email}
       isAdmin={auth.isAdmin}
       googleOAuthEnabled={auth.googleOAuthEnabled}
+      smtpConfigured={smtpConfigured}
+      localAdminEmail={auth.adminEmail}
       serverInfo={serverInfo.info}
       serverInfoLoading={serverInfo.loading}
       serverInfoRefreshing={serverInfo.refreshing}

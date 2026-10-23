@@ -1,6 +1,12 @@
 import { sendHttpRequest } from "../transport/http";
 import { requestJson } from "./apiRequest";
-import type { AuthSession, GoogleOAuthSettings } from "../models/auth";
+import type {
+  AuthSession,
+  GoogleOAuthSettings,
+  InitialPasswordResult,
+  LocalLoginResult,
+} from "../models/auth";
+import { ApiError } from "./apiError";
 import { API_ROUTES } from "../config/routes";
 import { UNAUTHENTICATED_SESSION } from "../config/auth";
 
@@ -47,6 +53,23 @@ export const twoFactorApi = {
   },
 };
 
+// initialPasswordApi finishes the set-password step an invited account is
+// held at after signing in with a temporary password. Pre-session like the
+// 2FA calls: the server answers a stale step with 400, never 401, so the
+// message and status reach the caller instead of reloading the page.
+export const initialPasswordApi = {
+  submit: async (newPassword: string): Promise<InitialPasswordResult> => {
+    const data = await requestPreSessionJson<
+      { twoFactorRequired: true } | (AuthSession & { twoFactorRequired?: false })
+    >(API_ROUTES.localPassword.initial, { newPassword });
+    if (data.twoFactorRequired) return { outcome: "two-factor" };
+    return { outcome: "session", session: data };
+  },
+  cancel: async (): Promise<void> => {
+    await sendHttpRequest("POST", API_ROUTES.localPassword.cancel);
+  },
+};
+
 export const googleOAuthApi = {
   get: () =>
     requestJson<GoogleOAuthSettings>("GET", API_ROUTES.googleOAuth),
@@ -64,22 +87,21 @@ async function requestPreSessionJson<T>(url: string, body: unknown): Promise<T> 
     try {
       message = (await response.json()).error || message;
     } catch {}
-    throw new Error(message);
+    throw new ApiError(message, response.status);
   }
   return response.json() as Promise<T>;
 }
 
-type LocalLoginResult =
-  | { twoFactorRequired: true }
-  | { twoFactorRequired: false; session: AuthSession };
+// A challenge reply carries only its flag; a completed one is a full session.
+type LocalLoginResponse = Partial<AuthSession> & {
+  twoFactorRequired?: boolean;
+  passwordChangeRequired?: boolean;
+};
 
-type LocalLoginResponse =
-  | { twoFactorRequired: true }
-  | (AuthSession & { twoFactorRequired?: false });
-
-// Local login's response shape now branches: an account with 2FA enabled
-// gets {twoFactorRequired: true} and a pending cookie instead of a full
-// AuthSession.
+// Local login's response shape branches: an account with 2FA enabled gets
+// {twoFactorRequired: true} and a pending cookie, and one still on a
+// temporary password gets {passwordChangeRequired: true} and a change cookie,
+// instead of a full AuthSession.
 async function requestLocalAuthOrChallenge(
   url: string,
   email: string,
@@ -89,6 +111,7 @@ async function requestLocalAuthOrChallenge(
     email,
     password,
   });
-  if (data.twoFactorRequired) return { twoFactorRequired: true };
-  return { twoFactorRequired: false, session: data };
+  if (data.twoFactorRequired) return { outcome: "two-factor" };
+  if (data.passwordChangeRequired) return { outcome: "password-change" };
+  return { outcome: "session", session: data as AuthSession };
 }

@@ -155,32 +155,52 @@ func (a *LocalAdminAuthenticator) setCredential(credential *LocalAdminCredential
 	a.mu.Unlock()
 }
 
-func (a *LocalAdminAuthenticator) login(email, password string) (User, error) {
+// resolveCredential returns the credential owning email, or nil on a miss,
+// plus the hash a password must be verified against. The hash is a real one
+// even on a miss (the configured credential's, else the dummy) so a miss costs
+// the same as a hit.
+func (a *LocalAdminAuthenticator) resolveCredential(email string) (*LocalAdminCredential, string) {
 	a.mu.RLock()
-	credential := a.credential
-	hash := a.dummyHash
-	if credential != nil {
-		copy := *credential
-		credential = &copy
-		hash = copy.PasswordHash
+	defer a.mu.RUnlock()
+	if a.credential == nil {
+		return nil, a.dummyHash
 	}
-	a.mu.RUnlock()
-
-	passwordOK, err := VerifyPassword(hash, password)
-	if err != nil {
-		return User{}, ErrInvalidCredentials
+	if a.credential.Email != normalizeEmail(email) {
+		return nil, a.credential.PasswordHash
 	}
-	emailOK := credential != nil && normalizeEmail(email) == credential.Email
-	if !emailOK || !passwordOK {
-		return User{}, ErrInvalidCredentials
-	}
-	return localAdminUser(credential.Email), nil
+	credential := *a.credential
+	return &credential, credential.PasswordHash
 }
 
 func (a *LocalAdminAuthenticator) configured() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.credential != nil
+}
+
+// verifyPassword snapshots and verifies the password credential. The caller
+// holds claimMu across verification and replacement to serialize changes.
+func (a *LocalAdminAuthenticator) verifyPassword(email, password string) (LocalAdminCredential, error) {
+	credential, hash := a.resolveCredential(email)
+	if credential == nil {
+		return LocalAdminCredential{}, ErrPasswordSignInUnavailable
+	}
+	ok, err := VerifyPassword(hash, password)
+	if err != nil || !ok {
+		return LocalAdminCredential{}, ErrCurrentPasswordIncorrect
+	}
+	return *credential, nil
+}
+
+// replacePassword requires claimMu held by the workflow; durable replacement
+// must succeed before the in-memory credential changes.
+func (a *LocalAdminAuthenticator) replacePassword(ctx context.Context, expected LocalAdminCredential, hash string) error {
+	next := LocalAdminCredential{Email: expected.Email, PasswordHash: hash}
+	if err := a.store.ReplaceLocalAdmin(ctx, expected, next); err != nil {
+		return err
+	}
+	a.setCredential(&next)
+	return nil
 }
 
 func (a *LocalAdminAuthenticator) isLocalAdmin(email string) bool {
@@ -199,7 +219,7 @@ func (a *LocalAdminAuthenticator) adminEmail() (string, bool) {
 }
 
 func localAdminUser(email string) User {
-	return User{Email: normalizeEmail(email), Sub: "local-admin"}
+	return User{Email: normalizeEmail(email), Sub: subjectLocalAdmin}
 }
 
 func normalizeEmail(email string) string {

@@ -27,9 +27,11 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | --- | --- | --- |
 | GET | `/auth/me` | Current auth and onboarding status |
 | POST | `/auth/local/claim` | Create the local administrator or complete legacy setup |
-| POST | `/auth/local/login` | Local administrator password login |
+| POST | `/auth/local/login` | Password login for the local administrator and invited password accounts; returns `{passwordChangeRequired: true}` plus the `remote_password_change` cookie while a temporary password is pending |
+| POST | `/auth/local/password/initial` | Set the first password of an invited account; needs the `remote_password_change` cookie |
+| POST | `/auth/local/password/cancel` | Abandon the set-password step and clear the cookie |
 | GET | `/auth/google/login` | Start Google OAuth, optionally preserving a safe return URL |
-| GET | `/auth/google/callback` | Validate OAuth state, authorize invited email, and issue session |
+| GET | `/auth/google/callback` | Validate OAuth state, authorize invited email, and issue session; redirects to `/?passwordChangeRequired=1` instead while a temporary password is pending |
 | GET | `/auth/logout` | Clear platform cookies and return to the app |
 | GET | `/auth/verify` | Caddy forward-auth check; preview hosts also check project membership |
 | GET, PUT | `/api/admin/auth/google` | Read or replace Google OAuth configuration; admin only |
@@ -40,11 +42,50 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| GET, POST | `/api/admin/users` | List or add registered users; admin only |
-| DELETE | `/api/admin/users/{email}` | Remove a user; admin only |
+| GET, POST | `/api/admin/users` | List or add registered users, by Google or by temporary password; admin only |
+| POST | `/api/admin/users/{email}/temporary-password` | Issue a new temporary password; admin only |
+| DELETE | `/api/admin/users/{email}` | Remove a user and any password credential; admin only |
 | PUT | `/api/admin/users/{email}/role` | Promote or demote a user; admin only |
 | GET, PATCH | `/api/me/settings` | Read or update current user's appearance and chat defaults |
+| GET | `/api/me/security` | Current account security summary, including `passwordSignIn` |
+| POST | `/api/me/security/password` | Change the current account password and revoke older sessions |
 | GET | `/api/server/info` | Host, CPU, memory, storage, network, and process snapshot |
+
+The password route accepts `{currentPassword, newPassword, code?}`. It requires
+an authenticated password account, the current password, and an authenticator
+or unused recovery code when 2FA is enabled. It returns 200 with auth `Status`
+and a refreshed `remote_session` cookie. Older sessions are rejected using the
+persisted `sessionsValidAfter` cut-off, subject to one-second issue-time resolution.
+
+Wrong password or invalid/replayed 2FA proof returns 403; missing proof, password
+reuse, or invalid new length returns 400. Google-only accounts and credential
+conflicts return 409. Five failed proofs in five minutes per client IP/account
+produce 429 with `Retry-After: 300`. Storage errors return 500 with a safe message
+that distinguishes an unchanged password, an unchanged password with older
+sessions revoked, and a saved password whose replacement session failed. No
+password value is returned or logged by this flow.
+
+`POST /api/admin/users` accepts `{email, role, method?, sendEmail?}`. `method`
+is `google` (the default, so existing callers are unchanged) or `password`;
+`sendEmail` defaults to true. A Google invite returns 201 with the user. A
+password invite returns 201 with `{user, method, delivery, deliveryError?,
+temporaryPassword}` and `Cache-Control: no-store`; `delivery` is `sent`,
+`failed`, `not_configured` or `not_requested`, and the status is 201 in every
+state. A duplicate returns 409, an unknown method 400, and a Google invite
+without Google OAuth configured 409. `GET /api/admin/users` items also carry
+`passwordSignIn` and `passwordChangePending`.
+
+`POST /api/admin/users/{email}/temporary-password` takes an optional
+`{sendEmail}` and returns 200 with the same result shape. It returns 404 for an
+unknown user and 409 for the caller's own account or the local administrator.
+Other `/api/admin/users/{email}/<name>` sub-resources return 404.
+
+`POST /auth/local/password/initial` takes `{newPassword}` and the
+`remote_password_change` cookie (host-only, `Path=/auth/local/password`). It
+returns 200 with auth `Status`, or 200 `{twoFactorRequired: true}` when the
+account has 2FA. A missing, expired or superseded token returns 400; a reused,
+too short or too long password returns 400; the per-IP login limiter returns
+429. `POST /auth/local/password/cancel` returns 204.
 
 ## Agent authentication, capabilities, and skills
 

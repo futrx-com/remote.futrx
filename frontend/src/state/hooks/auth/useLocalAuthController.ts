@@ -3,6 +3,7 @@ import { localAuthApi } from "../../../api/authApi";
 import type { LoginMode } from "../../../models/auth";
 import { localAuthFormState } from "./localAuthFormState";
 import { returnUrlPolicy } from "./returnUrlPolicy";
+import { useInitialPasswordChange } from "./useInitialPasswordChange";
 import { usePendingTwoFactorChallenge } from "./usePendingTwoFactorChallenge";
 import { useSetupToken } from "./useSetupToken";
 
@@ -45,6 +46,16 @@ export function useLocalAuthController({
     onVerified: completeLogin,
   });
 
+  // An invited account still on its temporary password is held at a
+  // set-password step before any session exists. The Google callback signals
+  // it with `?passwordChangeRequired=1`, like the 2FA redirect above.
+  const initialPassword = useInitialPasswordChange({
+    initiallyPending: mode === "login" && params.get("passwordChangeRequired") === "1",
+    onSignedIn: completeLogin,
+    onTwoFactorRequired: twoFactorChallenge.begin,
+    onExpired: setError,
+  });
+
   ////////////////
   // Handlers
   ////////////////
@@ -70,8 +81,13 @@ export function useLocalAuthController({
         return;
       }
       const result = await localAuthApi.login(submission.email, password);
-      if (result.twoFactorRequired) {
+      if (result.outcome === "two-factor") {
         twoFactorChallenge.begin();
+        return;
+      }
+      if (result.outcome === "password-change") {
+        setPassword("");
+        initialPassword.begin();
         return;
       }
       await completeLogin();
@@ -102,6 +118,17 @@ export function useLocalAuthController({
     setupToken,
     submit,
     submitting,
+    initialPassword: {
+      cancel: initialPassword.cancel,
+      confirmation: initialPassword.confirmation,
+      error: initialPassword.error,
+      newPassword: initialPassword.newPassword,
+      pending: initialPassword.pending,
+      setConfirmation: initialPassword.setConfirmation,
+      setNewPassword: initialPassword.setNewPassword,
+      submit: initialPassword.submit,
+      submitting: initialPassword.submitting,
+    },
     challenge: {
       cancel: twoFactorChallenge.cancel,
       code: twoFactorChallenge.code,

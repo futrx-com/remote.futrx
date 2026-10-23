@@ -11,6 +11,7 @@ import (
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileaccountcredentials"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
@@ -225,6 +226,7 @@ func newVerifyHandler(t *testing.T) (*authVerifyHandler, *shareAuthorizerStub) {
 		[]byte("verify-handler-test-key"),
 		twoFactorStoreForTest(t),
 		sessionRegistryStoreForTest(t),
+		accountCredentialStoreForTest(t),
 		testAuthOptions(),
 	)
 	if err != nil {
@@ -297,6 +299,15 @@ func twoFactorStoreForTest(t *testing.T) serviceauth.TwoFactorStore {
 	store, err := filetwofactor.New(t.TempDir())
 	if err != nil {
 		t.Fatalf("two-factor store: %v", err)
+	}
+	return store
+}
+
+func accountCredentialStoreForTest(t *testing.T) serviceauth.AccountCredentialStore {
+	t.Helper()
+	store, err := fileaccountcredentials.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("account credentials store: %v", err)
 	}
 	return store
 }

@@ -218,7 +218,7 @@ lets you pause, resume, run and delete tasks.
       <img src="docs/assets/readme/feature-security.webp" alt="Remote two-factor authentication and session security settings">
       <br>
       <strong>Account security</strong><br>
-      Manage two-factor authentication, recovery codes, active-session policy, and sign-in history.
+      Change your password and manage two-factor authentication, recovery codes, active-session policy, and sign-in history.
     </td>
   </tr>
 </table>
@@ -350,6 +350,10 @@ Remote is designed to reduce the blast radius of agent work, not to promise an a
 - The host administrator can access project data and controls.
 - Secrets given to a project are readable by agents working in that project.
 - Durable storage survives routine container replacement, but it is not a backup.
+
+To change a password, open **Settings → Security → Password**. Enter your current password, a different new password and its confirmation, plus an authenticator or recovery code if two-factor authentication is enabled. Other sessions are signed out and this browser stays signed in. Google-only accounts do not show this card.
+
+To invite someone by password, open **Settings → Users**, enter their email, choose a role and the **Password** sign-in method. If an SMTP sender is configured, tick **Email the credentials** to mail them the sign-in URL and a temporary password; otherwise (or if the email fails) Remote shows the credentials once so you can copy them or download a PDF. The PDF is unavailable for addresses with non-ASCII characters. The new user signs in with the temporary password (or with Google) and must choose a new password before getting access. Temporary passwords do not expire, and the user list marks accounts with **Password change pending**. Use **Reset temporary password** on a user's row to issue a new one; this signs them out. You cannot reset your own account or the local administrator. Only a hash of the password is stored, in `account-credentials.json` in the data directory. Invited password accounts can later change their password under **Settings → Security → Password**.
 
 Before using Remote with valuable code or credentials, read the [threat model](docs/threat-model.md), [known limitations](docs/known-limitations.md), and [security policy](SECURITY.md).
 

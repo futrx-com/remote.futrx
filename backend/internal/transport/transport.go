@@ -108,7 +108,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			applicationsHandler,
 		).WithUsage(usageHandler).WithShares(deps.Services.Shares),
 		Applications: applicationsHandler,
-		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Auth),
+		Users:        httphandlers.NewUsersHandler(deps.Services.Users, deps.Services.Invitations, deps.Services.Auth),
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
