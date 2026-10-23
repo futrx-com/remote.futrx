@@ -79,7 +79,7 @@ func (p *Preparer) Prepare(
 	}
 	if !p.containers.IsZero() {
 		p.emitSystem(request, emit, "container_preparing")
-		if err := p.prepareContainer(ctx, request, project.ContainerName); err != nil {
+		if err := p.prepareContainer(ctx, request, project.ContainerName, project.Slug); err != nil {
 			return agent.PreparedProject{}, err
 		}
 	}
@@ -94,7 +94,7 @@ func (p *Preparer) Prepare(
 func (p *Preparer) prepareContainer(
 	ctx context.Context,
 	request agent.ProjectPreparationRequest,
-	containerName string,
+	containerName, projectSlug string,
 ) error {
 	if err := p.containers.CLI.Ensure(ctx, containerName, p.options.Profile.CLI); err != nil {
 		return fmt.Errorf("%s: %w", p.cliErrorOperation(), err)
@@ -113,7 +113,7 @@ func (p *Preparer) prepareContainer(
 			return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 		}
 	}
-	if err := p.containers.Workspace.EnsureAgentInstructions(ctx, containerName); err != nil {
+	if err := p.containers.Workspace.EnsureAgentInstructions(ctx, containerName, projectSlug); err != nil {
 		return fmt.Errorf("push agent instructions to container: %w", err)
 	}
 	if err := p.containers.RuntimeAssets.Ensure(ctx, containerName, p.options.Profile.RuntimeAssets); err != nil {
