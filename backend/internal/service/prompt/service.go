@@ -425,6 +425,7 @@ func (rnr *Service) runPromptAs(
 			AccountID:      meta.AccountID,
 			ConversationID: string(id),
 			Prompt:         runPrompt,
+			UserPrompt:     prompt,
 			Cwd:            cwd,
 			Model:          meta.Model,
 			Mode:           agent.RunMode(meta.Mode),

@@ -61,7 +61,8 @@ Concurrent chats in one project share the same files, processes, ports, browser 
 
 The files stay in the project. Provider-native session state does not transfer
 cleanly; when a provider session is missing, Remote supplies a bounded visible
-transcript to a fresh session. Kimi and Antigravity forks start fresh.
+transcript to a fresh session. Kimi supports native context-preserving forks;
+Antigravity forks start fresh.
 
 Antigravity must first be signed in by running `agy` in that project's
 Terminal. Exit the CLI and choose **Refresh models** in the chat picker before

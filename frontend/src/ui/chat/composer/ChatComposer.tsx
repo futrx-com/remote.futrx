@@ -88,6 +88,7 @@ export function ChatComposer({
     serviceTierOptions,
     modeOptions,
     supportsExecutionPolicies,
+    approvalPolicyOptions,
     loading: modelsLoading,
     refreshing,
     error: capabilityError,
@@ -126,7 +127,7 @@ export function ChatComposer({
       ? "Using fallback capabilities; refresh to retry live discovery"
       : "");
   const hasExecutionControls =
-    supportsExecutionPolicies
+    supportsExecutionPolicies || approvalPolicyOptions.length > 0
     || reasoningEffortOptions.length > 0
     || serviceTierOptions.length > 0
     || modeOptions.length > 1;
@@ -234,6 +235,7 @@ export function ChatComposer({
                     serviceTierOptions={serviceTierOptions}
                     modeOptions={modeOptions}
                     supportsExecutionPolicies={supportsExecutionPolicies}
+                    approvalPolicyOptions={approvalPolicyOptions}
                   />
                 </>
               )}
@@ -308,6 +310,7 @@ export function ChatComposer({
                   serviceTierOptions={serviceTierOptions}
                   modeOptions={modeOptions}
                   supportsExecutionPolicies={supportsExecutionPolicies}
+                    approvalPolicyOptions={approvalPolicyOptions}
                 />
               </>
             )}

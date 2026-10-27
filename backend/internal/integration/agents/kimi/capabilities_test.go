@@ -23,7 +23,7 @@ func TestParseCapabilitiesFromProviderJSON(t *testing.T) {
       "defaultEffort": "medium"
     }
   }
-}`), "--plan Start in plan mode", "Default model: fast")
+}`), "Default model: fast")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,19 +33,23 @@ func TestParseCapabilitiesFromProviderJSON(t *testing.T) {
 	if caps.Models[1].Label != "Kimi K2.5" || !caps.Models[1].ProviderDefault {
 		t.Fatalf("fast model = %+v", caps.Models[1])
 	}
-	if got := caps.Models[1].ReasoningEfforts; len(got) != 4 || got[3].Value != "high" || caps.Models[1].DefaultReasoningEffort != "medium" {
-		t.Fatalf("reasoning efforts = %+v", got)
+	if len(caps.Models[1].ReasoningEfforts) != 5 || caps.Models[1].DefaultReasoningEffort != "medium" {
+		t.Fatalf("efforts = %+v", caps.Models[1])
 	}
+	if len(caps.ApprovalPolicies) != 3 {
+		t.Fatalf("approvals = %+v", caps.ApprovalPolicies)
+	}
+
 	if caps.Models[2].Label != "Kimi K2 0711 Preview" || caps.Models[2].Description != "Provider model: kimi-k2-0711-preview" {
 		t.Fatalf("versioned model = %+v", caps.Models[2])
 	}
-	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) {
 		t.Fatalf("modes = %+v", caps.Modes)
 	}
 }
 
 func TestParseCapabilitiesAllowsEmptyBuiltInCatalog(t *testing.T) {
-	caps, err := parseProviderCatalog([]byte(`{"providers":{},"models":{}}`), "", "")
+	caps, err := parseProviderCatalog([]byte(`{"providers":{},"models":{}}`), "")
 	if err != nil || len(caps.Models) != 1 || caps.Models[0].ID != "" {
 		t.Fatalf("capabilities = %+v, err = %v", caps, err)
 	}
@@ -57,7 +61,7 @@ func TestParseDefaultModel(t *testing.T) {
 	}
 }
 
-func TestModelOverridesCanRemoveBaseEfforts(t *testing.T) {
+func TestModelOverridesPreserveLabelsWithoutAdvertisingEfforts(t *testing.T) {
 	models, err := parseProviderModels([]byte(`{
   "models": {
     "exact-alias": {

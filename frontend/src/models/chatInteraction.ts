@@ -1,5 +1,10 @@
+export type ApprovalReviewAction = "allow_once" | "allow_session" | "deny" | "revise_plan" | "reject_plan";
+
 export type ChatInteractionIntent =
   | { kind: "answer_questions"; answers: Record<string, string[]> }
+  | { kind: "dismiss_questions" }
+  | { kind: "review_approval"; action: ApprovalReviewAction; feedback: string; optionLabel?: string }
+  | { kind: "control_agent"; action: "stop" | "run_in_background" }
   | { kind: "approve"; scope: "once" | "session" }
   | { kind: "deny_approval" }
   | { kind: "cancel_approval" }
@@ -23,7 +28,9 @@ export interface ChatInteractionQuestion {
   id?: string;
   header?: string;
   question?: string;
-  options?: Array<{ label?: string; description?: string }>;
+  body?: string;
+  multiSelect?: boolean;
+  options?: Array<{ id?: string; label?: string; description?: string }>;
   isOther?: boolean;
   isSecret?: boolean;
 }

@@ -12,18 +12,19 @@ import (
 
 type rawObject map[string]json.RawMessage
 
-func parseProviderCatalog(raw []byte, help, defaults string) (agent.Capabilities, error) {
+func parseProviderCatalog(raw []byte, defaults string) (agent.Capabilities, error) {
 	models, err := parseProviderModels(raw, parseDefaultModel(defaults))
 	if err != nil {
 		return agent.Capabilities{}, err
 	}
 	return agent.Capabilities{
-		Provider:    agent.ProviderKimi,
-		Label:       "Kimi",
-		Source:      agent.CapabilitySourceLive,
-		Models:      agent.WithAutoModel(models, "Kimi default"),
-		Modes:       agent.ProviderModes(strings.Contains(help, "--plan")),
-		DefaultMode: agent.RunModeDefault,
+		Provider:         agent.ProviderKimi,
+		Label:            "Kimi",
+		Source:           agent.CapabilitySourceLive,
+		Models:           agent.WithAutoModel(models, "Kimi default"),
+		Modes:            agent.ProviderModes(true),
+		DefaultMode:      agent.RunModeDefault,
+		ApprovalPolicies: kimiApprovalPolicies(),
 	}, nil
 }
 
@@ -103,8 +104,9 @@ func parseModel(
 		}
 		return rawString(object, keys...)
 	}
+
 	values := func(keys ...string) []string {
-		if result, exists := rawStringList(overrides, keys...); exists {
+		if result, ok := rawStringList(overrides, keys...); ok {
 			return result
 		}
 		result, _ := rawStringList(object, keys...)
@@ -129,20 +131,8 @@ func parseModel(
 		}
 	}
 
-	reasoning := []agent.CapabilityOption{}
-	for _, effort := range values("support_efforts", "supportEfforts") {
-		effort = agent.NormalizeCapabilityValue(effort)
-		if effort == "" {
-			continue
-		}
-		if len(reasoning) == 0 {
-			reasoning = append(reasoning, agent.AutoOption())
-		}
-		reasoning = append(reasoning, agent.CapabilityOption{
-			Value: effort,
-			Label: capabilityLabel(effort),
-		})
-	}
+	traits := parseModelTraits(values("capabilities"))
+	reasoning := traits.reasoningOptions(values("support_efforts", "supportEfforts"))
 	defaultEffort := agent.NormalizeCapabilityValue(value("default_effort", "defaultEffort"))
 	if !hasCapabilityOption(reasoning, defaultEffort) {
 		defaultEffort = ""
@@ -154,6 +144,7 @@ func parseModel(
 		ProviderDefault:        alias == globalDefault,
 		ReasoningEfforts:       reasoning,
 		DefaultReasoningEffort: defaultEffort,
+		InputModalities:        traits.modalities,
 	}
 }
 
@@ -196,6 +187,19 @@ func parseDefaultModel(output string) string {
 	return ""
 }
 
+func normalizeKimiModel(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 256 {
+		return ""
+	}
+	for _, r := range value {
+		if unicode.IsControl(r) {
+			return ""
+		}
+	}
+	return value
+}
+
 func rawStringList(object rawObject, keys ...string) ([]string, bool) {
 	for _, key := range keys {
 		raw := object[key]
@@ -208,19 +212,6 @@ func rawStringList(object rawObject, keys ...string) ([]string, bool) {
 		}
 	}
 	return nil, false
-}
-
-func normalizeKimiModel(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 256 {
-		return ""
-	}
-	for _, r := range value {
-		if unicode.IsControl(r) {
-			return ""
-		}
-	}
-	return value
 }
 
 func capabilityLabel(value string) string {
