@@ -16,6 +16,7 @@ const (
 	ProviderCodex       ProviderID = "codex"
 	ProviderMiniMax     ProviderID = "minimax"
 	ProviderKimi        ProviderID = "kimi"
+	ProviderKimiCodex   ProviderID = "kimi-codex"
 	ProviderAntigravity ProviderID = "antigravity"
 )
 

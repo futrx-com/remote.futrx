@@ -68,6 +68,7 @@ export function providerDisplayLabel(provider?: string): string {
     claude: "Claude",
     codex: "Codex",
     kimi: "Kimi",
+    "kimi-codex": "Kimi (Codex)",
     minimax: "MiniMax",
   };
   return knownLabels[provider] ?? provider

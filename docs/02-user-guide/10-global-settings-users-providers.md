@@ -95,6 +95,35 @@ its model list remains unavailable until a validated key exists.
 4. Approve the account.
 5. Return to Remote and wait for the connected state.
 
+### Connect Kimi (Codex)
+
+Kimi (Codex) runs Kimi Code models through the Codex harness in project chats.
+It is a separate connection from the Kimi CLI device login above; existing
+Kimi chats continue using their original runtime and sessions.
+
+1. In **Settings → Agents**, open **Kimi (Codex)**.
+2. Follow **Create a Kimi Code API key** to the Kimi Code console.
+3. Add that key and save. Remote validates it against Kimi's model catalog.
+4. Open a project chat, choose **Kimi (Codex)**, and select `k3-256k` or `k3`.
+
+Use a Kimi Code membership key, not a Moonshot pay-as-you-go key. Your Kimi
+plan must include the selected model. The model list and context limits come
+from Kimi's API; when older catalog responses omit the context limit, Remote
+uses a conservative 256K limit. Auto prefers `k3-256k`, then `k3`, when listed.
+`kimi-for-coding` is a separate model alias and is not labelled as K3.
+
+Reasoning stays enabled, with the model's supported `low`, `high`, and `max`
+levels. Turning thinking off can route K3 requests to a different model.
+The integration supports streamed answers, tools, plan mode, session resume
+and fork, project skills, application tools, and the Agent Browser.
+
+Keys are managed in Settings, kept out of browser responses and model catalogs,
+and injected into the selected account's process as `KIMI_API_KEY`. Sessions
+persist in the project's isolated `/root/.kimi-codex` home.
+
+The implementation follows [Kimi's Codex setup guide](https://www.kimi.com/code/docs/en/third-party-tools/codex.html)
+using the native Responses API without a translation proxy.
+
 ### Use Antigravity
 
 Antigravity appears in both the chat provider picker and the administrator's

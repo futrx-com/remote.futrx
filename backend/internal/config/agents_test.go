@@ -31,6 +31,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 		agent.ProviderCodex,
 		agent.ProviderMiniMax,
 		agent.ProviderKimi,
+		agent.ProviderKimiCodex,
 		agent.ProviderAntigravity,
 	}
 	if !slices.Equal(ids, want) {
@@ -48,6 +49,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	if !catalog.SupportsNativeFork(string(agent.ProviderClaude)) ||
 		!catalog.SupportsNativeFork(string(agent.ProviderCodex)) ||
 		!catalog.SupportsNativeFork(string(agent.ProviderMiniMax)) ||
+		!catalog.SupportsNativeFork(string(agent.ProviderKimiCodex)) ||
 		catalog.SupportsNativeFork(string(agent.ProviderKimi)) ||
 		catalog.SupportsNativeFork(string(agent.ProviderAntigravity)) {
 		t.Fatal("catalog native-fork policies do not match provider behavior")

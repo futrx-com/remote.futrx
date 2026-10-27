@@ -9,6 +9,7 @@ import (
 	claudeagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/claude"
 	codexagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/codex"
 	kimiagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/kimi"
+	kimicodexagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/kimicodex"
 	minimaxagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/minimax"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -19,6 +20,7 @@ func NewAgentModules() (*agentmodule.Catalog, error) {
 		codexagent.NewFactory,
 		minimaxagent.NewFactory,
 		kimiagent.NewFactory,
+		kimicodexagent.NewFactory,
 		antigravityagent.NewFactory,
 	}
 	factories := make([]agentmodule.Factory, 0, len(builders))
