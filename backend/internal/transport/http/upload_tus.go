@@ -33,6 +33,7 @@ import (
 	"github.com/tus/tusd/v2/pkg/filestore"
 	tusd "github.com/tus/tusd/v2/pkg/handler"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -68,6 +69,15 @@ type UploadHandler struct {
 	chats   ChatUploadResolver
 	tmpRoot string
 	gate    UploadGate
+	audit   serviceaudit.Recorder
+}
+
+// WithAudit records the creation of an upload. Completion happens
+// asynchronously on a tusd hook with no request context, so the audited moment
+// is the POST that reserves the upload and names the caller.
+func (u *UploadHandler) WithAudit(recorder serviceaudit.Recorder) *UploadHandler {
+	u.audit = recorder
+	return u
 }
 
 func NewUploadHandler(chats ChatUploadResolver, dataDir string) (*UploadHandler, error) {
@@ -148,6 +158,7 @@ func (u *UploadHandler) dispatch(w http.ResponseWriter, r *http.Request) {
 			SendErr(w, http.StatusForbidden, "not a member of this chat's project")
 			return
 		}
+		u.recordUpload(r, chatID, nil)
 	}
 
 	switch r.Method {
@@ -164,6 +175,18 @@ func (u *UploadHandler) dispatch(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (u *UploadHandler) recordUpload(r *http.Request, chatID string, err error) {
+	if u.audit == nil {
+		return
+	}
+	u.audit.Record(r.Context(), serviceaudit.Result(
+		serviceaudit.ActionWorkspaceFileUpload,
+		serviceaudit.Target{Type: serviceaudit.TargetChat, ID: chatID},
+		serviceaudit.Meta{"bytes": r.Header.Get("Upload-Length")},
+		err,
+	))
 }
 
 // chatIDFromUploadMetadata pulls the `chatId` field out of a tus

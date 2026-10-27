@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 const lifecycleReconcileInterval = time.Second
 
 type Service struct {
+	audit          audit.Recorder
 	currentVersion string
 	installDir     string
 	host           HostClient
@@ -43,18 +46,30 @@ type Service struct {
 	dispatching     bool
 }
 
+type Option func(*Service)
+
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
 func New(
 	currentVersion, installDir, dataDir string,
 	host HostClient,
 	lifecycle UpdateLifecyclePublisher,
+	options ...Option,
 ) *Service {
-	return &Service{
+	service := &Service{
+		audit:          audit.Nop{},
 		currentVersion: currentVersion,
 		installDir:     installDir,
 		host:           host,
 		lifecycle:      lifecycle,
 		runs:           newRunState(dataDir),
 	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 // Status reports the running version, the last check result, and the most
@@ -106,7 +121,19 @@ func (s *Service) Check(ctx context.Context) Status {
 // Apply starts the safe deployment path toward the given tag (or the newest
 // release tag when tag is empty). Single-flight: a second call while a run is
 // alive returns ErrUpdateInProgress.
-func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, error) {
+func (s *Service) Apply(ctx context.Context, startedBy, tag string) (status Status, resultErr error) {
+	defer func() {
+		entry := audit.Result(
+			audit.ActionSelfUpdateTrigger,
+			audit.Target{Type: audit.TargetServer, ID: "self-update", Name: tag},
+			audit.Meta{"tag": tag, "from": s.currentVersion},
+			resultErr,
+		)
+		if startedBy != "" {
+			entry.Actor = audit.Actor{Email: audit.NormalizeActorEmail(startedBy), IsAdmin: true}
+		}
+		s.audit.Record(ctx, entry)
+	}()
 	tags, err := s.host.ListRemoteTags(ctx, s.installDir)
 	if err != nil {
 		return s.Status(ctx), fmt.Errorf("list origin tags: %w", err)
@@ -126,7 +153,7 @@ func (s *Service) Apply(ctx context.Context, startedBy, tag string) (Status, err
 	if resolved, _, resolveErr := s.resolveCurrentRelease(ctx, tags); resolveErr == nil {
 		currentVersion = resolved
 	}
-	status, err := s.startUpdate(ctx, startedBy, currentVersion, tag)
+	status, err = s.startUpdate(ctx, startedBy, currentVersion, tag)
 	if err != nil {
 		return status, err
 	}

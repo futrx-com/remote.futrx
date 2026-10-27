@@ -4,7 +4,10 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 type Config struct {
@@ -16,6 +19,15 @@ type Config struct {
 	Agent        AgentOptions
 	Auth         AuthOptions
 	Applications ApplicationOptions
+	Audit        AuditLimits
+}
+
+// AuditLimits are the audit-log housekeeping knobs.
+type AuditLimits struct {
+	// RetentionMonths is how many monthly audit files to keep, including the
+	// current one (AUDIT_RETENTION_MONTHS, default 12). A value below 1
+	// disables the janitor and keeps every file forever.
+	RetentionMonths int
 }
 
 // ApplicationOptions are application-wide settings for installable application
@@ -90,6 +102,9 @@ func Load() Config {
 		Applications: ApplicationOptions{
 			GoTool: envDefault("REMOTE_APPLICATION_GO", ""),
 		},
+		Audit: AuditLimits{
+			RetentionMonths: envInt("AUDIT_RETENTION_MONTHS", audit.DefaultRetentionMonths),
+		},
 	}
 }
 
@@ -129,6 +144,18 @@ func envDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	parsed, err := time.ParseDuration(raw)
+	if err != nil || parsed < 0 {
+		return def
+	}
+	return parsed
+}
+
+func envInt(key string, def int) int {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return def
+	}
+	parsed, err := strconv.Atoi(raw)
 	if err != nil || parsed < 0 {
 		return def
 	}

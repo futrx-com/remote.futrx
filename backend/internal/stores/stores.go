@@ -7,6 +7,7 @@ import (
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -18,6 +19,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileagentquota"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplications"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplicationturns"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileaudit"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileemail"
@@ -61,6 +63,7 @@ type PushStore interface {
 }
 
 type Stores struct {
+	Audit            serviceaudit.Store
 	Chats            ChatStore
 	chatIndexWarmer  recentChatIndexWarmer
 	Projects         serviceproject.Repository
@@ -127,6 +130,11 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init user settings store: %w", err)
 	}
 
+	auditLog, err := fileaudit.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init audit store: %w", err)
+	}
+
 	twoFactor, err := filetwofactor.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init two-factor store: %w", err)
@@ -159,6 +167,7 @@ func New(dataDir string) (Stores, error) {
 	authStore := fileauth.New(dataDir)
 	email := fileemail.New(dataDir)
 	return Stores{
+		Audit:            auditLog,
 		Chats:            chats,
 		chatIndexWarmer:  chats,
 		Projects:         projects,

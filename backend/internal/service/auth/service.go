@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 // UserDirectory is the interface auth needs into the users store. It's
@@ -95,6 +97,16 @@ type Service struct {
 	// It shares the session key but not the session: a share pass proves one
 	// slug and port were once granted, never who the caller is.
 	sharePasses *sharePassCodec
+	audit       audit.Recorder
+}
+
+// Option configures optional Service collaborators.
+type Option func(*Service)
+
+// WithAudit records sign-ins, the administrator claim, and Google OAuth
+// configuration changes to the audit log.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
 }
 
 func NormalizeBaseURL(baseURL string) (string, error) {
@@ -114,6 +126,7 @@ func New(
 	twoFactorStore TwoFactorStore,
 	sessionRegistryStore SessionRegistryStore,
 	options Options,
+	auditOptions ...Option,
 ) (*Service, error) {
 	if store == nil {
 		return nil, errors.New("auth store is required")
@@ -178,8 +191,43 @@ func New(
 		pendingLoginCodec: newPendingLoginPayload(sessionKey),
 		pendingLoginTTL:   options.PendingLoginTTL,
 		sharePasses:       newSharePassCodec(sessionKey),
+		audit:             audit.Nop{},
+	}
+	for _, option := range auditOptions {
+		if option != nil {
+			option(service)
+		}
 	}
 	return service, nil
+}
+
+// recordLogin writes one sign-in attempt. The actor is set explicitly because
+// a login is exactly the request that has no session to resolve one from, and
+// a failed attempt still names the identity that was tried.
+func (s *Service) recordLogin(ctx context.Context, method, attemptedEmail string, user User, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	action := audit.ActionAuthLoginSuccess
+	if err != nil {
+		action = audit.ActionAuthLoginFailure
+	}
+	email := user.Email
+	if email == "" {
+		email = attemptedEmail
+	}
+	entry := audit.Result(action, audit.Target{Type: audit.TargetSession}, audit.Meta{"method": method}, err)
+	entry.Actor = audit.Actor{Email: audit.NormalizeActorEmail(email), Sub: user.Sub}
+	s.audit.Record(ctx, entry)
+}
+
+// Audit exposes the recorder to transport-level flows (logout) that have no
+// service call of their own to hang an entry on.
+func (s *Service) Audit() audit.Recorder {
+	if s == nil || s.audit == nil {
+		return audit.Nop{}
+	}
+	return s.audit
 }
 
 // SignSharePass mints the value for ShareCookieName. Callers must already have
@@ -208,7 +256,16 @@ func (s *Service) AuthCodeURL(state string) (string, error) {
 }
 
 func (s *Service) LoginGoogle(ctx context.Context, code string) (User, error) {
-	return s.google.login(ctx, code)
+	user, err := s.google.login(ctx, code)
+	attempted := ""
+	var notInvited NotInvitedError
+	if errors.As(err, &notInvited) {
+		attempted = notInvited.Email
+	}
+	if err != nil {
+		s.recordLogin(ctx, "google", attempted, user, err)
+	}
+	return user, err
 }
 
 // EnsureSetupToken issues a token when a claim made now would actually be
@@ -229,15 +286,43 @@ func (s *Service) SetupTokenTTL() time.Duration {
 }
 
 func (s *Service) ClaimLocalAdmin(ctx context.Context, req ClaimRequest) (User, error) {
-	return s.local.claim(ctx, req)
+	user, err := s.local.claim(ctx, req)
+	if s.audit != nil {
+		entry := audit.Result(
+			audit.ActionAuthAdminClaim,
+			audit.Target{Type: audit.TargetUser, ID: audit.NormalizeActorEmail(req.Email), Name: audit.NormalizeActorEmail(req.Email)},
+			nil,
+			err,
+		)
+		entry.Actor = audit.Actor{
+			Email:   audit.NormalizeActorEmail(req.Email),
+			Sub:     user.Sub,
+			IsAdmin: err == nil,
+		}
+		s.audit.Record(ctx, entry)
+	}
+	return user, err
 }
 
-func (s *Service) LoginLocal(_ context.Context, email, password string) (User, error) {
-	return s.local.login(email, password)
+func (s *Service) LoginLocal(ctx context.Context, email, password string) (User, error) {
+	user, err := s.local.login(email, password)
+	if err != nil {
+		s.recordLogin(ctx, "local", email, user, err)
+	}
+	return user, err
 }
 
 func (s *Service) ConfigureGoogleOAuth(ctx context.Context, cfg OAuthConfig) error {
-	return s.google.configure(ctx, cfg)
+	err := s.google.configure(ctx, cfg)
+	if s.audit != nil {
+		s.audit.Record(ctx, audit.Result(
+			audit.ActionSettingsGoogleOAuth,
+			audit.Target{Type: audit.TargetServer, ID: "google-oauth", Name: "Google sign-in"},
+			audit.Meta{"clientId": strings.TrimSpace(cfg.GoogleClientID)},
+			err,
+		))
+	}
+	return err
 }
 
 func (s *Service) GoogleOAuthEnabled() bool {
@@ -262,7 +347,11 @@ func (s *Service) IsLocalAdmin(email string) bool {
 // and embeds the resulting session id; otherwise it behaves exactly like
 // SignSession (no registry write, no per-request registry lookup cost for
 // accounts that opt into nothing).
-func (s *Service) IssueSession(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (string, error) {
+func (s *Service) IssueSession(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (cookieValue string, resultErr error) {
+	defer func() {
+		callerCtx := audit.EnsureCaller(ctx, audit.Caller{IP: ip, UserAgent: userAgent})
+		s.recordLogin(callerCtx, string(method), user.Email, user, resultErr)
+	}()
 	prefs, err := s.registry.Preferences(ctx, user.Email)
 	if err != nil {
 		return "", err
@@ -320,10 +409,12 @@ func (s *Service) completeLogin(ctx context.Context, user User, method SignInMet
 func (s *Service) CompleteTwoFactorChallenge(ctx context.Context, pendingToken, code, ip, userAgent string) (LoginResult, error) {
 	pending, err := s.pendingLoginCodec.verify(pendingToken)
 	if err != nil {
+		s.recordLogin(ctx, "two-factor", "", User{}, ErrInvalidPendingLogin)
 		return LoginResult{}, ErrInvalidPendingLogin
 	}
 	usedRecoveryCode, err := s.twoFactor.VerifyChallenge(ctx, pending.Email, code)
 	if err != nil {
+		s.recordLogin(ctx, string(pending.Method)+"+two-factor", pending.Email, User{}, err)
 		return LoginResult{}, err
 	}
 	method := combineSignInMethod(pending.Method, usedRecoveryCode)

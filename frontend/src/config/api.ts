@@ -7,6 +7,7 @@ export const API_RESPONSE_STATUS = {
 } as const;
 
 export const DEFAULT_CHAT_HISTORY_COMMIT_LIMIT = 100;
+export const DEFAULT_AUDIT_LOG_LIMIT = 50;
 /** Complete conversation turns fetched on the first chat load. */
 export const CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT = 10;
 /** Complete conversation turns fetched on each older-history page. */

@@ -440,6 +440,20 @@ definitions. Use `maxRuns` for bounded monitoring. The retired core scheduler’
 deployment environment settings are no longer used. See the
 [application README](../../applications/scheduled-tasks/README.md).
 
+## Audit-log retention
+
+The backend keeps an append-only audit trail under `DATA_DIR/audit/`, one JSONL
+file per calendar month. A janitor goroutine runs at startup and every 24 hours
+and deletes whole monthly files that fall outside the retention window.
+
+| Environment variable | Default | Meaning |
+| --- | ---: | --- |
+| `AUDIT_RETENTION_MONTHS` | `12` | Monthly audit files to keep, including the current one; `0` disables pruning and keeps every file |
+
+Retention deletes files rather than truncating them, so export or copy them
+before shortening the window. See [Audit log](10-audit-log.md) for the entry
+format, the action names, and the admin API.
+
 ## Health and recovery
 
 ```mermaid
@@ -460,7 +474,7 @@ The server-info settings page reports host, CPU, memory, storage, network, and G
 - Preview requests use forward authentication; application web routes check project membership and a running installation.
 - Platform cookies are removed before container proxying.
 - Internal Caddy helper routes are denied externally.
-- Secret, auth, access, and user files use restrictive permissions.
+- Secret, auth, access, audit, and user files use restrictive permissions.
 - SSH password and keyboard-interactive authentication are disabled after install.
 - On-demand TLS issuance is restricted to valid, existing project hosts.
 - Project containers are unprivileged and receive host workspaces through mapped ownership.
@@ -487,3 +501,4 @@ sudo bash /opt/remote.futrx/infra/upgrade-workspaces.sh --dry-run
 - Workspace upgrade: [`infra/upgrade-workspaces.sh`](../../infra/upgrade-workspaces.sh)
 - Systemd template: [`infra/templates/remote.futrx.service.tmpl`](../../infra/templates/remote.futrx.service.tmpl)
 - Base-image builder: [`backend/internal/service/container/image/builder.go`](../../backend/internal/service/container/image/builder.go)
+- Audit store: [`backend/internal/stores/fileaudit/store.go`](../../backend/internal/stores/fileaudit/store.go)

@@ -6,6 +6,7 @@ import {
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { useAuditLog } from "../../state/hooks/admin/useAuditLog";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
@@ -33,6 +34,7 @@ export function SettingsContainer({
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
   const serverInfo = useServerInfo(activeTab === "info");
+  const auditLog = useAuditLog(activeTab === "audit" && auth.isAdmin);
   const releaseNotes = useReleaseNotes(
     activeTab === "updates" && auth.isAdmin && !selfUpdate.status?.lastCheck?.error,
     selfUpdate.status?.lastCheck?.latestTag,
@@ -87,6 +89,7 @@ export function SettingsContainer({
       selfUpdateRestarting={selfUpdate.restarting}
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
+      auditLog={auditLog}
       usageDashboard={usageDashboard}
       usageRebuilding={usageRebuilding}
       usageRebuildMessage={usageRebuildMessage}
