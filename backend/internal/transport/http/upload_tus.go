@@ -13,8 +13,8 @@ package httptransport
 //      finished blob from the chunk temp dir into the chat's workspace cwd
 //      with the proper ownership + mode.
 //
-// Chunks live under <tmpRoot>/chunks (default /var/lib/remote/uploads/tmp);
-// finished files are moved to the chat-resolved cwd. We intentionally do
+// Chunks live in tmpRoot (default /var/lib/remote/uploads/tmp) as <id> plus
+// an <id>.info sidecar; finished files are moved to the chat-resolved cwd. We intentionally do
 // NOT use /tmp — it's tmpfs on this host and would RAM-back multi-GB uploads.
 
 import (
@@ -201,6 +201,22 @@ func (u *UploadHandler) drainCompletions(events <-chan tusd.HookEvent) {
 	for ev := range events {
 		if err := u.finalize(ev); err != nil {
 			log.Printf("upload[%s] finalize: %v", ev.Upload.ID, err)
+			u.discard(ev.Upload.ID)
+		}
+	}
+}
+
+// discard removes a finished upload's chunk file and .info sidecar. A
+// completed tus upload cannot be resumed, so after a failed finalize nothing
+// else would ever reclaim them.
+func (u *UploadHandler) discard(id string) {
+	if id == "" || filepath.Base(id) != id {
+		return
+	}
+	src := filepath.Join(u.tmpRoot, id)
+	for _, path := range []string{src, src + ".info"} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("upload[%s] discard %s: %v", id, path, err)
 		}
 	}
 }

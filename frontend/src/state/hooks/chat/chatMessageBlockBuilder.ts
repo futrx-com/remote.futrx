@@ -5,6 +5,7 @@ import type {
   ChatMessageBlock,
 } from "../../../models/chatMessage";
 import { chatInteractionService } from "../../../services/chat/chatInteractionService.ts";
+import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
 
 type AssistantToolPart = Extract<AssistantMessagePart, { kind: "tool" }>;
 type AssistantInteractionPart = Extract<AssistantMessagePart, { kind: "interaction" }>;
@@ -22,7 +23,12 @@ class ChatMessageBlockBuilder {
     switch (event.type) {
       case "user": {
         const next = this.endTrailingAssistant(blocks);
-        return [...next, { type: "user", text: event.text, t: event.t }];
+        return [...next, {
+          type: "user",
+          text: event.text,
+          t: event.t,
+          ...(event.userEmail ? { userEmail: event.userEmail } : {}),
+        }];
       }
       case "assistant_text": {
         const { blocks: next, assistant } = this.ensureTrailingAssistant(blocks, event.t);
@@ -60,6 +66,9 @@ class ChatMessageBlockBuilder {
       case "tool_use_end":
         return this.updateTrailingTool(blocks, event.id, {
           output: event.output,
+          ...(event.outputRef ? { outputRef: event.outputRef } : {}),
+          ...(event.outputBytes ? { outputBytes: event.outputBytes } : {}),
+          ...(event.outputTruncated ? { outputTruncated: true } : {}),
           isError: event.isError,
           status: "done",
         });
@@ -76,8 +85,13 @@ class ChatMessageBlockBuilder {
         });
         return next;
       }
-      case "interaction_resolved":
-        return this.updateInteraction(blocks, event.id, { status: event.status || "resolved" });
+      case "interaction_resolved": {
+        const answers = chatInteractionService.recordedAnswers(event.data);
+        return this.updateInteraction(blocks, event.id, {
+          status: event.status || "resolved",
+          ...(answers ? { answers } : {}),
+        });
+      }
       case "collaboration": {
         // wait is an internal parent/subagent synchronization primitive. Its
         // native event stays in the transcript log, while child-thread updates
@@ -109,7 +123,7 @@ class ChatMessageBlockBuilder {
         };
         if (existing >= 0) assistant.parts[existing] = part;
         else assistant.parts.push(part);
-        if (["completed", "failed", "interrupted"].includes(part.status)) {
+        if (isTerminalTurnStatus(part.status)) {
           return this.endTrailingAssistant(next);
         }
         return next;

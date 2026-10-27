@@ -1,11 +1,11 @@
-import { useMemo } from "preact/hooks";
+import { useEffect, useMemo, useRef } from "preact/hooks";
 import { diffService } from "../../../../services/platform/diffService.ts";
 import { Edit as EditIcon } from "../../../primitives/icons";
 import type { ToolCallProps } from "../ToolCallTypes";
 import { ToolShell } from "../ToolShell";
 import { shortPath } from "../utils";
 
-export function EditCall({ input, output, status, isError }: Omit<ToolCallProps, "name">) {
+export function EditCall({ input, output, outputRef, outputExpanded, status, isError, onOpen, loadingResponse }: Omit<ToolCallProps, "name">) {
   const path = (input?.file_path as string) ?? "";
   const oldStr = (input?.old_string as string) ?? "";
   const newStr = (input?.new_string as string) ?? "";
@@ -17,6 +17,13 @@ export function EditCall({ input, output, status, isError }: Omit<ToolCallProps,
     }
     return [diffService.lines(oldStr, newStr)];
   }, [oldStr, newStr, edits]);
+  const loadedRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (outputRef && onOpen && loadedRef.current !== outputRef) {
+      loadedRef.current = outputRef;
+      onOpen();
+    }
+  }, [outputRef, onOpen]);
 
   return (
     <ToolShell
@@ -26,6 +33,9 @@ export function EditCall({ input, output, status, isError }: Omit<ToolCallProps,
       status={status}
       isError={isError}
       defaultOpen
+      revealSignal={outputExpanded}
+      onOpen={onOpen}
+      loadingResponse={loadingResponse}
     >
       <div class="divide-y divide-ink-500">
         {patches.map((parts, index) => (
@@ -45,7 +55,9 @@ export function EditCall({ input, output, status, isError }: Omit<ToolCallProps,
           </pre>
         ))}
       </div>
-      {output && isError ? <div class="p-3 text-accent-red font-mono text-xs">{output}</div> : null}
+      {output && (isError || outputExpanded) ? (
+        <div class={`p-3 font-mono text-xs ${isError ? "text-accent-red" : "text-ink-300"}`}>{output}</div>
+      ) : null}
     </ToolShell>
   );
 }

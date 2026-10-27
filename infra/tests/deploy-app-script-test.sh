@@ -60,6 +60,7 @@ git -C "$INSTALL_DIR" tag 0.4.0
 printf 'patch\n' > "$INSTALL_DIR/frontend/source.txt"
 git -C "$INSTALL_DIR" commit --quiet -am patch
 git -C "$INSTALL_DIR" tag 0.4.1
+git -C "$INSTALL_DIR" tag 0.4.2
 printf 'minor\n' > "$INSTALL_DIR/frontend/source.txt"
 git -C "$INSTALL_DIR" commit --quiet -am minor
 git -C "$INSTALL_DIR" tag 0.5.0
@@ -72,6 +73,13 @@ EOF
 cat > "$FAKE_BIN/go" <<'EOF'
 #!/usr/bin/env bash
 while [ "$#" -gt 0 ]; do
+    case "$1" in
+        -ldflags=*)
+            if [ -n "${GO_BUILD_FLAGS_PATH:-}" ]; then
+                printf '%s\n' "$1" > "$GO_BUILD_FLAGS_PATH"
+            fi
+            ;;
+    esac
     if [ "$1" = "-o" ]; then
         printf 'new binary\n' > "$2"
         chmod 0755 "$2"
@@ -94,12 +102,14 @@ reset_install() {
 }
 
 reset_install
-PATH="$FAKE_BIN:$PATH" FUTRX_INSTALL_DIR="$INSTALL_DIR" \
-    bash "$DEPLOY_SCRIPT" --ref=0.4.1 >"$TEST_DIR/success.out"
+PATH="$FAKE_BIN:$PATH" FUTRX_INSTALL_DIR="$INSTALL_DIR" GO_BUILD_FLAGS_PATH="$TEST_DIR/build-flags" \
+    bash "$DEPLOY_SCRIPT" --ref=0.4.2 >"$TEST_DIR/success.out"
 [ "$(git -C "$INSTALL_DIR" rev-parse HEAD)" = "$(git -C "$INSTALL_DIR" rev-parse 0.4.1)" ] || \
     fail "successful patch deployment did not select its target commit"
 grep -q '^new binary$' "$INSTALL_DIR/backend/remote" || \
     fail "successful patch deployment did not install the staged binary"
+grep -q 'Version=0.4.2' "$TEST_DIR/build-flags" || \
+    fail "deployment did not stamp the selected tag when two tags share a commit"
 
 reset_install
 if PATH="$FAKE_BIN:$PATH" FUTRX_INSTALL_DIR="$INSTALL_DIR" FAIL_HEALTH=1 \

@@ -32,7 +32,7 @@ export function TwoFactorEnrollForm({
           <div class="text-[12px] text-ink-300">
             Scan with your authenticator app, or enter this secret manually:
           </div>
-          <code class="block break-all rounded bg-black/30 border border-white/10 px-2.5 py-2 text-[11.5px] text-ink-100">
+          <code class="block break-all rounded bg-inset border border-line px-2.5 py-2 text-[11.5px] text-ink-100">
             {secret}
           </code>
         </div>
@@ -44,14 +44,14 @@ export function TwoFactorEnrollForm({
           inputMode="numeric"
           value={confirmCode}
           onInput={(event) => setConfirmCode((event.currentTarget as HTMLInputElement).value)}
-          class="w-full h-10 rounded-md bg-black/30 border border-white/10 px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
+          class="w-full h-10 rounded-md bg-inset border border-line px-3 text-sm text-ink-100 focus:outline-none focus:border-accent-blue"
         />
       </label>
       <div class="flex items-center gap-2">
         <button
           type="submit"
           disabled={busy}
-          class="h-10 px-3 rounded-md bg-accent-blue/80 hover:bg-accent-blue text-white text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
+          class="h-10 px-3 rounded-md bg-accent-blue/80 hover:bg-accent-blue text-on-accent text-[13px] font-medium disabled:opacity-50 inline-flex items-center gap-2"
         >
           {busy && <Loader class="w-3.5 h-3.5 animate-spin" />}
           Confirm
@@ -59,7 +59,7 @@ export function TwoFactorEnrollForm({
         <button
           type="button"
           onClick={onCancel}
-          class="h-10 px-3 rounded-md text-ink-300 hover:text-ink-100 hover:bg-white/[0.05] text-[13px]"
+          class="h-10 px-3 rounded-md text-ink-300 hover:text-ink-100 hover:bg-tint-strong text-[13px]"
         >
           Cancel
         </button>

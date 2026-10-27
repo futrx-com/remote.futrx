@@ -1,11 +1,12 @@
 import { useState } from "preact/hooks";
+import { AnsweredUserInput } from "./AnsweredUserInput";
 import { ApprovalInteractionForm } from "./ApprovalInteractionForm";
 import { ElicitationInteractionForm } from "./ElicitationInteractionForm";
 import { GenericInteractionForm } from "./GenericInteractionForm";
 import { PermissionInteractionForm } from "./PermissionInteractionForm";
 import type { InteractionPart } from "./types";
 import { UserInputInteractionForm } from "./UserInputInteractionForm";
-import type { ChatInteractionIntent } from "../../../models/chatInteraction";
+import type { ChatInteractionIntent, ChatInteractionQuestion } from "../../../models/chatInteraction";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 export function InteractionCard({
@@ -17,6 +18,12 @@ export function InteractionCard({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
+  // A resolved question card keeps its questions on screen, so the transcript
+  // still shows what the agent asked and what was answered.
+  const resolvedQuestions = part.status !== "pending" && part.interactionKind === "user_input"
+    && Array.isArray(part.input.questions)
+    ? part.input.questions as ChatInteractionQuestion[]
+    : [];
 
   function respond(intent: ChatInteractionIntent) {
     if (!onRespond || submitting || part.status !== "pending") return;
@@ -40,7 +47,13 @@ export function InteractionCard({
         </span>
       </header>
       <div class="p-3">
-        {part.status !== "pending" ? (
+        {resolvedQuestions.length > 0 ? (
+          <AnsweredUserInput
+            questions={resolvedQuestions}
+            answers={part.answers}
+            note={part.status === "answered" ? undefined : `Request ${humanStatus(part.status)}.`}
+          />
+        ) : part.status !== "pending" ? (
           <p class="text-[12px] text-ink-300">Request {humanStatus(part.status)}.</p>
         ) : part.interactionKind === "user_input" ? (
           <UserInputInteractionForm input={part.input} disabled={submitting} onSubmit={respond} />

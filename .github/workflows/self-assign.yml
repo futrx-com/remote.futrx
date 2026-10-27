@@ -1,0 +1,34 @@
+name: Self-assign issues
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  assign:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.comment.body == '/assign'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Assign the commenter
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const assignee = context.payload.comment.user.login;
+
+            await github.rest.issues.addAssignees({
+              ...context.repo,
+              issue_number: context.issue.number,
+              assignees: [assignee],
+            });
+
+            await github.rest.reactions.createForIssueComment({
+              ...context.repo,
+              comment_id: context.payload.comment.id,
+              content: '+1',
+            });

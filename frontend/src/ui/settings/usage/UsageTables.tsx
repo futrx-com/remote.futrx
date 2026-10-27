@@ -40,13 +40,12 @@ export function UsageGroupTable({
       }`}
     >
       <UsageScroller>
-        <table class="w-full text-[13px] border-collapse min-w-[560px]">
+        <table class="w-full text-[13px] border-collapse min-w-[480px]">
           <thead>
             <tr class="text-left text-[11.5px] uppercase tracking-wide text-ink-400">
               <th class="font-medium px-2 py-2">{GROUP_HEADINGS[groupBy]}</th>
               <th class="font-medium px-2 py-2 text-right">Runs</th>
               <th class="font-medium px-2 py-2 text-right">Tokens</th>
-              <th class="font-medium px-2 py-2 text-right">Cost</th>
               {drillable && <th class="w-8" />}
             </tr>
           </thead>
@@ -61,15 +60,8 @@ export function UsageGroupTable({
               >
                 <td class="px-2 py-2 text-ink-100 truncate max-w-[220px]">{group.label}</td>
                 <td class="px-2 py-2 text-right text-ink-200 font-mono">{group.runs}</td>
-                <td class="px-2 py-2 text-right text-ink-200 font-mono">
+                <td class="px-2 py-2 text-right text-ink-50 font-mono">
                   {usageFormatService.tokens(group.totalTokens)}
-                </td>
-                <td class="px-2 py-2 text-right font-mono text-ink-50">
-                  <CostCell
-                    cost={group.costUsd}
-                    estimated={group.estimatedCostUsd}
-                    unpriced={group.unpricedRuns}
-                  />
                 </td>
                 {drillable && (
                   <td class="px-1 py-2 text-ink-400">
@@ -130,7 +122,7 @@ export function UsageRecordsTable({
       ) : (
         <>
           <UsageScroller>
-            <table class="w-full text-[12.5px] border-collapse min-w-[720px]">
+            <table class="w-full text-[12.5px] border-collapse min-w-[640px]">
               <thead>
                 <tr class="text-left text-[11.5px] uppercase tracking-wide text-ink-400">
                   <th class="font-medium px-2 py-2">When (UTC)</th>
@@ -140,7 +132,6 @@ export function UsageRecordsTable({
                   <th class="font-medium px-2 py-2 text-right">In</th>
                   <th class="font-medium px-2 py-2 text-right">Out</th>
                   <th class="font-medium px-2 py-2 text-right">Cache</th>
-                  <th class="font-medium px-2 py-2 text-right">Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,7 +145,11 @@ export function UsageRecordsTable({
                     </td>
                     <td class="px-2 py-2 text-ink-200 font-mono">
                       {record.chatId}
-                      {record.scheduled && (
+                      {record.applicationId ? (
+                        <span class="ml-1.5 text-[10.5px] text-accent-green">
+                          app: {record.applicationId}
+                        </span>
+                      ) : record.scheduled && (
                         <span class="ml-1.5 text-[10.5px] text-accent-green">scheduled</span>
                       )}
                     </td>
@@ -172,18 +167,6 @@ export function UsageRecordsTable({
                     </td>
                     <td class="px-2 py-2 text-right text-ink-300 font-mono">
                       {usageFormatService.tokens(record.cacheReadTokens + record.cacheWriteTokens)}
-                    </td>
-                    <td class="px-2 py-2 text-right font-mono text-ink-50">
-                      {record.costUsd == null ? (
-                        <span class="text-ink-400" title="No provider price and no matching price-table entry">
-                          unknown
-                        </span>
-                      ) : (
-                        <span title={record.estimated ? "Estimated from the price table" : "Reported by the provider"}>
-                          {record.estimated ? "~" : ""}
-                          {usageFormatService.usd(record.costUsd)}
-                        </span>
-                      )}
                     </td>
                   </tr>
                 ))}
@@ -204,31 +187,6 @@ export function UsageRecordsTable({
         </>
       )}
     </UsagePanel>
-  );
-}
-
-function CostCell({
-  cost,
-  estimated,
-  unpriced,
-}: {
-  cost: number;
-  estimated: number;
-  unpriced: number;
-}) {
-  const allEstimated = cost > 0 && estimated >= cost;
-  const title = [
-    estimated > 0 ? `${usageFormatService.usd(estimated)} estimated from the price table` : null,
-    unpriced > 0 ? `${unpriced} run${unpriced === 1 ? "" : "s"} with unknown cost` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  return (
-    <span title={title || "Reported by the provider"}>
-      {allEstimated ? "~" : ""}
-      {usageFormatService.usd(cost)}
-      {!allEstimated && estimated > 0 && <span class="text-ink-400">*</span>}
-    </span>
   );
 }
 

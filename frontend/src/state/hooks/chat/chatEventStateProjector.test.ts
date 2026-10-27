@@ -125,6 +125,31 @@ test("preserves pending interactions and final subagent reports across replay", 
   });
 });
 
+test("keeps the recorded answers when a question interaction resolves", () => {
+  const events: ChatEvent[] = [
+    { type: "user", text: "deploy", t: 1 },
+    {
+      type: "interaction_request",
+      id: "7",
+      name: "item/tool/requestUserInput",
+      input: { questions: [{ id: "env", question: "Which environment?" }] },
+      status: "user_input",
+      t: 2,
+    },
+    { type: "interaction_resolved", id: "7", status: "answered", data: { answers: { env: ["staging"] } }, t: 3 },
+  ];
+
+  const state = chatEventStateProjector.fromEvents(events, { hasMore: false });
+  const assistant = state.blocks[1];
+  assert.equal(assistant.type, "assistant");
+  if (assistant.type !== "assistant") return;
+  const part = assistant.parts[0];
+  assert.equal(part.kind, "interaction");
+  if (part.kind !== "interaction") return;
+  assert.equal(part.status, "answered");
+  assert.deepEqual(part.answers, { env: ["staging"] });
+});
+
 test("closes an unfinished collaboration when its parent turn completes", () => {
   const events: ChatEvent[] = [
     { type: "user", text: "delegate", t: 1 },

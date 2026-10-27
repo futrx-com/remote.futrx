@@ -46,7 +46,7 @@ var antigravityProfile = provisioning.Profile{
 	// No credential sync: agy stores auth in the OS keyring on desktops and in
 	// per-home fallback files on headless systems, with no stable documented
 	// token subpath to move between host and container. Sign-in is per
-	// workspace: run `agy` once in the chat terminal and complete the URL +
+	// workspace: run `agy` once in the Terminal application and complete the URL +
 	// code flow. Runs without credentials fail with agy's own sign-in message.
 	Credentials: provisioning.CredentialSpec{Name: "antigravity"},
 	PersistentState: []provisioning.PersistentDirectory{{

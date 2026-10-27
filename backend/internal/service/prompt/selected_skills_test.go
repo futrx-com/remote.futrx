@@ -37,9 +37,9 @@ func codexTestAgentPolicy() testAgentPolicy {
 		ID:    agent.ProviderCodex,
 		Label: "Codex",
 		Features: agentmodule.Features{
-			Skills:         agentmodule.SkillsDollarMention,
-			BrowserTools:   true,
-			ScheduledTools: true,
+			Skills:           agentmodule.SkillsDollarMention,
+			BrowserTools:     true,
+			ApplicationTools: true,
 		},
 	}}
 }

@@ -1,3 +1,4 @@
+import { DAY_MS } from "../../config/time.ts";
 import type {
   UsageRange,
   UsageRangeLabels,
@@ -14,7 +15,6 @@ import {
  * with the bars drawn from the same response.
  */
 class UsageRangeService {
-  private readonly dayMs = 24 * 60 * 60 * 1000;
 
   /**
    * Resolves a preset against "now". `7d` and `30d` include today, so "7 days"
@@ -65,17 +65,17 @@ class UsageRangeService {
   /** First ms of a window that ends today and spans `days` UTC days. Today is
    *  one of them, which is why it steps back one fewer day than it spans. */
   private startOfWindow(now: number, days: number): number {
-    return this.startOfUtcDay(now) - (days - 1) * this.dayMs;
+    return this.startOfUtcDay(now) - (days - 1) * DAY_MS;
   }
 
   /** Start of the UTC day containing `at`. */
   private startOfUtcDay(at: number): number {
-    return Math.floor(at / this.dayMs) * this.dayMs;
+    return Math.floor(at / DAY_MS) * DAY_MS;
   }
 
   /** Last millisecond of the UTC day containing `at`. */
   private endOfUtcDay(at: number): number {
-    return this.startOfUtcDay(at) + this.dayMs - 1;
+    return this.startOfUtcDay(at) + DAY_MS - 1;
   }
 
   /** ISO `YYYY-MM-DD` for the UTC day containing `at`. */

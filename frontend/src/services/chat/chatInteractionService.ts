@@ -24,6 +24,20 @@ class ChatInteractionService {
     return !this.legacyApprovalMethods.has(method);
   }
 
+  /** The answers a resolved interaction recorded, or undefined when it recorded none. */
+  recordedAnswers(data: unknown): Record<string, string[]> | undefined {
+    if (!data || typeof data !== "object") return undefined;
+    const answers = (data as { answers?: unknown }).answers;
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) return undefined;
+    const recorded: Record<string, string[]> = {};
+    for (const [id, values] of Object.entries(answers)) {
+      if (Array.isArray(values) && values.every((value) => typeof value === "string")) {
+        recorded[id] = values;
+      }
+    }
+    return Object.keys(recorded).length > 0 ? recorded : undefined;
+  }
+
   encodeResponse(
     method: string,
     intent: ChatInteractionIntent

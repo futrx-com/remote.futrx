@@ -5,11 +5,17 @@
 #
 # Expects from caller:
 #   - log / err helpers
+#   - remote_exec_selected_installer helper
 #   - $INSTALL_DIR, $REPO_URL, $GITHUB_TOKEN
-#   - $FUTRX_CHECKOUT_REF (optional; defaults to origin/main)
+#   - $FUTRX_CHECKOUT_REF (optional; defaults to the latest release tag)
 set -euo pipefail
 
-if [ "${FUTRX_INSTALL_CHECKOUT_SELECTED:-0}" = "1" ]; then
+step_00_checkout() {
+# Current entry points always carry the selected ref alongside this guard.
+# Older installers set only the guard after resetting to origin/main; treating
+# that legacy handoff as complete could build an untagged main commit.
+if [ "${FUTRX_INSTALL_CHECKOUT_SELECTED:-0}" = "1" ] && \
+   [ -n "${FUTRX_CHECKOUT_REF:-}" ]; then
     return 0
 fi
 
@@ -23,20 +29,16 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
     CLONE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/futrx-com/remote.futrx.git"
 fi
 
-CHECKOUT_REF="${FUTRX_CHECKOUT_REF:-origin/main}"
+# shellcheck source=../lib/release-version.sh
+. "$INFRA_DIR/lib/release-version.sh"
+
+REQUESTED_REF="${FUTRX_CHECKOUT_REF:-}"
 if [ -d "$INSTALL_DIR/.git" ]; then
-    log "Updating repo at $INSTALL_DIR (ref: $CHECKOUT_REF)"
-    git -C "$INSTALL_DIR" fetch --quiet --tags origin
-    if ! git -C "$INSTALL_DIR" rev-parse --verify --quiet "refs/tags/${CHECKOUT_REF}^{commit}" >/dev/null && \
-       ! git -C "$INSTALL_DIR" rev-parse --verify --quiet "${CHECKOUT_REF}^{commit}" >/dev/null; then
-        git -C "$INSTALL_DIR" fetch --quiet --depth=1 origin "$CHECKOUT_REF"
-    fi
-    CHECKOUT_COMMIT="$(git -C "$INSTALL_DIR" rev-parse --verify --quiet "refs/tags/${CHECKOUT_REF}^{commit}" \
-        || git -C "$INSTALL_DIR" rev-parse --verify "${CHECKOUT_REF}^{commit}")"
-    git -C "$INSTALL_DIR" reset --hard "$CHECKOUT_COMMIT"
+    git -C "$INSTALL_DIR" fetch --quiet --tags --prune --prune-tags origin
 else
     log "Cloning repo to $INSTALL_DIR"
-    if ! git clone --depth=1 "$CLONE_URL" "$INSTALL_DIR" 2>&1; then
+    if ! git clone --depth=1 --branch main --single-branch \
+        "$CLONE_URL" "$INSTALL_DIR" 2>&1; then
         err "git clone failed."
         if [ -z "${GITHUB_TOKEN:-}" ]; then
             cat <<EOF >&2
@@ -50,11 +52,33 @@ EOF
         exit 1
     fi
     chmod 0600 "$INSTALL_DIR/.git/config"
-    if [ -n "${FUTRX_CHECKOUT_REF:-}" ]; then
-        git -C "$INSTALL_DIR" fetch --quiet --depth=1 origin "$FUTRX_CHECKOUT_REF"
-        git -C "$INSTALL_DIR" reset --hard "$FUTRX_CHECKOUT_REF"
+    git -C "$INSTALL_DIR" fetch --quiet --tags --prune --prune-tags origin
+fi
+
+if [ -n "$REQUESTED_REF" ]; then
+    CHECKOUT_REF="$REQUESTED_REF"
+else
+    if ! CHECKOUT_REF="$(release_latest_tag "$INSTALL_DIR")"; then
+        err "No complete numeric release tag is available for installation."
+        exit 1
     fi
 fi
 
+log "Selecting checkout at $INSTALL_DIR (ref: $CHECKOUT_REF)"
+if ! git -C "$INSTALL_DIR" rev-parse --verify --quiet \
+        "refs/tags/${CHECKOUT_REF}^{commit}" >/dev/null && \
+   ! git -C "$INSTALL_DIR" rev-parse --verify --quiet \
+        "${CHECKOUT_REF}^{commit}" >/dev/null; then
+    git -C "$INSTALL_DIR" fetch --quiet --depth=1 origin "$CHECKOUT_REF"
+fi
+CHECKOUT_COMMIT="$(
+    git -C "$INSTALL_DIR" rev-parse --verify --quiet \
+        "refs/tags/${CHECKOUT_REF}^{commit}" \
+    || git -C "$INSTALL_DIR" rev-parse --verify "${CHECKOUT_REF}^{commit}"
+)"
+git -C "$INSTALL_DIR" reset --hard "$CHECKOUT_COMMIT"
+
+export FUTRX_CHECKOUT_REF="$CHECKOUT_REF"
 export FUTRX_INSTALL_CHECKOUT_SELECTED=1
-exec bash "$INSTALL_DIR/infra/install.sh" "$@"
+remote_exec_selected_installer "$INSTALL_DIR/infra/install.sh" "$@"
+}

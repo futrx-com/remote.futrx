@@ -16,11 +16,9 @@ import (
 //
 // It is idempotent: a run is keyed by (chatId, event timestamp), which is the
 // same pair a live record carries, so re-running produces byte-identical
-// files. Attribution that only exists on live records — the acting user, the
-// run id, and the scheduled flag — is carried over from the current ledger
-// wherever a key matches. Runs that were never recorded live therefore come
-// back without a user, because chat event logs do not store who typed the
-// prompt.
+// files. New events carry the acting user and turn identity. Legacy attribution
+// is carried over from the current ledger where available; an unknown actor
+// is never inferred from the chat's current viewer or project owner.
 func (s *Service) Rebuild(ctx context.Context) (RebuildResult, error) {
 	if s == nil || s.repo == nil {
 		return RebuildResult{}, ErrUnavailable
@@ -72,10 +70,27 @@ func (s *Service) Rebuild(ctx context.Context) (RebuildResult, error) {
 				continue
 			}
 			if found {
-				record.RunID = prior.RunID
-				record.UserEmail = prior.UserEmail
-				record.Scheduled = prior.Scheduled
-				if prior.UserEmail != "" {
+				if event.TurnID == "" {
+					record.RunID = prior.RunID
+				}
+				if record.UserEmail == "" {
+					record.UserEmail = prior.UserEmail
+				}
+				if record.ApplicationID == "" {
+					record.ApplicationID = prior.ApplicationID
+				}
+				if record.ApplicationID == prior.ApplicationID && record.ApplicationRequestID == "" {
+					record.ApplicationRequestID = prior.ApplicationRequestID
+				}
+				// Preserve legacy scheduled attribution only without an application
+				// origin. Older versions incorrectly marked every application turn
+				// scheduled; persisted application identity repairs that on rebuild.
+				if record.ApplicationID == "" {
+					record.Scheduled = record.Scheduled || prior.Scheduled
+				} else {
+					record.Scheduled = false
+				}
+				if event.UserEmail == "" && prior.UserEmail != "" {
 					result.PreservedActors++
 				}
 			}
@@ -128,19 +143,26 @@ func recordFromChatEvent(
 	}
 
 	record := Record{
-		At:               event.T,
-		ProjectID:        string(chat.ProjectID),
-		ProjectSlug:      slugs[string(chat.ProjectID)],
-		ChatID:           string(chat.ID),
-		RunID:            fmt.Sprintf("%s-%d", chat.ID, event.Seq),
-		Provider:         provider,
-		Model:            model,
-		InputTokens:      usage.InputTokens,
-		OutputTokens:     usage.OutputTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		CacheWriteTokens: usage.CacheWriteTokens,
-		DurationMs:       usage.DurationMs,
-		Turns:            usage.Turns,
+		At:                   event.T,
+		ProjectID:            string(chat.ProjectID),
+		ProjectSlug:          slugs[string(chat.ProjectID)],
+		ChatID:               string(chat.ID),
+		RunID:                fmt.Sprintf("%s-%d", chat.ID, event.Seq),
+		UserEmail:            event.UserEmail,
+		ApplicationID:        event.ApplicationID,
+		ApplicationRequestID: event.ApplicationRequestID,
+		Scheduled:            event.ApplicationID == "" && strings.TrimSpace(event.ScheduledTaskID) != "",
+		Provider:             provider,
+		Model:                model,
+		InputTokens:          usage.InputTokens,
+		OutputTokens:         usage.OutputTokens,
+		CacheReadTokens:      usage.CacheReadTokens,
+		CacheWriteTokens:     usage.CacheWriteTokens,
+		DurationMs:           usage.DurationMs,
+		Turns:                usage.Turns,
+	}
+	if event.TurnID != "" {
+		record.RunID = event.TurnID
 	}
 	if !hasUsage && record.Provider == "" {
 		return Record{}, false

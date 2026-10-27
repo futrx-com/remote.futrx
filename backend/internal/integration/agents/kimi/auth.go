@@ -58,7 +58,7 @@ func NewAuth() *Auth {
 				return AuthStatus{Authenticated: authenticated, DeviceLogin: state}
 			}
 		},
-		ResolveCompletion: func(err error) agentauth.DeviceCompletion {
+		ResolveCompletion: func(err error, _ string) agentauth.DeviceCompletion {
 			switch {
 			case authenticated():
 				return agentauth.DeviceCompletion{Completed: true}

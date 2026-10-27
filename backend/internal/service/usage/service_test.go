@@ -645,3 +645,90 @@ func TestSetPricesNormalizesAndStamps(t *testing.T) {
 		t.Fatalf("err = %v, want ErrInvalidPrice", err)
 	}
 }
+
+func TestRebuiltRecordUsesPersistedRunAttribution(t *testing.T) {
+	record, ok := recordFromChatEvent(servicechat.Meta{ID: "chat", Provider: servicechat.ProviderClaude}, servicechat.Event{
+		T: 1234, Seq: 8, Type: "complete", TurnID: "durable-run", UserEmail: "removed-user@example.com", ScheduledTaskID: "task",
+	}, nil, PriceTable{})
+	if !ok || record.UserEmail != "removed-user@example.com" || record.RunID != "durable-run" || !record.Scheduled {
+		t.Fatalf("lost event attribution: %#v", record)
+	}
+}
+
+func TestApplicationUsageMatchesLiveAndRebuiltRecords(t *testing.T) {
+	for _, applicationID := range []string{"build-monitor", "scheduled-tasks"} {
+		t.Run(applicationID, func(t *testing.T) {
+			usage := json.RawMessage(`{"input_tokens":5,"output_tokens":1,"total_cost_usd":0.09,"model":"example-model"}`)
+			meta := servicechat.Meta{ID: "chat", ProjectID: "aaaa1111", Provider: servicechat.ProviderClaude}
+			completion := servicechat.Event{
+				T: 1234, Seq: 8, Type: "complete", TurnID: "run-1", UserEmail: "owner@example.com",
+				ApplicationID: applicationID, ApplicationRequestID: "request-1", Provider: servicechat.ProviderClaude, Usage: usage,
+			}
+			repo := newFakeRepository()
+			service := New(repo, testProjects(), fakeChats{
+				metas: []servicechat.Meta{meta}, events: map[servicechat.ID][]servicechat.Event{"chat": {completion}},
+			})
+			service.RecordRun(context.Background(), RunEvent{
+				At: completion.T, ChatID: string(meta.ID), ProjectID: string(meta.ProjectID), RunID: completion.TurnID,
+				UserEmail: completion.UserEmail, ApplicationID: applicationID, ApplicationRequestID: "request-1",
+				Provider: string(meta.Provider), Usage: usage,
+			})
+			if len(repo.records) != 1 {
+				t.Fatalf("live records = %+v", repo.records)
+			}
+			live := repo.records[0]
+			if live.ApplicationID != applicationID || live.ApplicationRequestID != "request-1" || live.Scheduled {
+				t.Fatalf("lost application origin: %+v", live)
+			}
+			if _, err := service.Rebuild(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(repo.records) != 1 || !recordsEqual(live, repo.records[0]) {
+				t.Fatalf("live/rebuild mismatch: live=%+v rebuilt=%+v", live, repo.records)
+			}
+		})
+	}
+}
+
+func TestRebuildRepairsApplicationScheduledFlagAndPreservesLegacy(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		eventApplication string
+		priorApplication string
+		wantApplication  string
+		wantRequest      string
+		wantScheduled    bool
+	}{
+		{"persisted origin repairs old flag", "build-monitor", "", "build-monitor", "request-1", false},
+		{"live origin survives legacy events", "", "build-monitor", "build-monitor", "request-1", false},
+		{"legacy scheduler attribution survives", "", "", "", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			completion := servicechat.Event{T: 1234, Seq: 8, Type: "complete", TurnID: "run-1", ApplicationID: tc.eventApplication}
+			if completion.ApplicationID != "" {
+				completion.ApplicationRequestID = "request-1"
+			}
+			prior := Record{At: completion.T, ChatID: "chat", RunID: completion.TurnID, Scheduled: true, ApplicationID: tc.priorApplication}
+			if prior.ApplicationID != "" {
+				prior.ApplicationRequestID = "request-1"
+			}
+			repo := newFakeRepository(prior)
+			service := New(repo, nil, fakeChats{
+				metas:  []servicechat.Meta{{ID: "chat", Provider: servicechat.ProviderClaude}},
+				events: map[servicechat.ID][]servicechat.Event{"chat": {completion}},
+			})
+			for n := 0; n < 2; n++ {
+				if _, err := service.Rebuild(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				if len(repo.records) != 1 {
+					t.Fatalf("records = %+v", repo.records)
+				}
+				got := repo.records[0]
+				if got.ApplicationID != tc.wantApplication || got.ApplicationRequestID != tc.wantRequest || got.Scheduled != tc.wantScheduled {
+					t.Fatalf("rebuild %d attribution = %+v", n, got)
+				}
+			}
+		})
+	}
+}

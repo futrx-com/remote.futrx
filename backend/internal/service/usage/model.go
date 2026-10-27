@@ -18,14 +18,16 @@ var (
 // Record is one completed agent run. Records are append-only; the file they
 // live in is chosen by the UTC month of At.
 type Record struct {
-	At          int64  `json:"at"`
-	ProjectID   string `json:"projectId,omitempty"`
-	ProjectSlug string `json:"projectSlug,omitempty"`
-	ChatID      string `json:"chatId"`
-	RunID       string `json:"runId,omitempty"`
-	UserEmail   string `json:"userEmail,omitempty"`
-	Provider    string `json:"provider"`
-	Model       string `json:"model,omitempty"`
+	At                   int64  `json:"at"`
+	ProjectID            string `json:"projectId,omitempty"`
+	ProjectSlug          string `json:"projectSlug,omitempty"`
+	ChatID               string `json:"chatId"`
+	RunID                string `json:"runId,omitempty"`
+	UserEmail            string `json:"userEmail,omitempty"`
+	ApplicationID        string `json:"applicationId,omitempty"`
+	ApplicationRequestID string `json:"applicationRequestId,omitempty"`
+	Provider             string `json:"provider"`
+	Model                string `json:"model,omitempty"`
 
 	// InputTokens is uncached input; all four token fields are disjoint.
 	InputTokens      int64 `json:"inputTokens"`
@@ -42,7 +44,8 @@ type Record struct {
 
 	DurationMs int64 `json:"durationMs,omitempty"`
 	Turns      int64 `json:"turns,omitempty"`
-	Scheduled  bool  `json:"scheduled,omitempty"`
+	// Scheduled is retained for legacy usage recorded by the retired core scheduler.
+	Scheduled bool `json:"scheduled,omitempty"`
 }
 
 // TotalTokens is the billable token count across every bucket.

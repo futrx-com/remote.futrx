@@ -8,12 +8,12 @@ export function SessionHistoryList({ sessions }: { sessions: SessionHistoryEntry
     );
   }
   return (
-    <div class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <div class="px-3.5 py-2.5 border-b border-white/[0.06] flex items-center gap-2">
+    <div class="rounded-lg border border-line bg-surface overflow-hidden">
+      <div class="px-3.5 py-2.5 border-b border-line flex items-center gap-2">
         <Clock class="w-4 h-4 text-ink-300" />
         <div class="text-[13px] font-medium text-ink-100">Recent sign-ins</div>
       </div>
-      <ul class="divide-y divide-white/[0.06]">
+      <ul class="divide-y divide-line">
         {sessions.map((entry) => (
           <li key={entry.sid} class="px-3.5 py-2.5 text-[12.5px] text-ink-200 flex items-center justify-between gap-3">
             <div class="min-w-0">

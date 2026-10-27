@@ -136,7 +136,15 @@ func (s *Service) applyChatUpdate(chat *Chat, update *ChatUpdate, scope agentmod
 		if !s.validProviderForScope(provider, scope) {
 			return ErrInvalidChatProvider
 		}
+		if provider != chat.Provider && update.AccountID == nil {
+			// An account ID belongs to one provider. Older clients that change
+			// only the provider must not carry the previous provider's account.
+			chat.AccountID = ""
+		}
 		chat.Provider = provider
+	}
+	if update.AccountID != nil {
+		chat.AccountID = strings.TrimSpace(*update.AccountID)
 	}
 	if update.Model != nil {
 		chat.Model = strings.TrimSpace(*update.Model)
@@ -183,7 +191,9 @@ func (s *Service) normalizeChat(chat, defaults Chat, scope agentmodule.Execution
 	chat.Provider = normalizeChatProvider(chat.Provider)
 	if !s.validProviderForScope(chat.Provider, scope) {
 		chat.Provider = defaults.Provider
+		chat.AccountID = defaults.AccountID
 	}
+	chat.AccountID = strings.TrimSpace(chat.AccountID)
 	chat.Model = strings.TrimSpace(chat.Model)
 	chat.Mode = normalizeChatMode(chat.Mode)
 	if !ValidChatMode(chat.Mode) {

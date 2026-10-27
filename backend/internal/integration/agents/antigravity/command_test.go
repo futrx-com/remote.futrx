@@ -93,7 +93,7 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 		Projects: antigravityTestProjects{
 			project: project,
 			secrets: []agent.ProjectSecret{
-				{Key: "REMOTE_SCHEDULE_API", Value: "https://attacker.invalid"},
+				{Key: "REMOTE_APPLICATION_API", Value: "https://attacker.invalid"},
 				{Key: "SAFE_SECRET", Value: "safe"},
 			},
 			calls: calls,
@@ -105,12 +105,11 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 	}
 	provider := runtime.Lookup(agent.ProviderAntigravity).(*Provider)
 	request := agent.RunRequest{
-		ProjectID:           string(project.ID),
-		Prompt:              "test",
-		EnableBrowser:       true,
-		EnableScheduleTools: true,
+		ProjectID:     string(project.ID),
+		Prompt:        "test",
+		EnableBrowser: true,
 		RuntimeEnv: map[string]string{
-			"REMOTE_SCHEDULE_API": "https://remote.test/agent-api/schedules",
+			"REMOTE_APPLICATION_API": "https://remote.test/agent-api/applications",
 		},
 	}
 	var subtypes []string
@@ -130,7 +129,7 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 		t.Fatalf("preparation events = %v", subtypes)
 	}
 	if calls.start != 1 || calls.cli != 1 || calls.instructions != 1 ||
-		calls.skillLinks != 1 || calls.schedule != 1 || calls.lifecycle != 1 {
+		calls.skillLinks != 1 || calls.lifecycle != 1 {
 		t.Fatalf("required preparation calls = %#v", calls)
 	}
 	if calls.credentials != 0 || calls.browserSkill != 0 || calls.browserScript != 0 ||
@@ -139,8 +138,8 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 	}
 	requireAntigravityArgPair(t, command.Args, "--env", "HOME=/root")
 	requireAntigravityArgPair(t, command.Args, "--env", "SAFE_SECRET=safe")
-	requireAntigravityArgPair(t, command.Args, "--env", "REMOTE_SCHEDULE_API=https://remote.test/agent-api/schedules")
-	if slices.Contains(command.Args, "REMOTE_SCHEDULE_API=https://attacker.invalid") {
+	requireAntigravityArgPair(t, command.Args, "--env", "REMOTE_APPLICATION_API=https://remote.test/agent-api/applications")
+	if slices.Contains(command.Args, "REMOTE_APPLICATION_API=https://attacker.invalid") {
 		t.Fatal("project secret overrode the backend-issued runtime environment")
 	}
 	if !slices.Contains(command.Args, project.ContainerName) || !slices.Contains(command.Args, "agy") {
@@ -158,7 +157,6 @@ type antigravityPreparationCalls struct {
 	browserScript int
 	browserMCP    int
 	browserCore   int
-	schedule      int
 	lifecycle     int
 }
 
@@ -239,13 +237,6 @@ func (f antigravityTestBrowser) EnsureCore(context.Context, string) error {
 	return nil
 }
 
-type antigravityTestSchedule struct{ calls *antigravityPreparationCalls }
-
-func (f antigravityTestSchedule) Ensure(context.Context, string) error {
-	f.calls.schedule++
-	return nil
-}
-
 type antigravityTestLifecycle struct{ calls *antigravityPreparationCalls }
 
 func (f antigravityTestLifecycle) EnsureBootAutostart(context.Context, string) error {
@@ -260,7 +251,6 @@ func antigravityContainerDependencies(calls *antigravityPreparationCalls) provis
 		Workspace:     antigravityTestWorkspace{calls},
 		RuntimeAssets: antigravityTestRuntimeAssets{},
 		Browser:       antigravityTestBrowser{calls},
-		ScheduleTools: antigravityTestSchedule{calls},
 		Lifecycle:     antigravityTestLifecycle{calls},
 	}
 }

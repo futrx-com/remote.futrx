@@ -1,13 +1,18 @@
 import type { RefObject } from "preact";
-import { useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import { modelShortLabel, providerDisplayLabel } from "../../../config/chat";
 import type { QueuedPrompt, SelectedSkill } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
 import type { Attachment } from "../../../models/upload";
+import { commandPaletteState } from "../../../state/hooks/chat/commandPaletteState";
 import { useComposerAgentCapabilities } from "../../../state/hooks/chat/useComposerAgentCapabilities";
+import { useAuthContext } from "../../../state/context/AuthContext";
 import { ChevronDown, Settings } from "../../primitives/icons";
 import { AttachmentTray } from "./AttachmentTray";
 import { AttachButton } from "./AttachButton";
+import { CommandPalette, type CommandPaletteHandle } from "./CommandPalette";
+import { ExtensionSlot } from "../../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../../config/extensions";
 import { ComposerAgentControls } from "./ComposerAgentControls";
 import { ComposerDropOverlay } from "./ComposerDropOverlay";
 import { ComposerExecutionControls } from "./ComposerExecutionControls";
@@ -15,20 +20,7 @@ import { PromptTextarea } from "./PromptTextarea";
 import { QueuedPromptList } from "./QueuedPromptList";
 import { SelectedSkillChips } from "./SelectedSkillChips";
 import { SendControls } from "./SendControls";
-import { SlashCommandMenu } from "./SlashCommandMenu";
 import type { ComposerPreferenceActions, ComposerPreferences } from "./preferences";
-
-interface SlashCommandMenuControl {
-  open: boolean;
-  loading: boolean;
-  error: string;
-  query: string;
-  items: RegisteredSkill[];
-  highlight: number;
-  onHighlight: (index: number) => void;
-  onChoose: (skill: RegisteredSkill) => void;
-  onKeyDown: (event: KeyboardEvent) => boolean;
-}
 
 export interface ChatComposerProps {
   projectId?: string;
@@ -53,7 +45,6 @@ export interface ChatComposerProps {
   onRemoveAttachment: (id: string) => void;
   onSelectSkill: (skill: RegisteredSkill) => void;
   onRemoveSelectedSkill: (skill: SelectedSkill) => void;
-  slashCommandMenu: SlashCommandMenuControl;
 }
 
 export function ChatComposer({
@@ -79,8 +70,8 @@ export function ChatComposer({
   onRemoveAttachment,
   onSelectSkill,
   onRemoveSelectedSkill,
-  slashCommandMenu,
 }: ChatComposerProps) {
+  const { agentAuth } = useAuthContext();
   const capabilityState = useComposerAgentCapabilities({
     projectId,
     provider: preferences.provider,
@@ -104,6 +95,9 @@ export function ChatComposer({
     refresh: refreshCapabilities,
   } = capabilityState;
   const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
+  const commandPaletteRef = useRef<CommandPaletteHandle | null>(null);
+  const commandQueryText = useMemo(() => commandPaletteState.query(text), [text]);
+  const showCommandPalette = commandQueryText !== null;
   const disconnected = !canSendPrompt && !streaming;
   const hasContent = text.trim().length > 0 || attachments.some((attachment) => attachment.serverPath);
   const canSend = !uploading && !disconnected && hasContent;
@@ -113,7 +107,14 @@ export function ChatComposer({
   const modelLabel = modelOptions.find(
     (option) => option.value === preferences.model,
   )?.label || modelShortLabel(preferences.model);
-  const settingsSummary = `${providerLabel} · ${modelLabel}`;
+  const providerAccounts = agentAuth.providers.find(
+    (entry) => entry.provider === preferences.provider,
+  )?.status.accounts;
+  const effectiveAccountId = preferences.accountId || providerAccounts?.activeAccountId || "";
+  const accountLabel = providerAccounts?.items.find(
+    (account) => account.id === effectiveAccountId,
+  )?.label;
+  const settingsSummary = [providerLabel, accountLabel, modelLabel].filter(Boolean).join(" · ");
   const skillsEnabled = capabilityState.providerCapabilities?.features?.skills !== "none";
 	const selectedModelCapability = capabilityState.providerCapabilities?.models.find(
 		(item) => item.id === preferences.model,
@@ -138,9 +139,29 @@ export function ChatComposer({
     });
   }
 
+  function handleCommandKeyDown(event: KeyboardEvent): boolean {
+    if (!showCommandPalette) return false;
+    return commandPaletteRef.current?.handleKeyDown(event) ?? false;
+  }
+
+  function dismissCommandPalette() {
+    onTextChange("");
+  }
+
   return (
     <div class="codex-composer-shell relative z-20 flex-none bg-canvas">
       {dragging && <ComposerDropOverlay />}
+
+      {showCommandPalette && commandQueryText !== null && (
+        <CommandPalette
+          ref={commandPaletteRef}
+          provider={preferences.provider}
+          projectId={projectId}
+          query={commandQueryText}
+          onSelect={onSelectSkill}
+          onDismiss={dismissCommandPalette}
+        />
+      )}
 
       <SelectedSkillChips skills={selectedSkills} onRemove={onRemoveSelectedSkill} />
       <QueuedPromptList queuedPrompts={queuedPrompts} onRemove={onRemoveQueued} />
@@ -153,19 +174,8 @@ export function ChatComposer({
             event.preventDefault();
             onSend();
           }}
-          class="codex-composer-form composer-form relative flex flex-col px-2.5 pt-2"
+          class="codex-composer-form composer-form flex flex-col px-2.5 pt-2"
         >
-          {slashCommandMenu.open && (
-            <SlashCommandMenu
-              items={slashCommandMenu.items}
-              highlight={slashCommandMenu.highlight}
-              loading={slashCommandMenu.loading}
-              error={slashCommandMenu.error}
-              query={slashCommandMenu.query}
-              onChoose={slashCommandMenu.onChoose}
-              onHighlight={slashCommandMenu.onHighlight}
-            />
-          )}
           <PromptTextarea
             textareaRef={textareaRef}
             text={text}
@@ -175,7 +185,7 @@ export function ChatComposer({
             onTextChange={onTextChange}
             onPaste={onPaste}
             onSend={onSend}
-            onKeyDown={slashCommandMenu.onKeyDown}
+            onKeyDown={handleCommandKeyDown}
           />
 
           <div class="codex-composer-control-deck flex min-w-0 items-center gap-1.5 pt-1.5">
@@ -187,11 +197,20 @@ export function ChatComposer({
               onFilesSelected={onFilesSelected}
             />
 
+            {/* Outside the md-only wrapper below, so a contributed action is
+                reachable on a phone too. */}
+            <ExtensionSlot
+              name={EXTENSION_SLOTS.composerActions}
+              projectId={projectId}
+            />
+
             <div class="hidden min-w-0 flex-1 items-center gap-1.5 md:flex">
               <ComposerAgentControls
                 projectId={projectId}
                 model={preferences.model}
                 provider={preferences.provider}
+                accountId={preferences.accountId}
+                authProviders={agentAuth.providers}
                 streaming={streaming}
                 providerOptions={providerOptions}
                 modelOptions={modelOptions}
@@ -256,12 +275,14 @@ export function ChatComposer({
             aria-label="Composer settings"
           >
             <div class="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-400">
-              Agent and model
+              Provider, account, and model
             </div>
             <ComposerAgentControls
               projectId={projectId}
               model={preferences.model}
               provider={preferences.provider}
+              accountId={preferences.accountId}
+              authProviders={agentAuth.providers}
               streaming={streaming}
               providerOptions={providerOptions}
               modelOptions={modelOptions}

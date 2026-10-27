@@ -37,9 +37,32 @@ one convergence cannot mix policy from two commits.
 | Catalog-declared host agent CLIs | Local binaries for host-scoped execution and managed authentication |
 | `futrx-remote-dev-base` | Reusable Ubuntu workspace image |
 | `.lxd` DNS integration | Resolves container names through the LXD bridge |
+| Container API DNS pin | Resolves the installation's public hostname to the LXD gateway for container-to-host HTTPS |
 | `lxc-ipv4-heal.timer` | Repairs running containers that lose IPv4 |
 | Main application PWA | Installable chat/control surface, Web Push, and a network-failure offline page |
-| code-server launcher PWA | One installable entry point for project IDEs |
+
+## Package repository failures
+
+Host package refreshes use APT's strict error mode: unavailable required
+repositories and signature verification errors stop installation or updates.
+
+If Caddy is already usable and its stable Cloudsmith repository returns
+HTTP 402, the updater retries with temporary copies of the APT source files
+that omit only that repository. Ubuntu/Debian, NodeSource, and custom sources
+retain their signature settings and must refresh successfully. The updater
+logs the recovery; it does not edit the host's source files or disable APT
+signature verification. Genuine Caddy signature errors do not qualify for
+this recovery. The same behavior applies to NodeSource's setup refreshes.
+
+Fresh installations download the official Caddy Debian package from its
+latest stable GitHub release, check its published SHA-512 checksum and package
+metadata, then install it through APT. They do not add a Cloudsmith source.
+Existing Caddy binaries and administrator-managed package sources are kept.
+
+Regression tests: `bash infra/tests/host-apt-test.sh` and
+`bash infra/tests/caddy-package-test.sh`. Validate the full updater on QA with
+the failing repository still configured; manually disabling it does not test
+the production recovery path.
 
 ## Build flow
 
@@ -54,6 +77,13 @@ flowchart LR
 ```
 
 The backend embeds the compiled frontend, so Caddy only needs to proxy the main origin to the Go process.
+
+The Vite build stamps the bundle with a fingerprint of its `index.html`. That
+file names every content-hashed script and stylesheet, so the fingerprint
+changes only when the frontend itself changes. The stamp goes into the page as
+`<meta name="remote-build">` and is also served as `/build.json`, which is
+never cached. An open page compares the two and reloads itself after a deploy
+replaces its frontend. See [Frontend build after a deploy](#frontend-build-after-a-deploy).
 
 ## Host agent CLI convergence
 
@@ -102,19 +132,99 @@ convergence or rebuild project images.
 flowchart TD
     Internet["Internet"] --> Caddy
     Caddy --> Main["host → Go backend"]
-    Caddy --> Launcher["code.host → IDE launcher or slug path"]
-    Caddy --> ProjectIDE["slug.code.host → slug.lxd:8842"]
+    Main --> Launch["/apps/slug/app → redirect to installation origin"]
+    Caddy --> AppWeb["label--project.host → Go gateway → declared project web port"]
     Caddy --> Preview["slug--port.dev.host → slug.lxd:port"]
     Caddy --> Inspector["preview /__remote_inspector → Go backend"]
 
-    ProjectIDE --> Auth["forward_auth /auth/verify"]
-    Preview --> Auth
-    Launcher --> Auth
-    ProjectIDE --> TLS["on-demand TLS checked by /internal/tls-ask"]
-    Preview --> TLS
+    Preview --> Auth["forward_auth /auth/verify"]
+    AppWeb --> Membership["project membership and running install"]
+    Preview --> TLS["on-demand TLS checked by /internal/tls-ask"]
 ```
 
-Caddy validates its rendered configuration before replacing the live file. On-demand certificate requests are accepted only for existing project slugs and permitted hostname formats.
+Caddy validates its rendered configuration before replacing the live file. On-demand certificate requests are accepted only for existing project previews and running web installations with permitted hostname formats. Configure `*.<host>` DNS for installed applications.
+
+## Container-to-host API DNS
+
+Application tools in project containers call the public installation origin at
+`https://<hostname>/agent-api/applications`. If the host's `/etc/hosts` maps that
+hostname to `127.0.1.1`, the bridge's dnsmasq can expose the loopback answer to
+containers. A container then connects to itself instead of the host API.
+
+During host dependency convergence, `infra/steps/01-host-deps.sh` installs
+`dnsutils` for `dig`, detects the `lxdbr0` IPv4 gateway, and invokes
+`infra/lib/container-api-dns.sh`. The helper preserves custom `raw.dnsmasq`
+settings outside its marked block and writes:
+
+```text
+# BEGIN remote.futrx container API DNS
+no-hosts
+host-record=<installation hostname>,<bridge gateway IPv4>
+# END remote.futrx container API DNS
+```
+
+`no-hosts` prevents the bridge DNS from importing the host's `/etc/hosts`.
+Other host aliases from that file therefore stop being exposed to containers;
+LXD container/DHCP records and explicit custom DNS records remain available.
+The exact-hostname pin avoids public-IP hairpin routing. The HTTPS URL and
+certificate hostname remain unchanged: traffic reaches Caddy through the
+gateway with normal TLS verification.
+
+The helper validates its inputs and ownership markers, replaces an old managed
+block when the hostname or gateway changes, and skips configuration writes
+when the desired block is already present. It queries the bridge resolver for
+both A and AAAA records, requiring only the gateway IPv4 and no IPv6 answer.
+Verification has up to five attempts. If it fails after a configuration change,
+the helper attempts to restore the previous configuration and reports failure;
+the installer stops host convergence. A failed rollback is also reported.
+
+Fresh installs and full infrastructure updates apply this configuration.
+`update.sh` already invokes `install.sh`, including with `--skip-workspaces`.
+`--skip-dns-check` skips public DNS validation, not this bridge DNS check.
+Application-only deployments do not apply it. The managed configuration is
+stored in LXD; no per-container hosts entry is needed. Containers configured
+to bypass the bridge resolver are outside this mechanism.
+
+### Verify resolution and HTTPS
+
+On the host, set the actual installation hostname and an existing disposable
+project container name:
+
+```bash
+API_HOST=remote.example.com
+TEST_CONTAINER=your-test-project-container
+BRIDGE=lxdbr0
+GATEWAY=$(sudo lxc network get "$BRIDGE" ipv4.address)
+GATEWAY=${GATEWAY%/*}
+
+dig @"$GATEWAY" "$API_HOST" A +short
+dig @"$GATEWAY" "$API_HOST" AAAA +short
+sudo lxc exec "$TEST_CONTAINER" -- getent ahostsv4 "$API_HOST"
+sudo lxc exec "$TEST_CONTAINER" -- \
+  curl --noproxy '*' --connect-timeout 5 --max-time 15 \
+  -sS -o /dev/null -w 'peer=%{remote_ip} status=%{http_code}\n' \
+  "https://$API_HOST/"
+```
+
+Expect the gateway IPv4 from the A lookup and container resolution, no AAAA
+answer, and a successful HTTPS connection without disabling certificate
+verification. Retry an application tool from a new agent turn to verify its
+authenticated API call; do not print or share `REMOTE_APPLICATION_GRANT`.
+
+For regression testing on a disposable QA host, back up `/etc/hosts` and the
+bridge's `raw.dnsmasq` before injecting a loopback mapping for the actual API
+hostname. Before applying the pin, reload bridge DNS and confirm loopback
+resolution and a refused container HTTPS connection. Apply the helper while
+leaving the bad hosts entry present, then repeat the checks above. Restore the
+host's original hosts file after testing. Test both fresh installation and
+full update paths separately; copying and invoking the helper alone does not
+verify installer integration.
+
+The hermetic regression suite is `bash infra/tests/container-api-dns-test.sh`,
+also run by CI. It covers configuration preservation, repeat runs, replacing
+an old pin, invalid input, configuration errors, wrong DNS answers, rollback,
+and both updater modes. Its LXD and DNS commands are simulated; a real host
+test is still required to verify network reloads and container HTTPS.
 
 ## Base-image build
 
@@ -129,7 +239,6 @@ sequenceDiagram
     Builder->>Ubuntu: Launch temporary container
     Builder->>Ubuntu: Install system tools, Node, GitHub CLI, catalog-declared project CLIs
     Builder->>Ubuntu: Install Chromium and Agent Browser
-    Builder->>Ubuntu: Install code-server
     Builder->>Ubuntu: Stop container
     Builder->>Alias: Publish reusable image
     Builder->>LXD: Remove temporary builder
@@ -188,6 +297,24 @@ requested tag/ref, defaulting to `origin/main` when none is supplied. The
 in-app updater supplies its selected release tag. Persistent application data
 and project workspaces live outside the tracked source tree.
 
+### Frontend build after a deploy
+
+Nobody has to reload after an update. Every open page checks `/build.json`
+when it loads, when it comes back into view, when the network returns, and
+once a minute while it is visible. The Updates screen also checks each time it
+polls a running update, so the administrator's page moves as soon as the
+restarted backend answers. A release that changes only the backend keeps the
+same stamp, so it does not reload anything.
+
+When the served build differs from the page's own stamp, the page reloads
+itself right away. It does not wait for anything on the page, so an attachment
+chip that has not been sent yet is dropped.
+
+Drafts and queued prompts survive the reload through `sessionStorage`. Each
+tab reloads at most once for each served build. It records that build in
+`sessionStorage`, so a cache that keeps returning an older `index.html` causes
+one extra reload, not a reload loop.
+
 ## Startup reconciliation
 
 When the backend starts, it:
@@ -200,6 +327,66 @@ When the backend starts, it:
 6. starts the Agent Browser idle reaper;
 7. starts the scheduled-task loop and restores persisted deadlines/claims;
 8. begins serving the embedded SPA, API, and WebSockets.
+
+## Pseudonymous version telemetry
+
+From `0.21.0`, production builds send `{installationId, version}` to
+`https://remote.futrx.com/api/telemetry/version`:
+
+- once when telemetry first runs;
+- once immediately after the version changes; and
+- at most once every seven days otherwise.
+
+The random installation ID, last attempted version, and attempt time are kept
+under `DATA_DIR/telemetry` with owner-only permissions. Recording the attempt
+before the request prevents restarts or failures from causing extra retries.
+Telemetry never blocks startup or updates. `dev` and `qa-*` builds do not send.
+
+The collector stores the ID, version, and receipt time for three months. It
+does not receive hostnames, users, projects, providers, chats, prompts, source
+code, or resource data. Counts represent active reporting installations, not
+all installs: old, offline, cloned, and spoofed instances can make them
+incomplete or approximate.
+
+## Restoring project tools
+
+An executable `/workspace/setup.sh` runs as root inside its own project
+container, from `/workspace`, after the platform prepares the container. The
+project's stored environment values are passed to the script, including
+multiline secrets. Missing or non-executable scripts are skipped.
+
+Keep setup idempotent; `bash -e` propagates unhandled command failures. Each run
+has a 15-minute limit. Successful setup records the script checksum at
+`/var/lib/remote/user-setup.sha256` inside the replaceable container filesystem.
+The same script is skipped on later starts; a changed script or replacement
+container runs it again. Concurrent attempts serialize inside the container.
+
+A setup failure leaves the container available for repair and marks the
+project as errored with a bounded error message. Fix the script or credentials,
+then use Start or Restart to retry. Failed attempts never record success.
+Setup output capture retains at most 64 KiB; displayed failures retain at most
+4 KiB of output and redact supplied secret values.
+
+## Container creation reliability
+
+Fresh installs and full infrastructure updates enable lingering for root's
+systemd user manager. This keeps snap-packaged LXD client commands alive when
+an SSH session logs out while a container is being created. If `loginctl` is
+unavailable or enabling linger fails, installation continues with a warning.
+Application-only deployments do not apply this host setting.
+
+`FUTRX_LAUNCH_TIMEOUT` bounds the `lxc init` image-unpack operation. It defaults
+to 10 minutes; starting the container retains its separate timeout. On slow
+storage, set a positive Go duration through `systemctl edit remote.futrx.service`:
+
+```ini
+[Service]
+Environment=FUTRX_LAUNCH_TIMEOUT=20m
+```
+
+Run `systemctl daemon-reload` and `systemctl restart remote.futrx.service` to
+apply it. Unset, invalid, zero, or negative values use the 10-minute default.
+An earlier deadline or cancellation from the caller still takes precedence.
 
 ## Agent capability discovery timeout
 
@@ -222,46 +409,36 @@ Environment=AGENT_CAPABILITY_TIMEOUT=45s
 Restarting the service applies the value and also clears the process-local
 capability cache. Invalid or negative values fall back to 30 seconds.
 
+## Application agent workflows
+
+Applications independently opt into `backend.agentTurns` (start/read/forget),
+`backend.agentTools` (agent access to their backend commands), and
+`backend.background` (process recovery). Running background backends are
+restored at startup and checked every 15 seconds after child crashes; stopped
+installations stay stopped. Default backends recover on a later call or event.
+
+The shared application runtime admits two active agent turns server-wide,
+across all applications, and preserves the normal single-turn-per-chat and
+maintenance boundaries. Turns use the existing chat settings and the captured
+owner's current registration/project authority.
+
+Workflow state belongs in the application's `DataDir`; core stores execution
+receipts under `DATA_DIR/application-turns/`. Completed receipts survive server
+restarts; unfinished ones become interrupted and may be retried with the same
+request ID. Host-crash delivery is at least once, so application side effects
+must tolerate retries. Tool grants are issued per run, revoked when it ends,
+and expire after four hours. See the
+[agent runtime guide](../dev/installable-applications/25-application-agent-runtime.md).
+
 ## Scheduled-task guardrails
 
-Scheduled tasks are host-owned unattended runs, so the backend applies three
-independent limits:
-
-| Environment variable | Default | Meaning |
-| --- | ---: | --- |
-| `SCHEDULE_MIN_INTERVAL` | `5m` | Minimum time between starts of one recurring task; Go duration syntax |
-| `SCHEDULE_MAX_CONCURRENT` | `2` | Simultaneous scheduled runs across all chats |
-| `SCHEDULE_MAX_TASKS_PER_PROJECT` | `20` | Non-terminal standing tasks in one project |
-
-An explicit `0` disables a limit. **Run now** bypasses the interval and
-concurrency admission limits, but the forced run still counts while active.
-Terminal completed/exhausted/error definitions do not consume the
-per-project task quota.
-
-Create a systemd override rather than editing the installed unit template:
-
-```bash
-sudo systemctl edit remote.futrx
-```
-
-```ini
-[Service]
-Environment=SCHEDULE_MIN_INTERVAL=10m
-Environment=SCHEDULE_MAX_CONCURRENT=1
-Environment=SCHEDULE_MAX_TASKS_PER_PROJECT=10
-```
-
-Then apply it:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart remote.futrx
-```
-
-Restarting the backend interrupts control of interactive and scheduled runs.
-Use a maintenance window. Before raising the limits, account for the fact that
-each scheduled occurrence can start a project container and consume provider
-quota, CPU, memory, network, and disk without an open browser.
+Scheduled Tasks is installed and controlled through a project’s Applications
+page. Its instance data is retained by stop/start and upgrades and removed by
+uninstall. Scheduled work uses the shared application agent runtime and its
+admission limits. Each Scheduled Tasks installation keeps at most 100
+definitions. Use `maxRuns` for bounded monitoring. The retired core scheduler’s
+deployment environment settings are no longer used. See the
+[application README](../../applications/scheduled-tasks/README.md).
 
 ## Health and recovery
 
@@ -280,14 +457,14 @@ The server-info settings page reports host, CPU, memory, storage, network, and G
 
 - The backend listens on loopback by default; Caddy is the public entry point.
 - Platform sessions use secure, HTTP-only cookies.
-- Preview and IDE requests use forward authentication; preview authorization is project-aware, while IDE authorization currently accepts any registered user.
+- Preview requests use forward authentication; application web routes check project membership and a running installation.
 - Platform cookies are removed before container proxying.
 - Internal Caddy helper routes are denied externally.
 - Secret, auth, access, and user files use restrictive permissions.
 - SSH password and keyboard-interactive authentication are disabled after install.
 - On-demand TLS issuance is restricted to valid, existing project hosts.
 - Project containers are unprivileged and receive host workspaces through mapped ownership.
-- Project containers currently share the LXD bridge without lateral ACLs; code-server and noVNC rely on Caddy for public authentication and do not independently authenticate direct bridge traffic.
+- Project containers currently share the LXD bridge without lateral ACLs; application web services and noVNC rely on Remote for public authentication and do not independently authenticate direct bridge traffic.
 
 ## Operational commands
 
@@ -303,6 +480,8 @@ sudo bash /opt/remote.futrx/infra/upgrade-workspaces.sh --dry-run
 ## Code map
 
 - Installer: [`infra/install.sh`](../../infra/install.sh)
+- Container API DNS: [`infra/lib/container-api-dns.sh`](../../infra/lib/container-api-dns.sh)
+- Container API DNS tests: [`infra/tests/container-api-dns-test.sh`](../../infra/tests/container-api-dns-test.sh)
 - Application deployer: [`infra/deploy-app.sh`](../../infra/deploy-app.sh)
 - Updater: [`infra/update.sh`](../../infra/update.sh)
 - Workspace upgrade: [`infra/upgrade-workspaces.sh`](../../infra/upgrade-workspaces.sh)

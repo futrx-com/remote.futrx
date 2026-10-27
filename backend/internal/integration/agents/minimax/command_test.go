@@ -52,6 +52,7 @@ func TestProviderRequiresConfiguredMiniMaxAPIKey(t *testing.T) {
 		miniMaxTestModels{},
 		&miniMaxTestRuntimeAssets{},
 		"codex",
+		newAPIKeyValidator(),
 	)
 	if _, err := provider.apiKey(); !errors.Is(err, ErrMiniMaxAPIKeyMissing) {
 		t.Fatalf("error = %v, want ErrMiniMaxAPIKeyMissing", err)
@@ -76,6 +77,7 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 		miniMaxTestModels{},
 		runtimeAssets,
 		"codex",
+		newAPIKeyValidator(),
 	)
 	modelCatalog := []byte(`{"models":[{"slug":"MiniMax-M2.7"}]}`)
 	req := agent.RunRequest{
@@ -135,6 +137,7 @@ func TestBuildCmdProcessOutlivesRequestCancellation(t *testing.T) {
 		miniMaxTestModels{},
 		&miniMaxTestRuntimeAssets{},
 		"codex",
+		newAPIKeyValidator(),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd, err := provider.buildCmd(
@@ -162,6 +165,7 @@ func TestBuildCmdRequiresRuntimeCatalogProvisioner(t *testing.T) {
 		miniMaxTestModels{},
 		nil,
 		"codex",
+		newAPIKeyValidator(),
 	)
 	_, err := provider.buildCmd(
 		context.Background(),

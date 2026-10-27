@@ -309,7 +309,7 @@ func (s *Store) resolveSlugLocked(base string) (string, error) {
 		if len(stem)+len(suffix) > serviceproject.MaxSlugLen {
 			stem = stem[:serviceproject.MaxSlugLen-len(suffix)]
 		}
-		cand := stem + suffix
+		cand := strings.TrimRight(stem, "-") + suffix
 		if _, taken := s.bySlug[cand]; !taken {
 			return cand, nil
 		}

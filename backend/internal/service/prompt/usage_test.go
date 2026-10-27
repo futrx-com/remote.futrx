@@ -55,15 +55,15 @@ func (l *recordingLedger) RecordRun(_ context.Context, event serviceusage.RunEve
 	l.events = append(l.events, event)
 }
 
-// stubScheduleTools satisfies the schedule-tool port so a scheduled turn can
+// stubApplicationTools satisfies the application-tool port so an application turn can
 // reach the provider without a real capability registry.
-type stubScheduleTools struct{}
+type stubApplicationTools struct{}
 
-func (stubScheduleTools) IssueScheduleTool(
+func (stubApplicationTools) IssueApplicationTools(
 	context.Context,
-	ScheduleToolRequest,
-) (ScheduleToolAccess, error) {
-	return ScheduleToolAccess{APIURL: "http://127.0.0.1/agent-api", Token: "grant"}, nil
+	ApplicationToolRequest,
+) (ApplicationToolAccess, error) {
+	return ApplicationToolAccess{Env: map[string]string{"REMOTE_APPLICATION_API": "http://127.0.0.1/agent-api", "REMOTE_APPLICATION_GRANT": "grant"}}, nil
 }
 
 func newUsagePromptService(
@@ -165,33 +165,39 @@ func TestStartDoesNotRecordFailedRuns(t *testing.T) {
 	}
 }
 
-// A scheduled turn is billed to its owner and flagged so the Usage page can
-// separate unattended spend from interactive spend.
-func TestStartMarksScheduledRuns(t *testing.T) {
-	ledger := &recordingLedger{}
-	provider := &usageProvider{usage: json.RawMessage(`{"input_tokens":5,"output_tokens":1}`)}
-	service, _, meta := newUsagePromptService(
-		t, provider, ledger, WithScheduleToolIssuer(stubScheduleTools{}),
-	)
+// Application turns are billed to their captured owner and retain their origin
+// without interpreting the application's workflow as scheduling.
+func TestStartRecordsApplicationOrigin(t *testing.T) {
+	for _, applicationID := range []string{"build-monitor", "scheduled-tasks"} {
+		t.Run(applicationID, func(t *testing.T) {
+			ledger := &recordingLedger{}
+			provider := &usageProvider{usage: json.RawMessage(`{"input_tokens":5,"output_tokens":1}`)}
+			service, _, meta := newUsagePromptService(
+				t, provider, ledger, WithApplicationToolIssuer(stubApplicationTools{}),
+			)
 
-	handle, err := service.Start(StartInput{
-		ChatID:          meta.ID,
-		Prompt:          "nightly report",
-		Actor:           Actor{Email: "owner@example.com"},
-		ScheduledTaskID: "task-1",
-		ScheduledRunID:  "run-1",
-		ParentContext:   context.Background(),
-	}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	<-handle.Done
+			handle, err := service.Start(StartInput{
+				ChatID:                meta.ID,
+				Prompt:                "check the result",
+				Actor:                 Actor{Email: "owner@example.com"},
+				ApplicationInstanceID: "instance-1",
+				ApplicationID:         applicationID,
+				ApplicationRequestID:  "run-1",
+				ParentContext:         context.Background(),
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			<-handle.Done
 
-	if len(ledger.events) != 1 {
-		t.Fatalf("ledger entries = %d, want 1: %+v", len(ledger.events), ledger.events)
-	}
-	if !ledger.events[0].Scheduled || ledger.events[0].UserEmail != "owner@example.com" {
-		t.Fatalf("unexpected scheduled entry: %+v", ledger.events[0])
+			if len(ledger.events) != 1 {
+				t.Fatalf("ledger entries = %d, want 1: %+v", len(ledger.events), ledger.events)
+			}
+			entry := ledger.events[0]
+			if entry.Scheduled || entry.UserEmail != "owner@example.com" || entry.ApplicationID != applicationID || entry.ApplicationRequestID != "run-1" || entry.RunID != handle.TurnID {
+				t.Fatalf("unexpected application entry: %+v", entry)
+			}
+		})
 	}
 }
 

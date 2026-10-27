@@ -166,7 +166,7 @@ entries because the cache is process-local.
 ## Frontend state and invalidation
 
 The frontend store in
-[`agentCapabilityCatalogStore.ts`](../../../frontend/src/state/agents/agentCapabilityCatalogStore.ts)
+[`agentCapabilityCatalogStore.ts`](../../../frontend/src/state/stores/agents/agentCapabilityCatalogStore.ts)
 is a presentation cache, not the freshness authority. It is held only for the
 open page, keyed by normalized user plus host/project scope. It keeps the last
 catalog visible during reloads, coalesces duplicate browser requests, and is
@@ -204,5 +204,5 @@ layer:
 - HTTP query/error mapping in
   `backend/internal/transport/http/handlers/agent_capabilities_handler_test.go`;
 - page-memory coalescing and invalidation in
-  `frontend/src/state/agents/agentCapabilityCatalogStore.test.ts`;
-- selector correction in `frontend/src/state/chat/agentCapabilityState.test.ts`.
+  `frontend/src/state/stores/agents/agentCapabilityCatalogStore.test.ts`;
+- selector correction in `frontend/src/state/hooks/chat/agentCapabilityState.test.ts`.

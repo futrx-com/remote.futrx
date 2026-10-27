@@ -4,15 +4,20 @@ import { startChatUpload } from "../../../api/uploadApi";
 import type { UploadHandle } from "../../../types/uploadApi";
 import { idService } from "../../../services/platform/idService.ts";
 import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
+import { announceUpload } from "./attachmentClaimPolicy.ts";
 
 export function useAttachmentUpload(
   chatId: string,
-  attachmentBasePath: string
+  attachmentBasePath: string,
+  projectId?: string
 ) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  // Read when an upload finishes rather than captured: doUpload is keyed on
+  // chatId alone and outlives an edit to either of these.
   const attachmentBasePathRef = useRef(attachmentBasePath);
+  const projectIdRef = useRef(projectId);
   // Outstanding tus handles, keyed by attachment id. Lets us abort on remove.
   const handlesRef = useRef<Map<string, UploadHandle>>(new Map());
 
@@ -41,7 +46,8 @@ export function useAttachmentUpload(
 
   useEffect(() => {
     attachmentBasePathRef.current = attachmentBasePath;
-  }, [attachmentBasePath]);
+    projectIdRef.current = projectId;
+  }, [attachmentBasePath, projectId]);
 
   const doUpload = useCallback(
     async (files: File[]) => {
@@ -94,22 +100,44 @@ export function useAttachmentUpload(
             },
             onSuccess() {
               handlesRef.current.delete(att.id);
+              const directory = attachmentBasePathRef.current;
+              const serverPath = chatAttachmentService.absoluteUploadPath(
+                directory,
+                uploadFile.name
+              );
               setAttachments((prev) =>
                 prev.map((a) =>
                   a.id === att.id
-                    ? {
-                        ...a,
-                        progress: 1,
-                        serverPath: chatAttachmentService.absoluteUploadPath(
-                          attachmentBasePathRef.current,
-                          uploadFile.name
-                        ),
-                        error: undefined,
-                      }
+                    ? { ...a, progress: 1, serverPath, error: undefined }
                     : a
                 )
               );
-              resolve();
+              // Announced after the attachment is on disk and before the
+              // prompt can reference it. A handler that only observes costs
+              // nothing; one that claims the attachment is moving it, and the
+              // upload is not finished until it says where it went.
+              const claimed = announceUpload({
+                chatId,
+                projectId: projectIdRef.current,
+                fileName: uploadFile.name,
+                directory,
+                path: serverPath,
+                size: uploadFile.size,
+              });
+              if (!claimed) {
+                resolve();
+                return;
+              }
+              void claimed.then((relocated) => {
+                if (relocated) {
+                  setAttachments((prev) =>
+                    prev.map((a) =>
+                      a.id === att.id ? { ...a, serverPath: relocated } : a
+                    )
+                  );
+                }
+                resolve();
+              });
             },
             onError(err) {
               handlesRef.current.delete(att.id);

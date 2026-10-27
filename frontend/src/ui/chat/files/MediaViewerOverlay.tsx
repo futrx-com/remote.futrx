@@ -1,6 +1,6 @@
-import { useEffect } from "preact/hooks";
 import type { MediaViewerItem } from "../../../models/files";
 import { useMediaViewer } from "../../../state/hooks/chat/useMediaViewer";
+import { useDismissShortcut } from "../../../state/hooks/shared/useDismissShortcut.ts";
 import { Download, ExternalLink, X } from "../../primitives/icons";
 
 // Full-screen host for the in-app media viewer. Mounted once per chat view;
@@ -8,14 +8,7 @@ import { Download, ExternalLink, X } from "../../primitives/icons";
 export function MediaViewerOverlay() {
   const { item, close } = useMediaViewer();
 
-  useEffect(() => {
-    if (!item) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") close();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [item, close]);
+  useDismissShortcut(close, { enabled: item !== null });
 
   if (!item) return null;
 

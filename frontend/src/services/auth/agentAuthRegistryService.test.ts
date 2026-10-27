@@ -62,3 +62,23 @@ test("auth display state follows the declared flow before generic status", () =>
     { minimax: "Sign in to MiniMax in Settings → Agents, then refresh models." },
   );
 });
+
+test("switching the active account invalidates provider capability state", () => {
+  const codex = provider("codex", "managed-device", true, true);
+  codex.status.accounts = {
+    activeAccountId: "personal",
+    items: [{ id: "personal", label: "Personal", active: true }],
+  };
+  const before = agentAuthRegistryService.revision([codex]);
+  const switched: AgentAuthProvider = {
+    ...codex,
+    status: {
+      ...codex.status,
+      accounts: {
+        activeAccountId: "work",
+        items: [{ id: "work", label: "Work", active: true }],
+      },
+    },
+  };
+  assert.notEqual(agentAuthRegistryService.revision([switched]), before);
+});

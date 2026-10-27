@@ -69,7 +69,7 @@ policy decision.
 Codex server requests such as `item/tool/requestUserInput` carry a JSON-RPC
 request ID. Remote must keep that request pending and answer the same ID after
 the user responds. Instead,
-[`app_server_requests.go`](../../../../backend/internal/integration/agents/codex/app_server_requests.go)
+[`app_server_requests.go`](../../../../backend/internal/integration/agents/codexharness/app_server_requests.go)
 emits an `AskUserQuestion` tool card and immediately sends an answer containing
 empty arrays for every question.
 
@@ -101,7 +101,7 @@ Required UI-only behavior:
 
 ## CUI-002: approvals and elicitation are policy-decided by Remote
 
-[`app_server_requests.go`](../../../../backend/internal/integration/agents/codex/app_server_requests.go)
+[`app_server_requests.go`](../../../../backend/internal/integration/agents/codexharness/app_server_requests.go)
 currently accepts command and file approvals in Default mode, declines them in
 Plan mode, and always cancels MCP elicitation. Older approval methods are also
 answered locally. Unknown request methods receive JSON-RPC `-32601`, including
@@ -110,7 +110,7 @@ implement.
 
 The adapter also sends `approvalPolicy: "never"` and unrestricted sandbox
 settings when building both thread and turn requests in
-[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codex/app_server_protocol.go).
+[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codexharness/app_server_protocol.go).
 Plan mode is a collaboration preset, not an authorization boundary, so it must
 not silently stand in for a user approval policy.
 
@@ -136,7 +136,7 @@ The neutral event model in
 [`backend/internal/agent/model.go`](../../../../backend/internal/agent/model.go)
 supports session, text, reasoning, basic tool, usage, completion, and error
 events. The Codex parser in
-[`app_server_events.go`](../../../../backend/internal/integration/agents/codex/app_server_events.go)
+[`app_server_events.go`](../../../../backend/internal/integration/agents/codexharness/app_server_events.go)
 recognizes only a subset of notification methods and item types. Raw envelopes
 are temporarily retained on `agent.Event`, then discarded by
 [`agent_events.go`](../../../../backend/internal/service/prompt/agent_events.go)
@@ -169,9 +169,9 @@ Required UI-only behavior:
 
 The pinned App Server error notification contains a nested `error` object and
 retry metadata such as `willRetry`. Remote's `appServerErrorParams` in
-[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codex/app_server_protocol.go)
+[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codexharness/app_server_protocol.go)
 expects a top-level `message`. The `error` branch in
-[`app_server_events.go`](../../../../backend/internal/integration/agents/codex/app_server_events.go)
+[`app_server_events.go`](../../../../backend/internal/integration/agents/codexharness/app_server_events.go)
 therefore drops normal Codex error notifications.
 
 This is not cosmetic: authentication, quota, network, model, and transient
@@ -191,7 +191,7 @@ Required UI-only behavior:
 
 Every terminal status other than literal `failed` is currently projected as a
 successful completion in
-[`app_server_events.go`](../../../../backend/internal/integration/agents/codex/app_server_events.go).
+[`app_server_events.go`](../../../../backend/internal/integration/agents/codexharness/app_server_events.go).
 That includes `interrupted` and any future non-success terminal state.
 
 Cancel flows through the generic run hub in
@@ -201,7 +201,7 @@ process context. Because Codex is launched with `exec.CommandContext` in
 Remote kills the App Server rather than sending native `turn/interrupt` and
 waiting for its terminal notification. Cancellation is then treated as a clean
 return by
-[`app_server_run.go`](../../../../backend/internal/integration/agents/codex/app_server_run.go).
+[`app_server_run.go`](../../../../backend/internal/integration/agents/codexharness/app_server_run.go).
 
 Codex states such as `waitingOnApproval` and `waitingOnUserInput` are ignored.
 The visible running state is Remote's process-local run lock rather than the
@@ -221,11 +221,11 @@ Required UI-only behavior:
 
 Both `item/plan/delta` and agent-message deltas become
 `assistant.delta` in
-[`app_server_events.go`](../../../../backend/internal/integration/agents/codex/app_server_events.go).
+[`app_server_events.go`](../../../../backend/internal/integration/agents/codexharness/app_server_events.go).
 Completed plan items follow the same path, while structured
 `turn/plan/updated` notifications and step statuses are ignored. The current
 App Server run test in
-[`app_server_run_test.go`](../../../../backend/internal/integration/agents/codex/app_server_run_test.go)
+[`app_server_run_test.go`](../../../../backend/internal/integration/agents/codexharness/app_server_run_test.go)
 explicitly asserts the flattened assistant-text behavior.
 
 The user can read plan prose, but cannot see stable steps, pending/in-progress/
@@ -251,7 +251,7 @@ also truncates the displayed final output to 6,000 characters.
 
 The pinned `dynamicToolCall` completion shape uses `contentItems` and
 `success`, while `appServerItem` currently expects `result` and `error`.
-[`appServerToolOutput`](../../../../backend/internal/integration/agents/codex/app_server_events.go)
+[`appServerToolOutput`](../../../../backend/internal/integration/agents/codexharness/app_server_events.go)
 therefore commonly collapses rich text, image, or audio output to a status
 string. The generic renderer in
 [`GenericCall.tsx`](../../../../frontend/src/ui/chat/tool-calls/renderers/GenericCall.tsx)
@@ -272,7 +272,7 @@ Required UI-only behavior:
 Uploads are converted to an `Attached files:` prose fragment in
 [`chatAttachmentService.ts`](../../../../frontend/src/services/chat/chatAttachmentService.ts).
 Every turn built by
-[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codex/app_server_protocol.go)
+[`app_server_protocol.go`](../../../../backend/internal/integration/agents/codexharness/app_server_protocol.go)
 contains exactly one text input even though the pinned protocol supports native
 image, local-image, audio, skill, and mention inputs. Selected skills are also
 injected into prompt text by
@@ -385,7 +385,7 @@ modify the Codex harness.
 ## CUI-012: protocol lifecycle and schema assumptions are brittle
 
 Normal runs correctly send `initialized`, but thread response handling in
-[`app_server_run.go`](../../../../backend/internal/integration/agents/codex/app_server_run.go)
+[`app_server_run.go`](../../../../backend/internal/integration/agents/codexharness/app_server_run.go)
 requires both `thread.id` and a top-level `model`. The documented thread
 response contract is thread-centric; treating the extra top-level model as
 mandatory can reject a valid response. Resolved model data should be read from

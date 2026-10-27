@@ -4,13 +4,15 @@ Logic that belongs to no single caller, grouped by the domain it serves.
 
 | Folder | What it answers about |
 | --- | --- |
-| `auth/` | Which agent providers are logged in, and what that gates |
-| `chat/` | Where an attachment is stored and what it is called |
+| `auth/` | Which agent providers are logged in, and the recovery-code file a user saves |
+| `chat/` | Where an attachment is stored and what it is called, where find-in-chat's matches are shown, and which skills a typed query finds |
+| `extensions/` | What the SPA has finished, and which application asked to hear it |
 | `files/` | What a filename means: its kind, its icon, what a click does |
 | `projects/` | The `<slug>--<port>.dev.<host>` preview URL shape |
+| `push/` | Which accounts opted this browser into push notifications |
 | `usage/` | Date ranges, bar geometry, and how tokens and money are written |
-| `workspace/` | The sidebar: what it shows, and what the user folded away |
-| `platform/` | The browser and the language — storage, ids, time, diff |
+| `workspace/` | The sidebar and its search: what they show, what filters them, and what the user folded away or filtered by |
+| `platform/` | The browser and the language — storage, ids, time, diff, downloads, text folding, text matching, DOM text search, which surface an Escape belongs to |
 
 The domain names are the ones the app already uses in `state/hooks/` and
 `ui/`, so a service sits under the same word as the hook and the screen that
@@ -18,7 +20,7 @@ call it. `platform/` is the exception and the pressure valve: a module that
 knows nothing about this app goes there rather than being filed under
 whichever domain happened to need it first.
 
-Every file has the same shape: **one class, one exported instance.**
+Stateless leaf services use **one class, one exported instance.**
 
 ```ts
 // services/projects/projectPreviewUrlService.ts
@@ -33,6 +35,12 @@ export const projectPreviewUrlService = new ProjectPreviewUrlService();
 The class is not exported — only the instance is. Nothing here constructs a
 second one, so the type is an implementation detail and the constant is the
 whole public surface.
+
+`workspace/searchSelectionService` has per-surface dependencies, so its class
+is constructed by `app/workspaceSearch.ts`. It applies filter rules, commits
+the selection through the narrow `port/workspaceSearch.ts` store contract,
+then writes preferences synchronously. The sidebar and palette receive
+separate instances; the service imports neither Zustand nor a concrete store.
 
 ## Why a class and not a module of functions
 
@@ -51,7 +59,7 @@ prefix drops off because `usageRangeService.forPreset(…)` already says it.
 ## The leaf rule
 
 **A service may not import from `ui/`, `app/`, `state/`, `api/` or
-`transport/`.** It may import `models/`, `config/`, and other services.
+`transport/`.** It may import `models/`, `port/`, `config/`, and other services.
 
 This is the rule that keeps the folder from rotting, and it is worth being
 blunt about because the name invites the opposite. In a backend a "service"
@@ -83,6 +91,15 @@ The two exceptions are `platform/diffService` and
 here because they are general capabilities with private internals — a Myers
 diff and a pair of time formatters — rather than rules about one screen, and a
 second caller would not move them.
+
+`extensions/extensionEventService` is the one service that keeps something: a
+set of subscriptions, keyed by the application that registered them. That is not the
+state this layer stays out of — nothing renders from it and no screen reads it
+— but the same category as the timers and listeners `state/README.md` leaves
+with their owner. It is here because its owners sit in two layers:
+`app/extensions/` subscribes an application and drops it on uninstall, while
+`state/hooks/chat/` emits when an upload lands. A leaf is the only place both
+can reach without one of them importing the other.
 
 ## Naming
 

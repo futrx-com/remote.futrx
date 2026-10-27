@@ -20,10 +20,10 @@ func TestRuntimeEnvironmentIsSortedAndRejectsInvalidNames(t *testing.T) {
 
 func TestWithRuntimeEnvironmentReplacesExistingValues(t *testing.T) {
 	got := WithRuntimeEnvironment(
-		[]string{"PATH=/bin", "REMOTE_SCHEDULE_GRANT=stale", "KEEP=yes"},
-		map[string]string{"REMOTE_SCHEDULE_GRANT": "fresh"},
+		[]string{"PATH=/bin", "REMOTE_APPLICATION_GRANT=stale", "KEEP=yes"},
+		map[string]string{"REMOTE_APPLICATION_GRANT": "fresh"},
 	)
-	want := []string{"PATH=/bin", "KEEP=yes", "REMOTE_SCHEDULE_GRANT=fresh"}
+	want := []string{"PATH=/bin", "KEEP=yes", "REMOTE_APPLICATION_GRANT=fresh"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("WithRuntimeEnvironment() = %#v, want %#v", got, want)
 	}

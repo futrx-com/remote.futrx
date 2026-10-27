@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,12 +104,56 @@ func (handler *appServerRequestHandler) Respond(response agent.InteractionRespon
 		return err
 	}
 	delete(handler.pending, response.ID)
-	handler.emit(handler.resolvedEvent(
+	resolved := handler.resolvedEvent(
 		request,
 		response.ID,
 		interactionResponseStatus(request.Method, response.Result, response.Error),
-	))
+	)
+	if len(response.Error) == 0 {
+		resolved.Data = recordedAnswers(request, response.Result)
+	}
+	handler.emit(resolved)
 	return nil
+}
+
+// recordedAnswers keeps what the user answered to a requestUserInput prompt,
+// keyed the way the browser keys it (the question id, or its index), so the
+// transcript can show each question with its answer after the card resolves.
+// Answers to secret questions are left out: the form promises they are not
+// saved to chat history.
+func recordedAnswers(request appServerEnvelope, result json.RawMessage) json.RawMessage {
+	if interactionKind(request.Method) != "user_input" {
+		return nil
+	}
+	var params appServerUserInputRequestParams
+	var response struct {
+		Answers map[string]struct {
+			Answers []string `json:"answers"`
+		} `json:"answers"`
+	}
+	if json.Unmarshal(request.Params, &params) != nil || json.Unmarshal(result, &response) != nil {
+		return nil
+	}
+	answers := make(map[string][]string)
+	for index, question := range params.Questions {
+		id := question.ID
+		if id == "" {
+			id = strconv.Itoa(index)
+		}
+		answer, ok := response.Answers[id]
+		if !ok || question.IsSecret {
+			continue
+		}
+		answers[id] = answer.Answers
+	}
+	if len(answers) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(map[string]any{"answers": answers})
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 func (handler *appServerRequestHandler) Resolve(params json.RawMessage) *agent.Event {

@@ -2,6 +2,7 @@ package fileauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
 
@@ -159,5 +162,38 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 	}
 	if key, err := store.AgentAPIKey(ctx, "minimax"); err != nil || key != "" {
 		t.Fatalf("AgentAPIKey after delete = %q, %v", key, err)
+	}
+}
+
+func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	want := agentauth.AccountSet{
+		ActiveAccountID: "account-one",
+		Accounts: []agentauth.AccountRecord{{
+			ID: "account-one", Label: "Personal", Email: "person@example.test",
+			Credential: []byte(`{"auth_mode":"chatgpt","token":"secret"}`),
+		}},
+	}
+	if err := store.SaveAgentAccounts(context.Background(), agent.ProviderCodex, want); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(dir, agentAccountsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("%s mode = %o, want 600", agentAccountsFile, got)
+	}
+	got, err := store.AgentAccounts(context.Background(), agent.ProviderCodex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var credential map[string]string
+	if len(got.Accounts) == 1 {
+		_ = json.Unmarshal(got.Accounts[0].Credential, &credential)
+	}
+	if got.ActiveAccountID != want.ActiveAccountID || len(got.Accounts) != 1 || credential["token"] != "secret" {
+		t.Fatalf("round trip = %#v", got)
 	}
 }

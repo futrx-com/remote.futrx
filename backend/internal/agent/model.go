@@ -34,6 +34,11 @@ const (
 	EventToolCompleted      EventType = "tool.completed"
 	EventUsageUpdated       EventType = "usage.updated"
 	EventError              EventType = "error"
+
+	// EventQuotaUpdated carries a subscription window the CLI volunteered
+	// mid-run. It is not a request this platform can make, so it arrives when
+	// it arrives — see agent/quota.go.
+	EventQuotaUpdated       EventType = "quota.updated"
 	EventProviderNative     EventType = "provider.native"
 	EventInteractionRequest EventType = "interaction.request"
 	EventInteractionDone    EventType = "interaction.resolved"
@@ -100,8 +105,11 @@ type NativeEnvelope struct {
 type RunRequest struct {
 	// UserPrompt is the current user input before skill/history enrichment.
 	// Native commands must use this value so prior context cannot execute commands.
-	UserPrompt     string
-	Provider       ProviderID
+	UserPrompt string
+	Provider   ProviderID
+	// AccountID selects a saved provider account for this run. An empty value
+	// keeps the provider's current active account for backwards compatibility.
+	AccountID      string
 	ConversationID string
 	Prompt         string
 	Cwd            string
@@ -114,9 +122,6 @@ type RunRequest struct {
 	// EnableBrowser wires the Agent Browser MCP tools into the agent launch.
 	// Set when the `browser` skill is selected for the prompt.
 	EnableBrowser bool
-	// EnableScheduleTools ensures the provider-neutral remote-schedule CLI and
-	// its skill are present for this run.
-	EnableScheduleTools bool
 	// RuntimeEnv carries short-lived, backend-issued capabilities into a run.
 	// Provider adapters must not persist these values in project configuration.
 	RuntimeEnv map[string]string
@@ -152,6 +157,18 @@ type Event struct {
 	Native         *NativeEnvelope `json:"native,omitempty"`
 	InteractionID  string          `json:"interactionId,omitempty"`
 	Status         string          `json:"status,omitempty"`
+
+	// AccountID is the saved provider account a run used. Provider adapters
+	// set it on every event of a saved-account run and leave it empty when
+	// the run used the provider's host login.
+	AccountID string `json:"accountId,omitempty"`
+
+	// Quota is set only on EventQuotaUpdated. It describes the plan of the
+	// provider account named by Provider and AccountID.
+	Quota *Quota `json:"quota,omitempty"`
+
+	// NotificationSummary is an internal completion hint, never provider input.
+	NotificationSummary string `json:"-"`
 }
 
 type CapabilityProvider interface {

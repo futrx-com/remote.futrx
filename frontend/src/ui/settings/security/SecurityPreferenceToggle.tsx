@@ -17,7 +17,7 @@ export function SecurityPreferenceToggle({
 }) {
   const [saving, setSaving] = useState(false);
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] p-3.5 flex items-start gap-3">
+    <section class="rounded-lg border border-line bg-surface p-3.5 flex items-start gap-3">
       <div class="flex-1 min-w-0">
         <div class="text-[14px] font-medium text-ink-50">{title}</div>
         <div class="text-[12.5px] text-ink-300 mt-0.5 leading-relaxed">{description}</div>
@@ -39,7 +39,7 @@ export function SecurityPreferenceToggle({
           }
         }}
         class={`h-6 w-11 rounded-full flex-none transition-colors relative disabled:opacity-40 ${
-          checked ? "bg-accent-blue" : "bg-white/15"
+          checked ? "bg-accent-blue" : "bg-ink-500"
         }`}
       >
         <span

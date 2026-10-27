@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { AlertCircle, ChevronDown, ChevronRight, Loader } from "../../primitives/icons";
 
 export function ToolShell({
@@ -9,6 +9,9 @@ export function ToolShell({
   status,
   isError,
   defaultOpen,
+  revealSignal,
+  onOpen,
+  loadingResponse,
   children,
 }: {
   icon: ComponentChildren;
@@ -17,19 +20,37 @@ export function ToolShell({
   status: "running" | "done";
   isError?: boolean;
   defaultOpen?: boolean;
+  /**
+   * When this flips to true, the shell opens so newly revealed content
+   * (e.g. a full response fetch) is actually visible instead of
+   * staying hidden inside a collapsed shell. Afterwards the user can still
+   * collapse it manually.
+   */
+  revealSignal?: boolean;
+  onOpen?: () => void;
+  loadingResponse?: boolean;
   children?: ComponentChildren;
 }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  const expandable = !!children || !!onOpen;
+  useEffect(() => {
+    if (revealSignal) setOpen(true);
+  }, [revealSignal]);
   return (
     <div class={`codex-tool-shell my-2 overflow-hidden rounded-card border text-sm
                 ${isError ? "border-accent-red/30 bg-accent-red/[0.05]" : "border-line bg-surface"}`}>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        aria-expanded={expandable ? open : undefined}
+        title={onOpen && !open ? "Open and load full response" : undefined}
+        onClick={() => {
+          if (!open) onOpen?.();
+          setOpen((current) => !current);
+        }}
         class={`codex-tool-trigger w-full min-h-10 flex items-center gap-2 px-3 py-2 text-left
                 ${isError ? "bg-accent-red/10" : "bg-tint hover:bg-tint"}`}
       >
-        {children ? (
+        {expandable ? (
           open ? <ChevronDown class="w-3.5 h-3.5 text-ink-300 flex-none" /> : <ChevronRight class="w-3.5 h-3.5 text-ink-300 flex-none" />
         ) : (
           <span class="w-3.5 flex-none" />
@@ -37,7 +58,7 @@ export function ToolShell({
         <span class={`flex-none ${isError ? "text-accent-red" : "text-ink-300"}`}>{icon}</span>
         <span class="flex-1 min-w-0 truncate text-[13px] text-ink-200">{label}</span>
         {badge && <span class="flex-none font-mono text-[11px] text-ink-400">{badge}</span>}
-        {status === "running" ? (
+        {status === "running" || loadingResponse ? (
           <Loader class="w-3.5 h-3.5 text-ink-300 animate-spin flex-none" />
         ) : isError ? (
           <AlertCircle class="w-3.5 h-3.5 text-accent-red flex-none" />

@@ -22,6 +22,7 @@ export function useChatComposerController({
   rewind,
   refreshMeta,
   attachmentBasePath,
+  projectId,
 }: {
   chatId: string;
   eventCount: number;
@@ -33,6 +34,11 @@ export function useChatComposerController({
   rewind: (beforeT: number) => Promise<unknown>;
   refreshMeta: () => Promise<void>;
   attachmentBasePath: string;
+  /**
+   * Carried through to the upload hook so an extension can tell which
+   * project's plugin an attachment belongs to.
+   */
+  projectId?: string;
 }) {
   const confirm = useConfirm();
   // ChatContainer remounts on chat switch (it is keyed by chatId), so selecting
@@ -53,7 +59,7 @@ export function useChatComposerController({
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { textareaRef, focusInput } = useAutosizeTextarea(text);
-  const upload = useAttachmentUpload(chatId, attachmentBasePath);
+  const upload = useAttachmentUpload(chatId, attachmentBasePath, projectId);
   const drag = useDragUpload(upload.doUpload);
   const scroll = useThreadScroll(chatId, `${eventCount}:${blockCount}`);
   const queue = usePromptQueue({
@@ -137,9 +143,10 @@ export function useChatComposerController({
     setTimeout(focusInput, 0);
   }
 
-  function handleAnswerQuestion(answer: string) {
+  function handleAnswerQuestion(answer: string): boolean {
     const sent = sendPrompt(answer);
     if (sent) scroll.unlockAutoScroll();
+    return sent;
   }
 
   return {

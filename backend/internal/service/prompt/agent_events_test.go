@@ -39,9 +39,10 @@ func TestEmitAgentEventUsesSelectedProviderWhenAdapterOmitsIt(t *testing.T) {
 
 	service := &Service{store: store}
 	var emitted ChatEvent
-	service.emitAgentEvent(ctx, meta.ID, "future-agent", agent.Event{
+	event := withDefaultProvider(agent.Event{
 		Type: agent.EventSessionUpdated, SessionID: "future-session",
-	}, func(event ChatEvent) {
+	}, "future-agent")
+	service.emitAgentEvent(ctx, meta.ID, event, func(event ChatEvent) {
 		emitted = event
 	})
 
@@ -146,5 +147,23 @@ func TestChatEventFromAgentEventMapsToolLifecycle(t *testing.T) {
 	}
 	if end.Type != "tool_use_end" || end.ID != "tool-1" || end.Output != "ok" || end.IsError {
 		t.Fatalf("unexpected end event: %#v", end)
+	}
+}
+
+func TestChatEventFromAgentEventKeepsRecordedInteractionAnswers(t *testing.T) {
+	data := json.RawMessage(`{"answers":{"env":["staging"]}}`)
+	ev, ok := chatEventFromAgentEvent(agent.Event{
+		T:             900,
+		Type:          agent.EventInteractionDone,
+		InteractionID: "9",
+		ToolName:      "item/tool/requestUserInput",
+		Status:        "answered",
+		Data:          data,
+	})
+	if !ok {
+		t.Fatal("expected resolved interaction to map")
+	}
+	if ev.Type != "interaction_resolved" || ev.ID != "9" || ev.Status != "answered" || string(ev.Data) != string(data) {
+		t.Fatalf("unexpected resolved interaction event: %#v", ev)
 	}
 }

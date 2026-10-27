@@ -238,7 +238,7 @@ func TestNotifyAsyncDeliversWithoutBlockingTheCaller(t *testing.T) {
 	service, _, sender := newTestService()
 	_ = service.Subscribe(context.Background(), "ops@example.com", validSubscription("https://push.example.com/a"))
 
-	service.NotifyAsync([]string{"ops@example.com"}, Notification{Title: "hi"})
+	service.NotifyAsync([]string{"ops@example.com"}, Notification{Title: "hi"}, nil)
 	service.Wait()
 
 	if len(sender.endpoints()) != 1 {
@@ -261,7 +261,7 @@ func TestADisabledServiceIsInertRatherThanFatal(t *testing.T) {
 	}
 	// Fan-out is a no-op rather than a panic, so callers need no guard.
 	service.Notify(ctx, []string{"ops@example.com"}, Notification{Title: "hi"})
-	service.NotifyAsync([]string{"ops@example.com"}, Notification{Title: "hi"})
+	service.NotifyAsync([]string{"ops@example.com"}, Notification{Title: "hi"}, nil)
 	service.Wait()
 }
 

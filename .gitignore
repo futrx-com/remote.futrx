@@ -23,6 +23,10 @@
 # Logs
 *.log
 
+# Coverage artifacts
+coverage.out
+coverage-*.out
+lcov.info
 
 # Claude Code runtime artifacts
 /.claude/scheduled_tasks.lock
@@ -35,3 +39,5 @@
 /.design-sync/node_modules/
 /frontend/.ds-css/
 /frontend/.ds-dts/
+
+.claude

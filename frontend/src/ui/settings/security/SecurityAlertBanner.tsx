@@ -32,7 +32,7 @@ export function SecurityAlertBanner({
             setAcking(false);
           }
         }}
-        class="h-8 px-2.5 rounded bg-white/[0.08] hover:bg-white/[0.12] text-ink-100 text-[12px] font-medium disabled:opacity-50"
+        class="h-8 px-2.5 rounded bg-tint-strong hover:bg-tint-active text-ink-100 text-[12px] font-medium disabled:opacity-50"
       >
         Acknowledge
       </button>

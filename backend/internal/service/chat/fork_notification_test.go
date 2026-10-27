@@ -178,6 +178,28 @@ func TestForkRetainsSessionOnlyForNativeForkProvider(t *testing.T) {
 	}
 }
 
+func TestUpdateAccountStartsAFreshProviderSession(t *testing.T) {
+	repo := &forkRepository{source: Meta{
+		ID:          "deadbeef",
+		Provider:    ProviderCodex,
+		Sessions:    SessionIDs{ProviderCodex: "codex-session", ProviderClaude: "claude-session"},
+		ForkPending: true,
+	}}
+	service := New(repo, nil, nil, nil)
+	work := "work"
+
+	updated, err := service.Update(context.Background(), "deadbeef", UpdateInput{AccountID: &work})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.AccountID != "work" || updated.SessionID(ProviderCodex) != "" || updated.ForkPending {
+		t.Fatalf("updated account/session state = %#v", updated)
+	}
+	if updated.SessionID(ProviderClaude) != "claude-session" {
+		t.Fatalf("unrelated provider session was cleared: %#v", updated.Sessions)
+	}
+}
+
 func (r *forkRepository) AppendEvent(_ context.Context, _ ID, event Event) (Event, error) {
 	return event, nil
 }

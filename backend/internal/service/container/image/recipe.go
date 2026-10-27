@@ -16,7 +16,8 @@ apt-get update -qq
 
 # Core build / shell / network deps, plus git + ssh + jq for everyday agent
 # work. python3-pip pulls in python3 too. Skip wrangler/aws/gcloud/hcloud —
-# project-specific; agent installs them on demand and records in /workspace/setup.sh.
+# project-specific; agent installs them on demand and records in
+# /workspace/setup.sh (replayed automatically after each reprovision).
 apt-get install -y -qq \
     curl ca-certificates gnupg \
     git openssh-client \

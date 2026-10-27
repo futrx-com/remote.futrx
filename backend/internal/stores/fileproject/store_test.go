@@ -3,6 +3,7 @@ package fileproject
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -216,5 +217,25 @@ func TestStoreRecognizesEveryLegacyDuplicateName(t *testing.T) {
 	}
 	if _, err := store.Create(context.Background(), serviceproject.Meta{Name: "Legacy Project"}); err != nil {
 		t.Fatalf("Create() after deleting every duplicate: %v", err)
+	}
+}
+
+func TestSlugCollisionDoesNotProduceReservedSeparator(t *testing.T) {
+	store, err := NewWithWorkspaceRoot(t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := strings.Repeat("a", 29) + "-bc"
+	for _, name := range []string{"first", "second"} {
+		meta, err := store.Create(context.Background(), serviceproject.Meta{Name: name, Slug: base})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(meta.Slug, "--") || len(meta.Slug) > serviceproject.MaxSlugLen {
+			t.Fatal(meta.Slug)
+		}
+		if name == "second" && meta.Slug != strings.Repeat("a", 29)+"-2" {
+			t.Fatal(meta.Slug)
+		}
 	}
 }

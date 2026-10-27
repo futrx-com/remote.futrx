@@ -15,6 +15,7 @@ export interface AppearanceSettings {
 
 export interface ChatSettings {
   provider: ChatProvider;
+  accountId: string;
   model: string;
   mode: ChatMode;
   reasoningEffort: ReasoningEffort;

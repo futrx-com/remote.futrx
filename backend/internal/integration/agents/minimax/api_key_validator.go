@@ -53,32 +53,39 @@ func (*apiKeyValidator) ValidateAPIKeyFormat(key string) error {
 }
 
 func (v *apiKeyValidator) ValidateAPIKey(ctx context.Context, key string) error {
+	_, err := v.tokenPlan(ctx, key)
+	return err
+}
+
+// tokenPlan returns the same authenticated response used to validate a key.
+// The usage reader can inspect its quota rows without a second API request.
+func (v *apiKeyValidator) tokenPlan(ctx context.Context, key string) ([]json.RawMessage, error) {
 	if err := v.ValidateAPIKeyFormat(key); err != nil {
-		return err
+		return nil, err
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, v.endpoint, nil)
 	if err != nil {
-		return ErrAPIKeyValidationUnavailable
+		return nil, ErrAPIKeyValidationUnavailable
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("Authorization", "Bearer "+key)
 
 	response, err := v.client.Do(request)
 	if err != nil {
-		return ErrAPIKeyValidationUnavailable
+		return nil, ErrAPIKeyValidationUnavailable
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return agentauth.ErrAPIKeyRejected
+		return nil, agentauth.ErrAPIKeyRejected
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w (HTTP %d)", ErrAPIKeyValidationUnavailable, response.StatusCode)
+		return nil, fmt.Errorf("%w (HTTP %d)", ErrAPIKeyValidationUnavailable, response.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxAPIKeyValidationResponseBytes+1))
 	if err != nil || len(body) > maxAPIKeyValidationResponseBytes {
-		return ErrAPIKeyValidationUnavailable
+		return nil, ErrAPIKeyValidationUnavailable
 	}
 	var tokenPlan struct {
 		BaseResponse *struct {
@@ -87,18 +94,18 @@ func (v *apiKeyValidator) ValidateAPIKey(ctx context.Context, key string) error 
 		ModelRemains *[]json.RawMessage `json:"model_remains"`
 	}
 	if err := json.Unmarshal(body, &tokenPlan); err != nil || tokenPlan.BaseResponse == nil {
-		return ErrAPIKeyValidationUnavailable
+		return nil, ErrAPIKeyValidationUnavailable
 	}
 	switch tokenPlan.BaseResponse.StatusCode {
 	case 0:
 		if tokenPlan.ModelRemains == nil {
-			return ErrAPIKeyValidationUnavailable
+			return nil, ErrAPIKeyValidationUnavailable
 		}
-		return nil
+		return *tokenPlan.ModelRemains, nil
 	case 1004, 1008, 2049:
-		return agentauth.ErrAPIKeyRejected
+		return nil, agentauth.ErrAPIKeyRejected
 	default:
-		return ErrAPIKeyValidationUnavailable
+		return nil, ErrAPIKeyValidationUnavailable
 	}
 }
 

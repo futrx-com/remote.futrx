@@ -15,6 +15,7 @@ type Provider struct {
 	models          modelCatalogSource
 	runtimeAssets   provisioning.RuntimeAssetProvisioner
 	binary          string
+	planUsage       tokenPlanReader
 }
 
 type apiKeySource interface {
@@ -27,6 +28,7 @@ func newProvider(
 	models modelCatalogSource,
 	runtimeAssets provisioning.RuntimeAssetProvisioner,
 	binary string,
+	planUsage tokenPlanReader,
 ) *Provider {
 	return &Provider{
 		projectPreparer: projectPreparer,
@@ -34,6 +36,7 @@ func newProvider(
 		models:          models,
 		runtimeAssets:   runtimeAssets,
 		binary:          binary,
+		planUsage:       planUsage,
 	}
 }
 
@@ -43,7 +46,7 @@ func (p *Provider) ID() agent.ProviderID {
 
 func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
 	req.Provider = agent.ProviderMiniMax
-	key, err := p.apiKey()
+	key, err := p.apiKey(req.AccountID)
 	if err != nil {
 		return err
 	}
@@ -72,9 +75,20 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	return codexharness.Run(ctx, cmd, req, configconstants.MiniMaxLabel, emit)
 }
 
-func (p *Provider) apiKey() (string, error) {
+func (p *Provider) apiKey(accountIDs ...string) (string, error) {
 	if p.apiKeys == nil {
 		return "", ErrMiniMaxAPIKeyMissing
+	}
+	accountID := ""
+	if len(accountIDs) > 0 {
+		accountID = accountIDs[0]
+	}
+	if source, ok := p.apiKeys.(interface{ APIKeyFor(string) (string, bool) }); ok {
+		key, found := source.APIKeyFor(accountID)
+		if !found {
+			return "", ErrMiniMaxAPIKeyMissing
+		}
+		return key, nil
 	}
 	key, ok := p.apiKeys.APIKey()
 	if !ok {

@@ -8,8 +8,7 @@
 # Docker leaves ip6tables untouched, which makes the breakage nearly invisible:
 # containers keep reaching every destination that publishes an AAAA record, and
 # the first hard failure is whichever IPv4-only host the build happens to need.
-# In practice that is github.com in the browser IDE stage, several minutes in,
-# reported as a bare connection timeout.
+# In practice an application's IPv4-only download host can time out.
 #
 # The ACCEPT rules go in DOCKER-USER when Docker owns the ruleset: it is the
 # chain Docker documents as user-owned, preserves across restarts, and

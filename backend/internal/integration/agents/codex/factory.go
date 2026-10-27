@@ -1,6 +1,8 @@
 package codex
 
 import (
+	"path/filepath"
+
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
@@ -12,6 +14,9 @@ import (
 // warning observes the same auth instance as the binding.
 func NewFactory() (agentmodule.Factory, error) {
 	profile := Profile()
+	credentialPath := codexCredentialPath()
+	profile.Credentials.HostDir = filepath.Dir(credentialPath)
+	profile.Credentials.Files[0].HostPath = credentialPath
 	return agentmodule.NewFactory(agentmodule.Descriptor{
 		ID:                  agent.ProviderCodex,
 		Label:               "Codex",
@@ -24,26 +29,36 @@ func NewFactory() (agentmodule.Factory, error) {
 			"/root/.codex/skills",
 		},
 		Features: agentmodule.Features{
-			Sessions:          agentmodule.SessionSupport{Resume: true, Fork: true},
-			Skills:            agentmodule.SkillsDollarMention,
-			BrowserTools:      true,
-			ScheduledTools:    true,
-			ExecutionPolicies: true,
+			Sessions:              agentmodule.SessionSupport{Resume: true, Fork: true},
+			Skills:                agentmodule.SkillsDollarMention,
+			BrowserTools:          true,
+			ApplicationTools:      true,
+			ExecutionPolicies:     true,
+			StreamingPresentation: agentmodule.StreamingBlocks,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
-		auth := NewAuth()
-		binding := agentauth.NewDeviceBinding(agent.ProviderCodex, auth).WithWarning(func() string {
+		auth, err := NewAuth(deps.Accounts)
+		if err != nil {
+			return agentmodule.Components{}, err
+		}
+		binding := agentauth.NewDeviceBinding(agent.ProviderCodex, auth.device).WithWarning(func() string {
 			if auth.Status().UsesAPIKey {
 				return "Codex is logged in with an API key. Sign in with ChatGPT to use subscription limits."
 			}
 			return ""
 		})
+		// Attach only a real service: a nil pointer inside the interface
+		// would still report saved accounts as available.
+		if auth.accounts != nil {
+			binding = binding.WithAccounts(auth.accounts)
+		}
 		return agentmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
 				deps.CredentialCollector,
 				*validatedProfile,
 				deps.CredentialSyncTimeout,
+				auth.accounts,
 			),
 			Auth: &binding,
 		}, nil

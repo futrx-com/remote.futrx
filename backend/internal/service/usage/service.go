@@ -22,15 +22,17 @@ const (
 // carries the raw provider usage blob so the ledger, not the prompt service,
 // owns the token/cost vocabulary.
 type RunEvent struct {
-	At        int64
-	ChatID    string
-	ProjectID string
-	RunID     string
-	UserEmail string
-	Provider  string
-	Model     string
-	Usage     json.RawMessage
-	Scheduled bool
+	At                   int64
+	ChatID               string
+	ProjectID            string
+	RunID                string
+	UserEmail            string
+	ApplicationID        string
+	ApplicationRequestID string
+	Provider             string
+	Model                string
+	Usage                json.RawMessage
+	Scheduled            bool
 }
 
 // Service turns completed runs into ledger records and answers aggregation
@@ -76,20 +78,22 @@ func (s *Service) recordFromRun(ctx context.Context, event RunEvent) (Record, bo
 		model = strings.TrimSpace(event.Model)
 	}
 	record := Record{
-		At:               at,
-		ProjectID:        strings.TrimSpace(event.ProjectID),
-		ChatID:           strings.TrimSpace(event.ChatID),
-		RunID:            strings.TrimSpace(event.RunID),
-		UserEmail:        strings.ToLower(strings.TrimSpace(event.UserEmail)),
-		Provider:         strings.TrimSpace(event.Provider),
-		Model:            model,
-		InputTokens:      usage.InputTokens,
-		OutputTokens:     usage.OutputTokens,
-		CacheReadTokens:  usage.CacheReadTokens,
-		CacheWriteTokens: usage.CacheWriteTokens,
-		DurationMs:       usage.DurationMs,
-		Turns:            usage.Turns,
-		Scheduled:        event.Scheduled,
+		At:                   at,
+		ProjectID:            strings.TrimSpace(event.ProjectID),
+		ChatID:               strings.TrimSpace(event.ChatID),
+		RunID:                strings.TrimSpace(event.RunID),
+		UserEmail:            strings.ToLower(strings.TrimSpace(event.UserEmail)),
+		ApplicationID:        event.ApplicationID,
+		ApplicationRequestID: event.ApplicationRequestID,
+		Provider:             strings.TrimSpace(event.Provider),
+		Model:                model,
+		InputTokens:          usage.InputTokens,
+		OutputTokens:         usage.OutputTokens,
+		CacheReadTokens:      usage.CacheReadTokens,
+		CacheWriteTokens:     usage.CacheWriteTokens,
+		DurationMs:           usage.DurationMs,
+		Turns:                usage.Turns,
+		Scheduled:            event.Scheduled && event.ApplicationID == "",
 	}
 	record.ProjectSlug = s.projectSlug(ctx, record.ProjectID)
 	s.applyCost(ctx, &record, usage.CostUSD)

@@ -27,11 +27,12 @@ var codexProfile = provisioning.Profile{
 		ContainerDir: containerCodexDir,
 		Files: []provisioning.CredentialFile{
 			{
-				HostPath:      hostCodexAuth,
-				ContainerPath: containerCodexAuth,
-				Mode:          "600",
-				PushRequired:  true,
-				PullRequired:  true,
+				HostPath:          hostCodexAuth,
+				ContainerPath:     containerCodexAuth,
+				Mode:              "600",
+				PushRequired:      true,
+				PullRequired:      true,
+				HostAuthoritative: true,
 			},
 		},
 		SeedOnLaunch: true,

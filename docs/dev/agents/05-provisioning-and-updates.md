@@ -128,7 +128,7 @@ image builder:
 2. verifies IPv4 egress;
 3. generates the shared system/Node/tool recipe plus every project profile's
    CLI install;
-4. installs Agent Browser/Chromium and code-server;
+4. installs Agent Browser/Chromium; project applications are installed separately;
 5. stops the builder and publishes `futrx-remote-dev-base`;
 6. removes the disposable builder.
 
@@ -243,7 +243,8 @@ optional post-success pull-back.
 For fixed files it first removes declared legacy credential devices, then
 validates all required host files before creating the provider directory or
 pushing files. It creates that directory with mode `0700` and pushes a host
-file only when it is newer than the container copy. Optional missing files are
+file only when it is newer than the container copy, unless the file is
+`HostAuthoritative`, in which case the host file is pushed before every run. Optional missing files are
 skipped. Pull-required files must exist after a successful run; pulled files
 are stored with mode `0600`.
 
@@ -255,8 +256,8 @@ already exists.
 
 | Provider | Current credential policy |
 | --- | --- |
-| Claude | Seeds `/root/.claude.json` (required) and optional `/root/.claude/.credentials.json`; both relevant credential forms can be pulled back. Launch seeding is enabled. |
-| Codex | Seeds and pulls `/root/.codex/auth.json`; explicitly detected API-key mode in the host record is rejected, and subscription auth is the intended flow. A newer project-local record is not pre-inspected, and the current readiness check also accepts an `unknown` mode, as documented in [Authentication and access](04-authentication-and-access.md#current-provider-behavior). Launch seeding is enabled. |
+| Claude | Seeds `/root/.claude.json` (required) and optional `/root/.claude/.credentials.json` from the resolved host paths (`CLAUDE_CONFIG_DIR` when set); both relevant credential forms can be pulled back, and a pulled login reaches the [saved-account vault](04-authentication-and-access.md#saved-accounts) only after validation. Launch seeding is enabled. |
+| Codex | Seeds and pulls `auth.json` from the resolved host Codex home (`CODEX_HOME`, the Snap data directory, or `~/.codex`); explicitly detected API-key mode in the host record is rejected, and subscription auth is the intended flow. The file is host-authoritative, so the selected [saved account](04-authentication-and-access.md#saved-accounts) replaces the project copy before every run. Launch seeding is enabled. |
 | Kimi | Synchronizes regular files under `.kimi-code/credentials`; container-only login is allowed, launch seeding is disabled, and host-empty state remains project-local. |
 | Antigravity | Declares no credential transfer because the CLI has no stable documented token subpath. Its project-local login/state survives through the persistent directory. |
 
@@ -311,14 +312,13 @@ publish configured templates, and start the container's browser core. Generic
 browser script/skill migration is best-effort; required MCP/core setup fails
 the run.
 
-Scheduled-task tooling is provider-neutral. A module must declare
-`ScheduledTools`; the prompt service issues a short-lived scoped grant and sets
-the run flag, then shared project preparation publishes `remote-schedule` and
-its skill for the run that needs it.
+Application tooling is provider-neutral. A module declares `ApplicationTools`;
+the prompt service injects application-owned skills and short-lived runtime
+grants for running opted-in installations. Application install scripts publish
+their CLI and skills; shared preparation does not provision scheduler assets.
 
 On first launch or after mount changes, the launch provisioner performs
-credential seeding, skill links, browser script/skill/nesting, scheduled tools,
-and code-server setup in a stable order. Those launch steps are deliberately
+credential seeding, skill links, browser script/skill/nesting in a stable order. Those launch steps are deliberately
 best-effort so optional tooling cannot prevent the container from starting.
 Shared run preparation repeats the required pieces and surfaces failures that
 would make that selected run unusable.
@@ -398,3 +398,23 @@ Provisioning changes should normally cover:
 Run backend build/tests/vet, focused race tests, frontend tests/build when the
 public descriptor shape changes, every `infra/tests/*-test.sh`, and
 `.github/scripts/classify-release-test.sh` before release.
+
+## Restoring installed project applications
+
+A project container can be recreated while the host's installed-application
+records survive. After the missing-container start path recreates it and syncs
+secrets, `service/project.Service` invokes the application restorer wired in
+`service/services.go`. `cmd/upgrade-workspaces` also invokes it after a
+successful workspace upgrade, using both embedded and uploaded catalog entries.
+
+The restorer reinstalls only running applications with container capabilities.
+Stopped installations remain stopped; busy instance locks are skipped. Project
+start logs restoration failures and can still finish, while the upgrade command
+reports the workspace as failed if restoration fails. This restores software
+from the catalog, not arbitrary application data. A later app Start can detect
+a missing declared service unit and reinstall it.
+
+See [Project application runtime](../installable-applications/24-application-container-recovery.md#recovering-after-container-replacement)
+for state handling, lock behavior, persistence requirements, and the exact
+source files. The built-in editor is still provisioned separately on the core
+capabilities branch; replacing it with an application is a separate change.

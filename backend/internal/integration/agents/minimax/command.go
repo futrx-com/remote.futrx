@@ -53,10 +53,9 @@ func (p *Provider) buildCmd(
 		return nil, ErrMiniMaxAPIKeyMissing
 	}
 	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:           agent.ProjectID(req.ProjectID),
-		ConversationID:      req.ConversationID,
-		EnableBrowser:       req.EnableBrowser,
-		EnableScheduleTools: req.EnableScheduleTools,
+		ProjectID:      agent.ProjectID(req.ProjectID),
+		ConversationID: req.ConversationID,
+		EnableBrowser:  req.EnableBrowser,
 	}, emit)
 	if err != nil {
 		return nil, err

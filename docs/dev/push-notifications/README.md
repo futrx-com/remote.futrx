@@ -40,5 +40,6 @@ There are two paths into the same system:
 | Agent calls `AskUserQuestion` | The agent needs an answer |
 | Interactive turn completes | Turn finished |
 | Interactive run fails | Run failed |
-| Scheduled run completes or fails | Scheduled task result |
+| Application-started turn completes or fails | Application result, including work started by Scheduled Tasks |
+| Legacy scheduled run completes or fails | Legacy scheduled task result |
 | User selects **Send a test** | Test notification |

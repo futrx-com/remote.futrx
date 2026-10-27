@@ -85,7 +85,6 @@ input a provider receives.
 | `ProjectID` | Empty for a loose host chat; otherwise identifies the workspace container. |
 | `Preferences` | Saved reasoning effort, service tier, approval policy, and sandbox policy. Adapters decide which supported values to forward. |
 | `EnableBrowser` | True only when the selected `browser` skill and the module's `BrowserTools` declaration both permit it. |
-| `EnableScheduleTools` | True only for a project run when scheduled tools are declared and selected or the turn itself is scheduled. |
 | `RuntimeEnv` | Short-lived backend-issued schedule API URL and grant. Invalid environment names are discarded and these values override same-named project secrets. |
 | `InteractionResponses` | Run-scoped channel carrying explicit UI responses to provider-initiated requests. Providers without interactive protocols may ignore it. |
 
@@ -128,8 +127,7 @@ For a project chat, `execution.Preparer` owns this common workflow:
 4. Use the exact validated provider profile to ensure the CLI and, where
    supported, credentials. Publish shared instructions, the selected profile's
    non-secret runtime assets, and skill compatibility links; apply the
-   provider factory's browser policy; provision scheduled tooling when
-   requested; enable LXD boot autostart.
+   provider factory's browser policy; enable LXD boot autostart.
 5. Load project secrets. Failure is currently best-effort and yields an empty
    secret list.
 

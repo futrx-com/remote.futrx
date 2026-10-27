@@ -19,6 +19,9 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	ids := make([]agent.ProviderID, len(descriptors))
 	for index, descriptor := range descriptors {
 		ids[index] = descriptor.ID
+		if descriptor.Features.StreamingPresentation != agentmodule.StreamingBlocks {
+			t.Fatalf("provider %q should reveal formatted blocks", descriptor.ID)
+		}
 		if index >= len(profiles) || profiles[index].ID != string(descriptor.ID) {
 			t.Fatalf("descriptor %q has no aligned profile", descriptor.ID)
 		}

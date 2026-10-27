@@ -74,7 +74,7 @@ export function NotificationSettings({ push }: { push: PushNotifications }) {
               </li>
               <li class="flex items-start gap-2">
                 <span class="mt-1.5 w-1 h-1 rounded-full bg-ink-400 flex-none" />
-                A scheduled task finishes while you are away
+                An application starts work and its turn finishes while you are away
               </li>
             </ul>
 

@@ -24,7 +24,7 @@ runtime: each provider still has to implement the behavior it advertises.
 | `Features.Sessions` | prompt service and chat forking | Enables saved-session resume and, separately, native fork. Fork requires resume. |
 | `Features.Skills` | skill catalog and prompt preparation | Chooses no selected-skill injection, slash-style skill triggers, dollar mentions, or `SKILL.md` instructions. `slash-command` describes skill delivery; it is not a general composer-command system. |
 | `Features.BrowserTools` | capability API and prompt service | Allows the selected `browser` skill to request browser provisioning and provider launch wiring. |
-| `Features.ScheduledTools` | skill catalog, prompt service, capability API/frontend | Advertises the Scheduled Tasks skill and permits issue/provisioning of a scoped schedule grant. |
+| `Features.ApplicationTools` | skill catalog, prompt service, capability API/frontend | Permits scoped application tools and application-owned skill injection. |
 | `Features.ExecutionPolicies` | capability API and frontend composer | Exposes approval and sandbox policy controls for providers whose harness accepts both normalized policies. |
 
 The provisioning `Profile` is a separate private field of `module.Factory`,
@@ -44,7 +44,7 @@ does not change the catalog.
 
 ## Current built-in declarations
 
-| Provider | Default | Scopes | Auth | Sessions | Skills | Browser | Scheduled Tasks | Execution policies |
+| Provider | Default | Scopes | Auth | Sessions | Skills | Browser | Application tools | Execution policies |
 | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
 | Claude | No | host, project | managed code | resume, fork | slash-style skill trigger | Yes | Yes | No |
 | Codex | Yes | host, project | managed device | resume, fork | dollar mention | Yes | Yes | Yes |
@@ -66,9 +66,9 @@ starts. The current feature contracts are:
 | Feature | Declaration | Shared platform behavior | Provider responsibility | Activation |
 | --- | --- | --- | --- | --- |
 | Sessions | `Features.Sessions.Resume` and `.Fork` | Persists provider-keyed session IDs, controls resume input, and preserves eligible sessions when chats fork. | Emit native session IDs and translate resume/fork into the native command or protocol. | Automatic when a saved session exists; fork is requested by the chat workflow. |
-| Skills | `Features.Skills` strategy | Discovers skill metadata, stores explicit chat selections, and renders the selected skills into the effective prompt. | Make the declared slash, dollar, or instruction-path form usable in the provider runtime. | User selection in the skill picker; scheduled runs may add the reserved Scheduled Tasks skill. |
+| Skills | `Features.Skills` strategy | Discovers skill metadata, stores explicit chat selections, and renders the selected skills into the effective prompt. | Make the declared slash, dollar, or instruction-path form usable in the provider runtime. | User selection in the skill picker; running applications may add their own skills. |
 | Browser tools | `Features.BrowserTools` | Publishes support metadata and gates browser preparation and activity keepalive after the Browser skill is selected. | Pass working native MCP/tool configuration into the run. | The `browser` skill is selected and the provider declaration permits it. |
-| Scheduled Tasks | `Features.ScheduledTools` | Advertises the reserved project skill, issues and revokes a scoped grant, provisions the schedule CLI/skill, and injects runtime-only variables. | Preserve the runtime environment through the native host/container launch. | The Scheduled Tasks skill is selected, or the turn is executing a scheduled task. |
+| Application tools | `Features.ApplicationTools` | Issues and revokes scoped grants and injects running applications' skills and runtime variables. | Preserve the runtime environment through the native host/container launch. | Eligible running installations opt in through `backend.agentTools`. |
 | Execution policies | `Features.ExecutionPolicies` | Shows the Approvals and Sandbox composer controls and persists the selected normalized policies. | Forward both policies through the provider harness on thread and turn requests. | Automatic for every turn when the provider declares support. |
 
 Several adjacent contracts are deliberately not fields of `Features`:
@@ -206,7 +206,7 @@ frontend types/state, and UI.
 Each runtime adapter discovers provider-native models and controls, then
 [`capability.Service.decorate`](../../../backend/internal/service/agent/capability/service.go)
 overwrites shared metadata from the descriptor: label, default, scopes,
-authentication, sessions, skills, browser support, and schedule support. The
+authentication, sessions, skills, browser support, and application tool support. The
 registered provider ID is authoritative even if the adapter returned another
 or empty ID.
 
@@ -215,7 +215,7 @@ catalog order. `GET /api/agent-capabilities` supplies the frontend with all
 provider/model options for the selected host/project environment. The
 frontend treats provider IDs as strings and renders options from that response
 through
-[`agentCapabilityState`](../../../frontend/src/state/chat/agentCapabilityState.ts),
+[`agentCapabilityState`](../../../frontend/src/state/hooks/chat/agentCapabilityState.ts),
 so a normal provider addition requires no provider-specific picker component.
 
 Managed providers that are not authenticated are disabled using the auth
@@ -312,10 +312,9 @@ command parser. They do not install or translate provider-native skills by
 themselves. The profile declares required workspace/home links, and the
 factory's preparation policy plus the shared preparer must make them usable.
 
-When project scoped and `ScheduledTools=true`, the skill catalog adds Remote's
-reserved Scheduled Tasks skill if no copy already exists. The prompt service
-then issues a short-lived capability; shared project preparation publishes the
-schedule CLI/skill for an enabled run.
+With `ApplicationTools=true`, eligible running applications supply their own
+skills and scoped runtime access through the applications service. The
+application installer owns provisioning those CLI/skill assets.
 
 ## Browser consumers
 
@@ -336,19 +335,17 @@ browser skill exists.
 The prompt service also keeps project browser activity alive once per minute
 during an enabled run so the browser reaper does not stop an active session.
 
-## Scheduled Tasks consumers
+## Application tool consumers
 
-`ScheduledTools=true` allows both interactive and scheduled turns to use
-Remote's provider-neutral schedule tooling. The prompt service rejects this
-feature in loose chats, issues the appropriate short-lived grant, places only
-valid backend-issued variables in `RuntimeEnv`, and revokes the grant at the
-end of the run.
+`ApplicationTools=true` allows a provider to receive per-turn access to running
+installations that declare `backend.agentTools`. The prompt service includes
+their application-owned skills and supplies `REMOTE_APPLICATION_API` and
+`REMOTE_APPLICATION_GRANT` in `RuntimeEnv`. Providers forward those values
+through the common command builder. Grants are revoked when the run ends.
+Application-initiated turns use the same normal run pipeline and carry
+`ApplicationID` and `ApplicationRequestID` for transcript attribution.
 
-Providers do not parse the grant. Shared project preparation calls
-`ScheduleTools.Ensure`; the provider passes `RuntimeEnv` through the common
-container-command builder. The same provider run/event pipeline is used for
-interactive and scheduled turns;
-the resulting chat events receive `ScheduledTaskID` at the prompt boundary.
+See [Application agent runtime](../installable-applications/25-application-agent-runtime.md).
 
 ## Provisioning and diagnostic consumers
 
@@ -518,7 +515,7 @@ Before enabling a feature flag, verify both sides of the contract:
 | `Fork` | Native fork operation creates a different provider session without mutating the parent. |
 | `Skills` | Generated trigger/path is valid for the provider's CLI and provisioned filesystem. |
 | `BrowserTools` | Provider command receives working browser MCP/tool configuration. |
-| `ScheduledTools` | Shared project preparation provisions the tool; the provider forwards the issued environment through the common command builder. |
+| `ApplicationTools` | Application installation provisions tools; the provider forwards the issued environment through the common command builder. |
 | `ExecutionPolicies` | The provider forwards both normalized approval and sandbox policies, and supports the resulting interaction requests. |
 | capability model/effort/tier/mode | The run adapter actually forwards every selectable value, or deliberately omits it from discovery. |
 | project scope | Profile plus `ProjectPreparer` policy and provider command can prepare, run, and preserve state in a project container. |

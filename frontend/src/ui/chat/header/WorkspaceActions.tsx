@@ -1,6 +1,12 @@
+import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";
-import { CalendarClock, Clock, Code, Folder, Monitor, Terminal } from "../../primitives/icons";
-import { buildIdeUrl, defaultWorkspacePath } from "../ideLinks";
+import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
+import { Clock, Folder, Monitor } from "../../primitives/icons";
+import { ExtensionSlot } from "../../primitives/ExtensionSlot";
+import { workspaceActionTooltipClass } from "../../primitives/workspaceActionTooltip.ts";
+import { EXTENSION_SLOTS } from "../../../config/extensions";
+import { DEFAULT_WORKSPACE_PATH } from "../../../config/workspace";
+import { extensionDrawerState } from "../../../state/hooks/chat/extensionDrawerState";
 
 // Two states only, and they never fight over the same property: Tailwind emits
 // utilities in file order, so an "expanded" colour appended after a base colour
@@ -9,65 +15,81 @@ const actionBase =
   "workspace-action relative inline-flex h-8 w-8 flex-none items-center justify-center " +
   "rounded-control transition-colors";
 const actionIdle = `${actionBase} text-ink-400 hover:bg-tint-strong hover:text-ink-50`;
+const actionIcon = "h-4 w-4 flex-none";
+
+/** One drawer an installed application docks beside the chat. */
+export interface ExtensionDrawerAction {
+  id: string;
+  label: string;
+  /** Inline SVG supplied by the application. */
+  icon: string;
+  open: boolean;
+  onToggle: () => void;
+}
+
 const actionExpanded = `${actionBase} bg-accent-blue/[0.14] text-accent-blue hover:bg-accent-blue/20`;
 
 export function WorkspaceActions({
   cwd,
-  onToggleTerminal,
+  chatId,
+  projectId,
+  extensionDrawers,
   onToggleBrowser,
   onToggleHistory,
   onToggleFiles,
-  onToggleSchedules,
-  terminalOpen,
   browserOpen,
   historyOpen,
   filesOpen,
-  schedulesOpen,
   showHistory,
-  showSchedules,
   orientation,
 }: {
   cwd: string;
-  onToggleTerminal: () => void;
+  chatId?: string;
+  projectId?: string;
+  extensionDrawers: ExtensionDrawerAction[];
   onToggleBrowser: () => void;
   onToggleHistory: () => void;
   onToggleFiles: () => void;
-  onToggleSchedules: () => void;
-  terminalOpen: boolean;
   browserOpen: boolean;
   historyOpen: boolean;
   filesOpen: boolean;
-  schedulesOpen: boolean;
   showHistory: boolean;
-  showSchedules: boolean;
   orientation: "horizontal" | "vertical";
 }) {
-  const workspacePath = cwd && cwd !== "~" ? cwd : defaultWorkspacePath;
-  const ideUrl = buildIdeUrl(workspacePath);
+  const workspacePath = cwd && cwd !== "~" ? cwd : DEFAULT_WORKSPACE_PATH;
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
 
   return (
     <div class={`flex items-center gap-0.5 ${orientation === "horizontal" ? "flex-row" : "flex-col"}`}>
-      <WorkspaceAction
-        Icon={Code}
-        href={ideUrl}
-        label="Workspace IDE"
-        tooltip="Open workspace in IDE"
+      <ExtensionSlot
+        name={EXTENSION_SLOTS.chatHeaderActions}
+        chatId={chatId}
+        projectId={projectId}
+        cwd={workspacePath}
         tooltipPlacement={tooltipPlacement}
       />
-      <WorkspaceAction
-        Icon={Terminal}
-        onClick={onToggleTerminal}
-        label={terminalOpen ? "Close container terminal" : "Container terminal"}
-        tooltip={terminalOpen ? "Close container terminal" : "Open container terminal"}
-        expanded={terminalOpen}
-        controls="workspace-terminal-pane"
-        action="terminal"
-        tooltipPlacement={tooltipPlacement}
-      />
+      {extensionDrawers.map((drawer) => (
+        <WorkspaceAction
+          key={drawer.id}
+          icon={
+            <span
+              aria-hidden="true"
+              class={`grid place-items-center ${actionIcon} [&>svg]:h-full [&>svg]:w-full`}
+              dangerouslySetInnerHTML={{ __html: drawer.icon }}
+            />
+          }
+          onClick={drawer.onToggle}
+          label={drawer.open ? `Close ${drawer.label}` : drawer.label}
+          tooltip={drawer.open ? `Close ${drawer.label}` : `Open ${drawer.label}`}
+          expanded={drawer.open}
+          controls={extensionDrawerState.paneElementId(drawer.id)}
+          action={extensionDrawerState.paneName(drawer.id)}
+          tooltipPlacement={tooltipPlacement}
+        />
+      ))}
       {showHistory && (
         <WorkspaceAction
-          Icon={Clock}
+          icon={<Clock aria-hidden="true" focusable="false" class={actionIcon} />}
           onClick={onToggleHistory}
           label={historyOpen ? "Close git history" : "Git history"}
           tooltip={historyOpen ? "Close git history" : "Review git history"}
@@ -78,7 +100,7 @@ export function WorkspaceActions({
         />
       )}
       <WorkspaceAction
-        Icon={Folder}
+        icon={<Folder aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleFiles}
         label={filesOpen ? "Close workspace files" : "Workspace files"}
         tooltip={filesOpen ? "Close workspace files" : "Browse workspace files"}
@@ -87,20 +109,8 @@ export function WorkspaceActions({
         action="files"
         tooltipPlacement={tooltipPlacement}
       />
-      {showSchedules && (
-        <WorkspaceAction
-          Icon={CalendarClock}
-          onClick={onToggleSchedules}
-          label={schedulesOpen ? "Close scheduled tasks" : "Scheduled tasks"}
-          tooltip={schedulesOpen ? "Close scheduled tasks" : "View scheduled tasks"}
-          expanded={schedulesOpen}
-          controls="workspace-schedules-pane"
-          action="schedules"
-          tooltipPlacement={tooltipPlacement}
-        />
-      )}
       <WorkspaceAction
-        Icon={Monitor}
+        icon={<Monitor aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleBrowser}
         label={browserOpen ? "Close browser preview" : "Browser preview"}
         tooltip={browserOpen ? "Close browser preview" : "Open browser preview"}
@@ -114,30 +124,32 @@ export function WorkspaceActions({
 }
 
 function WorkspaceAction({
-  Icon,
+  icon,
   label,
   tooltip,
-  href,
   onClick,
   expanded,
   controls,
   action,
   tooltipPlacement,
 }: {
-  Icon: typeof Code;
+  icon: ComponentChildren;
   label: string;
   tooltip: string;
-  href?: string;
   onClick?: () => void;
   expanded?: boolean;
   controls?: string;
-  action?: "history" | "files" | "schedules" | "browser" | "terminal";
+  action?: string;
   tooltipPlacement: "below" | "left";
 }) {
   const tooltipId = useId();
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const onKeyDown = useDismissKeyDown((event) => {
+    setIsDismissed(true);
+    event.stopPropagation();
+  });
   const isTooltipOpen = !isDismissed && (isHovered || isFocused);
   const interactionProps = {
     "aria-describedby": tooltipId,
@@ -150,11 +162,7 @@ function WorkspaceAction({
       setIsFocused(true);
       setIsDismissed(false);
     },
-    onKeyDown: (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setIsDismissed(true);
-      event.stopPropagation();
-    },
+    onKeyDown,
     onMouseEnter: () => {
       setIsHovered(true);
       setIsDismissed(false);
@@ -163,34 +171,16 @@ function WorkspaceAction({
   };
   const content = (
     <>
-      <Icon aria-hidden="true" focusable="false" class="h-4 w-4 flex-none" />
+      {icon}
       <span
         id={tooltipId}
         role="tooltip"
-        class={`workspace-action-tooltip pointer-events-none absolute z-50 whitespace-nowrap rounded-control border border-line bg-raised px-2 py-1 text-[11px] font-medium text-ink-100 shadow-pop transition-[opacity,transform] duration-150 motion-reduce:transition-none ${
-          tooltipPlacement === "below"
-            ? `right-0 top-full mt-2 ${isTooltipOpen ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"}`
-            : `right-full top-1/2 mr-2 -translate-y-1/2 ${isTooltipOpen ? "translate-x-0 opacity-100" : "translate-x-1 opacity-0"}`
-        }`}
+        class={workspaceActionTooltipClass(tooltipPlacement, isTooltipOpen)}
       >
         {tooltip}
       </span>
     </>
   );
-
-  if (href) {
-    return (
-      <a
-        {...interactionProps}
-        href={href}
-        target="_blank"
-        rel="noopener noreferrer"
-        class={actionIdle}
-      >
-        {content}
-      </a>
-    );
-  }
 
   return (
     <button

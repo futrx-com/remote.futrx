@@ -51,7 +51,9 @@ const (
 	KindComplete Kind = "complete"
 	// KindError is a failed run.
 	KindError Kind = "error"
-	// KindScheduled is a scheduled task's run finishing, successfully or not.
+	// KindApplication is an application-started turn finishing, successfully or not.
+	KindApplication Kind = "application"
+	// KindScheduled identifies legacy scheduled-task events.
 	KindScheduled Kind = "scheduled"
 	// KindTest is the "send me one now" button in settings.
 	KindTest Kind = "test"

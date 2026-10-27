@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { ChatProvider } from "../../../models/chat";
 import type { RegisteredSkill } from "../../../models/skill";
+import { skillSearchService } from "../../../services/chat/skillSearchService.ts";
 import { useAvailableSkills } from "../../../state/hooks/chat/useAvailableSkills";
 import { ChevronDown, Code, Search } from "../../primitives/icons";
 
@@ -86,13 +87,7 @@ export function SkillPicker({
     return () => window.removeEventListener("resize", place);
   }, [open]);
 
-  const filteredSkills = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return skills;
-    return skills.filter((skill) =>
-      `${skill.name} ${skill.description || ""} ${skill.source || ""}`.toLowerCase().includes(term)
-    );
-  }, [query, skills]);
+  const filteredSkills = useMemo(() => skillSearchService.filter(skills, query), [query, skills]);
 
   function choose(skill: RegisteredSkill) {
     onSelect(skill);

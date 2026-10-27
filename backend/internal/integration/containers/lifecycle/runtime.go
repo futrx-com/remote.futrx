@@ -12,22 +12,29 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/shared/output"
 )
 
 const (
-	// TODO: We will need to investigate how to hook into a callback instead of increasing the timeout
-	launchTimeout  = 10 * time.Minute
-	migrateTimeout = 5 * time.Minute
-	startTimeout   = 30 * time.Second
-	stopTimeout    = 30 * time.Second
-	restartTimeout = 60 * time.Second
-	deleteTimeout  = 5 * time.Minute
-	queryTimeout   = 10 * time.Second
+	// Image unpacking on slow disks can take several minutes.
+	defaultLaunchTimeout = 10 * time.Minute
+	migrateTimeout       = 5 * time.Minute
+	startTimeout         = 30 * time.Second
+	stopTimeout          = 30 * time.Second
+	restartTimeout       = 60 * time.Second
+	deleteTimeout        = 5 * time.Minute
+	queryTimeout         = 10 * time.Second
+
+	// initFailureOutputBytes bounds the `lxc init` output kept in an error.
+	// That error becomes the project's status message, and a failed unpack
+	// prints the real cause after hundreds of lines of progress.
+	initFailureOutputBytes = 2000
 )
 
 // Client translates lifecycle operations into LXD CLI calls.
 type Client struct {
-	runner command.Runner
+	runner        command.Runner
+	launchTimeout time.Duration
 }
 
 type deleteAttempt struct {
@@ -36,8 +43,11 @@ type deleteAttempt struct {
 	timedOut bool
 }
 
-func NewClient(runner command.Runner) *Client {
-	return &Client{runner: runner}
+func NewClient(runner command.Runner, launchTimeout time.Duration) *Client {
+	if launchTimeout <= 0 {
+		launchTimeout = defaultLaunchTimeout
+	}
+	return &Client{runner: runner, launchTimeout: launchTimeout}
 }
 
 func (c *Client) Available() bool {
@@ -47,10 +57,97 @@ func (c *Client) Available() bool {
 // Init creates a stopped container. Project storage is attached before Start,
 // so a container can never become RUNNING without its durable mounts.
 func (c *Client) Init(ctx context.Context, image, containerName string) error {
-	if out, err := command.RunWithTimeout(ctx, c.runner, launchTimeout, "init", image, containerName); err != nil {
-		return fmt.Errorf("lxc init: %w; output: %s", err, out)
+	if out, err := command.RunWithTimeout(ctx, c.runner, c.launchTimeout, "init", image, containerName); err != nil {
+		if strings.Contains(out, "No space left on device") {
+			return fmt.Errorf("%w: the LXD storage pool ran out of space while unpacking the base image", serviceproject.ErrInsufficientStorage)
+		}
+		return fmt.Errorf("lxc init: %w; output: %s", err, initFailureOutput(out))
 	}
 	return nil
+}
+
+// initFailureOutput drops the image transfer progress `lxc init` prints and
+// keeps the tail, where the actual error is.
+func initFailureOutput(out string) string {
+	var kept []string
+	for _, line := range strings.FieldsFunc(out, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "Retrieving image:") || strings.HasPrefix(line, "Unpacking image:") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return output.TruncateTail(strings.Join(kept, "\n"), initFailureOutputBytes)
+}
+
+// StorageSpace reports the free and total bytes of the storage pool that holds
+// new containers' root disks: the pool of the default profile's root device.
+func (c *Client) StorageSpace(ctx context.Context) (pool string, free, total uint64, err error) {
+	out, err := command.RunWithTimeout(ctx, c.runner, queryTimeout, "query", "/1.0/profiles/default")
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("read default profile: %w; output: %s", err, out)
+	}
+	var profile struct {
+		Devices map[string]map[string]string `json:"devices"`
+	}
+	if err := json.Unmarshal([]byte(out), &profile); err != nil {
+		return "", 0, 0, fmt.Errorf("decode default profile: %w", err)
+	}
+	pool = profile.Devices["root"]["pool"]
+	if pool == "" {
+		return "", 0, 0, errors.New("default profile has no root disk pool")
+	}
+
+	out, err = command.RunWithTimeout(ctx, c.runner, queryTimeout, "query", "/1.0/storage-pools/"+pool+"/resources")
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("read storage pool %s: %w; output: %s", pool, err, out)
+	}
+	var resources struct {
+		Space struct {
+			Used  uint64 `json:"used"`
+			Total uint64 `json:"total"`
+		} `json:"space"`
+	}
+	if err := json.Unmarshal([]byte(out), &resources); err != nil {
+		return "", 0, 0, fmt.Errorf("decode storage pool %s: %w", pool, err)
+	}
+	total = resources.Space.Total
+	if total == 0 {
+		return "", 0, 0, fmt.Errorf("storage pool %s reports no capacity", pool)
+	}
+	if resources.Space.Used < total {
+		free = total - resources.Space.Used
+	}
+	return pool, free, total, nil
+}
+
+// ImageSize reports the size in bytes of the image an alias points to.
+func (c *Client) ImageSize(ctx context.Context, alias string) (uint64, error) {
+	out, err := command.RunWithTimeout(ctx, c.runner, queryTimeout, "query", "/1.0/images/aliases/"+alias)
+	if err != nil {
+		return 0, fmt.Errorf("read image alias %s: %w; output: %s", alias, err, out)
+	}
+	var target struct {
+		Target string `json:"target"`
+	}
+	if err := json.Unmarshal([]byte(out), &target); err != nil {
+		return 0, fmt.Errorf("decode image alias %s: %w", alias, err)
+	}
+	if target.Target == "" {
+		return 0, fmt.Errorf("image alias %s has no target", alias)
+	}
+
+	out, err = command.RunWithTimeout(ctx, c.runner, queryTimeout, "query", "/1.0/images/"+target.Target)
+	if err != nil {
+		return 0, fmt.Errorf("read image %s: %w; output: %s", target.Target, err, out)
+	}
+	var image struct {
+		Size uint64 `json:"size"`
+	}
+	if err := json.Unmarshal([]byte(out), &image); err != nil {
+		return 0, fmt.Errorf("decode image %s: %w", target.Target, err)
+	}
+	return image.Size, nil
 }
 
 func (c *Client) Disk(ctx context.Context, container, deviceName string) (string, string, bool, error) {

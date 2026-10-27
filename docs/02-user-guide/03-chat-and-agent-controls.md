@@ -9,27 +9,41 @@ catalog for the default compatible with the chat's host/project scope. Codex is
 the current explicit built-in default; a deployment that changes the compiled
 catalog can choose another without changing chat or frontend switch logic.
 
-![Provider, model, skill, thinking, speed, and mode controls](/assets/docs/screenshots/05-chat-agent-controls-03m10s.webp)
+![Provider, account, model, skill, thinking, speed, and mode controls](/assets/docs/screenshots/05-chat-agent-controls-03m10s.webp)
 
 ## Configure a run
 
 Before sending a prompt:
 
-1. Select an available agent in the **Provider** toggle.
-2. Open **Model** and choose a provider-supported model or **Auto**.
-3. Optionally open **Skill set**, search the catalog, and select one or more
+1. Select an available agent under **Provider**.
+2. Select one of that provider's saved accounts when account choices are
+   available.
+3. Open **Model** and choose a provider-supported model or **Auto**.
+4. Optionally open **Skill set**, search the catalog, and select one or more
    skills.
-4. Set **Thinking** when the provider exposes reasoning effort.
-5. Set **Speed** when the selected provider and model expose a service tier.
-6. Set **Mode** for the task.
-7. Write and send the prompt.
+5. Set **Thinking** when the provider exposes reasoning effort.
+6. Set **Speed** when the selected provider and model expose a service tier.
+7. Set **Mode** for the task.
+8. Write and send the prompt.
 
 **Outcome:** Remote saves the selections to the chat and uses supported values
-to construct the next provider CLI run. Provider, model, thinking, and speed
+to construct the next provider CLI run. The composer presents these choices in
+dependency order: select the provider first, then one of that provider's saved
+accounts when available, then the provider's model. On a phone the picker shows
+the same three choices as numbered steps; a provider without saved accounts
+shows its default login at the account step. The three values are
+applied together, and the account is pinned to the chat. Changing between two
+pinned accounts keeps the visible transcript but starts a fresh provider
+session. The last provider, account, and model selection becomes that user's
+starting preference for new chats in the same host or project scope. If the
+remembered account has since been removed, a new chat falls back to the
+provider's current default account. A running chat does not block another chat that selects a
+different saved Codex, Claude, or MiniMax account; their credential and session
+state is isolated per chat. Account, provider, model, thinking, and speed
 cannot be changed while that chat is streaming. See the Kimi exception under
 [Thinking and speed](#thinking-and-speed).
 
-## Provider and model choices
+## Provider, account, and model choices
 
 Remote loads the provider list from its backend agent registry. For a project
 chat, the backend probes the provider CLIs installed in that project's

@@ -4,11 +4,9 @@ import { Activity } from "../../primitives/icons";
 export function UsagePill({
   totals,
   tokenLabel,
-  costUsd,
 }: {
   totals: ChatUsageTotals;
   tokenLabel: string;
-  costUsd: number;
 }) {
   return (
     <div
@@ -18,7 +16,6 @@ export function UsagePill({
     >
       <Activity class="w-4 h-4 text-accent-green" />
       <span>{tokenLabel} tokens</span>
-      {costUsd > 0 && <span class="text-ink-100">${costUsd.toFixed(costUsd < 0.01 ? 4 : 2)}</span>}
     </div>
   );
 }

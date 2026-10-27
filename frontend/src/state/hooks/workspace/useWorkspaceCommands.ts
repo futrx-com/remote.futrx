@@ -2,6 +2,7 @@ import type { ChatMeta } from "../../../models/chat";
 import { useConfirm } from "../../context/ConfirmContext";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
 import { chatApi } from "../../../api/chatApi";
+import { chatTitleState } from "./chatTitleState";
 
 export function useWorkspaceCommands() {
   const workspace = useWorkspaceContext();
@@ -51,6 +52,16 @@ export function useWorkspaceCommands() {
     }
   }
 
+  async function renameChat(chat: ChatMeta, input: string) {
+    const title = chatTitleState.rename(input, chat.title);
+    if (!title) return;
+    try {
+      await workspace.renameChat(chat.id, title);
+    } catch (error) {
+      alert("rename failed: " + (error as Error).message);
+    }
+  }
+
   async function reorderProjects(projectIds: string[]) {
     try {
       await workspace.reorderProjects(projectIds);
@@ -65,6 +76,7 @@ export function useWorkspaceCommands() {
     deleteChat,
     toggleChatUnread,
     forkChat,
+    renameChat,
     reorderProjects,
   };
 }

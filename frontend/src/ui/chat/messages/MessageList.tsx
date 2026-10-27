@@ -1,10 +1,12 @@
 import type { RefObject } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { ChatStatus } from "../../../models/chat";
-import type { ChatMessageBlock } from "../../../models/chatMessage";
+import type { ChatStatus, TranscriptIndexProgress } from "../../../models/chat";
+import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
 import { MessageBlock } from "./MessageBlock";
 import { MessageSkeleton } from "./MessageSkeleton";
 import { ThreadEmptyState } from "./ThreadEmptyState";
+import { TurnActivity } from "./TurnActivity";
+import { showTurnActivity } from "./turnVisibility";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 const INITIAL_VISIBLE_BLOCKS = 80;
@@ -12,9 +14,12 @@ const LOAD_MORE_BLOCKS = 80;
 
 export function MessageList({
   status,
+  locallyStartedTurn,
   blocks,
+  hydratedTextPart,
   hasOlder,
   loadingOlder,
+  indexingProgress,
   error,
   chatId,
   cwd,
@@ -26,11 +31,15 @@ export function MessageList({
   onRespondInteraction,
   onLoadOlder,
   onRewind,
+  streamingPresentation,
 }: {
   status: ChatStatus;
+  locallyStartedTurn: boolean;
   blocks: ChatMessageBlock[];
+  hydratedTextPart?: HydratedTextPart | null;
   hasOlder: boolean;
   loadingOlder: boolean;
+  indexingProgress: TranscriptIndexProgress | null;
   error: string | null;
   chatId: string;
   cwd?: string;
@@ -38,10 +47,11 @@ export function MessageList({
   contentRef: RefObject<HTMLDivElement>;
   bottomRef: RefObject<HTMLDivElement>;
   onScroll: () => void;
-  onAnswerQuestion: (text: string) => void;
+  onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
+  streamingPresentation: "blocks" | "tokens";
 }) {
   const [visibleBlockCount, setVisibleBlockCount] = useState(INITIAL_VISIBLE_BLOCKS);
   const firstVisibleIndex = Math.max(0, blocks.length - visibleBlockCount);
@@ -82,7 +92,13 @@ export function MessageList({
       <div ref={contentRef} class="mx-auto w-full min-w-0 max-w-[54rem] space-y-5 md:space-y-6">
         {status === "loading" && <MessageSkeleton />}
 
-        {status !== "loading" && blocks.length === 0 && <ThreadEmptyState cwd={cwd} />}
+        {indexingProgress && (
+          <div class="rounded-card border border-line bg-surface p-4 text-[13px] text-ink-300">
+            Preparing conversation… {indexPercent(indexingProgress)}%
+          </div>
+        )}
+
+        {status !== "loading" && status !== "streaming" && blocks.length === 0 && !indexingProgress && <ThreadEmptyState cwd={cwd} />}
 
         {(hiddenCount > 0 || hasOlder) && (
           <div class="flex justify-center">
@@ -107,7 +123,10 @@ export function MessageList({
             <MessageBlock
               key={`${block.type}-${block.t}-${blockIndex}`}
               block={block}
+              hydratedPartIndex={block.type === "assistant" && block.t === hydratedTextPart?.assistantT
+                ? hydratedTextPart.partIndex : -1}
               streaming={status === "streaming" && blockIndex === blocks.length - 1}
+              streamingPresentation={streamingPresentation}
               chatId={chatId}
               cwd={cwd}
               onAnswerQuestion={onAnswerQuestion}
@@ -116,6 +135,8 @@ export function MessageList({
             />
           );
         })}
+
+        {showTurnActivity(status, blocks, locallyStartedTurn) && <TurnActivity />}
 
         {error && (
           <div class="rounded-card border border-accent-red/25 bg-accent-red/[0.08] p-3 text-[13px] text-accent-red [overflow-wrap:anywhere]">
@@ -127,4 +148,9 @@ export function MessageList({
       </div>
     </div>
   );
+}
+
+function indexPercent(progress: TranscriptIndexProgress): number {
+  if (progress.totalBytes <= 0) return 0;
+  return Math.min(99, Math.floor((progress.indexedBytes / progress.totalBytes) * 100));
 }

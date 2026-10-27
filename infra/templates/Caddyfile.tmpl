@@ -1,19 +1,19 @@
 # Caddyfile for remote.futrx — managed by infra/install.sh.
 #
-# Three site blocks:
+# Platform and application site blocks:
 #   1. ${HOSTNAME}            main chat UI + backend API
-#   2. code.${HOSTNAME}       code-server (VS Code in browser)
+#   2. *.${HOSTNAME}          named application origins (<label>--<project>.<host>)
 #   3. *.dev.${HOSTNAME}      per-project dev URLs (<slug>--<port>.dev.<host>)
 #
-# All three live behind the same Google admin session — code + dev URLs use
-# forward_auth, the main block hosts the OAuth endpoints themselves.
+# All use Remote authentication. Dev URLs use forward_auth; the
+# application gateway validates sessions and project membership itself.
 
 {
     # Email used for Let's Encrypt ACME registration. Set to a real address
     # if you want renewal-failure emails from LE.
     # email you@example.com
 
-    # On-demand TLS for the *.dev.${HOSTNAME} wildcard. Caddy queries the
+    # On-demand TLS for dev and application subdomains. Caddy queries the
     # backend's /internal/tls-ask before issuing each cert so attackers
     # can't burn through ACME rate limits by hitting random subdomains.
     on_demand_tls {
@@ -32,86 +32,24 @@ ${HOSTNAME} {
     reverse_proxy 127.0.0.1:${SERVICE_PORT}
 }
 
-code.${HOSTNAME} {
-    encode zstd gzip
-    route {
-        # Admin-session gate (same check as the rest of the platform).
-        forward_auth 127.0.0.1:${SERVICE_PORT} {
-            uri /auth/verify
-        }
-        # Futrx IDE launcher PWA shell (one origin => one installable app).
-        handle / {
-            root * ${INSTALL_DIR}/infra/launcher
-            file_server
-        }
-        @launcher path /index.html /manifest.webmanifest /sw.js /icon.svg /favicon.ico
-        handle @launcher {
-            root * ${INSTALL_DIR}/infra/launcher
-            file_server
-        }
-        # Project list for the launcher (backend, session cookie intact).
-        handle /api/* {
-            reverse_proxy 127.0.0.1:${SERVICE_PORT}
-        }
-        # /<slug>/* -> that project's own per-container code-server. Same origin
-        # as the launcher, so the whole thing installs as a single PWA and each
-        # workspace opens in its own window. The slug prefix is stripped;
-        # code-server uses relative asset paths so it works under the sub-path.
-        @ide path_regexp ide ^/(?P<slug>[a-z0-9][a-z0-9-]+)(?P<rest>/.*)$
-        handle @ide {
-            rewrite * {re.ide.rest}
-            reverse_proxy {re.ide.slug}.lxd:8842 {
-                transport http {
-                    keepalive off
-                }
-                # Strip the platform admin-session cookies before entering the
-                # container (forward_auth already validated on loopback).
-                header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
-            }
-        }
-        # Bare /<slug> -> add trailing slash so code-server's relative URLs resolve.
-        @bare path_regexp bare ^/([a-z0-9][a-z0-9-]+)$
-        redir @bare {uri}/ 308
-        handle {
-            respond "Not found" 404
-        }
-    }
-}
-
-# Per-project IDE. <slug>.code.${HOSTNAME} proxies into the project's LXD
-# container at <slug>.lxd:8842, where an on-demand, idle-stopped
-# code-server lives (systemd socket activation inside the container). Same
-# Google admin gate as code.${HOSTNAME}; on-demand TLS is gated by the
-# backend's /internal/tls-ask, which now also allows <slug>.code.${HOSTNAME}.
-*.code.${HOSTNAME} {
+# Manifest-defined <label>--<project>.<host> origins use the platform wildcard.
+# Preview hosts retain their separate routing below.
+# Certificates are on-demand per host, admitted by /internal/tls-ask like previews.
+*.${HOSTNAME} {
     encode zstd gzip
     tls {
         on_demand
     }
-    forward_auth 127.0.0.1:${SERVICE_PORT} {
-        uri /auth/verify
+    @named header_regexp named Host (?i)^[a-z0-9-]+--[a-z0-9-]+\.${HOSTNAME_RE}\.?(?::[0-9]+)?$
+    handle @named {
+        # The trusted gateway needs the session cookie to authenticate the caller
+        # and check project membership. After authorization, newWebProxy removes
+        # all Cookie and Authorization headers before forwarding to the container.
+        reverse_proxy 127.0.0.1:${SERVICE_PORT}
     }
-    @valid {
-        header_regexp host Host ^([a-z0-9][a-z0-9-]*)\.code\.${HOSTNAME_RE}$
+    handle {
+        respond 404
     }
-    handle @valid {
-        reverse_proxy {re.host.1}.lxd:8842 {
-            # On-demand backend: don't pool idle upstream connections, so the
-            # in-container systemd-socket-proxyd sees zero open connections soon
-            # after the tab closes and can reach its --exit-idle-time to stop
-            # code-server.
-            transport http {
-                keepalive off
-            }
-            # Strip the platform's admin-session cookies before the request
-            # enters the container (same rationale as the dev-URL block): the
-            # forward_auth above already validated the session on loopback, and
-            # in-container code must never see a token replayable against
-            # code.${HOSTNAME}.
-            header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
-        }
-    }
-    respond "Use <slug>.code.${HOSTNAME}" 400
 }
 
 # Per-project dev URLs. <slug>--<port>.dev.${HOSTNAME} proxies into the
@@ -145,7 +83,10 @@ code.${HOSTNAME} {
             # validated the session against the main backend on loopback, so
             # the gate is unaffected; this stops any code running inside a
             # dev server from harvesting the admin session token (which would
-            # otherwise be replayable against code.${HOSTNAME} for host root).
+            # otherwise be replayable against ${HOSTNAME} for platform access).
+            # remote_share is the public-preview grant: host-scoped to this
+            # one <slug>--<port> origin, so this is the only block that can
+            # ever see it, and the app inside must not be able to read it.
             # The app's own cookies pass through untouched.
             header_up Cookie `(?:^|;\s*)(?:remote_session|remote_2fa_pending|remote_oauth_state|return_to)=[^;]*` ""
         }

@@ -1,5 +1,10 @@
 export type SelfUpdateKind = "application" | "infrastructure";
 
+export interface SelfUpdateReleaseNotes {
+  tag: string;
+  body?: string;
+}
+
 export interface SelfUpdateCheck {
   checkedAt: number;
   latestTag?: string;

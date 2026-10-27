@@ -1,0 +1,24 @@
+.scheduled-tasks-actions > [hidden] { display: none !important; }
+/* Keep the confirmation quiet; reserve the destructive color for its action. */
+.scheduled-tasks-delete-confirmation { width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: rgb(var(--bg-raised-rgb)); }
+.scheduled-tasks-delete-heading { display: flex; align-items: center; gap: 10px; padding: 16px 16px 0; }
+.scheduled-tasks-delete-heading strong { color: rgb(var(--fg-bright)); font-size: 14px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.scheduled-tasks-delete-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; color: rgb(var(--accent-red)); background: rgb(var(--accent-red) / .1); }
+.scheduled-tasks-delete-icon svg { width: 17px; height: 17px; }
+.scheduled-tasks-panel .scheduled-tasks-delete-name { margin: 12px 16px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: rgb(var(--bg-surface-rgb)); color: rgb(var(--fg-bright)); font-weight: 500; line-height: 1.5; }
+.scheduled-tasks-panel .scheduled-tasks-delete-confirmation > p:not(.scheduled-tasks-delete-name) { margin: 10px 16px 16px; color: rgb(var(--fg-muted)); font-size: 13px; line-height: 1.55; }
+.scheduled-tasks-delete-controls { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.scheduled-tasks-panel .scheduled-tasks-delete-controls button { min-height: 44px; margin: 0; padding: 10px 14px; border-radius: 8px; font: inherit; font-weight: 500; line-height: 1.4; transition: background-color 120ms ease, border-color 120ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .scheduled-tasks-panel .scheduled-tasks-delete-controls button:not(.scheduled-tasks-delete-submit):hover:not(:disabled) { background: rgb(var(--fg) / .08); border-color: var(--line-strong); }
+  .scheduled-tasks-panel .scheduled-tasks-delete-controls .scheduled-tasks-delete-submit:hover:not(:disabled) { background: color-mix(in srgb, rgb(var(--accent-red)), rgb(var(--on-accent)) 8%); border-color: transparent; }
+}
+.scheduled-tasks-panel .scheduled-tasks-delete-controls button:not(.scheduled-tasks-delete-submit):active:not(:disabled) { background: rgb(var(--fg) / .13); }
+.scheduled-tasks-panel .scheduled-tasks-delete-submit { color: rgb(var(--on-accent)); border-color: transparent; background: rgb(var(--accent-red)); }
+.scheduled-tasks-panel .scheduled-tasks-delete-controls .scheduled-tasks-delete-submit:active:not(:disabled) { background: color-mix(in srgb, rgb(var(--accent-red)), rgb(var(--on-accent)) 10%); }
+@media (prefers-reduced-motion: reduce) { .scheduled-tasks-panel .scheduled-tasks-delete-controls button { transition: none; } }
+@media (max-width: 420px) {
+  .scheduled-tasks-delete-confirmation { grid-column: 1 / -1; }
+  .scheduled-tasks-delete-controls button { flex: 1; }
+}
+@media (forced-colors: active) { .scheduled-tasks-delete-icon { color: CanvasText; } .scheduled-tasks-panel .scheduled-tasks-delete-submit { color: ButtonText; border-color: ButtonText; background: ButtonFace; } }

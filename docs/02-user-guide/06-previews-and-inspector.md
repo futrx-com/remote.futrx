@@ -123,7 +123,7 @@ project membership, and on-demand TLS. See
 ## Related documentation
 
 - [Previews and browser architecture](../03-platform/06-previews-and-browser.md)
-- [Files, Terminal, and IDE](05-files-terminal-and-ide.md)
+- [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md)
 - [Agent Browser](07-agent-browser.md)
 - [Projects and containers](../02-workspaces/03-projects-and-containers.md)
 - [Threat model](../threat-model.md)

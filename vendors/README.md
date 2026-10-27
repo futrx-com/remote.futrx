@@ -12,7 +12,7 @@ The fix is self-contained in the repo, costs nothing to operate, and needs no
 configuration from self-hosters:
 
 1. **Every pin lives in [`versions.env`](../backend/internal/agent/provisioning/versions.env)**
-   (symlinked at `infra/versions.env`) — agent CLIs, Node, Go, code-server,
+   (symlinked at `infra/versions.env`) — agent CLIs, Node, Go,
    and the Playwright/CfT set including sha256 pins for the vendored assets.
 2. **A GitHub Action republishes the pinned archives** as release assets on
    this repo (tag `PW_VENDOR_RELEASE_TAG`, e.g. `vendors-playwright-1.60.0`).

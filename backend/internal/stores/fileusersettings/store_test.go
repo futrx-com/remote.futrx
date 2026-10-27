@@ -18,6 +18,7 @@ func TestStoreRoundTripUsesHashedFilename(t *testing.T) {
 
 	settings := serviceusersettings.DefaultSettings()
 	settings.Appearance.Theme = serviceusersettings.ThemeLight
+	settings.Chat.AccountID = "codex-work"
 	settings.UpdatedAt = 123
 
 	key := serviceusersettings.Key("sub:google-user-123")
@@ -29,7 +30,8 @@ func TestStoreRoundTripUsesHashedFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Appearance.Theme != serviceusersettings.ThemeLight || got.UpdatedAt != 123 {
+	if got.Appearance.Theme != serviceusersettings.ThemeLight ||
+		got.Chat.AccountID != "codex-work" || got.UpdatedAt != 123 {
 		t.Fatalf("unexpected settings: %+v", got)
 	}
 

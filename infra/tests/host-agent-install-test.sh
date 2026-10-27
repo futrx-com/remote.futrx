@@ -22,6 +22,11 @@ bash -n "$APP_STEP"
 bash -n "$HOST_CLI_PROFILE_TEMPLATE"
 grep -Fq 'go run ./cmd/install-host-agents --prefix "$HOST_CLI_PREFIX"' "$APP_STEP" || \
     fail "application step does not invoke the module-driven host installer"
+grep -Fq 'release_build_version "$INSTALL_DIR" "${FUTRX_CHECKOUT_REF:-}"' "$APP_STEP" || \
+    fail "application step does not stamp the explicitly selected checkout"
+if grep -Fq 'git -C .. describe' "$APP_STEP"; then
+    fail "application step still derives production versions with git describe"
+fi
 if grep -Fq 'go run ./cmd/install-host-agents' "$HOST_DEPS"; then
     fail "host installer runs before the selected application checkout is available"
 fi
@@ -33,7 +38,7 @@ if [ -z "$checkout_source_line" ] || [ -z "$host_deps_source_line" ] || [ -z "$a
    [ "$host_deps_source_line" -ge "$app_source_line" ]; then
     fail "target checkout must be selected before host dependencies and agent convergence"
 fi
-grep -Fq 'exec bash "$INSTALL_DIR/infra/install.sh" "$@"' "$CHECKOUT_STEP" || \
+grep -Fq 'remote_exec_selected_installer "$INSTALL_DIR/infra/install.sh" "$@"' "$CHECKOUT_STEP" || \
     fail "checkout selection does not re-execute the selected installer"
 grep -Fq 'HOST_CLI_PREFIX="$INSTALL_DIR/data/host-clis"' "$INSTALLER" || \
     fail "installer does not define an application-owned host CLI prefix"

@@ -75,23 +75,26 @@ func (s *Service) OwnsSubscription(ctx context.Context, email, endpoint string) 
 }
 
 // Notify delivers to every device of every recipient, pruning subscriptions
-// the push service reports as retired. It blocks; use NotifyAsync from
-// latency-sensitive paths.
-func (s *Service) Notify(ctx context.Context, recipients []string, notification Notification) {
+// the push service reports as retired, and returns how many devices accepted
+// it. It blocks; use NotifyAsync from latency-sensitive paths.
+func (s *Service) Notify(ctx context.Context, recipients []string, notification Notification) int {
 	if !s.Enabled() || len(recipients) == 0 {
-		return
+		return 0
 	}
-	s.deliveries.notify(ctx, recipients, notification)
+	return s.deliveries.notify(ctx, recipients, notification)
 }
 
 // NotifyAsync runs Notify on its own goroutine with an independent deadline.
 // Chat events are appended on the streaming hot path, and a slow push service
-// must never hold that up.
-func (s *Service) NotifyAsync(recipients []string, notification Notification) {
+// must never hold that up. done, when set, receives the delivered count.
+func (s *Service) NotifyAsync(recipients []string, notification Notification, done func(delivered int)) {
 	if !s.Enabled() || len(recipients) == 0 {
+		if done != nil {
+			done(0)
+		}
 		return
 	}
-	s.deliveries.notifyAsync(recipients, notification)
+	s.deliveries.notifyAsync(recipients, notification, done)
 }
 
 // Wait blocks until background deliveries finish. Used by tests.

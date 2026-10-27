@@ -12,14 +12,17 @@ import {
   ChevronLeft,
   Download,
   Info,
+  Mail,
   Menu,
   Monitor,
   ShieldCheck,
+  Server,
   Users,
 } from "../primitives/icons";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
+import { EmailSettings } from "./email/EmailSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
 import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
@@ -27,16 +30,12 @@ import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
 import { UsersPanel } from "../account/UsersPanel";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
+import { ApplicationsSection } from "../applications/ApplicationsSection";
+import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
 
-export type SettingsTab =
-  | "appearance"
-  | "notifications"
-  | "agents"
-  | "users"
-  | "security"
-  | "updates"
-  | "info"
-  | "usage";
+import type { SettingsTab } from "../../models/workspace";
+import type { ReleaseNotesController } from "../../state/hooks/server/useReleaseNotes";
+export type { SettingsTab } from "../../models/workspace";
 
 const tabs: Array<{
   id: SettingsTab;
@@ -65,7 +64,7 @@ const tabs: Array<{
   {
     id: "usage",
     label: "Usage",
-    description: "Track tokens and estimated cost per project, user, provider, and model.",
+    description: "Track token usage per project, user, provider, and model.",
     Icon: Activity,
   },
   {
@@ -81,6 +80,12 @@ const tabs: Array<{
     Icon: ShieldCheck,
   },
   {
+    id: "applications",
+    label: "Applications",
+    description: "Install databases and services that run globally on this server.",
+    Icon: Server,
+  },
+  {
     id: "updates",
     label: "Updates",
     description: "Check for new releases and install them.",
@@ -91,6 +96,12 @@ const tabs: Array<{
     label: "Info",
     description: "View details about the main parent server.",
     Icon: Info,
+  },
+  {
+    id: "email",
+    label: "Email",
+    description: "Send mail from this server through SMTP.",
+    Icon: Mail,
   },
 ];
 
@@ -104,6 +115,7 @@ export function SettingsPage({
   serverInfoRefreshing,
   serverInfoError,
   selfUpdate,
+  releaseNotes,
   selfUpdateLoading,
   selfUpdateChecking,
   selfUpdateApplying,
@@ -127,6 +139,7 @@ export function SettingsPage({
   onCheckForUpdates,
   onApplyUpdate,
   onAppearanceThemeChange,
+  applications,
 }: {
   activeTab: SettingsTab;
   currentEmail: string;
@@ -137,6 +150,7 @@ export function SettingsPage({
   serverInfoRefreshing: boolean;
   serverInfoError: string | null;
   selfUpdate: SelfUpdateStatus | null;
+  releaseNotes: ReleaseNotesController;
   selfUpdateLoading: boolean;
   selfUpdateChecking: boolean;
   selfUpdateApplying: boolean;
@@ -160,6 +174,7 @@ export function SettingsPage({
   onCheckForUpdates: () => Promise<void>;
   onApplyUpdate: (tag?: string) => Promise<void>;
   onAppearanceThemeChange: (theme: AppearanceTheme) => void;
+  applications: ApplicationsController;
 }) {
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
@@ -275,9 +290,19 @@ export function SettingsPage({
 
             {activeTab === "security" && <SecuritySettings controller={security} />}
 
+            {activeTab === "applications" &&
+              (isAdmin ? (
+                <ApplicationsSection controller={applications} />
+              ) : (
+                <SettingsNotice>
+                  Global applications are managed by server administrators.
+                </SettingsNotice>
+              ))}
+
             {activeTab === "updates" &&
               (isAdmin ? (
                 <UpdatesSettings
+                  releaseNotes={releaseNotes}
                   status={selfUpdate}
                   loading={selfUpdateLoading}
                   checking={selfUpdateChecking}
@@ -293,6 +318,7 @@ export function SettingsPage({
                 </SettingsNotice>
               ))}
 
+
             {activeTab === "info" && (
               <ServerInfoSettings
                 currentEmail={currentEmail}
@@ -303,6 +329,15 @@ export function SettingsPage({
                 error={serverInfoError}
                 onRefresh={onRefreshServerInfo}
               />
+            )}
+            {activeTab === "email" && (
+              isAdmin ? (
+                <EmailSettings defaultRecipient={currentEmail} />
+              ) : (
+                <SettingsNotice>
+                  Email delivery is managed by server administrators.
+                </SettingsNotice>
+              )
             )}
           </div>
         </main>

@@ -15,6 +15,27 @@ type transcriptRepository struct {
 	scans   int
 }
 
+type transcriptWindowRepository struct {
+	transcriptRepository
+	window       TranscriptEventWindow
+	windowErr    error
+	windows      int
+	gotBeforeSeq int64
+	gotTurnLimit int
+}
+
+func (r *transcriptWindowRepository) ReadTranscriptEventWindow(
+	_ context.Context,
+	_ ID,
+	beforeSeq int64,
+	turnLimit int,
+) (TranscriptEventWindow, error) {
+	r.windows++
+	r.gotBeforeSeq = beforeSeq
+	r.gotTurnLimit = turnLimit
+	return r.window, r.windowErr
+}
+
 func (r *transcriptRepository) ScanEvents(
 	ctx context.Context,
 	_ ID,
@@ -233,6 +254,72 @@ func TestTranscriptPagePreservesValidationAndScanErrors(t *testing.T) {
 		TranscriptPageQuery{},
 	); !errors.Is(err, scanErr) {
 		t.Fatalf("scan error = %v, want %v", err, scanErr)
+	}
+}
+
+func TestTranscriptPageUsesConfiguredEventWindow(t *testing.T) {
+	repository := &transcriptWindowRepository{
+		transcriptRepository: transcriptRepository{events: []Event{{Seq: 99, Type: "user"}}},
+		window: TranscriptEventWindow{
+			Events: []Event{
+				{Seq: 30, Type: "user", TurnID: "turn-oldest", Text: "oldest"},
+				{Seq: 40, Type: "user", TurnID: "turn-older", Text: "older"},
+				{Seq: 41, Type: "complete", TurnID: "turn-older"},
+				{Seq: 50, Type: "user", TurnID: "turn-newer", Text: "newer"},
+			},
+			LastSeq: 55,
+		},
+	}
+	service := New(
+		repository,
+		nil,
+		nil,
+		nil,
+		WithTranscriptEventSource(repository),
+		WithTranscriptEventWindowSource(repository),
+	)
+
+	page, err := service.TranscriptPage(
+		context.Background(),
+		"abcd",
+		TranscriptPageQuery{Limit: 1, BeforeSeq: 50},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.scans != 0 || repository.windows != 1 {
+		t.Fatalf("full scans = %d, indexed windows = %d", repository.scans, repository.windows)
+	}
+	if repository.gotBeforeSeq != 50 || repository.gotTurnLimit != 1 {
+		t.Fatalf("window query = before %d, limit %d", repository.gotBeforeSeq, repository.gotTurnLimit)
+	}
+	if len(page.Turns) != 1 || page.Turns[0].ID != "turn-older" ||
+		!page.HasMore || page.NextBefore != 40 || page.LastSeq != 55 {
+		t.Fatalf("indexed transcript page = %#v", page)
+	}
+}
+
+func TestTranscriptPagePropagatesConfiguredEventWindowError(t *testing.T) {
+	windowErr := errors.New("window failed")
+	repository := &transcriptWindowRepository{windowErr: windowErr}
+	service := New(
+		repository,
+		nil,
+		nil,
+		nil,
+		WithTranscriptEventSource(repository),
+		WithTranscriptEventWindowSource(repository),
+	)
+
+	if _, err := service.TranscriptPage(
+		context.Background(),
+		"abcd",
+		TranscriptPageQuery{},
+	); !errors.Is(err, windowErr) {
+		t.Fatalf("window error = %v, want %v", err, windowErr)
+	}
+	if repository.windows != 1 || repository.scans != 0 {
+		t.Fatalf("indexed windows = %d, full scans = %d", repository.windows, repository.scans)
 	}
 }
 

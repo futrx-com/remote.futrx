@@ -169,3 +169,21 @@ test("delegated controls target only a live native task", () => {
   assert.equal(chatInteractionService.delegatedTaskTarget({}, "running"), undefined);
   assert.equal(chatInteractionService.delegatedTaskTarget({ stopInteractionId: 1 }, "running"), undefined);
 });
+
+test("recordedAnswers reads the answers a resolved interaction kept", () => {
+  assert.deepEqual(
+    chatInteractionService.recordedAnswers({ answers: { env: ["staging"], "1": ["ship it"] } }),
+    { env: ["staging"], "1": ["ship it"] },
+  );
+});
+
+test("recordedAnswers ignores missing or malformed data", () => {
+  assert.equal(chatInteractionService.recordedAnswers(undefined), undefined);
+  assert.equal(chatInteractionService.recordedAnswers("answers"), undefined);
+  assert.equal(chatInteractionService.recordedAnswers({ answers: [] }), undefined);
+  assert.equal(chatInteractionService.recordedAnswers({ answers: {} }), undefined);
+  assert.deepEqual(
+    chatInteractionService.recordedAnswers({ answers: { ok: ["yes"], bad: "no", mixed: ["a", 1] } }),
+    { ok: ["yes"] },
+  );
+});

@@ -184,7 +184,7 @@ func newAgentBrowserProjectHandler(t *testing.T) (*ProjectHandler, *fakeProjectC
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewProjectHandler(projects, nil, nil, "remote.futrx.com"), containers, project
+	return NewProjectHandler(projects, nil, nil, "remote.futrx.com", nil), containers, project
 }
 
 type fakeProjectContainers struct {
@@ -233,6 +233,8 @@ func (fakeProjectBrowser) Port() int { return 6080 }
 func (f *fakeProjectContainers) Available() bool { return true }
 
 func (f *fakeProjectContainers) Ensure(context.Context, serviceproject.Meta) error { return nil }
+
+func (f *fakeProjectContainers) CheckCapacity(context.Context) error { return nil }
 
 func (f *fakeProjectContainers) Busy(context.Context, string) (bool, error) { return false, nil }
 

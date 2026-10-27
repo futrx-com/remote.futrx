@@ -1,10 +1,8 @@
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ComponentChildren, ComponentType } from "preact";
 import { useCallback, useState } from "preact/hooks";
-import type {
-  AccessRecord,
-  ProjectContainerRecord,
-  SecretsRecord,
-} from "../../models/project";
+import { projectShareService } from "../../services/projects/projectShareService";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
 import {
@@ -15,16 +13,39 @@ import {
   ProjectSecretsSection,
   type SecretDraft,
 } from "./project-containers/ProjectSecretsSection";
+import { ProjectPreviewSharesSection } from "./project-containers/ProjectPreviewSharesSection";
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
 import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
-import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
+import type {
+  AccessRecord,
+  ContainerLimits,
+  CreatedProjectShare,
+  ProjectContainerInfo,
+  ProjectContainerRecord,
+  ProjectMeta,
+  SecretsRecord,
+  SharesRecord,
+} from "../../models/project";
 import type { UsageSummary } from "../../models/usage";
-import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Settings, Users } from "../primitives/icons";
+import { ApplicationsSection } from "../applications/ApplicationsSection";
+import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import {
+  ChevronLeft,
+  ExternalLink,
+  Info,
+  Key,
+  Loader,
+  Menu,
+  RotateCcw,
+  Server,
+  Settings,
+  Users,
+} from "../primitives/icons";
 import { useConfirm } from "../../state/context/ConfirmContext";
 
-export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
+export type ProjectSettingsTab = "info" | "settings" | "secrets" | "applications" | "sharing";
 
 const tabs: Array<{
   id: ProjectSettingsTab;
@@ -51,9 +72,16 @@ const tabs: Array<{
     Icon: Key,
   },
   {
+    id: "applications",
+    label: "Applications",
+    description: "Install databases and other services into this project's container.",
+    Icon: Server,
+  },
+  {
     id: "sharing",
     label: "Sharing",
-    description: "Control which registered users can access this project.",
+    description:
+      "Control which registered users can access this project, and hand out public preview links.",
     Icon: Users,
   },
 ];
@@ -64,6 +92,7 @@ export function ProjectContainersPage({
   infoRecord,
   secretsRecord,
   accessRecord,
+  sharesRecord,
   refreshing,
   isAdmin,
   serverMemoryTotalBytes,
@@ -77,8 +106,11 @@ export function ProjectContainersPage({
   onTabChange,
   onSaveSecret,
   onDeleteSecret,
+  applications,
   onAddMember,
   onRemoveMember,
+  onCreateShare,
+  onRevokeShare,
   onRepairNetwork,
   onSetResourceLimits,
   onStartProject,
@@ -91,6 +123,7 @@ export function ProjectContainersPage({
   infoRecord: ProjectContainerRecord;
   secretsRecord: SecretsRecord;
   accessRecord: AccessRecord;
+  sharesRecord: SharesRecord;
   refreshing: boolean;
   isAdmin: boolean;
   serverMemoryTotalBytes?: number;
@@ -104,8 +137,11 @@ export function ProjectContainersPage({
   onTabChange: (tab: ProjectSettingsTab) => void;
   onSaveSecret: (key: string, value: string) => Promise<void>;
   onDeleteSecret: (key: string) => Promise<void>;
+  applications: ApplicationsController;
   onAddMember: (email: string) => Promise<void>;
   onRemoveMember: (email: string) => Promise<void>;
+  onCreateShare: (port: number, ttlHours: number, label?: string) => Promise<CreatedProjectShare>;
+  onRevokeShare: (shareId: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
   onSetResourceLimits: (limits: ContainerLimits) => Promise<void>;
   onStartProject: () => Promise<void>;
@@ -231,6 +267,7 @@ export function ProjectContainersPage({
 
                 {activeTab === "settings" && (
                   <div class="space-y-4">
+                    <ExtensionSlot name={EXTENSION_SLOTS.projectSettingsPanel} scope="project" projectId={project.id} />
                     <ProjectResourceLimits
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
@@ -274,18 +311,41 @@ export function ProjectContainersPage({
                   </ProjectSettingsPanel>
                 )}
 
-                {activeTab === "sharing" && (
+                {activeTab === "applications" && (
                   <ProjectSettingsPanel
-                    title="Project access"
-                    description={accessDescription(accessRecord)}
-                    Icon={Users}
+                    title="Applications"
+                    description="Install and manage databases and services in this project's container."
+                    Icon={Server}
                   >
-                    <ProjectSharingSection
-                      record={accessRecord}
-                      onAdd={onAddMember}
-                      onRemove={onRemoveMember}
-                    />
+                    <ApplicationsSection controller={applications} />
                   </ProjectSettingsPanel>
+                )}
+
+                {activeTab === "sharing" && (
+                  <div class="space-y-4">
+                    <ProjectSettingsPanel
+                      title="Project access"
+                      description={accessDescription(accessRecord)}
+                      Icon={Users}
+                    >
+                      <ProjectSharingSection
+                        record={accessRecord}
+                        onAdd={onAddMember}
+                        onRemove={onRemoveMember}
+                      />
+                    </ProjectSettingsPanel>
+                    <ProjectSettingsPanel
+                      title="Public preview links"
+                      description={sharesDescription(sharesRecord)}
+                      Icon={ExternalLink}
+                    >
+                      <ProjectPreviewSharesSection
+                        record={sharesRecord}
+                        onCreate={onCreateShare}
+                        onRevoke={onRevokeShare}
+                      />
+                    </ProjectSettingsPanel>
+                  </div>
                 )}
               </>
             )}
@@ -380,6 +440,14 @@ function accessDescription(record: AccessRecord): string {
   if (record.error) return "Project members could not be loaded.";
   const count = record.data?.length ?? 0;
   return `${count} project member${count === 1 ? "" : "s"}`;
+}
+
+function sharesDescription(record: SharesRecord): string {
+  if (record.loading && !record.data) return "Loading public preview links…";
+  if (record.error) return "Public preview links could not be loaded.";
+  return projectShareService.describeCount(
+    projectShareService.live(record.data ?? [], Date.now()).length,
+  );
 }
 
 function ProjectHeader({

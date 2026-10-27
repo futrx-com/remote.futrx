@@ -23,7 +23,7 @@ sequenceDiagram
     API->>Files: Prepare durable workspace and agent-home directories
     API->>LXD: Launch from futrx-remote-dev-base
     LXD->>LXD: Attach workspace and provider homes
-    API->>Provision: Credentials, skills, browser assets, code-server
+    API->>Provision: Credentials, skills, browser assets
     API->>Store: Mark running or error
     Store-->>User: Workspace WebSocket project update
 ```
@@ -51,7 +51,7 @@ flowchart LR
     Homes --> Kimi["Mounted at /root/.kimi-code"]
     Homes --> Antigravity["Mounted at /root/.gemini/antigravity-cli"]
     Container --> RootFS["Replaceable root filesystem"]
-    Container --> Tools["Agent CLIs, code-server, Chromium"]
+    Container --> Tools["Agent CLIs, Chromium"]
     Container --> Processes["Agent, terminal, and app processes"]
 ```
 
@@ -102,8 +102,8 @@ instruction and skill targets rather than only the currently selected
 provider's target.
 
 Profiles may also publish non-secret runtime assets for the selected agent.
-MiniMax uses this path for its Codex model catalog; its Token Plan subscription key remains a
-project secret and is never written into that template.
+MiniMax uses this path for its Codex model catalog; the selected named Token Plan
+subscription key is injected only into that run and is never written into the template.
 
 The reusable Ubuntu 24.04 base image contains:
 
@@ -111,7 +111,6 @@ The reusable Ubuntu 24.04 base image contains:
 - Claude Code, Codex, Kimi Code, and Antigravity at pinned versions. MiniMax
   reuses the pinned Codex CLI with an isolated provider configuration.
 - The Agent Browser stack and Chromium.
-- `code-server` with on-demand startup.
 
 Launch-time provisioning then:
 
@@ -119,7 +118,7 @@ Launch-time provisioning then:
 2. Links agent skill directories into the workspace.
 3. Publishes current browser scripts and browser skill.
 4. Applies browser process limits.
-5. Configures the project IDE.
+5. Installs project applications separately when requested.
 
 When a prompt selects **Scheduled Tasks**, Remote also publishes the
 provider-neutral `remote-schedule` CLI and skill under `/workspace` before

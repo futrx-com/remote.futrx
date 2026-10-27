@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@property --stream-reveal-feather {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 /* ---------------------------------------------------------------------------
    Design tokens
 
@@ -211,13 +217,9 @@ html[data-theme="light"] {
       width: min(560px, calc(100vw - 320px));
       max-width: none;
     }
-    .workspace-terminal-pane[aria-hidden="false"] {
-      width: var(--workspace-terminal-width, 560px);
-      max-width: var(--workspace-terminal-max-width, max(420px, calc(100% - 320px)));
-    }
-    .workspace-schedules-pane[aria-hidden="false"] {
-      width: min(520px, calc(100vw - 64px));
-      max-width: none;
+    .workspace-extension-pane[aria-hidden="false"] {
+      width: var(--workspace-extension-width, 560px);
+      max-width: var(--workspace-extension-max-width, max(420px, calc(100% - 320px)));
     }
     .workspace-browser-pane[aria-hidden="false"] {
       width: var(--workspace-browser-width, 720px);
@@ -282,7 +284,27 @@ html[data-theme="light"] {
   .codex-window-frame {
     border: 1px solid var(--line);
     box-shadow: var(--shadow-card);
+    /* `clip`, not `hidden`: hidden still makes this card a scroll container,
+       so focusing anything inside a popover taller than the card -- the filter
+       menu's option checkboxes, say -- scrolls the card's own header out of
+       sight, with no scrollbar to bring it back. `clip` cannot scroll at all.
+       `hidden` stays as the fallback for browsers without `clip`, where the
+       card must still clip even though it keeps the scroll behaviour. */
     overflow: hidden;
+    overflow: clip;
+  }
+
+  /* Find-in-chat matches. The Custom Highlight API only honours a handful of
+     properties -- colour, background, text-decoration, text-shadow -- so the
+     current match is distinguished by weight of colour, not by a ring. */
+  ::highlight(chat-find) {
+    background-color: rgb(var(--accent-blue) / 0.28);
+    color: rgb(var(--ink-50));
+  }
+
+  ::highlight(chat-find-current) {
+    background-color: rgb(var(--accent-blue));
+    color: rgb(var(--on-accent));
   }
 
   .sidebar-project-chat-frame {
@@ -355,6 +377,16 @@ html[data-theme="light"] {
     overflow-wrap: normal;
   }
 
+  /* Tables keep words intact so columns retain their natural minimum width
+     and overflow scrolls inside the table frame. Inline code and links opt
+     out of their usual aggressive wrapping here as well. */
+  .md-table,
+  .md-table a,
+  .md-table code {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
   .codex-prose > * + * { margin-top: 0.85em; }
   .codex-prose h1,
   .codex-prose h2,
@@ -369,6 +401,73 @@ html[data-theme="light"] {
   .codex-prose h2 { font-size: 1.15em; }
   .codex-prose h3 { font-size: 1.02em; }
   .codex-prose > *:first-child { margin-top: 0; }
+
+  .turn-activity {
+    height: 1.5rem;
+    overflow: hidden;
+    opacity: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgb(var(--fg-muted));
+    font-size: 0.75rem;
+    line-height: 1.5rem;
+  }
+
+  .turn-activity-icon {
+    width: 1rem;
+    height: 1rem;
+    flex: none;
+    color: rgb(var(--accent-orange));
+  }
+
+  .turn-activity-icon line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.35;
+  }
+
+  .turn-activity-label {
+    opacity: 1;
+  }
+
+  /* Keep new content legible while its box opens, then gently bring it to
+     full contrast. Mounted blocks retain their transition state. */
+  @media (prefers-reduced-motion: no-preference) {
+    .turn-activity {
+      transition: height 180ms ease, opacity 180ms ease;
+
+      @starting-style { height: 0; opacity: 0.55; }
+    }
+
+    .turn-activity-icon line {
+      animation: turn-activity-pulse 1.2s ease-out infinite;
+    }
+
+    .turn-activity-label {
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .turn-activity-label-changing {
+      opacity: 0.4;
+      transform: translateY(2px);
+    }
+
+    .markdown-block-reveal {
+      transition: height var(--stream-reveal-duration, 560ms) linear,
+        opacity 440ms ease-out,
+        --stream-reveal-feather var(--stream-reveal-duration, 560ms) linear;
+
+      @starting-style { opacity: 0.55; }
+    }
+  }
+
+  @keyframes turn-activity-pulse {
+    0% { opacity: 1; }
+    40%, 100% { opacity: 0.2; }
+  }
 
 
   /* -------------------------------------------------------------------------

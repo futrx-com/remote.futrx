@@ -33,6 +33,8 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | GET | `/auth/logout` | Clear platform cookies and return to the app |
 | GET | `/auth/verify` | Caddy forward-auth check; preview hosts also check project membership |
 | GET, PUT | `/api/admin/auth/google` | Read or replace Google OAuth configuration; admin only |
+| GET, PUT, DELETE | `/api/admin/email` | Read, replace, or clear the SMTP sender configuration; admin only |
+| POST | `/api/admin/email/test` | Send a test email from the configured sender; admin only |
 
 ## Users and settings
 
@@ -54,7 +56,7 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | POST | `/api/{provider}/login/code` | Submit a managed authorization code; currently Claude; admin only |
 | POST | `/api/{provider}/login/cancel` | Cancel a managed authorization-code flow; currently Claude; admin only |
 | POST | `/api/{provider}/login/device` | Start a managed device flow; currently Codex and Kimi; admin only |
-| POST | `/api/{provider}/login/api-key` | Validate and save a managed provider API key; currently MiniMax; admin only; response never includes the key |
+| POST | `/api/{provider}/login/api-key` | Validate and save a managed provider API key; currently MiniMax; optional `{label, accountId}` creates or reconnects a named account; admin only; response never includes the key |
 | DELETE | `/api/{provider}/login/api-key` | Remove a managed provider API key; currently MiniMax; admin only |
 | GET | `/api/agent-capabilities[?projectId=<id>&refresh=1]` | Discover normalized provider/model controls on the host or in an accessible project; `refresh=1` bypasses the current backend cache entry |
 | GET | `/api/skills?provider=...&projectId=...` | List accessible provider and project skills |
@@ -73,7 +75,8 @@ contains `provider`, `label`, optional `default`, `executionScopes`, an
 `satisfiesAccessGate`, and optional API-key creation metadata), and a normalized `status` object. Status contains
 `authenticated`, an optional warning, and one login shape shared by managed
 code/device flows (`active`, URL, optional code/timestamps/completion/error).
-Managed API-key status contains only the configured boolean.
+Managed API-key status contains only the configured boolean plus the same
+redacted account metadata when named keys are enabled.
 No-auth modules report authenticated immediately. External modules publish
 their instructions but no managed status stream or mutation controls.
 
@@ -161,29 +164,48 @@ Every `{id}` project route first requires admin status or project membership. Re
 | GET | `/api/chats/{id}/history/commits?repo=&limit=` | List commits |
 | GET | `/api/chats/{id}/history/diff?repo=&sha=` | Read one commit patch |
 | POST | `/api/chats/{id}/history/checkout` | Optional checkpoint and detached checkout |
-| GET, POST | `/api/chats/{id}/schedules` | List the caller's tasks for a project chat, or create one through the user API |
 
 All chat routes resolve the caller and enforce the chat's project membership. Loose chats have no project membership check.
 
-## Scheduled-task routes
+## Application and agent routes
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| PATCH, DELETE | `/api/schedules/{id}` | Edit/pause/resume or delete a visible owned task; admins can manage all |
-| POST | `/api/schedules/{id}/run` | Request an immediate occurrence without moving its regular deadline |
-| GET, POST | `/agent-api/schedules` | List or create tasks inside the capability's chat/project fence |
-| PATCH, DELETE | `/agent-api/schedules/{id}` | Pause or delete a capability-scoped task; an agent cannot enable it |
-| POST | `/agent-api/schedules/{id}/run` | Request a capability-scoped immediate occurrence |
-| POST | `/agent-api/schedules/current/complete` | Complete only the task/run named by a `complete-self` capability |
+Browser extensions call their installed backend through
+`/api/applications/{instance}/backend/{path}` or the project-scoped equivalent.
+Remote stamps `Request.Caller` from the session and clears `Request.Agent`.
 
-Browser routes use the signed user session. Agent routes require a short-lived
-bearer capability issued for one owner, chat, and project; they do not accept a
-platform session cookie. Agent-created tasks are forced to `createdByAgent` and
-start disabled until a user arms them.
+Agents call `/agent-api/applications/<application-id>/<path>` with a temporary
+bearer grant supplied through `REMOTE_APPLICATION_API` and
+`REMOTE_APPLICATION_GRANT`. Eligible applications opt into `backend.agentTools`.
+Remote resolves the installation from the grant and stamps current caller and
+turn context; the application owns route permissions and interprets its own
+context. Interactive turns can use eligible global/same-project tools;
+application-started turns can use only their own installation's tools. Bodies
+cap at 64 KiB, grants expire after four hours, and the provider run revokes them
+when it ends.
 
-Schedule request bodies cap at 64 KiB and reject unknown fields. Stored prompts
-cap at 32 KiB. The service re-checks the owner, chat, project, registration,
-and access on every fire.
+The other direction uses the application backend SDK, with
+`backend.agentTurns` and `rpc.ServeWithRuntime`:
+
+| SDK control | Purpose |
+| --- | --- |
+| `Runtime.AgentTurns.Start` | Submit a prompt to an existing chat under a captured owner's current authority |
+| `Runtime.AgentTurns.Read` | Read that installation's accepted request status, result, and paginated transcript |
+| `Runtime.AgentTurns.Forget` | Remove an inactive receipt after durable application acknowledgment, retaining chat history |
+
+These controls use the chat's existing provider/model/settings and share normal
+prompt execution. Request IDs are installation-scoped, prompts cap at 32 KiB,
+and optional opaque JSON context caps at 64 KiB. Core rechecks current
+registration and project/chat access. Workflow state stays in the application;
+core persists only generic execution receipts. `backend.background`
+independently opts running backend processes into restart/crash recovery.
+
+Scheduled Tasks is one consumer. It owns its `tasks` resource, clock, claims,
+retries, and completion rules. Agent tools call
+`/agent-api/applications/scheduled-tasks/tasks` and application-defined subpaths;
+browser clients use the normal backend transport. Core does not interpret
+task/run IDs or completion commands. See the
+[application API reference](../dev/installable-applications/12-http-api.md)
+and [agent runtime guide](../dev/installable-applications/25-application-agent-runtime.md).
 
 ## Upload and auxiliary routes
 
@@ -191,10 +213,6 @@ and access on every fire.
 | --- | --- | --- |
 | POST, HEAD, PATCH, GET, DELETE | `/api/uploads[/<upload-id>]` | tus resumable upload lifecycle |
 | GET | `/__remote_inspector` | Same-origin preview inspection wrapper |
-| GET, POST | `/api/sessions` | List or create host tmux sessions |
-| DELETE | `/api/sessions/{name}` | Delete tmux session |
-| POST | `/api/sessions/{name}/send` | Send text into tmux session |
-| POST | `/api/sessions/{name}/upload` | Multipart upload into tmux working directory |
 
 The upload access check happens when the random upload URL is created. Later chunk requests rely on possession of that URL.
 
@@ -204,12 +222,10 @@ The upload access check happens when the random upload URL is created. Later chu
 | --- | --- | --- |
 | `/ws/workspace` | Server to client | Snapshot, chat upsert/delete, project upsert/delete |
 | `/ws/chat/{id}?since=<seq>` | Both | Client `prompt` or `cancel`; server chat events and `sync` |
-| `/ws/terminal?chat={id}` | Both | PTY binary data; JSON input and resize control |
 | `/ws/agent-auth/{provider}` | Server to client | Normalized auth snapshots for an available managed auth binding |
 | `/ws/{provider}/auth-status` | Server to client | Legacy provider-specific auth status payloads |
-| `/ws?session={name}` | Both | Auxiliary tmux PTY binary data and control messages |
 
-Chat and project-terminal membership is checked before the WebSocket upgrade. Removing a member prevents future checked connections, but the backend does not currently close or reauthorize that member's already-open sockets.
+Chat membership is checked before the WebSocket upgrade. The Terminal application's socket is not a core route: it is served on the project's application host, where the [web gateway](../dev/installable-applications/19-project-application-web-routes.md) checks project membership before the upgrade. Removing a member prevents future checked connections, but the backend does not currently close or reauthorize that member's already-open sockets.
 
 ## Realtime channels
 
@@ -217,12 +233,12 @@ Chat and project-terminal membership is checked before the WebSocket upgrade. Re
 flowchart TD
     Browser["Browser"] --> WorkspaceWS["Workspace WebSocket"]
     Browser --> ChatWS["Active chat WebSocket"]
-    Browser --> TerminalWS["Optional terminal WebSocket"]
+    Browser --> TerminalWS["Terminal application WebSocket on its application host"]
     Browser --> AuthWS["/ws/agent-auth/provider while onboarding or in Settings"]
 
     WorkspaceWS --> WorkspaceHub["Workspace hub"]
     ChatWS --> RunHub["Per-chat run hub"]
-    TerminalWS --> PTY["lxc exec PTY"]
+    TerminalWS --> PTY["Application web gateway to the in-container terminal service"]
     AuthWS --> AuthService["Provider auth subscription"]
 
     WorkspaceHub --> Repositories["Repository notifications"]

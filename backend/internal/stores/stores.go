@@ -5,26 +5,34 @@ import (
 	"fmt"
 
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
+	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
-	serviceschedule "github.com/futrx-com/remote.futrx.com/internal/service/schedule"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceusersettings "github.com/futrx-com/remote.futrx.com/internal/service/usersettings"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileagentquota"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplications"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplicationturns"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileemail"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectsecrets"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileprojectshares"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepush"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/fileschedule"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusage"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
+
+	emailoutbound "github.com/futrx-com/remote.futrx.com/internal/port/email/outbound"
 )
 
 type AuthStore interface {
@@ -36,6 +44,12 @@ type AuthStore interface {
 type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
+	servicechat.TranscriptEventWindowSource
+	servicechat.TranscriptProjectionSource
+}
+
+type recentChatIndexWarmer interface {
+	WarmRecentChatIndexes(context.Context, int) error
 }
 
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities
@@ -47,19 +61,34 @@ type PushStore interface {
 }
 
 type Stores struct {
-	Chats           ChatStore
-	Projects        serviceproject.Repository
-	ProjectSecrets  serviceproject.SecretsRepository
-	ProjectAccess   serviceproject.AccessRepository
-	Schedules       serviceschedule.Repository
-	Auth            AuthStore
-	Users           serviceuser.Repository
-	UserSettings    serviceusersettings.Repository
-	TwoFactor       serviceauth.TwoFactorStore
-	SessionRegistry serviceauth.SessionRegistryStore
-	Push            PushStore
-	Usage           serviceusage.Repository
-	AgentAPIKeys    agentauth.APIKeyStore
+	Chats            ChatStore
+	chatIndexWarmer  recentChatIndexWarmer
+	Projects         serviceproject.Repository
+	ProjectSecrets   serviceproject.SecretsRepository
+	ProjectAccess    serviceproject.AccessRepository
+	Auth             AuthStore
+	Users            serviceuser.Repository
+	UserSettings     serviceusersettings.Repository
+	TwoFactor        serviceauth.TwoFactorStore
+	SessionRegistry  serviceauth.SessionRegistryStore
+	Applications     serviceapplications.Store
+	ApplicationTurns serviceapplications.AgentTurnRepository
+	Push             PushStore
+	Usage            serviceusage.Repository
+	AgentAPIKeys     agentauth.APIKeyStore
+	Email            emailoutbound.ConfigurationStore
+	AgentQuota       agentquota.Repository
+	AgentAccounts    agentauth.AccountStore
+	ProjectShares    serviceshare.Repository
+}
+
+// WarmRecentChatIndexes populates disposable read indexes through the
+// startup-only capability retained by the composition bundle.
+func (stores Stores) WarmRecentChatIndexes(ctx context.Context, limit int) error {
+	if stores.chatIndexWarmer == nil {
+		return nil
+	}
+	return stores.chatIndexWarmer.WarmRecentChatIndexes(ctx, limit)
 }
 
 func New(dataDir string) (Stores, error) {
@@ -83,9 +112,9 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init project access store: %w", err)
 	}
 
-	schedules, err := fileschedule.New(dataDir)
+	projectShares, err := fileprojectshares.New(dataDir)
 	if err != nil {
-		return Stores{}, fmt.Errorf("init scheduled tasks store: %w", err)
+		return Stores{}, fmt.Errorf("init project shares store: %w", err)
 	}
 
 	users, err := fileusers.New(dataDir)
@@ -112,6 +141,15 @@ func New(dataDir string) (Stores, error) {
 	if err != nil {
 		return Stores{}, fmt.Errorf("init usage store: %w", err)
 	}
+	applications, err := fileapplications.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init applications store: %w", err)
+	}
+
+	agentQuota, err := fileagentquota.New(dataDir)
+	if err != nil {
+		return Stores{}, fmt.Errorf("init agent quota store: %w", err)
+	}
 
 	push, err := filepush.New(dataDir)
 	if err != nil {
@@ -119,19 +157,26 @@ func New(dataDir string) (Stores, error) {
 	}
 
 	authStore := fileauth.New(dataDir)
+	email := fileemail.New(dataDir)
 	return Stores{
-		Chats:           chats,
-		Projects:        projects,
-		ProjectSecrets:  projectSecrets,
-		ProjectAccess:   projectAccess,
-		Schedules:       schedules,
-		Auth:            authStore,
-		Users:           users,
-		UserSettings:    userSettings,
-		TwoFactor:       twoFactor,
-		SessionRegistry: sessionRegistry,
-		Push:            push,
-		Usage:           usage,
-		AgentAPIKeys:    authStore,
+		Chats:            chats,
+		chatIndexWarmer:  chats,
+		Projects:         projects,
+		ProjectSecrets:   projectSecrets,
+		ProjectAccess:    projectAccess,
+		Auth:             authStore,
+		Users:            users,
+		UserSettings:     userSettings,
+		TwoFactor:        twoFactor,
+		SessionRegistry:  sessionRegistry,
+		Applications:     applications,
+		ApplicationTurns: fileapplicationturns.New(dataDir),
+		Push:             push,
+		Usage:            usage,
+		AgentAPIKeys:     authStore,
+		Email:            email,
+		AgentQuota:       agentQuota,
+		AgentAccounts:    authStore,
+		ProjectShares:    projectShares,
 	}, nil
 }

@@ -10,4 +10,3 @@ test("providerDisplayLabel preserves known provider branding", () => {
 test("providerDisplayLabel formats future provider identifiers", () => {
   assert.equal(providerDisplayLabel("future-agent"), "Future Agent");
 });
-

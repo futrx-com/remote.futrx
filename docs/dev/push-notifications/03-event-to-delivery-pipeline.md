@@ -1,8 +1,8 @@
 # Event-to-delivery pipeline
 
 Remote creates notifications from persisted chat events, not directly from a
-single interactive request. This covers interactive runs, scheduled runs, and
-recovery paths.
+single interactive request. This covers interactive runs, application-started
+turns, legacy scheduled runs, and recovery paths.
 
 ```mermaid
 flowchart LR
@@ -21,12 +21,18 @@ flowchart LR
 | `AskUserQuestion` starts | Urgent question notification |
 | Interactive `complete` | Turn-finished notification |
 | Interactive `error` | Run-failed notification |
-| Scheduled `complete` or `error` | Scheduled-task notification |
+| Application `complete` or `error` (`applicationId` present) | Application result notification with neutral wording |
+| Legacy scheduled `complete` or `error` (`scheduledTaskId` present, no application origin) | Legacy scheduled-task notification |
 | Other event | No notification |
 
 When a run stops after `AskUserQuestion`, Remote suppresses the immediately
 following terminal event. Otherwise that routine event would replace the more
 important question notification in the tray.
+
+Application identity does not imply scheduling. Scheduled Tasks and other
+applications use the same generic notification type. Application-started user
+events also do not reset unread suppression: automatic work is not evidence
+that a person has read the chat.
 
 ## Audience
 

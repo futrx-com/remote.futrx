@@ -31,10 +31,9 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 
 	var events []string
 	prepared, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
-		ProjectID:           "project-id",
-		ConversationID:      "conversation-id",
-		EnableBrowser:       true,
-		EnableScheduleTools: true,
+		ProjectID:      "project-id",
+		ConversationID: "conversation-id",
+		EnableBrowser:  true,
 	}, func(event agent.Event) {
 		events = append(events, string(event.Provider)+":"+event.ConversationID+":"+event.Subtype)
 	})
@@ -44,7 +43,7 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 	wantCalls := []string{
 		"get", "start", "cli:future", "before-credentials", "credentials",
 		"instructions", "runtime-assets", "skill-links", "browser-skill", "browser-script",
-		"browser-mcp", "browser-core", "schedule", "lifecycle", "secrets",
+		"browser-mcp", "browser-core", "lifecycle", "secrets",
 	}
 	if !slices.Equal(recorder.calls, wantCalls) {
 		t.Fatalf("preparation calls\n got: %v\nwant: %v", recorder.calls, wantCalls)
@@ -88,6 +87,28 @@ func TestPreparerPreservesStrictSkillLinkPolicy(t *testing.T) {
 	}
 }
 
+func TestPreparerUsesRunCredentialOverride(t *testing.T) {
+	recorder := &preparationRecorder{}
+	preparer := New(
+		preparationProjects{recorder: recorder},
+		preparationDependencies(recorder),
+		Options{Provider: "future-agent", Profile: preparationTestProfile()},
+	)
+	override := provisioning.CredentialSpec{
+		Name: "isolated-account", HostDir: "/host/run", ContainerDir: "/root/.future/run",
+		Files: []provisioning.CredentialFile{{HostPath: "/host/run/auth.json", ContainerPath: "/root/.future/run/auth.json"}},
+	}
+	_, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
+		ProjectID: "project-id", Credentials: &override,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorder.credentials.Name != "isolated-account" || recorder.credentials.ContainerDir != "/root/.future/run" {
+		t.Fatalf("prepared credentials = %#v", recorder.credentials)
+	}
+}
+
 func TestPreparerRuntimeAssetFailurePreservesErrorAndShortCircuits(t *testing.T) {
 	recorder := &preparationRecorder{runtimeAssetError: errors.New("publish failed")}
 	preparer := New(
@@ -118,6 +139,7 @@ type preparationRecorder struct {
 	runtimeAssetError     error
 	runtimeAssetContainer string
 	runtimeAssets         []provisioning.RuntimeAsset
+	credentials           provisioning.CredentialSpec
 }
 
 type preparationProjects struct{ recorder *preparationRecorder }
@@ -146,8 +168,9 @@ func (p preparationCLI) Ensure(_ context.Context, _ string, spec provisioning.CL
 
 type preparationCredentials struct{ recorder *preparationRecorder }
 
-func (p preparationCredentials) Ensure(context.Context, string, provisioning.CredentialSpec) error {
+func (p preparationCredentials) Ensure(_ context.Context, _ string, spec provisioning.CredentialSpec) error {
 	p.recorder.calls = append(p.recorder.calls, "credentials")
+	p.recorder.credentials = spec
 	return nil
 }
 
@@ -202,13 +225,6 @@ func (p preparationBrowser) EnsureCore(context.Context, string) error {
 	return nil
 }
 
-type preparationSchedule struct{ recorder *preparationRecorder }
-
-func (p preparationSchedule) Ensure(context.Context, string) error {
-	p.recorder.calls = append(p.recorder.calls, "schedule")
-	return nil
-}
-
 type preparationLifecycle struct{ recorder *preparationRecorder }
 
 func (p preparationLifecycle) EnsureBootAutostart(context.Context, string) error {
@@ -223,7 +239,6 @@ func preparationDependencies(recorder *preparationRecorder) provisioning.Contain
 		Workspace:     preparationWorkspace{recorder},
 		RuntimeAssets: preparationRuntimeAssets{recorder},
 		Browser:       preparationBrowser{recorder},
-		ScheduleTools: preparationSchedule{recorder},
 		Lifecycle:     preparationLifecycle{recorder},
 	}
 }

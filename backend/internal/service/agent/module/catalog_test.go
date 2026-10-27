@@ -254,6 +254,11 @@ func TestNewFactoryRejectsInvalidDeclarations(t *testing.T) {
 			descriptor.Features.Sessions = SessionSupport{Fork: true}
 			return descriptor
 		}(),
+		"unknown streaming presentation": func() Descriptor {
+			descriptor := cloneDescriptor(valid)
+			descriptor.Features.StreamingPresentation = "unknown"
+			return descriptor
+		}(),
 	}
 	for name, descriptor := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -677,9 +682,9 @@ func testDescriptor(id agent.ProviderID) Descriptor {
 		Auth:             AuthExternal,
 		AuthInstructions: "Run the provider login command.",
 		Features: Features{
-			Sessions:       SessionSupport{Resume: true},
-			Skills:         SkillsInstructions,
-			ScheduledTools: true,
+			Sessions:         SessionSupport{Resume: true},
+			Skills:           SkillsInstructions,
+			ApplicationTools: true,
 		},
 	}
 }

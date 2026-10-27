@@ -59,9 +59,18 @@ type Features struct {
 	Sessions          SessionSupport
 	Skills            SkillStrategy
 	BrowserTools      bool
-	ScheduledTools    bool
+	ApplicationTools  bool
 	ExecutionPolicies bool
+	// Empty selects token streaming for modules that do not opt into block reveal.
+	StreamingPresentation StreamingPresentation
 }
+
+type StreamingPresentation string
+
+const (
+	StreamingTokens StreamingPresentation = "tokens"
+	StreamingBlocks StreamingPresentation = "blocks"
+)
 
 type APIKeyAuth struct {
 	CreateURL       string
@@ -91,6 +100,7 @@ type BuildDependencies struct {
 	Projects              agent.ProjectResolver
 	Containers            provisioning.ContainerDependencies
 	APIKeys               agentauth.APIKeyStore
+	Accounts              *agentauth.AccountVault
 	CredentialSyncTimeout time.Duration
 }
 
@@ -102,6 +112,7 @@ type Dependencies struct {
 	CredentialCollector   provisioning.CredentialCollector
 	RuntimeAssets         provisioning.RuntimeAssetProvisioner
 	APIKeys               agentauth.APIKeyStore
+	Accounts              *agentauth.AccountVault
 	CredentialSyncTimeout time.Duration
 }
 
@@ -213,6 +224,7 @@ func (f Factory) buildComponents(deps BuildDependencies) (Components, error) {
 		CredentialCollector:   deps.Containers.Credentials,
 		RuntimeAssets:         deps.Containers.RuntimeAssets,
 		APIKeys:               deps.APIKeys,
+		Accounts:              deps.Accounts,
 		CredentialSyncTimeout: deps.CredentialSyncTimeout,
 	}
 	if supportsExecutionScope(f.descriptor, ScopeProject) {
@@ -308,6 +320,11 @@ func validateDescriptor(descriptor Descriptor, profile *provisioning.Profile) er
 	}
 	if descriptor.Features.Sessions.Fork && !descriptor.Features.Sessions.Resume {
 		return fmt.Errorf("%w: provider %q declares fork without resume", ErrInvalidFactory, descriptor.ID)
+	}
+	switch descriptor.Features.StreamingPresentation {
+	case "", StreamingTokens, StreamingBlocks:
+	default:
+		return fmt.Errorf("%w: provider %q has unknown streaming presentation %q", ErrInvalidFactory, descriptor.ID, descriptor.Features.StreamingPresentation)
 	}
 	switch descriptor.Features.Skills {
 	case SkillsNone, SkillsSlashCommand, SkillsDollarMention, SkillsInstructions:

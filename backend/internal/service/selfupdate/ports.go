@@ -16,6 +16,16 @@ type UpdaterLaunch struct {
 // HostClient is implemented by integration/updatecli.
 type HostClient interface {
 	ListRemoteTags(ctx context.Context, installDir string) ([]string, error)
+	ListRemoteTagsForCommit(ctx context.Context, installDir, commitPrefix string) ([]string, error)
+	ReadReleaseNotes(ctx context.Context, installDir, tag string) (string, error)
 	StartUpdater(launch UpdaterLaunch) (int, error)
 	ProcessAlive(pid int) bool
+}
+
+// UpdateLifecyclePublisher is the lifecycle notification capability used by
+// the self-update workflow. The concrete publisher is supplied at composition.
+type UpdateLifecyclePublisher interface {
+	PublishUpdateStarted(ctx context.Context, target, kind, startedBy string)
+	PublishUpdateSucceeded(ctx context.Context, target, kind, startedBy string)
+	PublishUpdateFailed(ctx context.Context, target, kind, startedBy string)
 }

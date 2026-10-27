@@ -15,13 +15,9 @@ import (
 func (rnr *Service) emitAgentEvent(
 	ctx context.Context,
 	id servicechat.ID,
-	provider agent.ProviderID,
 	ev agent.Event,
 	emit func(ChatEvent),
 ) {
-	if ev.Provider == "" {
-		ev.Provider = provider
-	}
 	if ev.Type == agent.EventSessionUpdated && ev.SessionID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			m.SetSessionID(servicechat.Provider(ev.Provider), ev.SessionID)
@@ -36,6 +32,13 @@ func (rnr *Service) emitAgentEvent(
 	if ok {
 		emit(chatEvent)
 	}
+}
+
+func withDefaultProvider(ev agent.Event, provider agent.ProviderID) agent.Event {
+	if ev.Provider == "" {
+		ev.Provider = provider
+	}
+	return ev
 }
 
 func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
@@ -85,6 +88,7 @@ func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
 		out.Type = "interaction_resolved"
 		out.ID = ev.InteractionID
 		out.Name = ev.ToolName
+		out.Data = ev.Data
 	case agent.EventTurnStatus, agent.EventRunInterrupted:
 		out.Type = "turn_status"
 		out.Provider = servicechat.Provider(ev.Provider)
@@ -108,6 +112,7 @@ func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
 		out.Usage = ev.Usage
 	case agent.EventRunCompleted:
 		out.Type = "complete"
+		out.NotificationSummary = ev.NotificationSummary
 		// Persist the provider per turn. A chat can switch agents, so its current
 		// metadata is not sufficient for an offline usage-ledger rebuild.
 		out.Provider = servicechat.Provider(ev.Provider)
@@ -131,13 +136,28 @@ func agentEventMessageID(event agent.Event) string {
 // ledgerRun is the run-scoped context a usage entry needs. It is captured
 // once per prompt so the per-event hook stays allocation free.
 type ledgerRun struct {
-	runID     string
-	chatID    servicechat.ID
-	projectID string
-	userEmail string
-	provider  agent.ProviderID
-	model     string
-	scheduled bool
+	runID                string
+	chatID               servicechat.ID
+	projectID            string
+	userEmail            string
+	model                string
+	applicationID        string
+	applicationRequestID string
+}
+
+// recordQuota files a subscription window the CLI mentioned mid-run under the
+// provider account the run used.
+//
+// It is separate from recordRunUsage because the two measure different things:
+// the ledger counts what this platform spent, and this is the vendor saying
+// how much of the account's plan is left across everywhere it is used.
+func (rnr *Service) recordQuota(ctx context.Context, ev agent.Event) {
+	if rnr.quota == nil || ev.Type != agent.EventQuotaUpdated || ev.Quota == nil {
+		return
+	}
+	// A cancelled prompt must not throw away a reading that arrived before the
+	// cancel: the window is real whether or not the turn finished.
+	rnr.quota.Record(context.WithoutCancel(ctx), ev.Provider, ev.AccountID, *ev.Quota)
 }
 
 // recordRunUsage forwards a finished turn to the usage ledger. Only completed
@@ -152,22 +172,19 @@ func (rnr *Service) recordRunUsage(ctx context.Context, run ledgerRun, ev agent.
 	if at == 0 {
 		at = time.Now().UnixMilli()
 	}
-	provider := ev.Provider
-	if provider == "" {
-		provider = run.provider
-	}
 	// The turn is over, so a cancelled request context must not stop the
 	// ledger write that describes it.
 	rnr.usage.RecordRun(context.WithoutCancel(ctx), serviceusage.RunEvent{
-		At:        at,
-		ChatID:    string(run.chatID),
-		ProjectID: run.projectID,
-		RunID:     run.runID,
-		UserEmail: run.userEmail,
-		Provider:  string(provider),
-		Model:     run.model,
-		Usage:     ev.Usage,
-		Scheduled: run.scheduled,
+		At:                   at,
+		ChatID:               string(run.chatID),
+		ProjectID:            run.projectID,
+		RunID:                run.runID,
+		UserEmail:            run.userEmail,
+		ApplicationID:        run.applicationID,
+		ApplicationRequestID: run.applicationRequestID,
+		Provider:             string(ev.Provider),
+		Model:                run.model,
+		Usage:                ev.Usage,
 	})
 }
 

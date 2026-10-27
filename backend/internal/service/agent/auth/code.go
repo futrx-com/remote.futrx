@@ -23,6 +23,10 @@ import (
 const (
 	codeSubscriptionBuffer = 8
 	defaultCodeOutputLimit = 500
+	// codeOutputDrainWait bounds how long completion waits for the PTY
+	// reader to collect the final output after the command exits. A
+	// descendant still holding the terminal open must not stall completion.
+	codeOutputDrainWait = time.Second
 )
 
 // CodeLoginState tracks an interactive authorization-code handshake.
@@ -80,6 +84,12 @@ type CodeConfig struct {
 	CodeRequired  error
 	NoSession     error
 	Errors        CodeErrorFormatters
+
+	// ResolveCompletion optionally takes over the outcome once the login
+	// command exits after a submitted code. output is the cleaned tail of
+	// the command's output. Returning handled=false keeps the default
+	// exit-status and credential checks.
+	ResolveCompletion func(exitErr error, output string) (handled bool, err error)
 }
 
 // CodeService owns one provider's interactive authorization-code process and
@@ -99,11 +109,19 @@ type codeLoginSession struct {
 	startedAt time.Time
 	cancel    context.CancelFunc
 	done      chan struct{}
+	// outputDone closes once the PTY reader has stopped.
+	outputDone chan struct{}
 
 	mu      sync.Mutex
 	url     string
 	output  strings.Builder
 	exitErr error
+	// cancelled marks a session stopped by Remote, whose exit is not a
+	// login result.
+	cancelled bool
+
+	finishOnce sync.Once
+	finishErr  error
 }
 
 // NewCodeService creates a provider-neutral authorization-code service.
@@ -243,11 +261,12 @@ func (s *CodeService) Start(ctx context.Context) (CodeStartResult, error) {
 	}
 
 	sess := &codeLoginSession{
-		cmd:       cmd,
-		ptmx:      ptmx,
-		startedAt: time.Now(),
-		cancel:    cancel,
-		done:      make(chan struct{}),
+		cmd:        cmd,
+		ptmx:       ptmx,
+		startedAt:  time.Now(),
+		cancel:     cancel,
+		done:       make(chan struct{}),
+		outputDone: make(chan struct{}),
 	}
 	s.session = sess
 	s.setStateLocked(CodeLoginState{Active: true, StartedAt: sess.startedAt.Unix()})
@@ -265,6 +284,15 @@ func (s *CodeService) Start(ctx context.Context) (CodeStartResult, error) {
 			AwaitingCode: true,
 			StartedAt:    sess.startedAt.Unix(),
 		})
+		// The CLI can also finish without a pasted code, for example when
+		// the browser it opened completes the login through its local
+		// callback. Resolve that exit as soon as it happens.
+		go func() {
+			<-sess.done
+			if !sess.Cancelled() {
+				_ = s.finish(sess)
+			}
+		}()
 		return CodeStartResult{URL: url}, nil
 	case <-time.After(s.config.URLReadTimeout):
 		cancel()
@@ -301,13 +329,31 @@ func (s *CodeService) SubmitCode(ctx context.Context, code string) error {
 
 	sess := s.current()
 	if sess == nil {
+		s.mu.Lock()
+		completed := s.state.Completed
+		s.mu.Unlock()
+		if completed {
+			// The CLI already finished on its own; the code is not needed.
+			return nil
+		}
 		if s.config.NoSession != nil {
 			return s.config.NoSession
 		}
 		return errors.New("no login session in progress")
 	}
 
+	select {
+	case <-sess.done:
+		// The CLI exited before the code arrived; report how it ended.
+		return s.finish(sess)
+	default:
+	}
 	if _, err := io.WriteString(sess.ptmx, code+"\r"); err != nil {
+		select {
+		case <-sess.done:
+			return s.finish(sess)
+		case <-time.After(codeOutputDrainWait):
+		}
 		err = s.formatWriteCodeError(err)
 		s.setState(CodeLoginState{Error: err.Error()})
 		return err
@@ -316,6 +362,7 @@ func (s *CodeService) SubmitCode(ctx context.Context, code string) error {
 	select {
 	case <-sess.done:
 	case <-time.After(s.config.ExitTimeout):
+		sess.MarkCancelled()
 		sess.cancel()
 		<-sess.done
 		s.clear(sess)
@@ -325,11 +372,38 @@ func (s *CodeService) SubmitCode(ctx context.Context, code string) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	return s.finish(sess)
+}
 
+// finish resolves an exited session exactly once, whether the exit followed
+// a pasted code or happened on its own, and returns the shared result.
+func (s *CodeService) finish(sess *codeLoginSession) error {
+	sess.finishOnce.Do(func() {
+		sess.finishErr = s.resolveExit(sess)
+	})
+	return sess.finishErr
+}
+
+func (s *CodeService) resolveExit(sess *codeLoginSession) error {
+	select {
+	case <-sess.outputDone:
+	case <-time.After(codeOutputDrainWait):
+	}
 	output := s.output(sess)
 	exitErr := sess.ExitErr()
 	s.clear(sess)
 
+	if s.config.ResolveCompletion != nil {
+		tail := OutputTail(sess.Output(), completionOutputLimit)
+		if handled, err := s.config.ResolveCompletion(exitErr, tail); handled {
+			if err != nil {
+				s.setState(CodeLoginState{Error: err.Error()})
+				return err
+			}
+			s.setState(CodeLoginState{Completed: true})
+			return nil
+		}
+	}
 	if exitErr != nil && !errors.Is(exitErr, context.Canceled) {
 		err := s.formatExitError(exitErr, output)
 		s.setState(CodeLoginState{Error: err.Error()})
@@ -353,6 +427,7 @@ func (s *CodeService) Cancel(ctx context.Context) error {
 	if sess == nil {
 		return nil
 	}
+	sess.MarkCancelled()
 	sess.cancel()
 
 	select {
@@ -388,6 +463,7 @@ func (s *CodeService) clear(sess *codeLoginSession) {
 }
 
 func (s *CodeService) readLoginOutput(sess *codeLoginSession, urlFound chan<- string) {
+	defer close(sess.outputDone)
 	defer func() { _ = sess.ptmx.Close() }()
 
 	reader := bufio.NewReader(sess.ptmx)
@@ -510,6 +586,18 @@ func (s *codeLoginSession) SetURL(url string) {
 	s.mu.Lock()
 	s.url = url
 	s.mu.Unlock()
+}
+
+func (s *codeLoginSession) MarkCancelled() {
+	s.mu.Lock()
+	s.cancelled = true
+	s.mu.Unlock()
+}
+
+func (s *codeLoginSession) Cancelled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cancelled
 }
 
 func (s *codeLoginSession) ExitErr() error {

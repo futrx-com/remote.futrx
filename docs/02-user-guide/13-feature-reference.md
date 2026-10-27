@@ -72,7 +72,7 @@ The placeholder mentions `@` files and `/` commands, but the current source has 
 | Rewind | Deletes the selected point and later events; next run starts fresh |
 | Fork | Copies visible history; provider-specific session fork happens on next run |
 | Error block | Run and transport failures render in the thread |
-| Schedules drawer | Project-chat header lists, edits, arms, pauses, runs, and deletes scheduled tasks |
+| Scheduled Tasks application | Optional project app remembers work and wakes the same chat; its clock action manages tasks |
 
 Codex and MiniMax use the shared app-server interaction transport for approval,
 permission, and user-input requests. The selected approval and sandbox policies
@@ -106,15 +106,16 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 
 | Feature | How to use it | Limits or lifecycle |
 | --- | --- | --- |
-| Open in IDE | Choose **Open in IDE** in a project chat | code-server in `/workspace`; registered-user auth caveat |
-| Installable apps | Use the browser's install action on Remote or `code.<host>` | Main app is network-first with a cached offline status page; IDE launcher keeps a live project list |
-| Open Terminal | Choose **Open Terminal** | Resizable pane; hiding it in the same chat preserves the PTY; socket loss or page/chat change ends it |
+| Application actions | Install a project application to add its chat actions | Available only while the application runs in that project |
+| Installable apps | Use the Applications page in Remote | App web routes check project membership and installation status |
+| Application agent workflows | An enabled app can start work in an existing chat, read its results, and offer its own commands to the agent | Requires the app's declared capabilities, a running installation, and the owner's current access; uses the chat's existing agent settings |
+| Open Terminal | Install the **Terminal** application, then choose **Container terminal** | Resizable pane; one shell per chat that survives closing the pane, reloads, and dropped connections; ended after 10 minutes with no viewer |
 | Open History | Choose **History** | Git repositories only |
 | Open Files | Choose **Files** | Lazy workspace tree |
 | Open Browser | Choose **Open Browser** | Preview or Agent Browser |
 | Refresh Files | Use the drawer refresh control | Reloads root |
 | Expand folder | Select folder row | Lazy-loads children |
-| Open file | Select a file or search result | Supported media opens in-app; other non-archives open in IDE; unsupported media/archives download |
+| Open file | Select a file or search result | Supported media opens in-app; an installed application can open source files, otherwise they download; unsupported media/archives download |
 | Search filenames | Type at least two characters | 300 results; 200,000 visited-entry cap |
 | Download file | Hover a file and choose download | Direct file response |
 | Download folder | Hover a folder and choose download | ZIP up to 1 GiB; two concurrent |
@@ -128,23 +129,11 @@ new/deleted/binary badges; unparseable patches fall back to raw text.
 
 ## Scheduled tasks
 
-| Feature | How to use it | Important behavior |
-| --- | --- | --- |
-| Create | Select **Scheduled Tasks** skill and explicitly ask the agent | Agent-created tasks start paused |
-| Arm | Open **Schedules** and select **Arm** | Human review is required before the first automatic run |
-| One-time timing | Ask for an exact time with timezone | One successful occurrence |
-| Recurring timing | Ask for five-field cron plus IANA timezone | Default minimum interval is 5 minutes |
-| Edit | Open the task editor | Name, prompt, time/cron, timezone, max runs |
-| Pause or resume | Use the task's primary control | Only paused tasks can resume |
-| Run now | Use **Run now** | Does not move the normal deadline |
-| Delete | Use the trash control and confirm | Removes definition and run history |
-| Observe | Read next/last run, result, count, owner, and error | Runs appear as ordinary turns in the chat transcript |
-| Complete standing task | Agent calls the scoped completion command during a scheduled run | Stops future runs and retains history |
-
-Schedules exist only for project chats. Members see and manage their own tasks;
-admins can see and manage all tasks. Defaults are 20 standing tasks per
-project and two concurrent scheduled runs server-wide. Busy occurrences
-coalesce into one follow-up under the default overlap policy.
+Install **Scheduled Tasks** in the project, then ask the agent to remember work
+for a specific time or repeat it with an explicit timezone. Tasks start active.
+The application’s clock action lists, pauses, resumes, runs and deletes tasks.
+Every occurrence wakes a normal turn in the same chat. Stop/start retain tasks;
+uninstall removes them. See [Scheduled tasks](09-scheduled-tasks.md).
 
 ## App preview and inspection
 
@@ -208,7 +197,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Notifications | Per-device Web Push permission, subscription, status, and test notification |
 | Agents | Module-driven admin cards: managed sign-in/status/refresh, external instructions, or no-auth status |
 | Users | Google OAuth configuration; add/remove users; member/admin roles |
-| Updates | Current release, update checks, and administrator-triggered update flow |
+| Updates | Current release, update checks, and administrator-triggered update flow. Open pages reload themselves once the new frontend is live. |
 | Info | Host CPU, memory, disks, network, OS/runtime, process, paths, role |
 
 ## Persistence reference
@@ -225,7 +214,7 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 | Antigravity sign-in and conversation state | Yes | Yes |
 | Container root filesystem additions | Yes until replacement | No |
 | Active run control and event streaming | No; an `lxc exec` child can remain alive but orphaned after backend restart | No reattachment |
-| Active Terminal PTY | No | No |
+| Active Terminal shell | Yes, while the Terminal application keeps running | No |
 | Composer draft | Yes, in the same browser tab session | Not applicable |
 | Prompt queue | Yes, in the same browser tab session | Not applicable |
 | Active chat and open drawers | No | Not applicable |
@@ -240,7 +229,6 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 - enforced approval prompts for agent tools;
 - durable server-side prompt queues;
 - run reattachment after backend restart;
-- terminal reconnect;
 - the visible Git dirty-tree checkpoint form, despite backend support;
 - project IDE membership enforcement;
 - built-in backup/restore, audit log, metrics endpoint, or high availability;
@@ -249,6 +237,6 @@ Resource defaults are 6 CPUs, 4 GiB memory, and 2,000 processes. Admins alone ma
 - current application voice dictation;
 - implemented `@`-mention or slash-command composer menus.
 - a direct “create schedule” form in the current UI; schedule creation starts
-  through the Scheduled Tasks skill, then the drawer manages the definition.
+  by asking the agent after installing Scheduled Tasks; its chat-header action manages the definition.
 
 Read [Known limitations](../known-limitations.md) and the [Threat model](../threat-model.md) before using Remote with mutually untrusted users or high-value credentials.

@@ -1,25 +1,25 @@
 # Workspace tools
 
-The chat header opens Terminal, Files, Git History, Schedules, Browser, and the
-project IDE. Most are views over the same project workspace; Schedules is a
+The chat header opens Files, Git History, Schedules, Browser, and installed
+application actions and drawers, such as the Terminal application's. Most are views over the same project workspace; Schedules is a
 host-control-plane view whose runs return to the same chat.
 
 ## Tool map
 
 ```mermaid
 flowchart TD
-    Chat["Project chat"] --> Terminal["Resizable Terminal pane"]
+    Chat["Project chat"] --> Terminal["Terminal application drawer"]
     Chat --> Files["File manager"]
     Chat --> History["Git history"]
     Chat --> Browser["Browser drawer"]
-    Chat --> IDE["Browser IDE links"]
+    Chat --> Apps["Installed application actions"]
     Chat --> Schedules["Scheduled tasks drawer"]
     Chat --> Upload["Attachments"]
 
     Terminal --> Workspace["/workspace"]
     Files --> Workspace
     History --> Repos["Git repositories under workspace"]
-    IDE --> CodeServer["Project code-server"]
+    Apps --> Workspace
     Upload --> UploadDir["/workspace/.uploads"]
     Schedules --> ScheduleStore["Host scheduled-task store"]
 ```
@@ -69,7 +69,7 @@ flowchart LR
     Expand --> Download["Download file"]
     Expand --> Zip["Download folder as ZIP"]
     Expand --> Media["Open supported media inline"]
-    Expand --> IDE["Open path in IDE"]
+    Expand --> Editor["Open in installed application"]
 ```
 
 The backend resolves all paths relative to the chat working directory and
@@ -79,46 +79,51 @@ than returning unbounded data.
 Selecting a file routes by type:
 
 - supported image/audio/video/PDF opens in the full-screen media overlay;
-- code, data, text, logs, and unknown non-media files redirect to code-server;
-  and
+- a running project application may register a file opener for text and code;
+- when no opener is registered, those files download;
 - archives and unsupported media download.
 
-The same routing applies to validated absolute workspace links in chat. IDE
-targets preserve optional `:line[:column]` suffixes. Inline media receives a
+The same routing applies to validated absolute workspace links in chat. File
+openers receive optional `:line[:column]` suffixes. Inline media receives a
 restrictive content security policy.
 
 ## Terminal
 
+The terminal is the installable [Terminal application](../../applications/terminal/README.md),
+not a core route. Its shell runs in a service inside the project container, and
+the browser reaches that service through the project
+[application web route](../dev/installable-applications/19-project-application-web-routes.md).
+
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as xterm.js workspace pane
-    participant WS as /ws/terminal
-    participant Project as Project service
-    participant LXD
+    participant UI as Terminal drawer (iframe)
+    participant Gateway as terminal--<slug>.<host>
+    participant Service as remote-terminal service
     participant Bash as Login shell
 
-    User->>UI: Open terminal
-    UI->>WS: Connect with chat ID
-    WS->>WS: Check project membership
-    WS->>Project: Start project if needed
-    Project->>LXD: Ensure container is running
-    WS->>LXD: lxc exec with PTY
-    LXD->>Bash: cd to mapped chat cwd or /workspace
+    User->>UI: Open the drawer
+    UI->>Gateway: Load page, then WebSocket /ws?session=<chat>&cwd=<path>
+    Gateway->>Gateway: Check session, project membership, running install
+    Gateway->>Service: Proxy to <slug>.lxd:8843
+    Service->>Bash: Start bash -l, or reattach to the chat's shell
     UI->>Bash: Input and resize messages
-    Bash-->>UI: Binary PTY output
+    Bash-->>UI: Replayed and live PTY output
 ```
 
-The terminal exists only for chats attached to a project. Opening it starts one
-interactive `bash -l` process for that loaded chat. On desktop it is a
-resizable workspace pane beside the chat; its width is retained in browser
-`localStorage`. Terminal, Files, History, Schedules, and Browser panes are
-mutually exclusive. Hiding and reopening Terminal in the same loaded chat
-keeps the socket, shell, and unsubmitted input alive. Switching chats,
-reloading or closing the page, or losing the socket tears the PTY down; it is
-not a persistent tmux session.
+The drawer exists only for chats attached to a project in which the application
+is installed and running. Each chat has one interactive `bash -l`, started in
+the chat's directory under `/workspace`. On desktop the drawer is a resizable
+pane beside the chat; its width is retained in browser `localStorage`. The
+drawer and the Files, History, and Browser panes are mutually exclusive.
 
-The backend also retains lower-level tmux session APIs and a `/ws` tmux PTY bridge. These are not used by the current main workspace UI, but chats can still carry a `tmuxSession` and resolve their working directory from it.
+The shell belongs to the service, not to the WebSocket. A dropped connection,
+a reload, or a restart of Remote leaves it running; the page reconnects while
+the drawer is open and the service replays the most recent 256 KiB of output.
+A shell with no viewer is ended after 10 minutes, and every shell ends when the
+service stops. The gateway does not start a stopped project or installation.
+
+Chats can still carry a `tmuxSession` and resolve their working directory from it; the backend no longer exposes routes to create, attach to, or send input to host tmux sessions.
 
 ## Git history
 
@@ -145,47 +150,36 @@ run; **History** stays hidden until at least one exists. Commit patches render
 as collapsible per-file cards with line numbers, hunks, change counts, and file
 status badges, with raw-text fallback.
 
-The checkout API supports the checkpoint message, but the current History drawer does not render the dirty-tree checkpoint form even though its component state is present. In the visible UI, commit or stash dirty work through Terminal or IDE, refresh History, and then switch. Clean-tree switching works directly.
+The checkout API supports the checkpoint message, but the current History drawer does not render the dirty-tree checkpoint form even though its component state is present. In the visible UI, commit or stash dirty work through Terminal or an installed editor, refresh History, and then switch. Clean-tree switching works directly.
 
 ## Scheduled tasks
 
-The Schedules drawer is project-chat-only. It lists host-owned tasks visible to
-the caller, then updates them through the schedule API. The drawer can arm,
-pause/resume, run-now, edit, delete, and refresh tasks. Initial creation in the
-current UI is agent-driven through the **Scheduled Tasks** skill.
+Install the Scheduled Tasks project application to add its clock action to the
+chat header. Ask the agent for future work; tasks are active immediately. The
+application UI lists the current chat’s tasks and supports pause, resume, run now,
+delete and refresh. Its host backend owns the clock and wakes normal agent turns.
+See [Scheduled tasks](06-scheduled-tasks.md).
 
-Schedule timers do not run inside the container. The backend persists claims,
-starts the project if needed, and injects the stored prompt through the normal
-chat run path. See [Scheduled tasks](06-scheduled-tasks.md).
+## Application web routes and workspace links
 
-## Browser IDE
+Project applications can declare a web port in their manifest. Remote exposes a
+running installation at `<label>--<project>.<host>` after checking
+project access. It selects the upstream port from the validated application
+manifest, removes platform cookies before forwarding, and stops routing when
+the application stops or is uninstalled. The `/apps/<project-slug>/<application-id>/` launch URL redirects to that origin. The application owns its browser UI,
+file URL format, and any chat actions it contributes.
 
-Each project has an on-demand code-server instance on container port `8842`.
-
-```mermaid
-flowchart LR
-    Link["Open IDE or file link"] --> Auth["Caddy forward-auth"]
-    Auth --> Host["code.<host>/<slug>/ or <slug>.code.<host>"]
-    Host --> Socket["In-container socket activation"]
-    Socket --> Code["code-server"]
-    Code --> Workspace["/workspace"]
-```
-
-Caddy disables upstream keep-alive so code-server can stop after its idle window. Platform session cookies are removed before requests reach the container.
-
-## IDE and media links in chat
-
-Markdown links are inspected by the frontend. Workspace paths can be converted
-into backend `ide-open` or `media-open` routes. The backend validates the path,
-then either redirects to code-server—using the workbench payload for an exact
-file and optional line/column—or serves supported image/audio/video/PDF media
-in the in-app viewer.
+Workspace links in chat are inspected by the frontend. Supported media uses
+the authenticated `media-open` route and opens in the in-app viewer. For other
+files, an installed application's file opener can supply a URL with optional
+line and column. Without one, the file downloads.
 
 ## Code map
 
 - Upload handler: [`backend/internal/transport/http/upload_tus.go`](../../backend/internal/transport/http/upload_tus.go)
 - Workspace files: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
-- Terminal socket: [`backend/internal/transport/ws/container_terminal_socket.go`](../../backend/internal/transport/ws/container_terminal_socket.go)
+- Terminal application: [`applications/terminal/`](../../applications/terminal/)
+- Extension drawer host: [`frontend/src/ui/chat/extensions/ExtensionDrawer.tsx`](../../frontend/src/ui/chat/extensions/ExtensionDrawer.tsx)
 - Git history: [`backend/internal/service/githistory/service.go`](../../backend/internal/service/githistory/service.go)
-- IDE service: [`backend/internal/service/workspaceide/service.go`](../../backend/internal/service/workspaceide/service.go)
-- Schedules UI: [`frontend/src/ui/chat/schedules/ScheduleDrawer.tsx`](../../frontend/src/ui/chat/schedules/ScheduleDrawer.tsx)
+- Application web routes: [`backend/internal/transport/http/handlers/applications_web_handler.go`](../../backend/internal/transport/http/handlers/applications_web_handler.go)
+- Schedules UI: [`applications/scheduled-tasks/ui/`](../../applications/scheduled-tasks/ui/)

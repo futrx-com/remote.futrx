@@ -3,10 +3,13 @@ export const API_RESPONSE_STATUS = {
   unauthorized: 401,
   notFound: 404,
   conflict: 409,
+  serviceUnavailable: 503,
 } as const;
 
 export const DEFAULT_CHAT_HISTORY_COMMIT_LIMIT = 100;
-/** Complete conversation turns fetched on first load and on each older page. */
+/** Complete conversation turns fetched on the first chat load. */
+export const CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT = 10;
+/** Complete conversation turns fetched on each older-history page. */
 export const CHAT_TRANSCRIPT_TURN_PAGE_LIMIT = 20;
 export const DIRTY_WORKING_TREE_FALLBACK_MESSAGE = "dirty working tree";
 export const DEFAULT_UPLOAD_MEDIA_TYPE = "application/octet-stream";

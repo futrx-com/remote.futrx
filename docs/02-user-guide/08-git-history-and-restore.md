@@ -159,7 +159,7 @@ use an external backup for data that Git does not contain.
 
 ## Related documentation
 
-- [Files, Terminal, and IDE](05-files-terminal-and-ide.md)
+- [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md)
 - [Workspace tools architecture](../02-workspaces/05-workspace-tools.md)
 - [Prompts, context, and conversation](04-prompts-context-and-conversation.md)
 - [Troubleshooting](12-troubleshooting.md)

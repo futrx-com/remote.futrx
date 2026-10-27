@@ -24,11 +24,23 @@ type recordingRuntime struct {
 	attachErr error
 	deleteErr error
 	mountMiss int
+	free      uint64
+	spaceErr  error
+	imageSize uint64
+	imageErr  error
 }
 
 func (r *recordingRuntime) Available() bool {
 	*r.events = append(*r.events, "runtime available")
 	return r.available
+}
+func (r *recordingRuntime) StorageSpace(context.Context) (string, uint64, uint64, error) {
+	*r.events = append(*r.events, "runtime storage space")
+	return "default", r.free, r.free * 2, r.spaceErr
+}
+func (r *recordingRuntime) ImageSize(_ context.Context, alias string) (uint64, error) {
+	*r.events = append(*r.events, "runtime image size "+alias)
+	return r.imageSize, r.imageErr
 }
 func (r *recordingRuntime) Init(_ context.Context, image, container string) error {
 	*r.events = append(*r.events, "runtime init "+image+" "+container)

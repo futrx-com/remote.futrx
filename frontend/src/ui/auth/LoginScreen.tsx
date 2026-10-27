@@ -45,7 +45,7 @@ export function LoginScreen({
       ? "Secure your admin account"
       : "Sign in";
   const description = awaitingSetupToken
-    ? "No one has set up this server yet. Find the person who installed it and ask them to look at the server\u2019s terminal window for a one-time setup link \u2014 if they don\u2019t see one, they can type \u0060remote setup-token\u0060 there to get a new one."
+    ? "No one has set up this server yet. Find the person who installed it and ask them to look at the server\u2019s terminal window for a one-time setup link \u2014 if they don\u2019t see one, they can type \u0060sudo remote setup-token\u0060 there to get a new one."
     : mode === "claim"
     ? "This email and password will be the private administrator login for this server."
     : mode === "legacy-setup"
@@ -56,7 +56,7 @@ export function LoginScreen({
 
   if (challenge.pending) {
     return (
-      <div class="app-shell overflow-y-auto grid place-items-center bg-[#090b0f] text-ink-100 p-5">
+      <div class="app-shell overflow-y-auto grid place-items-center bg-app text-ink-100 p-5">
         <TwoFactorChallengeStep
           code={challenge.code}
           error={challenge.error}

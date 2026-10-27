@@ -66,19 +66,21 @@ Codex account or `/root/.codex` state. This is runtime separation, not a
 security boundary: container root can read every provider home mounted in that
 project.
 
-Configure MiniMax once for the Remote installation:
+Configure one or more MiniMax accounts for the Remote installation:
 
-1. Open **Settings → Agents** and choose **Sign in with MiniMax** (or
-   **Refresh MiniMax login** when replacing a key).
+1. Open **Settings → Agents**, expand **MiniMax Saved accounts**, and choose
+   **Add account** (or **Reconnect** when replacing one account's key).
 2. Follow the **Get a MiniMax Token Plan subscription key** link to subscribe,
    create, or retrieve the supported key from MiniMax. Remote does not link to
    the pay-as-you-go key console because standard API keys are not supported.
-3. Paste the `sk-cp-…` key into the masked field and choose **Save API key**.
+3. Give the account a recognizable label, paste the `sk-cp-…` key into the
+   masked field, and choose **Save API key**.
    Remote checks that it is a Token Plan key and validates it with MiniMax's
    subscription quota endpoint before storing it.
-4. Return to a project chat and select **MiniMax** and **MiniMax-M3**.
+4. Return to a project chat and select the account, **MiniMax**, and
+   **MiniMax-M3** in the composer.
 
-Remote passes the key to the Codex process as an environment variable and
+Remote passes only the chat's selected key to the Codex process as an environment variable and
 configures Codex to read that variable. It does not embed the key in the
 generated model catalog or command-line configuration. The key is never
 returned to the browser after saving. MiniMax is not offered for loose chats.
@@ -139,9 +141,9 @@ connect one of the current gate-eligible modules: Claude, Codex, or Kimi.
 - Antigravity is project-local rather than host-wide, but its credential state
   is still readable by container root and shared by everyone with authority in
   that project.
-- MiniMax runs only in projects, but its Token Plan subscription key is
-  installation-wide and administrator-managed. It is injected into MiniMax
-  runs and is subject to that MiniMax subscription's quota.
+- MiniMax runs only in projects. Its named Token Plan subscription keys are
+  installation-wide and administrator-managed; the account selected in a chat
+  determines which key is injected into that run and whose quota it uses.
 
 Non-admins can use connected providers but cannot connect or refresh them.
 
@@ -189,6 +191,33 @@ The local administrator cannot be removed or demoted. Remote also prevents remov
 
 Removal blocks future authenticated requests for that email. Sessions are stateless 30-day tokens and have no individual revocation UI; deleting a user is the practical access-control lever.
 
+## Updates
+
+Administrators see an **Update available** notice near the sidebar's settings
+controls when a newer release is found. The notice remains accessible as a
+download icon when the sidebar is collapsed, and appears in the mobile drawer.
+Select it to open **Settings → Updates** directly.
+
+![Update available notice above the sidebar account footer](../assets/update-available-notice.png)
+
+Remote checks when an administrator opens the workspace and hourly while the
+page is visible. Returning to a hidden tab or reconnecting also checks if the
+previous attempt was at least an hour ago. Members do not run these checks or
+see the notice. Failed checks are shown in **Updates** without interrupting chats.
+
+Use **Check for updates** for an immediate check. Installing still requires an
+administrator to select the update action; discovery never starts an update.
+The notice is hidden while an update is running.
+
+The Updates screen displays the release notes recorded in the offered
+version's tagged commit—the same text used by the release workflow. Opening
+the screen reads that commit locally, fetching the tag from the installation's
+origin if needed using its existing Git credentials. No additional API or
+token is needed. If the notes cannot be loaded, use **Retry release notes**;
+checking for and installing updates still work independently.
+
+![Release notes shown before the update action](../assets/update-release-notes.png)
+
 ## Info
 
 Use **Info** to inspect the parent host rather than one project container.
@@ -218,7 +247,7 @@ Use the sign-out control in the account footer. This clears the platform session
 | Change own appearance | Yes | Yes |
 | View own account and server information | Yes | Yes |
 | Connect or refresh agent providers | Yes | No |
-| Add, replace, or remove the MiniMax Token Plan subscription key | Yes | No |
+| Add, replace, or remove MiniMax Token Plan subscription keys | Yes | No |
 | Sign in to Antigravity inside an assigned project | Yes | Yes |
 | Configure Google OAuth | Yes | No |
 | Add, remove, promote, or demote users | Yes | No |

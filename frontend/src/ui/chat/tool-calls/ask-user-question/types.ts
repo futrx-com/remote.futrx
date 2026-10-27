@@ -8,8 +8,3 @@ export interface Question {
 export interface AskUserQuestionInput {
   questions?: Question[];
 }
-
-export interface QuestionSummary {
-  text: string;
-  preview: string;
-}

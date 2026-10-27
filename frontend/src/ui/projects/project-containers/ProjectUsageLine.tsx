@@ -3,8 +3,8 @@ import { usageFormatService } from "../../../services/usage/usageFormatService.t
 import { Activity } from "../../primitives/icons";
 
 /**
- * Month-to-date spend for one project, shown under the project header. It is
- * deliberately one line: the full breakdown lives on Settings → Usage.
+ * Month-to-date token usage for one project, shown under the project header.
+ * It is deliberately one line: the full breakdown lives on Settings → Usage.
  */
 export function ProjectUsageLine({
   summary,
@@ -22,7 +22,7 @@ export function ProjectUsageLine({
     ? "Loading…"
     : !totals || totals.runs === 0
       ? "No agent runs yet this month"
-      : `${usageFormatService.costWithConfidence(totals)} · ${usageFormatService.tokens(totals.totalTokens)} tokens · ${
+      : `${usageFormatService.tokens(totals.totalTokens)} tokens · ${
           totals.runs
         } run${totals.runs === 1 ? "" : "s"}`;
 
@@ -31,16 +31,6 @@ export function ProjectUsageLine({
       <Activity class="w-3.5 h-3.5 text-accent-green flex-none" />
       <span class="text-ink-400">This month:</span>
       <span class="text-ink-200">{detail}</span>
-      {totals && totals.unpricedRuns > 0 && (
-        <span
-          class="text-ink-400"
-          title={`${totals.unpricedRuns} run${
-            totals.unpricedRuns === 1 ? "" : "s"
-          } could not be priced — the provider reported no cost and no price-table entry matched`}
-        >
-          ({totals.unpricedRuns} unpriced)
-        </span>
-      )}
     </div>
   );
 }

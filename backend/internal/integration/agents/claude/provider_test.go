@@ -2,12 +2,15 @@ package claude
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -15,6 +18,13 @@ func newTestProvider(
 	projects agent.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
+	return newTestRuntime(agentmodule.BuildDependencies{
+		Projects:   projects,
+		Containers: dependencies,
+	}).Lookup(agent.ProviderClaude).(*Provider)
+}
+
+func newTestRuntime(dependencies agentmodule.BuildDependencies) *agentmodule.Runtime {
 	factory, err := NewFactory()
 	if err != nil {
 		panic(err)
@@ -23,15 +33,166 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{
-		Projects:              projects,
-		Containers:            dependencies,
-		CredentialSyncTimeout: 30 * time.Second,
-	})
+	dependencies.CredentialSyncTimeout = 30 * time.Second
+	runtime, err := catalog.Build(dependencies)
 	if err != nil {
 		panic(err)
 	}
-	return runtime.Lookup(agent.ProviderClaude).(*Provider)
+	return runtime
+}
+
+// A nil vault must leave the binding without saved accounts rather than
+// attaching a nil *AccountService that reads as available.
+func TestFactoryOffersSavedAccountsOnlyWithAVault(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	for _, test := range []struct {
+		vault *agentauth.AccountVault
+		want  bool
+	}{
+		{vault: nil, want: false},
+		{vault: agentauth.NewAccountVault(&memoryAccountStore{}), want: true},
+	} {
+		runtime := newTestRuntime(agentmodule.BuildDependencies{Accounts: test.vault})
+		binding, ok := runtime.AuthBinding(agent.ProviderClaude)
+		if !ok || binding.AccountsAvailable() != test.want {
+			t.Fatalf("vault %v: accounts available = %v, want %v", test.vault != nil, binding.AccountsAvailable(), test.want)
+		}
+		if provider := runtime.Lookup(agent.ProviderClaude).(*Provider); (provider.accounts != nil) != test.want {
+			t.Fatalf("vault %v: provider accounts = %v", test.vault != nil, provider.accounts)
+		}
+	}
+}
+
+// A run may leave any Claude login in its isolated account home. Only a login
+// for the selected account is validated and saved; another account never
+// changes either the vault or the canonical host login.
+func TestRunSavesOnlyTheActiveAccountsRefreshedLogin(t *testing.T) {
+	installFakeClaude(t, `
+case "$1" in
+auth)
+  printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}' ;;
+-p)
+  printf '{"claudeAiOauth":{"refreshToken":"%s"},"mcpOAuth":{"server":"kept"}}' "$FAKE_CLAUDE_TOKEN" > "$CLAUDE_CONFIG_DIR/.credentials.json"
+  printf '{"oauthAccount":{"accountUuid":"uuid-%s","emailAddress":"%s@example.test"}}' "$FAKE_CLAUDE_ACCOUNT" "$FAKE_CLAUDE_ACCOUNT" > "$CLAUDE_CONFIG_DIR/.claude.json" ;;
+esac
+`)
+	host := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", host)
+	writeHostFiles(t, host,
+		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
+		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
+	)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "one",
+		Accounts: []agentauth.AccountRecord{
+			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
+		},
+	}}
+	provider := newTestRuntime(agentmodule.BuildDependencies{
+		Accounts: agentauth.NewAccountVault(store),
+	}).Lookup(agent.ProviderClaude).(*Provider)
+	run := func(token, account string) {
+		t.Helper()
+		t.Setenv("FAKE_CLAUDE_TOKEN", token)
+		t.Setenv("FAKE_CLAUDE_ACCOUNT", account)
+		if err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, nil); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	}
+
+	run("refreshed", "one")
+	if saved := string(store.accounts.Accounts[0].Credential); !strings.Contains(saved, `"refreshed"`) {
+		t.Fatalf("refreshed login for the active account was not saved: %s", saved)
+	}
+
+	run("intruder", "other")
+	if saved := string(store.accounts.Accounts[0].Credential); !strings.Contains(saved, `"refreshed"`) || strings.Contains(saved, "intruder") {
+		t.Fatalf("another account's login changed the vault: %s", saved)
+	}
+	credentials := readFile(t, filepath.Join(host, ".credentials.json"))
+	config := readFile(t, filepath.Join(host, ".claude.json"))
+	if !strings.Contains(credentials, `"saved"`) || strings.Contains(credentials, "refreshed") ||
+		strings.Contains(credentials, "intruder") || !strings.Contains(config, "uuid-one") {
+		t.Fatalf("canonical host login changed: credentials = %s, config = %s", credentials, config)
+	}
+}
+
+// A plan belongs to the account that ran: a saved-account run stamps its
+// account on the windows the CLI reports, and a host-login run stamps none.
+func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
+	installFakeClaude(t, `
+case "$1" in
+auth)
+  printf '%s\n' '{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"max"}' ;;
+-p)
+  printf '%s\n' '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1790000000}}' ;;
+esac
+`)
+	host := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", host)
+	writeHostFiles(t, host,
+		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
+		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
+	)
+	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+		ActiveAccountID: "one",
+		Accounts: []agentauth.AccountRecord{
+			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
+		},
+	}}
+	for _, test := range []struct {
+		name         string
+		dependencies agentmodule.BuildDependencies
+		want         string
+	}{
+		{"saved account", agentmodule.BuildDependencies{Accounts: agentauth.NewAccountVault(store)}, "one"},
+		{"host login", agentmodule.BuildDependencies{}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			provider := newTestRuntime(test.dependencies).Lookup(agent.ProviderClaude).(*Provider)
+			var quotas []agent.Event
+			err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, func(event agent.Event) {
+				if event.Type == agent.EventQuotaUpdated {
+					quotas = append(quotas, event)
+				}
+			})
+			if err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			if len(quotas) != 1 || quotas[0].AccountID != test.want ||
+				quotas[0].Quota == nil || quotas[0].Quota.Window != agent.QuotaWindowSession {
+				t.Fatalf("quota events = %#v; want one session window for account %q", quotas, test.want)
+			}
+		})
+	}
+}
+
+func TestAccountRunHomesSeparateChats(t *testing.T) {
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	saved := agentauth.RunCredential{
+		AccountID:  "one",
+		Credential: testClaudeCredential("saved", "uuid-one", "one@example.test"),
+	}
+	first, err := newAccountRun(agent.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := newAccountRun(agent.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.hostHome == second.hostHome || first.containerHome == second.containerHome {
+		t.Fatalf("chat account homes overlap: first %#v, second %#v", first, second)
+	}
+	for _, run := range []*accountRun{first, second} {
+		credential, err := run.hostCredential()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if accountIdentity(credential)["account"] != "uuid-one" {
+			t.Fatalf("isolated credential = %s", credential)
+		}
+	}
 }
 
 func TestArgsUseDesktopLikeClaudeHeadlessMode(t *testing.T) {
@@ -199,8 +360,8 @@ func TestBuildCmdProvisionsBrowserMCPOnlyWhenEnabled(t *testing.T) {
 
 func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	runtimeEnv := map[string]string{
-		"REMOTE_SCHEDULE_API":   "https://remote.test/agent-api/schedules",
-		"REMOTE_SCHEDULE_GRANT": "short-lived-grant",
+		"REMOTE_APPLICATION_API":   "https://remote.test/agent-api/applications",
+		"REMOTE_APPLICATION_GRANT": "short-lived-grant",
 	}
 
 	hostProvider := newTestProvider(nil, provisioning.ContainerDependencies{})
@@ -232,16 +393,15 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		fakeClaudeProjects{
 			project: project,
 			secrets: []agent.ProjectSecret{{
-				Key:   "REMOTE_SCHEDULE_API",
+				Key:   "REMOTE_APPLICATION_API",
 				Value: "https://attacker.invalid",
 			}},
 		},
 		claudeContainerDependencies(&fakeClaudeBrowser{}),
 	)
 	containerRequest := agent.RunRequest{
-		ProjectID:           string(project.ID),
-		RuntimeEnv:          runtimeEnv,
-		EnableScheduleTools: true,
+		ProjectID:  string(project.ID),
+		RuntimeEnv: runtimeEnv,
 	}
 	containerCmd, containerName, err := containerProvider.buildCmd(
 		context.Background(),
@@ -258,7 +418,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	for key, value := range runtimeEnv {
 		requireClaudeArgPair(t, containerCmd.Args, "--env", key+"="+value)
 	}
-	if slices.Contains(containerCmd.Args, "REMOTE_SCHEDULE_API=https://attacker.invalid") {
+	if slices.Contains(containerCmd.Args, "REMOTE_APPLICATION_API=https://attacker.invalid") {
 		t.Fatal("project secret overrode the backend-issued schedule API")
 	}
 }
@@ -279,7 +439,7 @@ func TestBuildCmdRejectsPartialContainerDependencies(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected partial container dependencies to fail")
 	}
-	const want = "incomplete container dependencies: missing credentials, workspace, runtime assets, browser, schedule tools, lifecycle"
+	const want = "incomplete container dependencies: missing credentials, workspace, runtime assets, browser, lifecycle"
 	if err.Error() != want {
 		t.Fatalf("buildCmd error = %q, want %q", err, want)
 	}
@@ -351,10 +511,6 @@ type fakeClaudeLifecycle struct{}
 
 func (fakeClaudeLifecycle) EnsureBootAutostart(context.Context, string) error { return nil }
 
-type fakeClaudeScheduleTools struct{}
-
-func (fakeClaudeScheduleTools) Ensure(context.Context, string) error { return nil }
-
 func claudeContainerDependencies(browser provisioning.BrowserProvisioner) provisioning.ContainerDependencies {
 	return provisioning.ContainerDependencies{
 		CLI:           fakeClaudeCLI{},
@@ -362,7 +518,6 @@ func claudeContainerDependencies(browser provisioning.BrowserProvisioner) provis
 		Workspace:     fakeClaudeWorkspace{},
 		RuntimeAssets: fakeClaudeRuntimeAssets{},
 		Browser:       browser,
-		ScheduleTools: fakeClaudeScheduleTools{},
 		Lifecycle:     fakeClaudeLifecycle{},
 	}
 }

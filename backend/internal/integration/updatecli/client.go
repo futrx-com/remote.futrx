@@ -26,6 +26,69 @@ func New() Client { return Client{} }
 // reusing whatever credentials are embedded in its git config. Annotated
 // tags appear once (the "^{}" peel lines are folded into their tag).
 func (Client) ListRemoteTags(ctx context.Context, installDir string) ([]string, error) {
+	refs, err := listRemoteTagRefs(ctx, installDir)
+	if err != nil {
+		return nil, err
+	}
+	tags := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		tags = append(tags, ref.name)
+	}
+	return tags, nil
+}
+
+// ListRemoteTagsForCommit finds release aliases for a running binary stamped
+// with a commit hash rather than a version. A short hash must identify one
+// commit across remote tags; otherwise it cannot safely establish a baseline.
+func (Client) ListRemoteTagsForCommit(ctx context.Context, installDir, commitPrefix string) ([]string, error) {
+	refs, err := listRemoteTagRefs(ctx, installDir)
+	if err != nil {
+		return nil, err
+	}
+	var commit string
+	var tags []string
+	for _, ref := range refs {
+		if !strings.HasPrefix(strings.ToLower(ref.sha), strings.ToLower(commitPrefix)) {
+			continue
+		}
+		if commit != "" && commit != ref.sha {
+			return nil, fmt.Errorf("commit prefix %s matches multiple tagged commits", commitPrefix)
+		}
+		commit = ref.sha
+		tags = append(tags, ref.name)
+	}
+	return tags, nil
+}
+
+type remoteTagRef struct {
+	name string
+	sha  string
+}
+
+// ReadReleaseNotes reads the release commit's body, as release-on-tag.yml does.
+// Missing tags are fetched individually using origin's existing credentials;
+// reading notes leaves the checkout, index and FETCH_HEAD untouched.
+func (Client) ReadReleaseNotes(ctx context.Context, installDir, tag string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
+	defer cancel()
+	ref := "refs/tags/" + tag
+	read := func() ([]byte, error) {
+		return exec.CommandContext(ctx, "git", "-C", installDir, "log", "-1", "--format=%b", ref+"^{commit}", "--").Output()
+	}
+	out, err := read()
+	if err != nil {
+		if err := exec.CommandContext(ctx, "git", "-C", installDir, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "origin", ref+":"+ref).Run(); err != nil {
+			return "", errors.New("could not fetch the release tag for its notes")
+		}
+		out, err = read()
+	}
+	if err != nil {
+		return "", errors.New("could not read the release commit notes")
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func listRemoteTagRefs(ctx context.Context, installDir string) ([]remoteTagRef, error) {
 	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "git", "-C", installDir, "ls-remote", "--tags", "origin").Output()
@@ -36,22 +99,29 @@ func (Client) ListRemoteTags(ctx context.Context, installDir string) ([]string, 
 		}
 		return nil, fmt.Errorf("git ls-remote: %w", err)
 	}
-	seen := map[string]bool{}
-	var tags []string
+	indexes := map[string]int{}
+	var refs []remoteTagRef
 	for _, line := range strings.Split(string(out), "\n") {
-		_, ref, ok := strings.Cut(line, "\t")
+		sha, ref, ok := strings.Cut(line, "\t")
 		if !ok {
 			continue
 		}
 		name := strings.TrimPrefix(strings.TrimSpace(ref), "refs/tags/")
+		peeled := strings.HasSuffix(name, "^{}")
 		name = strings.TrimSuffix(name, "^{}")
-		if name == "" || strings.HasPrefix(name, "refs/") || seen[name] {
+		if name == "" || strings.HasPrefix(name, "refs/") {
 			continue
 		}
-		seen[name] = true
-		tags = append(tags, name)
+		if index, found := indexes[name]; found {
+			if peeled {
+				refs[index].sha = sha
+			}
+			continue
+		}
+		indexes[name] = len(refs)
+		refs = append(refs, remoteTagRef{name: name, sha: sha})
 	}
-	return tags, nil
+	return refs, nil
 }
 
 // StartUpdater launches the selected release script in its own session so
@@ -71,10 +141,23 @@ func (Client) StartUpdater(launch serviceselfupdate.UpdaterLaunch) (int, error) 
 	defer logFile.Close()
 
 	// Values reach the script as positional parameters, never by string
-	// interpolation.
-	const script = `case "$4" in
+	// interpolation. Infrastructure updates select the requested tag before
+	// executing its entrypoint, so a broken updater left in the current checkout
+	// cannot prevent a fixed release from recovering the installation.
+	const script = `run_infrastructure() {
+install_dir="$1"
+target="$2"
+git -C "$install_dir" fetch --quiet --tags origin || return
+target_commit="$(git -C "$install_dir" rev-parse --verify --quiet "refs/tags/${target}^{commit}")" || return
+git -C "$install_dir" reset --hard "$target_commit" || return
+FUTRX_INSTALL_DIR="$install_dir" \
+FUTRX_LEGACY_INSTALL_DIR="${FUTRX_LEGACY_INSTALL_DIR:-/opt/remote.futrx.dev}" \
+FUTRX_UPDATE_REEXECED=1 \
+bash "$install_dir/infra/update.sh" "--ref=$target"
+}
+case "$4" in
 application) FUTRX_INSTALL_DIR="$1" bash "$1/infra/deploy-app.sh" "--ref=$2" ;;
-infrastructure) FUTRX_INSTALL_DIR="$1" bash "$1/infra/update.sh" "--ref=$2" ;;
+infrastructure) run_infrastructure "$1" "$2" ;;
 *) echo "unknown update kind: $4" >&2; exit 2 ;;
 esac
 status=$?

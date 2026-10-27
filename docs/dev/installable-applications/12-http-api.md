@@ -1,0 +1,486 @@
+# 12 — HTTP API
+
+Browser endpoints under `/api/` sit behind the platform's session middleware:
+a valid session for a registered user is required. Handlers then re-check
+authorization per route. The separate `/agent-api/applications/` route uses a
+temporary bearer grant for an agent turn, as described below.
+
+Routes are registered in
+[`applications_handler.go`](../../../backend/internal/transport/http/handlers/applications_handler.go);
+project-scoped routes are delegated there by `project_handler.go` after project
+membership has been verified.
+
+## Catalog
+
+### `GET /api/applications/catalog`
+
+Every application in the catalog. Readable by **any registered user**, because the
+project UI uses the same catalog.
+
+```json
+[
+  {
+    "id": "mysql",
+    "name": "MySQL",
+    "description": "Popular open-source relational database server.",
+    "category": "database",
+    "version": "8.0",
+    "icon": "database",
+    "scopes": ["global", "project"],
+    "port": { "internal": 3306, "defaultExternal": 3306, "protocol": "tcp",
+              "bindAddress": "127.0.0.1" },
+    "env": [ … ],
+    "service": {
+      "name": "mysql",
+      "command": ["/usr/sbin/mysqld", "--port", "{{internalPort}}"]
+    },
+    "connection": { "user": "root", "passwordEnv": "MYSQL_ROOT_PASSWORD" },
+    "install": "infra/install.sh",
+    "ui": {
+      "entry": "scripts/main.js",
+      "styles": ["style/popup.css", "style/style.css"],
+      "views": { "index": "views/index.html", "popup": "views/popup.html" }
+    }
+  }
+]
+```
+
+This lists what *can* be installed. It grants nothing — see
+`/api/applications/ui` below.
+
+Each entry also carries `"source"`: `"builtin"` for an application compiled into the
+server, `"uploaded"` for one that came from an uploaded package. It is stamped
+by the registry, never read from `application.json`.
+
+### Packages
+
+`GET`, `POST` and `DELETE` on `/api/applications/packages[/{id}]` manage
+uploaded application packages. All admin-only; documented in full in
+[16 — Uploaded packages](16-uploaded-packages.md#http).
+
+### `GET /api/applications/catalog/{applicationID}/ui/{path}`
+
+One file from an application's `ui/` directory. Any registered user; `GET` and `HEAD`.
+
+```
+GET /api/applications/catalog/mysql/ui/scripts/main.js
+```
+
+| Response header | Value |
+|---|---|
+| `Content-Type` | derived from the file extension (see below) |
+| `X-Content-Type-Options` | `nosniff` |
+| `Cache-Control` | `private, no-cache` |
+| `ETag` | strong validator over the asset's bytes |
+
+`no-cache` means "cache it, but revalidate", not "do not cache". A conditional
+request answers `304` from memory. The assets are compiled into the binary, so
+their URLs never change when their content does — a timed cache would serve a
+stale extension for its whole lifetime after a rebuild, and for an ES module
+the SPA imports, an author editing `ui/` would see their old code with nothing
+to tell them why. Revalidating makes a rebuild visible on the next reload.
+
+Types are pinned from the extension, never sniffed: `.js`/`.mjs` →
+`text/javascript`, `.css` → `text/css`, `.html` → `text/html`, `.json` →
+`application/json`, `.svg` → `application/svg+xml`, `.png`, `.webp`, `.woff2`, and
+anything else → `application/octet-stream`.
+
+Paths that escape the application's own `ui/` return **404**, as do files that do not
+exist and applications with no `ui/`. The registry cleans and rejects the path before
+any read; see [13 — Security model](13-security-model.md).
+
+The five-minute cache is why a hard reload helps while iterating on extension
+assets.
+
+## Which extensions to load
+
+### `GET /api/applications/ui`
+
+The list this caller is allowed to load, with each entry's install scope. Any
+registered user.
+
+```json
+[
+  {
+    "application": { "id": "ui-playground", "name": "UI Playground", "ui": { … }, … },
+    "global": true
+  },
+  {
+    "application": { "id": "ui-sandbox", "name": "UI Sandbox", "ui": { … }, … },
+    "global": false,
+    "projectIds": ["20336ed6ab63"]
+  },
+  {
+    "application": { "id": "backend-playground", "backend": { … },
+               "backend": { "access": "registered", "timeoutMs": 10000 }, … },
+    "global": true,
+    "projectIds": ["20336ed6ab63"],
+    "backends": [
+      { "instanceId": "9f1c2ab40e77", "scope": "global" },
+      { "instanceId": "3d5e81c6aa02", "scope": "project", "projectId": "20336ed6ab63" }
+    ]
+  }
+]
+```
+
+`backends` lists the running backend processes the extension may call. An application
+installed in several places runs one process per install, so this is what lets
+`remote.backend` address the right one; it is absent for applications that ship no
+`backend/`.
+
+Included only when the application has a `ui/` **and** has a **running** instance
+that is either global or in a project the caller can see. Visible projects come
+from the project service's own `ListVisible(email, isAdmin)`, so this inherits
+project membership exactly.
+
+An application installed in several places appears once, with the union of its
+scopes. Returns `[]` when the applications service is unavailable, so the SPA
+degrades to no extensions rather than erroring.
+
+This is the endpoint the extension host calls; the catalog endpoint is not used
+for loading.
+
+## Global instances — admin only
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/applications` | List global instances |
+| `POST` | `/api/applications` | Install at global scope — see [Global install placement](#global-install-placement) |
+| `GET` | `/api/applications/{id}` | One instance |
+| `DELETE` | `/api/applications/{id}` | Uninstall |
+| `GET` | `/api/applications/{id}/credentials` | Full connection detail, secrets included |
+| `POST` | `/api/applications/{id}/start` | Start |
+| `POST` | `/api/applications/{id}/stop` | Stop |
+| `PUT` | `/api/applications/{id}/port` | Change the host port |
+
+Non-admins get `403 admin only`, because a global app is server-wide
+infrastructure. An id belonging to a project instance is reported as `404` on
+these routes, so a project app cannot be controlled through them.
+
+## Project instances
+
+Identical set, under a project, available to any **member** of that project:
+
+| Method | Path |
+|---|---|
+| `GET` | `/api/projects/{projectID}/applications` |
+| `POST` | `/api/projects/{projectID}/applications` |
+| `GET` | `/api/projects/{projectID}/applications/{id}` |
+| `DELETE` | `/api/projects/{projectID}/applications/{id}` |
+| `GET` | `/api/projects/{projectID}/applications/{id}/credentials` |
+| `POST` | `/api/projects/{projectID}/applications/{id}/start` |
+| `POST` | `/api/projects/{projectID}/applications/{id}/stop` |
+| `PUT` | `/api/projects/{projectID}/applications/{id}/port` |
+
+Membership is checked by `project_handler.go` before delegating. The handler
+then verifies the instance actually belongs to *this* project, so a member of
+one project cannot control another's app by guessing its id.
+
+## Observed installations
+
+The browser uses an asynchronous install run, with the same request body as the
+synchronous install endpoints above. Global routes are admin-only; project
+routes require membership in that project.
+
+| Method | Global path | Project path | Does |
+|---|---|---|---|
+| `POST` | `/api/applications/installations` | `/api/projects/{projectID}/applications/installations` | Start an attempt; return `202` with its run |
+| `GET` | `/api/applications/installations` | `/api/projects/{projectID}/applications/installations` | List the latest runs in this scope |
+
+A run has `id`, `applicationId`, `scope`, optional `projectId`, `state`
+(`running`, `succeeded`, `failed`), an optional error, a bounded
+installer log, and `progress` containing the actual phase/message. Project counts
+and the current project are included for global placement inside project containers.
+The UI polls while running, keeps the terminal result, and issues another `POST`
+only when the user requests retry. A concurrent attempt returns `409`.
+
+Runs continue after the starting HTTP request closes. Run status and logs remain
+in memory for the current server process, and active work is cancelled during
+server shutdown. Incomplete installations become failed and retryable after a
+restart. The original synchronous `POST …/applications` routes stay available to
+tools and existing clients.
+
+## Backend backend routes
+
+An instance whose application ships a `backend/` directory is reachable at a `backend`
+sub-path. The bare prefix describes the backend; anything deeper is forwarded to
+it verbatim.
+
+| Method | Path | Does |
+|---|---|---|
+| `GET` | `/api/applications/{id}/backend` | Describe the backend |
+| *any* | `/api/applications/{id}/backend/{path…}` | Call the backend |
+| `GET` | `/api/projects/{projectID}/applications/{id}/backend` | Describe |
+| *any* | `/api/projects/{projectID}/applications/{id}/backend/{path…}` | Call |
+
+Calling a backend on a **global** instance is the one action there that is not
+admin-only. The backend is the server side of an extension that renders for
+every signed-in user, so managing the app stays admin-only while calling it
+requires only a session — narrowed to administrators when the application declares
+`"backend": { "access": "admin" }`. Project routes require membership, checked
+before delegation as everywhere else.
+
+### `GET …/backend`
+
+```json
+{
+  "instanceId": "9f1c2ab40e77",
+  "applicationId": "backend-playground",
+  "descriptor": {
+    "name": "Backend Playground",
+    "version": "1",
+    "apiVersion": 1,
+    "routes": [
+      { "method": "GET", "path": "health", "description": "Process identity and uptime" }
+    ]
+  },
+  "access": "registered",
+  "timeoutMs": 10000
+}
+```
+
+### `… /backend/{path…}`
+
+The request is forwarded with its method, path, query, body, and headers. Two
+things are **not** forwarded: `Cookie` and `Authorization`. The caller is
+supplied separately, resolved from the session, so a backend can authorize a
+caller without being able to act as them. Ordinary browser calls always receive
+`Request.Agent == nil`, even when the body includes fields named `agent`.
+
+Request bodies are capped at 1 MiB.
+
+The backend's answer becomes the HTTP response as-is, minus `Set-Cookie` and
+hop-by-hop headers, and always with `X-Content-Type-Options: nosniff`. A backend
+that sets no status answers `200`; one that sets no content type answers
+`application/octet-stream`.
+
+```
+POST /api/applications/9f1c2ab40e77/backend/kv/greeting
+Content-Type: application/json
+
+{"value":"hello"}
+```
+
+```json
+{ "key": "greeting", "value": "hello" }
+```
+
+The full contract is [15 — Application backends](15-application-backends.md).
+
+## Agent-to-application routes
+
+### `/agent-api/applications/<application-id>/<path>`
+
+An agent tool calls an eligible application's own backend routes through this
+generic endpoint. The application must declare `backend.agentTools: true` and
+have a running installation visible to the turn. Supported providers receive:
+
+| Runtime environment | Meaning |
+|---|---|
+| `REMOTE_APPLICATION_API` | Base URL ending in `/agent-api/applications` |
+| `REMOTE_APPLICATION_GRANT` | Bearer grant sent as `Authorization: Bearer <grant>` |
+
+Remote selects the installed copy from the grant, not from a caller-supplied
+instance ID. Interactive turns can reach eligible global and same-project
+installations; a project copy takes precedence over a global copy of the same
+application. Application-started turns can reach only their own installation.
+An `access: "admin"` backend requires a current administrator in either case.
+
+The handler forwards method, relative path, query, and body, with no incoming
+HTTP headers. It stamps `Request.Caller` from the grant's owner and rechecks
+current registration, project/chat access, installation status, and manifest
+opt-in. It also stamps `Request.Agent.ChatID`. Application-started turns carry
+`Background: true`, the accepted `RequestID`, and its opaque JSON `Context`.
+The application decides which routes and actions this context permits.
+
+Bodies are capped at 64 KiB. Backend responses use the same status/header/body
+handling as browser calls. Grants expire after four hours and are revoked when
+the provider run ends; do not persist them as application or project secrets.
+
+| Transport status | When |
+|---|---|
+| `400` | body exceeds 64 KiB |
+| `401` | missing, malformed, invalid, expired, or revoked bearer grant |
+| `403` | application is outside the grant, installation is inaccessible/stopped, or current owner authority is insufficient |
+| `503` | application tools unavailable or another host/backend failure |
+
+An admitted call returns the application's own response status. Implementation:
+[`agent_applications_handler.go`](../../../backend/internal/transport/http/handlers/agent_applications_handler.go).
+
+## Application-to-agent controls
+
+Applications start and inspect turns through the Go backend SDK, with
+`backend.agentTurns: true` and `rpc.ServeWithRuntime`:
+
+| SDK method | Purpose |
+|---|---|
+| `Runtime.AgentTurns.Start(request)` | Submit a prompt to an existing chat, attributed to a captured owner and stable installation-scoped request ID |
+| `Runtime.AgentTurns.Read(query)` | Read that request's status, output, error, and paginated transcript events |
+| `Runtime.AgentTurns.Forget(requestID)` | Remove an inactive execution receipt after saving the result; retains chat history |
+
+These are reverse calls over the backend RPC connection, not new browser HTTP
+routes. The UI can call its application's routes through the existing
+`remote.backend` API. See [25 — Application agent runtime](25-application-agent-runtime.md)
+for inputs, result fields, current-authority checks, and retry behavior.
+
+## Payloads
+
+### Install
+
+```json
+POST /api/applications
+{
+  "applicationId": "mysql",
+  "name": "Primary database",
+  "env": { "MYSQL_DATABASE": "app" },
+  "externalPort": 3307,
+  "bindAddress": "127.0.0.1"
+}
+```
+
+Every field except `applicationId` is optional. A blank `env` value takes the application's
+`generate` or `default`; a blank `externalPort` is allocated automatically.
+Responds `201` with the instance view.
+
+For a `ui` application, `externalPort` and `bindAddress` are ignored — there is no
+port.
+
+#### Global install placement
+
+`POST /api/applications` creates a global instance only when the application
+declares `"globallyInstalledInsideContainers": false`. Otherwise — the default —
+it installs a project instance into every existing project, and the instances
+it creates are reached through the project routes, not the global ones.
+
+In that case the `201` body is the view of the last project copy installed,
+with `"scope": "project"` and that project's `projectId`. When there was
+nothing to install — no projects, or every project already holds the
+application — it is still `201`, with an empty view whose `id` is `""`. Treat
+the response as an acknowledgement and list the project instances to see the
+result.
+
+A project that already holds the application is skipped rather than reported
+as `409`. If any other project fails, the request fails with an error naming
+each one as `project <id>: …`; copies installed in the other projects remain.
+
+### Change port
+
+```json
+PUT /api/applications/{id}/port
+{ "port": 3307 }
+```
+
+Rejected for `ui` applications: they have no port.
+
+## Response shapes
+
+**Instance view** — secret env values are redacted; `envPublic` holds the
+non-secret ones:
+
+```json
+{
+  "id": "abc123", "applicationId": "mysql", "name": "MySQL",
+  "scope": "global", "projectId": "",
+  "containerName": "futrx-app-abc123", "deviceName": "app-abc123",
+  "internalPort": 3306, "externalPort": 3307,
+  "bindAddress": "127.0.0.1", "protocol": "tcp",
+  "status": "running", "error": "",
+  "createdAt": 1788512000, "updatedAt": 1788512000,
+  "envPublic": { "MYSQL_DATABASE": "app" }
+}
+```
+
+`status` is one of `installing`, `running`, `stopped`, `error`. A `ui` application's
+instance has `internalPort: 0`, `externalPort: 0`, and an empty
+`containerName`.
+
+**Credentials** — returned only from the credentials route, which the transport
+has authorized:
+
+```json
+{
+  "containerName": "futrx-app-abc123",
+  "lxdHost": "futrx-app-abc123.lxd",
+  "internalPort": 3306, "externalPort": 3307, "bindAddress": "127.0.0.1",
+  "username": "root", "password": "…", "database": "app",
+  "env": { … }
+}
+```
+
+## Errors
+
+These statuses describe the browser API. Agent transport errors are listed in
+[Agent-to-application routes](#agent-to-application-routes).
+
+| Status | When |
+|---|---|
+| `400` | unknown application, unsupported scope, missing project id, missing required env, invalid JSON settings, port out of range |
+| `401` | no valid session |
+| `403` | admin-only route, non-admin caller |
+| `403` | an `access: admin` backend and a non-admin caller |
+| `404` | unknown instance, wrong scope for the route, asset not found or out of bounds, the application ships no backend |
+| `405` | wrong method |
+| `409` | this application is already installed in this scope; a backend call while the app is stopped |
+| `500` | anything else, including install-script failure, a backend that failed to compile, and a call that timed out |
+| `503` | applications unavailable (no container runtime configured), or no backend host |
+
+Bodies are `{"error": "…"}`. An install-script failure includes the tail of the
+script's output, which is what the UI shows on the instance row.
+
+## Calling these from an extension
+
+Use `fetch` with `credentials: "same-origin"` — you are the signed-in user,
+with exactly their authorization. An extension in a non-admin's browser cannot
+list global instances, so prefer the project routes when you have a
+`context.projectId`:
+
+```js
+const path = context.projectId
+  ? `/api/projects/${encodeURIComponent(context.projectId)}/applications`
+  : "/api/applications";
+const response = await fetch(path, { credentials: "same-origin" });
+```
+
+## Project application web routes
+
+`GET /apps/<project-slug>/<application-id>/<path>` is an authenticated launch
+link. The identifier is the **catalog application ID**. It redirects (302) to
+`https://<web.subdomain>--<project-slug>.<public-host>/<path>`, preserving escaped paths and
+queries. A bare launch URL redirects to the installation's root. HEAD is also
+supported; other launch methods return 405. No application bytes are served
+on the main Remote origin.
+
+The application hostname uses the installation's 12-character ID. Every
+request checks the registered platform session, project visibility (including
+administrator visibility), a current catalog `web.port`, and a running project
+installation. The host backend's `backend.access` does not change this policy.
+`/api`, `/auth`, and `/internal` on the application hostname belong to the
+application, never to Remote's platform router.
+
+The upstream is `http://<slug>.lxd:<web.port>/<path>`. The gateway preserves the
+method, escaped path, query and public Host; it supports WebSocket upgrades.
+It does not start stopped installations or recreate containers.
+
+| Result | Meaning |
+|---|---|
+| 302 | Launch redirect, or unauthenticated GET navigation to the platform login |
+| 401 | Missing/invalid session on an application write or WebSocket handshake |
+| 403 | Unregistered account or rejected cross-origin browser request |
+| 404 | Invalid app hostname/launch route, invisible project, unknown app, missing web declaration, or stopped/missing installation |
+| 405 | Launch method other than GET/HEAD |
+| 500 | Project or application lookup failed |
+| 502 | The reverse proxy cannot communicate with the upstream |
+| Upstream status | A proxied application response, including errors or redirects |
+
+The proxy removes **all** request cookies and `Authorization`, and response
+`Set-Cookie` and `Clear-Site-Data`. Applications relying on browser cookies are
+not supported by this gateway. Responses use `Cache-Control: private, no-store`.
+Paths and redirects need no prefix rewriting: relative assets, redirects and
+service workers stay on the installation's own origin. HTTP upstream
+connections are not pooled after requests complete.
+
+Browser Origin and Fetch Metadata checks reject cross-origin API requests,
+forms and WebSocket handshakes, including those from sibling app subdomains.
+See [13 — Security model](13-security-model.md#project-application-web-content).
+Catalog `web.port` values cannot be authorized by public preview share grants;
+this also applies to old grants after the catalog changes.

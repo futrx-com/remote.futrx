@@ -1,24 +1,40 @@
 /** The browser subscription shape needed by account ownership policy. */
-interface EndpointSubscription {
+export interface EndpointSubscription {
   endpoint: string;
 }
 
 /**
- * Keeps a browser endpoint only when the authenticated account owns it.
- * Verification failures deliberately fail closed to protect shared browsers.
+ * What the server said about one browser endpoint.
+ *
+ * `unverified` is deliberately distinct from `foreign`: "the server says this
+ * belongs to somebody else" and "the server could not be reached" call for
+ * opposite actions, and treating them alike is what silently unregistered
+ * devices during every backend restart.
+ */
+export type SubscriptionOwnership = "owned" | "foreign" | "unverified";
+
+/**
+ * Keeps a browser endpoint unless the account that owns it is provably not the
+ * signed-in one. An endpoint left behind by another account is invalidated
+ * immediately; an unreachable server leaves the registration untouched, since
+ * the service worker re-checks ownership before displaying any notification
+ * and so nothing can leak while verification is pending.
  */
 export async function reconcileSubscriptionOwnership<T extends EndpointSubscription>(
   subscription: T,
   ownsEndpoint: (endpoint: string) => Promise<boolean>,
   invalidateLocal: (subscription: T) => Promise<unknown>
-): Promise<boolean> {
+): Promise<SubscriptionOwnership> {
+  let owned: boolean;
   try {
-    if (await ownsEndpoint(subscription.endpoint)) return true;
+    owned = await ownsEndpoint(subscription.endpoint);
   } catch {
-    // The endpoint is untrusted until its account ownership is proven.
+    return "unverified";
   }
+  if (owned) return "owned";
+
   await invalidateLocal(subscription);
-  return false;
+  return "foreign";
 }
 
 /** Removes both halves of a subscription, always invalidating the browser. */

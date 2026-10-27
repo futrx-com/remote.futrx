@@ -8,7 +8,7 @@ CHROME=""
 for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
                    /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
     [ -x "$browser_bin" ] || continue
-    if "$browser_bin" --version 2>/dev/null | grep -Fq "$PW_CFT_VERSION"; then
+    if "$browser_bin" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
         CHROME="$browser_bin"
         break
     fi

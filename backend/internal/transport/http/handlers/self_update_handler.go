@@ -25,6 +25,26 @@ func (h *SelfUpdateHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/admin/update/status", h.handleStatus)
 	mux.HandleFunc("/api/admin/update/check", h.handleCheck)
 	mux.HandleFunc("/api/admin/update/apply", h.handleApply)
+	mux.HandleFunc("/api/admin/update/release-notes", h.handleReleaseNotes)
+}
+
+func (h *SelfUpdateHandler) handleReleaseNotes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, ok := h.requireAdmin(w, r); !ok {
+		return
+	}
+	notes, err := h.updates.ReleaseNotes(r.Context(), r.URL.Query().Get("tag"))
+	switch {
+	case errors.Is(err, serviceselfupdate.ErrInvalidReleaseTag):
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+	case err != nil:
+		httptransport.SendErr(w, http.StatusBadGateway, err.Error())
+	default:
+		httptransport.SendJSON(w, http.StatusOK, notes)
+	}
 }
 
 func (h *SelfUpdateHandler) requireAdmin(w http.ResponseWriter, r *http.Request) (string, bool) {

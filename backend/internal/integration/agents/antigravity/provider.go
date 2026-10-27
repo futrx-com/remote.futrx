@@ -10,7 +10,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 )
 
-const signInHint = "antigravity is not signed in — open this chat's Terminal, run `agy`, and complete the sign-in URL + code flow, then retry"
+const signInHint = "antigravity is not signed in — open this chat's Terminal application, run `agy`, and complete the sign-in URL + code flow, then retry"
 
 type Provider struct {
 	projectPreparer agent.ProjectPreparer

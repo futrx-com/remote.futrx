@@ -4,15 +4,15 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Scale and availability
 
-- **Single server, single process.** The backend is one systemd unit bound to `127.0.0.1:7682` on the same host as Caddy and LXD. All state lives in local files guarded by in-process mutexes and in-memory indexes, so a second backend instance — even on the same box — would corrupt or diverge state. There is no clustering, load balancing, failover, or multi-node support. If the server dies, everything (app, workspaces, previews, IDEs) is down. *(`infra/templates/remote.futrx.service.tmpl`, `backend/internal/stores/`)*
+- **Single server, single process.** The backend is one systemd unit bound to `127.0.0.1:7682` on the same host as Caddy and LXD. Authoritative state lives in local files guarded by in-process mutexes; the persisted SQLite chat index is disposable derived state. A second backend instance — even on the same box — would corrupt or diverge state. There is no clustering, load balancing, failover, or multi-node support. If the server dies, everything (app, workspaces, previews, IDEs) is down. *(`infra/templates/remote.futrx.service.tmpl`, `backend/internal/stores/`)*
 - **Capacity is bounded by the one host.** Projects, chats, and exposed ports all consume resources on a single box. The "unlimited projects/chats/ports" framing is a server-bound statement, not a product guarantee.
 - **No horizontal scaling of any runtime component.** The run hub, workspace hub, tus upload store, login limiter, and archive-download semaphore are all in-process. Slow WebSocket subscribers are dropped once their buffer fills.
 
 ## Data, durability, and backups
 
-- **No database.** Every datastore is a flat JSON file or per-chat JSONL log under `DATA_DIR` (`/opt/remote.futrx/data`). JSON and metadata writes use temp-file + rename, while chat events append directly to JSONL with `O_APPEND`. Neither path uses `fsync` or file locking, so a crash, power loss, or stray second process can lose or corrupt state. *(`backend/internal/stores/`)*
+- **No external database service.** Every authoritative datastore is a flat JSON file or per-chat JSONL log under `DATA_DIR` (`/opt/remote.futrx/data`). `transcript-index.sqlite` is a disposable derived index, not a source of truth. JSON and metadata writes use temp-file + rename, while chat events append directly to JSONL with `O_APPEND`. The authoritative paths use neither `fsync` nor file locking, so a crash, power loss, or stray second process can lose or corrupt state. *(`backend/internal/stores/`)*
 - **No backup or restore mechanism.** Nothing snapshots, exports, or restores `DATA_DIR`, the workspaces at `/var/lib/remote/projects`, or the containers. The only recovery-adjacent feature is the per-project Git "safety checkpoint," which protects code the agent edits — not chats, users, secrets, sessions, or container state. Disaster recovery is entirely the operator's responsibility, and a hand-rolled backup taken while the service runs can capture a torn view. **Snapshot the host or copy `DATA_DIR` yourself, ideally with the service stopped.**
-- **Chat logs grow without bound.** Per-chat `events.jsonl` files are append-only with no rotation or compaction, and `List()` re-reads every `meta.json` from disk — practical scale is modest project/chat counts.
+- **Chat logs and their derived index grow without bound.** Per-chat `events.jsonl` files have no rotation or compaction. The disposable SQLite offset/turn index grows with those logs and can be deleted and rebuilt, so practical scale is still bounded by host disk and one-time backfill cost.
 - **No cross-store transactions.** Project metadata, membership, and secrets are three separate files that can go out of sync. Deleting a project does not cascade-delete chats that reference it; deleting a user does not sweep their project-access records.
 - **Secrets are plaintext at rest.** Project secrets, the Google OAuth client secret, and the session signing key are unencrypted files (mode 0600). Encryption at rest is not provided. See the [threat model](threat-model.md).
 
@@ -44,12 +44,12 @@ These are the constraints worth understanding before you deploy or rely on remot
 ## Authentication and access
 
 - **One password account.** Only the first-claimed local admin uses a password; every other user must sign in through Google OAuth. Until an admin configures Google client credentials, the box is effectively single-user, and users without a Google account can never log in. *(`backend/internal/service/auth/`)*
-- **No password reset flow.** Recovering a lost owner password requires manually deleting `local-admin.json` on the host, then running `remote setup-token` to print a fresh setup link (deleting the credential alone leaves the claim gated).
+- **No password reset flow.** Recovering a lost owner password requires manually deleting `local-admin.json` on the host, then running `sudo remote setup-token` to print a fresh setup link (deleting the credential alone leaves the claim gated).
 - **TOTP 2FA, single-active-session enforcement, sign-in history, and recovery-code alerting exist but are opt-in per account, off by default, and each independently toggleable** from Settings → Security. An account that leaves all four off is unaffected by any of them: no server-side session lookup, no history file, no alert field, and its sessions remain the plain 30-day stateless tokens described below. There is still no admin-facing "force disable 2FA" affordance for a member who has lost both their authenticator and all recovery codes — the local admin's only lever today is manually deleting that account's `DATA_DIR/twofactor/<hash>.json` file on the host, mirroring the existing `local-admin.json` recovery path above. Note also that TOTP codes are single-use: signing in twice inside the same 30-second step requires waiting for the authenticator to roll to the next code.
 - **Sessions remain stateless by default; single-session revocation is opt-in, not universal.** A session that never turned on "single active session" (the vast majority) still cannot be individually revoked — the only levers for it are deleting the user or rotating the global session key. Turning that preference on makes a new login on any device immediately invalidate the account's previous session.
 - **Flat admin/member roles.** There is no per-project "owner" tier. Any project member can read and change that project's secrets and edit its membership. Sharing a project shares its secrets.
-- **The per-project IDE is reachable by any invited user.** `<slug>.code.<host>` authenticates the registered user but does **not** check project membership, so any invited user can open any project's code editor. This is documented in [`docs/02-workspaces/02-auth-users-and-access.md`](02-workspaces/02-auth-users-and-access.md) and analyzed in the [threat model](threat-model.md).
-- **No public/anonymous sharing.** Every preview URL sits behind the platform session, so showing a prototype to an outside stakeholder means inviting them as a user first.
+- **Application web services are still reachable across the shared LXD bridge.** Public app routes check project membership and a running installation, but project containers have no lateral network isolation. A process inside another project container can connect directly to an application's unauthenticated port while it is installed. See the [threat model](threat-model.md).
+- **Public sharing covers app previews only, and is bearer-token access.** A project member can hand out a time-boxed public link to one `<slug>--<port>.dev.<host>` preview (default 24h, max 30 days, revocable, SHA-256-hashed at rest). Everything else — application web routes, the Agent Browser on port 6080, and the main application — still requires an invited account, and there is still no way to give an outsider read-only access to chats or files. Anyone who obtains a link is the viewer: there is no per-recipient identity, no password on the link, and no audit trail of who opened it. *(`backend/internal/service/share/`)*
 
 ## Agents
 
@@ -61,22 +61,37 @@ These are the constraints worth understanding before you deploy or rely on remot
   Remote does not load third-party provider modules from configuration or
   shared objects.
 
-- **Claude, Codex, and Kimi identity is a shared host singleton.** Those
-  credentials are authenticated once at host level and seeded into every
-  container, so all users and projects share the same provider accounts and
-  subscription quotas. There is no per-user or per-project identity for those
-  providers, and each allows only one interactive login at a time.
-- **MiniMax identity is an installation-wide Token Plan subscription key.** The key is stored in a
-  mode-`0600` control-plane file without application-level encryption and is
-  injected into every MiniMax run. MiniMax uses a separate `/root/.minimax`
+- **Kimi identity and the Claude/Codex saved-account vault are host-wide.**
+  Claude and Codex can each retain several named subscription logins. A chat
+  selects one account, and Remote materializes it in a stable private provider
+  home keyed by account, project, and chat; concurrent chats may therefore use
+  different accounts without switching one shared credential file. The vault
+  is still installation-wide rather than per-user or per-project: anyone who
+  can use a provider can consume any saved account exposed by the installation.
+  A reconnect must sign in to the same account.
+  If the selected credential cannot be written to the host, the selection
+  still stands and the request reports the failure; Remote writes it again
+  before legacy runs that have no saved account and refuses those runs while
+  that keeps failing.
+  Codex validation asks the Codex app server to refresh the account; Claude's
+  `claude auth status` reads only local files, so a Claude account whose
+  tokens were revoked upstream is detected on its next run rather than when it
+  is selected. Claude's account identity also comes from the locally stored
+  profile, so Remote cannot tell when a project container keeps that profile
+  but swaps the tokens it syncs back (see
+  [threat model](threat-model.md) finding 8). Kimi still retains only one host
+  login.
+- **MiniMax identities are installation-wide named Token Plan subscription keys.** Each key is stored in a
+  mode-`0600` control-plane file without application-level encryption, and only
+  the chat's selected key is injected into that MiniMax run. MiniMax uses a separate `/root/.minimax`
   runtime home, but container root can also read the other mounted provider
   homes; that separation is not a security boundary.
-- **Codex's API-key guard does not inspect newer project-local auth before a
-  run.** Remote rejects a host `auth.json` explicitly marked `apikey` and clears
-  `OPENAI_API_KEY`, but credential seeding does not overwrite a newer
-  project-local record. That record can therefore drive a project run. A
-  successful pull detects the API-key mode only afterward, and the sync error
-  is logged without failing the completed run.
+- **Codex's API-key guard inspects only the host record.** Remote rejects a
+  host `auth.json` explicitly marked `apikey`, clears `OPENAI_API_KEY`, and
+  pushes the host record over the project copy before every project run. An
+  agent can still switch its project copy to API-key mode during a run; a
+  successful pull detects that only afterward, and the sync error is logged
+  without failing the completed run.
 - **The supported Antigravity authentication flow is project-local.** Users
   run `agy` in the project Terminal. Its credential and conversation state
   under `/root/.gemini/antigravity-cli` is a durable provider mount and survives
@@ -125,21 +140,16 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Scheduled tasks
 
-- **Repeated runs grow one provider session.** A scheduled task resumes the
-  same chat/provider session, so long-lived recurrence accumulates context and
-  token cost. Use `maxRuns`, complete bounded monitors, and periodically create
-  a fresh task/chat.
-- **Missed occurrences are coalesced, not replayed.** After downtime or a busy
-  chat, Remote runs at most one overdue follow-up under the default overlap
-  policy. It is not a durable event-processing queue with exactly-once replay.
-- **Creation currently starts through the agent.** The drawer can arm, edit,
-  pause, resume, run, and delete tasks, but it has no direct create form.
-  Select the Scheduled Tasks skill and explicitly ask the agent to create the
-  parked definition.
-- **The scheduler is still single-process and file-backed.** Claims survive in
-  `scheduled-tasks/tasks.json`, but timer ownership, concurrency accounting,
-  and execution live in the one backend process. There is no distributed
-  scheduler or external queue.
+- Recurrence resumes the same provider session and consumes context and quota.
+  Use bounded `maxRuns` where appropriate.
+- The project application must be installed and running. Stop pauses delivery;
+  uninstall deletes instance tasks.
+- Missed cron occurrences are coalesced. Claims retry after host crashes, so
+  interrupted work may repeat; delivery is at least once across restarts.
+- Definitions are created through the agent. The application popup manages
+  existing tasks but has no definition editor.
+- Legacy built-in task definitions remain on disk and must be recreated through
+  the application.
 
 ## Previews, IDE, and the Agent Browser
 
@@ -147,7 +157,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **Loopback-bound apps can't be previewed.** Port discovery deliberately excludes `127.0.0.1` binds, because Caddy proxies to the container's bridge address. Bind to `0.0.0.0` to get a preview URL.
 - **On-demand TLS means first-hit latency and CA dependency.** Each new project/port triggers an individual Let's Encrypt certificate at first visit, with a hard dependency on the CA being reachable and exposure to per-domain rate limits as projects × ports grow. There is no DNS-challenge wildcard option.
 - **One shared browser session per project.** The user and the agent drive the same Chromium profile and window (fixed 1366×768) — there is no per-agent or per-task browser isolation. Idle reaping counts any TCP connection to the VNC port as a viewer.
-- **Launch provisioning is best-effort.** Credential seeding, skill links, browser tooling, and code-server setup all swallow their errors, so a container can come up with a broken IDE, missing credentials, or no browser tooling with nothing surfaced until you try to use it.
+- **Launch provisioning is best-effort.** Credential seeding, skill links, and browser tooling swallow their errors, so a container can come up missing credentials or browser tooling. Project applications are installed explicitly; install errors surface through their application status.
 
 ## Workspace tools and files
 
@@ -164,6 +174,7 @@ These are the constraints worth understanding before you deploy or rely on remot
   receive Web Push notifications, but navigation remains network-first. Its
   service worker caches only a self-contained offline status page, not the app
   shell, chats, API data, or project content. Work cannot continue without a
-  connection. The IDE launcher at `code.<host>` is a separate PWA.
-- **The terminal has no reconnect logic.** A network blip ends the terminal view (unlike the chat/workspace sockets, which reconnect).
-- **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite; CI does not run the Go `go test` suite either (run it locally — see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+  connection.
+- **Terminal shells are not durable.** The Terminal application reconnects to the same shell after a dropped connection, but ends a shell that has had no viewer for 10 minutes, and ends every shell when the application is stopped, restarted, or upgraded.
+- **The Terminal application's port is not authenticated inside the container network.** Remote's gateway checks project membership, but the service itself listens on the project container's network without credentials, as other application web services do.
+- **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite.

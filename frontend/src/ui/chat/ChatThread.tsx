@@ -1,7 +1,9 @@
 import type { ComponentChildren, RefObject } from "preact";
-import type { ChatMeta, ChatStatus } from "../../models/chat";
-import type { ChatMessageBlock } from "../../models/chatMessage";
+import type { ChatMeta, ChatStatus, TranscriptIndexProgress } from "../../models/chat";
+import type { ChatMessageBlock, HydratedTextPart } from "../../models/chatMessage";
+import type { ChatFind } from "../../state/hooks/chat/useChatFind";
 import { ChatComposer, type ChatComposerProps } from "./composer/ChatComposer";
+import { ChatFindBar } from "./find/ChatFindBar";
 import { JumpToLatestButton } from "./messages/JumpToLatestButton";
 import { MessageList } from "./messages/MessageList";
 import { ThreadHeader } from "./header/ThreadHeader";
@@ -9,10 +11,14 @@ import type { ChatInteractionResponder } from "../../types/chatApi";
 
 export function ChatThread({
   chat,
+  find,
   blocks,
+  hydratedTextPart,
   hasOlder,
   loadingOlder,
+  indexingProgress,
   status,
+  locallyStartedTurn,
   error,
   composer,
   showJump,
@@ -28,12 +34,17 @@ export function ChatThread({
   onRewind,
   actions,
   projectName,
+  streamingPresentation,
 }: {
   chat: ChatMeta;
+  find: ChatFind;
   blocks: ChatMessageBlock[];
+  hydratedTextPart?: HydratedTextPart | null;
   hasOlder: boolean;
   loadingOlder: boolean;
+  indexingProgress: TranscriptIndexProgress | null;
   status: ChatStatus;
+  locallyStartedTurn: boolean;
   error: string | null;
   composer: ChatComposerProps;
   showJump: boolean;
@@ -43,7 +54,7 @@ export function ChatThread({
   onHamburger: () => void;
   onScroll: () => void;
   onJumpToBottom: () => void;
-  onAnswerQuestion: (text: string) => void;
+  onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
@@ -51,6 +62,7 @@ export function ChatThread({
    *  strip below it on mobile — only ever one of the two is visible. */
   actions: ComponentChildren;
   projectName?: string;
+  streamingPresentation: "blocks" | "tokens";
 }) {
   return (
     <div class="codex-thread flex-1 h-full flex min-h-0 overflow-hidden bg-canvas">
@@ -69,9 +81,13 @@ export function ChatThread({
         <div class="relative flex-1 min-h-0">
           <MessageList
             status={status}
+            locallyStartedTurn={locallyStartedTurn}
+            streamingPresentation={streamingPresentation}
             blocks={blocks}
+            hydratedTextPart={hydratedTextPart}
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
+            indexingProgress={indexingProgress}
             error={error}
             chatId={chat.id}
             cwd={chat.cwd}
@@ -84,6 +100,7 @@ export function ChatThread({
             onLoadOlder={onLoadOlder}
             onRewind={onRewind}
           />
+          <ChatFindBar find={find} hasUnloadedMessages={hasOlder} />
           {showJump && <JumpToLatestButton onClick={onJumpToBottom} />}
         </div>
 

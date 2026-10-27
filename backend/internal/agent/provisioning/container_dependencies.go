@@ -51,12 +51,6 @@ type BrowserProvisioner interface {
 	EnsureCore(context.Context, string) error
 }
 
-// ScheduleToolsProvisioner publishes the provider-neutral schedule CLI and
-// its selected skill into a project workspace.
-type ScheduleToolsProvisioner interface {
-	Ensure(context.Context, string) error
-}
-
 // ContainerLifecycle owns lifecycle settings needed by agent runs.
 type ContainerLifecycle interface {
 	EnsureBootAutostart(context.Context, string) error
@@ -71,7 +65,6 @@ type ContainerDependencies struct {
 	Workspace     WorkspaceProvisioner
 	RuntimeAssets RuntimeAssetProvisioner
 	Browser       BrowserProvisioner
-	ScheduleTools ScheduleToolsProvisioner
 	Lifecycle     ContainerLifecycle
 }
 
@@ -82,7 +75,6 @@ func (d ContainerDependencies) IsZero() bool {
 		d.Workspace == nil &&
 		d.RuntimeAssets == nil &&
 		d.Browser == nil &&
-		d.ScheduleTools == nil &&
 		d.Lifecycle == nil
 }
 
@@ -109,9 +101,6 @@ func (d ContainerDependencies) Validate() error {
 	}
 	if d.Browser == nil {
 		missing = append(missing, "browser")
-	}
-	if d.ScheduleTools == nil {
-		missing = append(missing, "schedule tools")
 	}
 	if d.Lifecycle == nil {
 		missing = append(missing, "lifecycle")

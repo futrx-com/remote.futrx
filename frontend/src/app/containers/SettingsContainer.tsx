@@ -8,25 +8,41 @@ import { useUserSettingsContext } from "../../state/context/UserSettingsContext"
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
-import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
+import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
+import { useReleaseNotes } from "../../state/hooks/server/useReleaseNotes";
 import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
 import { useUsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { usageApi } from "../../api/usageApi";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
+import { extensionHost } from "../extensions/extensionHost";
 
 export function SettingsContainer({
+  selfUpdate,
   onBack,
   onHamburger,
+  activeTab,
+  onTabChange,
 }: {
+  selfUpdate: SelfUpdateController;
   onBack: () => void;
   onHamburger: () => void;
+  activeTab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
 }) {
   const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
-  const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
+  const releaseNotes = useReleaseNotes(
+    activeTab === "updates" && auth.isAdmin && !selfUpdate.status?.lastCheck?.error,
+    selfUpdate.status?.lastCheck?.latestTag,
+  );
   const security = useSecuritySettings(activeTab === "security");
+  const applications = useGlobalApplications({
+    enabled: activeTab === "applications" && auth.isAdmin,
+    managesPackages: auth.isAdmin,
+    onApplicationsSettled: extensionHost.sync,
+  });
   const usageDashboard = useUsageDashboard(activeTab === "usage");
   const [usageRebuilding, setUsageRebuilding] = useState(false);
   const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
@@ -48,7 +64,10 @@ export function SettingsContainer({
       setUsageRebuilding(false);
     }
   }, [usageDashboard]);
-  const push = usePushNotifications(activeTab === "notifications");
+  const push = usePushNotifications(
+    activeTab === "notifications",
+    auth.email || auth.adminEmail
+  );
 
   return (
     <SettingsPage
@@ -61,6 +80,7 @@ export function SettingsContainer({
       serverInfoRefreshing={serverInfo.refreshing}
       serverInfoError={serverInfo.error}
       selfUpdate={selfUpdate.status}
+      releaseNotes={releaseNotes}
       selfUpdateLoading={selfUpdate.loading}
       selfUpdateChecking={selfUpdate.checking}
       selfUpdateApplying={selfUpdate.applying}
@@ -78,12 +98,13 @@ export function SettingsContainer({
       push={push}
       onBack={onBack}
       onHamburger={onHamburger}
-      onTabChange={setActiveTab}
+      onTabChange={onTabChange}
       onRefreshServerInfo={serverInfo.refresh}
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
+      applications={applications}
     />
   );
 }

@@ -9,6 +9,8 @@ import (
 	"context"
 	"io"
 	"os/exec"
+
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 )
 
 // Client is the value used to talk to the local LXD CLI. Construct with New().
@@ -32,8 +34,7 @@ func (c *Client) Available() bool {
 // (e.g. distinguish "not found" from other failures).
 func (c *Client) Run(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, c.bin, args...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return command.CaptureOutput(ctx, cmd)
 }
 
 // RunStdin is Run with stdin attached. Used by callers that pipe content into
@@ -41,6 +42,5 @@ func (c *Client) Run(ctx context.Context, args ...string) (string, error) {
 func (c *Client) RunStdin(ctx context.Context, stdin io.Reader, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, c.bin, args...)
 	cmd.Stdin = stdin
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return command.CaptureOutput(ctx, cmd)
 }

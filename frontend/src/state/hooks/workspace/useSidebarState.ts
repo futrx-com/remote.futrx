@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import type { ChatMeta } from "../../../models/chat";
 import type { ProjectMeta } from "../../../models/project";
 import { sidebarPreferenceService } from "../../../services/workspace/sidebarPreferenceService.ts";
+import { useDismissShortcut } from "../shared/useDismissShortcut.ts";
 
 export function useSidebarState(
   open: boolean,
@@ -9,7 +10,6 @@ export function useSidebarState(
   projects: ProjectMeta[],
   chats: ChatMeta[]
 ) {
-  const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
     sidebarPreferenceService.readCollapsedProjects()
   );
@@ -17,14 +17,7 @@ export function useSidebarState(
     sidebarPreferenceService.readCollapsed()
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  useDismissShortcut(onClose, { enabled: open });
 
   useEffect(() => {
     // Nothing to seed before projects load, and pruning against an empty list
@@ -53,8 +46,6 @@ export function useSidebarState(
   }
 
   return {
-    query,
-    setQuery,
     collapsed,
     toggleCollapsed,
     sidebarCollapsed,

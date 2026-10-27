@@ -49,43 +49,36 @@ class WorkspaceSidebarService {
     return next.every((id, index) => id === ids[index]) ? null : next;
   }
 
-  model(chats: ChatMeta[], projects: ProjectMeta[], rawQuery: string): WorkspaceSidebarModel {
-    const query = rawQuery.trim().toLowerCase();
-    const buckets = this.bucketChatsByProject(chats);
-    const sortedProjects = [...projects].sort((left, right) => this.compareProjects(left, right));
-
-    const visibleProjects = sortedProjects
-      .map((project) => {
-        const projectChats = buckets.byProject.get(project.id) ?? [];
-        const projectMatches = this.matchesProject(project, query);
-        const filteredChats = query
-          ? projectChats.filter((chat) => projectMatches || this.matchesChat(chat, query))
-          : projectChats;
-        return { project, chats: projectChats, filteredChats };
-      })
-      .filter(
-        (node) =>
-          !query || this.matchesProject(node.project, query) || node.filteredChats.length > 0
-      );
-
-    const visibleLooseChats = buckets.loose.filter((chat) => this.matchesChat(chat, query));
+  /** Group chats under their projects, in the sidebar's display order. */
+  model(chats: ChatMeta[], projects: ProjectMeta[]): WorkspaceSidebarModel {
+    const buckets = this.bucketChatsByProject(chats, new Set(projects.map((p) => p.id)));
+    const visibleProjects = [...projects]
+      .sort((left, right) => this.compareProjects(left, right))
+      .map((project) => ({
+        project,
+        chats: buckets.byProject.get(project.id) ?? [],
+      }));
 
     return {
       visibleProjects,
-      visibleLooseChats,
+      visibleLooseChats: buckets.loose,
       totalChats: chats.length,
       totalProjects: projects.length,
-      hasMatches: visibleProjects.length > 0 || visibleLooseChats.length > 0,
-      query,
     };
   }
 
-  private bucketChatsByProject(chats: ChatMeta[]): ChatBuckets {
+  /** `knownProjectIds` is what keeps a chat whose project was deleted visible:
+   *  bucketed under a project that is never rendered, it would vanish from the
+   *  sidebar entirely, so a dangling id counts as no project at all. */
+  private bucketChatsByProject(
+    chats: ChatMeta[],
+    knownProjectIds: ReadonlySet<string>
+  ): ChatBuckets {
     const byProject = new Map<string, ChatMeta[]>();
     const loose: ChatMeta[] = [];
 
     for (const chat of chats) {
-      if (!chat.projectId) {
+      if (!chat.projectId || !knownProjectIds.has(chat.projectId)) {
         loose.push(chat);
         continue;
       }
@@ -101,18 +94,6 @@ class WorkspaceSidebarService {
     loose.sort((left, right) => right.lastMessageAt - left.lastMessageAt);
 
     return { byProject, loose };
-  }
-
-  private matchesChat(chat: ChatMeta, query: string): boolean {
-    if (!query) return true;
-    return `${chat.title} ${chat.cwd ?? ""} ${chat.model ?? ""}`
-      .toLowerCase()
-      .includes(query);
-  }
-
-  private matchesProject(project: ProjectMeta, query: string): boolean {
-    if (!query) return true;
-    return `${project.name} ${project.slug}`.toLowerCase().includes(query);
   }
 
   private compareProjects(left: ProjectMeta, right: ProjectMeta): number {

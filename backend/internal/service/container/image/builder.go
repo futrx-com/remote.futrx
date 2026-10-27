@@ -38,7 +38,7 @@ const (
 	baseImageNetworkTimeout  = 90 * time.Second
 	baseImageNetworkPoll     = 2 * time.Second
 	baseImageProgressTick    = 30 * time.Second
-	baseImageBuildStageCount = 6
+	baseImageBuildStageCount = 5
 	deleteTimeout            = 30 * time.Second
 )
 
@@ -108,14 +108,13 @@ func (b *Builder) reportProgress(progress Progress) {
 // Builder owns the disposable builder lifecycle and publishes the
 // profile-derived development image consumed by project containers.
 type Builder struct {
-	runtime                 Runtime
-	profiles                ProfileSource
-	browserInstallScript    string
-	codeServerInstallScript []byte
-	networkWarmup           time.Duration
-	networkTimeout          time.Duration
-	networkPoll             time.Duration
-	progress                ProgressReporter
+	runtime              Runtime
+	profiles             ProfileSource
+	browserInstallScript string
+	networkWarmup        time.Duration
+	networkTimeout       time.Duration
+	networkPoll          time.Duration
+	progress             ProgressReporter
 }
 
 // NewBuilder returns an image builder configured with the feature install
@@ -124,18 +123,16 @@ func NewBuilder(
 	runtime Runtime,
 	profileSource ProfileSource,
 	browserInstallScript string,
-	codeServerInstallScript []byte,
 	progress ProgressReporter,
 ) *Builder {
 	return &Builder{
-		runtime:                 runtime,
-		profiles:                profileSource,
-		browserInstallScript:    browserInstallScript,
-		codeServerInstallScript: codeServerInstallScript,
-		networkWarmup:           baseImageNetworkWarmup,
-		networkTimeout:          baseImageNetworkTimeout,
-		networkPoll:             baseImageNetworkPoll,
-		progress:                progress,
+		runtime:              runtime,
+		profiles:             profileSource,
+		browserInstallScript: browserInstallScript,
+		networkWarmup:        baseImageNetworkWarmup,
+		networkTimeout:       baseImageNetworkTimeout,
+		networkPoll:          baseImageNetworkPoll,
+		progress:             progress,
 	}
 }
 
@@ -210,14 +207,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return fmt.Errorf("agent browser install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(4, "Installing the browser IDE", func() (string, error) {
-		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, string(b.codeServerInstallScript))
-	})
-	if err != nil {
-		return fmt.Errorf("code-server install script: %w; output: %s", err, output.TruncateTail(out, 2000))
-	}
-
-	out, err = b.runBuildStage(5, "Finalizing the builder container", func() (string, error) {
+	out, err = b.runBuildStage(4, "Finalizing the builder container", func() (string, error) {
 		return b.runtime.StopContainer(bctx, baseImageBuilderName)
 	})
 	if err != nil {
@@ -226,7 +216,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 
 	pctx, pcancel := context.WithTimeout(ctx, baseImagePublishTimeout)
 	defer pcancel()
-	out, err = b.runBuildStage(6, "Publishing the reusable workspace image", func() (string, error) {
+	out, err = b.runBuildStage(5, "Publishing the reusable workspace image", func() (string, error) {
 		return b.runtime.PublishImage(
 			pctx,
 			baseImageBuilderName,

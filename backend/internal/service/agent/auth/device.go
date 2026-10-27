@@ -12,7 +12,12 @@ import (
 	"time"
 )
 
-const subscriptionBuffer = 8
+const (
+	subscriptionBuffer = 8
+	// deviceOutputKeep bounds the raw login output retained for the
+	// completion resolver.
+	deviceOutputKeep = 4096
+)
 
 var ansiEscapeRE = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
@@ -41,19 +46,22 @@ type DeviceStatusBuilder[S any] func(DeviceState) S
 // DeviceConfig supplies the provider-specific policy around the shared device-login
 // lifecycle.
 type DeviceConfig[S any] struct {
-	Command           string
-	Args              []string
-	Env               func([]string) []string
-	NotFound          error
-	StartErrorLabel   string
-	ReadyTimeout      time.Duration
-	LoginTimeout      time.Duration
-	LoginTTL          time.Duration
-	URLPattern        *regexp.Regexp
-	CodePattern       *regexp.Regexp
-	Authenticated     func() bool
-	BuildStatus       func() DeviceStatusBuilder[S]
-	ResolveCompletion func(error) DeviceCompletion
+	Command         string
+	Args            []string
+	Env             func([]string) []string
+	NotFound        error
+	StartErrorLabel string
+	ReadyTimeout    time.Duration
+	LoginTimeout    time.Duration
+	LoginTTL        time.Duration
+	URLPattern      *regexp.Regexp
+	CodePattern     *regexp.Regexp
+	Authenticated   func() bool
+	BuildStatus     func() DeviceStatusBuilder[S]
+	// ResolveCompletion receives the command's exit error and the cleaned
+	// tail of its output, which explains a login that ended without
+	// credentials.
+	ResolveCompletion func(err error, output string) DeviceCompletion
 }
 
 // DeviceService owns one provider's device-code login process and streams status
@@ -65,6 +73,10 @@ type DeviceService[S any] struct {
 	device DeviceState
 	cancel context.CancelFunc
 	subs   map[chan S]struct{}
+	output string
+	// generation identifies the current login process so a replaced one
+	// cannot report its exit or output as the current login's.
+	generation uint64
 }
 
 func NewDeviceService[S any](config DeviceConfig[S]) *DeviceService[S] {
@@ -147,6 +159,9 @@ func (s *DeviceService[S]) StartDeviceLogin(ctx context.Context) (DeviceState, e
 	}
 	s.device = state
 	s.cancel = cancel
+	s.output = ""
+	s.generation++
+	generation := s.generation
 
 	ready := make(chan struct{})
 	var readyOnce sync.Once
@@ -168,12 +183,19 @@ func (s *DeviceService[S]) StartDeviceLogin(ctx context.Context) (DeviceState, e
 		return state, err
 	}
 
-	go s.consumeDeviceLoginOutput(reader, markReady)
+	consumed := make(chan struct{})
+	go func() {
+		s.consumeDeviceLoginOutput(generation, reader, markReady)
+		close(consumed)
+	}()
 	done := make(chan struct{})
 	go func() {
 		err := cmd.Wait()
 		_ = writer.Close()
-		s.finishDeviceLogin(err)
+		// The final lines usually carry the CLI's own success or failure
+		// message, so resolve only after they have been read.
+		<-consumed
+		s.finishDeviceLogin(generation, err)
 		close(done)
 	}()
 
@@ -198,12 +220,16 @@ func (s *DeviceService[S]) deviceSnapshot() DeviceState {
 	return s.device
 }
 
-func (s *DeviceService[S]) consumeDeviceLoginOutput(reader io.Reader, markReady func()) {
+func (s *DeviceService[S]) consumeDeviceLoginOutput(generation uint64, reader io.Reader, markReady func()) {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		line := ansiEscapeRE.ReplaceAllString(scanner.Text(), "")
 		changed := false
 		s.mu.Lock()
+		if generation != s.generation {
+			s.mu.Unlock()
+			continue
+		}
 		if url := s.config.URLPattern.FindString(line); url != "" {
 			changed = changed || s.device.VerificationURI != url
 			s.device.VerificationURI = url
@@ -215,6 +241,10 @@ func (s *DeviceService[S]) consumeDeviceLoginOutput(reader io.Reader, markReady 
 				s.device.ExpiresAt = time.Now().Add(s.config.LoginTTL).Unix()
 			}
 		}
+		s.output += line + "\n"
+		if len(s.output) > deviceOutputKeep {
+			s.output = s.output[len(s.output)-deviceOutputKeep:]
+		}
 		ready := s.device.VerificationURI != "" && s.device.UserCode != ""
 		if changed {
 			s.broadcastLocked()
@@ -224,11 +254,18 @@ func (s *DeviceService[S]) consumeDeviceLoginOutput(reader io.Reader, markReady 
 			markReady()
 		}
 	}
+	// A line longer than the scanner buffer stops Scan early. Keep draining
+	// so the command is never blocked writing to a pipe nobody reads.
+	_, _ = io.Copy(io.Discard, reader)
 }
 
-func (s *DeviceService[S]) finishDeviceLogin(err error) {
+func (s *DeviceService[S]) finishDeviceLogin(generation uint64, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if generation != s.generation {
+		// A newer login replaced this process; its state is not ours.
+		return
+	}
 
 	if s.cancel != nil {
 		s.cancel()
@@ -237,7 +274,7 @@ func (s *DeviceService[S]) finishDeviceLogin(err error) {
 
 	state := s.device
 	state.Active = false
-	completion := s.config.ResolveCompletion(err)
+	completion := s.config.ResolveCompletion(err, OutputTail(s.output, completionOutputLimit))
 	state.Completed = completion.Completed
 	state.Error = completion.Error
 	s.device = state

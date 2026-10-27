@@ -5,19 +5,27 @@
 # Expects from caller:
 #   - log / ok / warn / err helpers
 #   - $INFRA_DIR (path to infra/ in the cloned repo)
-#   - $HOSTNAME (for diagnostic messages only)
+#   - $HOSTNAME (public hostname pinned in the bridge DNS)
 #   - $SKIP_DNS_CHECK (0 / 1)
 #
 # Sets in environment for later steps:
 #   - $LXD_BRIDGE_IP (for the resolved drop-in)
 set -euo pipefail
 
+step_01_host_deps() {
 export DEBIAN_FRONTEND=noninteractive
+# shellcheck source=../lib/host-apt.sh
+. "$INFRA_DIR/lib/host-apt.sh"
 
 # ───────────────── base apt deps ─────────────────
+# Only what Remote itself needs. Tools that exist for one optional installable
+# application — restic, for instance — are not listed here: the application
+# declares its own host tool and Remote downloads it, checksum-pinned, when
+# someone installs that application. A host that installs none of them keeps
+# exactly the packages below.
 log "apt update + base packages"
-apt-get update -qq
-apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base
+host_apt_get update -qq
+apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base dnsutils
 
 # ───────────────── swap (spike buffer) ─────────────────
 # Running several dev servers at once produces a large, short-lived RSS spike
@@ -49,17 +57,17 @@ for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION; do
 done
 
 # ───────────────── Node (pinned major) ─────────────────
-CURRENT_NODE_MAJOR=""
-CURRENT_NODE_VERSION=""
-if command -v node >/dev/null; then
-    CURRENT_NODE_VERSION="$(node -v | sed 's/^v//')"
-    CURRENT_NODE_MAJOR="${CURRENT_NODE_VERSION%%.*}"
+CURRENT_NODE_VERSION="$(node -p 'process.versions.node' 2>/dev/null || true)"
+if [[ ! "$CURRENT_NODE_VERSION" =~ ^${NODE_MAJOR}\.[0-9]+\.[0-9]+$ ]] \
+   || ! dpkg --compare-versions "$CURRENT_NODE_VERSION" ge "$NODE_MIN_VERSION"; then
+    printf 'Installing Node %s.x (>=%s) from NodeSource\n' "$NODE_MAJOR" "$NODE_MIN_VERSION"
+    install_nodesource_node "$NODE_MAJOR" || return 1
 fi
-if [ "$CURRENT_NODE_MAJOR" != "$NODE_MAJOR" ] \
-   || dpkg --compare-versions "${CURRENT_NODE_VERSION:-0}" lt "$NODE_MIN_VERSION"; then
-    log "Installing Node ${NODE_MAJOR}.x (>=${NODE_MIN_VERSION}) from NodeSource (was ${CURRENT_NODE_VERSION:-missing})"
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-    apt-get install -y -qq nodejs
+CURRENT_NODE_VERSION="$(node -p 'process.versions.node' 2>/dev/null || true)"
+if [[ ! "$CURRENT_NODE_VERSION" =~ ^${NODE_MAJOR}\.[0-9]+\.[0-9]+$ ]] \
+   || ! dpkg --compare-versions "$CURRENT_NODE_VERSION" ge "$NODE_MIN_VERSION"; then
+    printf 'Node %s.x >=%s is required; installed runtime is missing, incompatible, or below the required version\n' "$NODE_MAJOR" "$NODE_MIN_VERSION" >&2
+    return 1
 fi
 ok "node $(node -v)  npm $(npm -v)"
 
@@ -99,13 +107,10 @@ ok "ports 80 + 443 OK"
 
 # ───────────────── Caddy ─────────────────
 if ! command -v caddy >/dev/null; then
-    log "Installing Caddy (Cloudsmith repo)"
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-        > /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update -qq
-    apt-get install -y -qq caddy
+    log "Installing Caddy (verified official GitHub package)"
+    # shellcheck source=../lib/caddy-package.sh
+    . "$INFRA_DIR/lib/caddy-package.sh"
+    install_caddy_from_github
 fi
 ok "$(caddy version | head -1)"
 
@@ -235,6 +240,19 @@ else
     export LXD_BRIDGE_IP
 fi
 
+# Containers must reach the host API without public-IP hairpin routing or
+# inheriting a loopback entry for HOSTNAME from the host's /etc/hosts.
+# update.sh invokes this step through install.sh, including --skip-workspaces.
+# This check is independent of --skip-dns-check (public DNS propagation).
+# shellcheck source=../lib/container-api-dns.sh
+. "$INFRA_DIR/lib/container-api-dns.sh"
+log "Configuring $LXD_BRIDGE DNS: $HOSTNAME → ${LXD_BRIDGE_IP:-missing}"
+if ! ensure_container_api_dns "$LXD_BRIDGE" "$HOSTNAME" "${LXD_BRIDGE_IP:-}"; then
+    err "Container API DNS setup failed; stopping host convergence."
+    exit 1
+fi
+ok "bridge DNS resolves $HOSTNAME only to $LXD_BRIDGE_IP"
+
 # ───────────────── systemd-resolved: forward *.lxd to the bridge ─────────────────
 if [ -n "${LXD_BRIDGE_IP:-}" ] && systemctl is-active --quiet systemd-resolved; then
     log "systemd-resolved drop-in for *.lxd → ${LXD_BRIDGE_IP}"
@@ -243,3 +261,4 @@ if [ -n "${LXD_BRIDGE_IP:-}" ] && systemctl is-active --quiet systemd-resolved; 
                     /etc/systemd/resolved.conf.d/lxd.conf
     systemctl restart systemd-resolved
 fi
+}

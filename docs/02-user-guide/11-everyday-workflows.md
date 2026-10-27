@@ -71,22 +71,16 @@ provider-home mounts.
 
 ## Schedule a monitor and walk away
 
-1. Open the project chat that should own the future work.
-2. Select **Scheduled Tasks** in **Skill set**.
-3. Ask the agent to create a one-time or recurring task with an explicit
-   timezone, completion condition, and maximum run count.
-4. Wait for the agent to report the parked task.
-5. Open **Schedules** in the chat header.
-6. Review the saved prompt, timing, timezone, and limit.
-7. Select **Arm**.
-8. Close the browser if desired. The host scheduler owns the timer.
-9. Return later to the same chat to inspect each scheduled run in the normal
-   transcript.
+1. Install and start **Scheduled Tasks** in the project’s Applications page.
+2. Open the chat that should own future work.
+3. Ask the agent to schedule a check with an explicit timezone, completion
+   condition and maximum run count.
+4. Wait for the active task’s ID and timing, then close the browser if desired.
+5. Return to the same chat to read its ordinary agent turns.
 
-Pause the task when monitoring should stop temporarily. Let the agent complete
-the standing task only after the declared goal is actually terminal. See
-[Scheduled tasks](09-scheduled-tasks.md) for overlap, ownership, and server
-guardrails.
+Use the application clock action to pause, resume or delete tasks. Let the agent
+complete its current schedule after the goal is terminal. See
+[Scheduled tasks](09-scheduled-tasks.md).
 
 ## Give an agent a signed-in website
 

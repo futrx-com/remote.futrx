@@ -9,10 +9,25 @@ import (
 func NewStaticHandler(static fs.FS) http.Handler {
 	files := http.FileServer(http.FS(static))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+			(strings.HasPrefix(r.URL.Path, "/chats/") || r.URL.Path == "/settings" || strings.HasPrefix(r.URL.Path, "/settings/")) &&
+			!strings.Contains(r.URL.Path, ".") {
+			w.Header().Set("Cache-Control", "no-cache")
+			copyRequest := r.Clone(r.Context())
+			copyURL := *r.URL
+			copyURL.Path = "/"
+			copyRequest.URL = &copyURL
+			files.ServeHTTP(w, copyRequest)
+			return
+		}
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/assets/"):
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		case r.URL.Path == "/" || strings.HasSuffix(r.URL.Path, ".html"):
+			w.Header().Set("Cache-Control", "no-cache")
+		case r.URL.Path == "/build.json":
+			// Open pages poll this to learn that a deploy replaced their
+			// frontend; a cached copy would hide the new build from them.
 			w.Header().Set("Cache-Control", "no-cache")
 		case r.URL.Path == "/sw.js":
 			// The service worker is the app's update mechanism; a cached copy

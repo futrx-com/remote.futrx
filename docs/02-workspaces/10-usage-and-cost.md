@@ -1,6 +1,6 @@
 # Usage and cost
 
-Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is spending, who ran it, on which provider and model, and how much it cost.
+Every completed agent run is written to an append-only ledger under `DATA_DIR/usage`. The **Settings → Usage** page reads that ledger and answers the questions an operator of a shared box actually has: which project is using tokens, who ran it, and on which provider and model. The page shows token usage only. The ledger also prices each run, as described below, and the usage API still returns that cost, but no dollar amount is shown in the UI.
 
 Two things this document is careful about, because getting them wrong makes the numbers worse than useless:
 
@@ -39,14 +39,15 @@ Files rotate **monthly by the UTC month of the run**, so a query for a date rang
 | --- | --- |
 | `at` | Run completion time, Unix milliseconds |
 | `projectId`, `projectSlug` | Empty for a loose (project-less) chat |
-| `chatId`, `runId` | `runId` is random per live run; a rebuilt record uses `<chatId>-<seq>` |
-| `userEmail` | The account that started the turn, or the owner of a scheduled task |
+| `chatId`, `runId` | `runId` is the turn ID for live runs and rebuilds; legacy events without it fall back to a matching ledger record or `<chatId>-<seq>` |
+| `userEmail` | The account that started the turn, or the owner captured by an application when accepting work |
+| `applicationId`, `applicationRequestId` | Application origin and its logical request ID for an application-started turn; recorded live and preserved on rebuild |
 | `provider`, `model` | `claude`, `codex`, `minimax`, `kimi`, `antigravity`, and the model id when known |
 | `inputTokens`, `outputTokens`, `cacheReadTokens`, `cacheWriteTokens` | Disjoint token buckets; `inputTokens` is uncached input. All are zero when the provider reports nothing |
 | `costUsd` | **Absent** when the cost is unknown |
 | `estimated` | `true` when `costUsd` came from the price table rather than the provider |
 | `durationMs`, `turns` | Claude Code only |
-| `scheduled` | `true` for an unattended scheduled turn |
+| `scheduled` | Legacy scheduled-task marker; new application turns use application identity rather than this flag |
 
 Only **completed** runs are recorded. A failed turn's token counts are not persisted in the chat event log, so counting them live would make the ledger impossible to reproduce from disk — see [Known gaps](#known-gaps).
 
@@ -72,7 +73,7 @@ cost = (uncachedInput × inputPerMTok
       + cacheWrite × cacheWritePerMTok) / 1_000_000
 ```
 
-In the UI, an all-estimated total is prefixed with `~`, a partly estimated total is suffixed with `*`, and unpriced runs are called out under the cost tile.
+The UI does not show cost. It stays in the ledger and in the usage API's `costUsd`, `estimatedCostUsd`, and `unpricedRuns` fields.
 
 ## Editing the price table
 
@@ -128,12 +129,30 @@ Editing prices **does not retroactively change existing records.** Run a rebuild
 **Settings → Usage** shows, for the selected window:
 
 - A range picker: 7 days, 30 days, this month, or a custom pair of dates. All ranges are bounded in **UTC**, matching how the ledger buckets days.
-- KPI tiles: total tokens, estimated cost, runs, active projects.
-- A per-day bar chart (inline SVG, no chart library), switchable between tokens and cost.
+- KPI tiles: total tokens, runs, active projects.
+- A per-day bar chart of tokens (inline SVG, no chart library).
 - A table grouped by project, user, provider, model, or day. While grouped by project, selecting a row drills down to that project's individual runs.
 - For administrators, a **Rebuild usage ledger** button.
+- Above the ledger, **Plan limits** once a subscription account has reported a window. See [Plan limits](#plan-limits).
 
-The project page header additionally shows a one-line month-to-date summary for that project.
+The project page header additionally shows a one-line month-to-date token and run count for that project.
+
+## Plan limits
+
+The ledger counts what this platform spent. A subscription plan is spent from everywhere its account is used, including an operator's laptop, so only the vendor knows how much is left. **Plan limits** shows each subscription account's five-hour and weekly limits the way the provider's own CLI shows them: Claude Code's `/usage` and Codex's `/status`.
+
+| Provider | Account type | How Remote reads it | How it is shown |
+| --- | --- | --- | --- |
+| **Claude** | Saved Claude subscription logins | Claude Code's `get_usage` control request, the data behind `/usage` | **Current session** and **Current week (all models)**, as a percentage used |
+| **Codex** | Saved ChatGPT logins | The app server's `account/rateLimits/read`, the data behind `/status` | **5h limit** and **Weekly limit**, as a percentage left; a plan with only a weekly limit shows only that |
+| **MiniMax** | Saved Token Plan keys | `GET /v1/token_plan/remains` with each saved key | **5h limit** and **Weekly limit**, as a percentage left when the coding bucket reports them |
+| **Kimi**, **Antigravity** | No saved accounts | Not read | — |
+
+While the Usage tab is open, the server asks each provider for every saved account's current limits, at most once a minute, and shows when each window resets. Claude and Codex use a headless CLI request that sends no prompt, so it spends none of the plan; if the CLI refreshes an expired sign-in, the refreshed login is saved back to the account by the same rules as a run. MiniMax uses its Token Plan API with the saved key. Runs keep the numbers current in between: Claude and Codex report their windows while they work.
+
+A plan belongs to one account, not to the provider. Each saved account is listed under its label with its email, plan type, and whether it is the active account. While a provider has no active saved account, chats without a pinned account run on its current login, whose limits appear under the provider name, or as **Current login** beside saved accounts. A removed account's reading is never shown, so one account's number is never presented under another's name.
+
+When an account cannot be read, for example because its sign-in has expired, it says so under the account and keeps its last reading, marked with its age. The section reads `GET /api/agent-quota`, available to any signed-in user. Readings persist across restarts in `DATA_DIR/agent-quota.json`.
 
 ## Rebuilding
 
@@ -155,9 +174,9 @@ cd /opt/remote.futrx/backend && go run ./cmd/usage-rebuild -data-dir /opt/remote
 
 The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebuild/main.go) and reads `DATA_DIR` from the environment when `-data-dir` is omitted.
 
-**A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. Attribution that only live recording knows (`userEmail`, `runId`, `scheduled`) is carried across from the current ledger wherever a key matches.
+**A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. New completion events preserve `userEmail`, the turn ID, and application/request identity. Rebuilds use those durable values, with matching live ledger records as a fallback for older events. Legacy scheduled attribution is retained when there is no application origin; if an older ledger incorrectly marked an application turn as scheduled, rebuilding repairs that flag from the persisted application identity.
 
-**What a rebuild cannot recover:** chat event logs do not store who typed a prompt. A run that was never recorded live comes back with an empty `userEmail`, so it appears under *Unattributed* when grouping by user, and a member cannot see it if it was a loose chat. Events written before completion events carried their provider can also be ambiguous if the chat later switched agents; a matching live ledger record preserves the original provider/model when one exists.
+**What a rebuild cannot recover:** older chat events may have no author data. If neither an event nor a matching live record has attribution, the run retains an empty `userEmail`, appears under *Unattributed* when grouping by user, and a member cannot see it if it was a loose chat. Events written before completion events carried their provider can also be ambiguous if the chat later switched agents; a matching live ledger record preserves the original provider/model when one exists.
 
 ## Known gaps
 
@@ -165,4 +184,4 @@ The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebu
 - **Antigravity and historical Kimi print-mode runs have no token telemetry.** Only run counts are meaningful for those records; the native Kimi adapter reports tokens for new runs.
 - **Cache-write pricing is approximate for non-Claude providers,** which generally do not separate cache creation from ordinary input tokens.
 - **The ledger has no retention policy.** Monthly files grow without rotation limits, like the chat event logs described in [Known limitations](../known-limitations.md).
-- **Rebuilt records lose user attribution** unless a live record already covered the same run, as described above.
+- **Legacy records may lack user attribution** when neither the event nor a matching live record identifies the user, as described above.

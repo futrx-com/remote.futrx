@@ -36,7 +36,7 @@ class CreateProjectFormLogic {
 
     for (let i = 2; i < 1000; i += 1) {
       const suffix = `-${i}`;
-      const stem = base.slice(0, PROJECT_MAX_SLUG_LEN - suffix.length);
+      const stem = base.slice(0, PROJECT_MAX_SLUG_LEN - suffix.length).replace(/-+$/, "");
       const candidate = `${stem}${suffix}`;
       if (!taken.has(candidate)) return candidate;
     }
@@ -47,6 +47,13 @@ class CreateProjectFormLogic {
     const trimmed = name.trim();
     const base = this.slugify(name);
     if (!trimmed) return { ok: false, slug: base, message: "" };
+    if (trimmed.includes("--")) {
+      return {
+        ok: false,
+        slug: base,
+        message: "Project name must not contain consecutive hyphens (--).",
+      };
+    }
     if (base.length < 2) {
       return { ok: false, slug: base, message: "Use at least 2 letters or numbers." };
     }

@@ -25,6 +25,7 @@ type Meta struct {
 	ID                   ID         `json:"id"`
 	Title                string     `json:"title"`
 	Provider             Provider   `json:"provider,omitempty"`
+	AccountID            string     `json:"accountId,omitempty"`
 	Sessions             SessionIDs `json:"sessions,omitempty"`
 	ClaudeSessionID      string     `json:"claudeSessionId,omitempty"`
 	CodexSessionID       string     `json:"codexSessionId,omitempty"`
@@ -55,16 +56,22 @@ type SkillRef struct {
 }
 
 type Event struct {
-	Seq                  int64           `json:"seq,omitempty"`
-	T                    int64           `json:"t"`
-	Type                 string          `json:"type"`
-	TurnID               string          `json:"turnId,omitempty"`
+	Seq    int64  `json:"seq,omitempty"`
+	T      int64  `json:"t"`
+	Type   string `json:"type"`
+	TurnID string `json:"turnId,omitempty"`
+	// UserEmail snapshots the authenticated Remote account that initiated the
+	// run. It stays with history even if the account is later removed.
+	UserEmail            string          `json:"userEmail,omitempty"`
 	Text                 string          `json:"text,omitempty"`
 	MessageID            string          `json:"messageId,omitempty"`
 	ID                   string          `json:"id,omitempty"`
 	Name                 string          `json:"name,omitempty"`
 	Input                json.RawMessage `json:"input,omitempty"`
 	Output               string          `json:"output,omitempty"`
+	OutputRef            string          `json:"outputRef,omitempty"`
+	OutputBytes          int64           `json:"outputBytes,omitempty"`
+	OutputTruncated      bool            `json:"outputTruncated,omitempty"`
 	IsError              bool            `json:"isError,omitempty"`
 	ToolName             string          `json:"toolName,omitempty"`
 	Subtype              string          `json:"subtype,omitempty"`
@@ -77,14 +84,19 @@ type Event struct {
 	Provider             Provider        `json:"provider,omitempty"`
 	Usage                json.RawMessage `json:"usage,omitempty"`
 	Message              string          `json:"message,omitempty"`
-	Running              bool            `json:"running,omitempty"`
+	// NotificationSummary is transient notification metadata. It is neither
+	// written to the event log nor exposed in the chat event wire format.
+	NotificationSummary string `json:"-"`
+	Running             bool   `json:"running,omitempty"`
 	// ScheduledTaskID marks events produced by a scheduled run rather than an
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
-	ScheduledTaskID string                `json:"scheduledTaskId,omitempty"`
-	Native          *agent.NativeEnvelope `json:"native,omitempty"`
-	InteractionID   string                `json:"interactionId,omitempty"`
-	Status          string                `json:"status,omitempty"`
+	ApplicationID        string                `json:"applicationId,omitempty"`
+	ApplicationRequestID string                `json:"applicationRequestId,omitempty"`
+	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
+	Native               *agent.NativeEnvelope `json:"native,omitempty"`
+	InteractionID        string                `json:"interactionId,omitempty"`
+	Status               string                `json:"status,omitempty"`
 }
 
 // NormalizeSessions makes the provider-keyed session map authoritative while
@@ -267,6 +279,7 @@ type CreateInput struct {
 	TmuxSession     string     `json:"tmuxSession,omitempty"`
 	Cwd             string     `json:"cwd,omitempty"`
 	Provider        Provider   `json:"provider,omitempty"`
+	AccountID       string     `json:"accountId,omitempty"`
 	Model           string     `json:"model,omitempty"`
 	Mode            string     `json:"mode,omitempty"`
 	ReasoningEffort string     `json:"reasoningEffort,omitempty"`
@@ -281,6 +294,7 @@ type UpdateInput struct {
 	Title           *string     `json:"title,omitempty"`
 	Cwd             *string     `json:"cwd,omitempty"`
 	Provider        *Provider   `json:"provider,omitempty"`
+	AccountID       *string     `json:"accountId,omitempty"`
 	Model           *string     `json:"model,omitempty"`
 	Mode            *string     `json:"mode,omitempty"`
 	ReasoningEffort *string     `json:"reasoningEffort,omitempty"`

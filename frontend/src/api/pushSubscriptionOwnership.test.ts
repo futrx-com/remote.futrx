@@ -10,7 +10,7 @@ const subscription = { endpoint: "https://push.example.com/browser-device" };
 
 test("an endpoint owned by the signed-in account remains subscribed", async () => {
   let invalidations = 0;
-  const retained = await reconcileSubscriptionOwnership(
+  const ownership = await reconcileSubscriptionOwnership(
     subscription,
     async () => true,
     async () => {
@@ -18,13 +18,13 @@ test("an endpoint owned by the signed-in account remains subscribed", async () =
     }
   );
 
-  assert.equal(retained, true);
+  assert.equal(ownership, "owned");
   assert.equal(invalidations, 0);
 });
 
 test("an endpoint belonging to another account is invalidated locally", async () => {
   let invalidations = 0;
-  const retained = await reconcileSubscriptionOwnership(
+  const ownership = await reconcileSubscriptionOwnership(
     subscription,
     async () => false,
     async () => {
@@ -32,13 +32,13 @@ test("an endpoint belonging to another account is invalidated locally", async ()
     }
   );
 
-  assert.equal(retained, false);
+  assert.equal(ownership, "foreign");
   assert.equal(invalidations, 1);
 });
 
-test("ownership checks fail closed when the account cannot be verified", async () => {
+test("an unreachable server leaves the registration alone", async () => {
   let invalidations = 0;
-  const retained = await reconcileSubscriptionOwnership(
+  const ownership = await reconcileSubscriptionOwnership(
     subscription,
     async () => {
       throw new Error("offline");
@@ -48,8 +48,8 @@ test("ownership checks fail closed when the account cannot be verified", async (
     }
   );
 
-  assert.equal(retained, false);
-  assert.equal(invalidations, 1);
+  assert.equal(ownership, "unverified");
+  assert.equal(invalidations, 0);
 });
 
 test("logout invalidates the browser even when server cleanup fails", async () => {

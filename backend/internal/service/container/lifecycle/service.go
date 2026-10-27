@@ -37,6 +37,11 @@ type Runtime interface {
 	Restart(ctx context.Context, containerName string) error
 	Delete(ctx context.Context, containerName string) error
 	State(ctx context.Context, containerName string) (serviceproject.ContainerState, error)
+	// StorageSpace reports the pool new containers are created in, with its
+	// free and total bytes.
+	StorageSpace(ctx context.Context) (pool string, free, total uint64, err error)
+	// ImageSize reports the size in bytes of the image an alias points to.
+	ImageSize(ctx context.Context, alias string) (uint64, error)
 }
 
 type WorkspacePreparer interface {

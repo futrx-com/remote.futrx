@@ -2,9 +2,10 @@ import type { ChatInteractionResponder } from "../../../types/chatApi";
 import type { AssistantMessagePart } from "../../../models/chatMessage";
 import { useState } from "preact/hooks";
 import { useDelegatedAgentControls } from "../../../state/hooks/chat/useDelegatedAgentControls";
-import { ChevronDown, ChevronRight } from "../../primitives/icons";
+import { ChevronDown, ChevronRight, Loader } from "../../primitives/icons";
 import { Markdown } from "../markdown/Markdown";
 import { CodeBlock } from "../tool-calls/CodeBlock";
+import { useTranscriptContent } from "../../../state/hooks/chat/useTranscriptContent";
 
 type CollaborationPart = Extract<AssistantMessagePart, { kind: "collaboration" }>;
 type SubagentTool = {
@@ -14,6 +15,8 @@ type SubagentTool = {
   isError: boolean;
   input?: unknown;
   output?: string;
+  outputRef?: string;
+  outputBytes?: number;
   startedAt?: number;
   completedAt?: number;
   durationMs?: number;
@@ -106,6 +109,7 @@ export function CollaborationCard({
             tools={tools}
             toolCount={toolCount}
             failedToolCount={failedToolCount}
+            chatId={chatId}
           />
         )}
         {Object.entries(states).length === 0 ? (
@@ -119,9 +123,13 @@ export function CollaborationCard({
                 <span class="text-[10px] text-ink-400">{typeof state.status === "string" ? state.status : "unknown"}</span>
               </div>
               {typeof state.message === "string" && state.message && (
-                <div class="codex-prose mt-2 text-[12px] leading-relaxed text-ink-200">
-                  <Markdown chatId={chatId} cwd={cwd}>{state.message}</Markdown>
-                </div>
+                <SubagentMessage
+                  message={state.message}
+                  messageRef={typeof state.messageRef === "string" ? state.messageRef : undefined}
+                  messageBytes={typeof state.messageBytes === "number" ? state.messageBytes : undefined}
+                  chatId={chatId}
+                  cwd={cwd}
+                />
               )}
               {isSubagentThread && !(typeof state.message === "string" && state.message) && (
                 <div class="mt-2 text-[11px] text-ink-400">
@@ -140,10 +148,12 @@ function SubagentTools({
   tools,
   toolCount,
   failedToolCount,
+  chatId,
 }: {
   tools: SubagentTool[];
   toolCount: number;
   failedToolCount: number;
+  chatId?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const toolNames = unique(tools.map((tool) => tool.name));
@@ -175,7 +185,7 @@ function SubagentTools({
       {expanded && (
         <ol class="divide-y divide-line border-t border-line bg-inset">
           {tools.map((tool, index) => (
-            <SubagentToolDetails key={tool.id || `${tool.name}-${index}`} tool={tool} index={index} />
+            <SubagentToolDetails key={tool.id || `${tool.name}-${index}`} tool={tool} index={index} chatId={chatId} />
           ))}
         </ol>
       )}
@@ -183,9 +193,15 @@ function SubagentTools({
   );
 }
 
-function SubagentToolDetails({ tool, index }: { tool: SubagentTool; index: number }) {
+function SubagentToolDetails({ tool, index, chatId }: { tool: SubagentTool; index: number; chatId?: string }) {
   const [expanded, setExpanded] = useState(false);
-  const hasDetails = tool.input !== undefined || tool.output !== undefined;
+  const response = useTranscriptContent({
+    chatId,
+    content: tool.output,
+    contentRef: tool.outputRef,
+    contentBytes: tool.outputBytes,
+  });
+  const hasDetails = tool.input !== undefined || tool.output !== undefined || tool.outputRef !== undefined;
   const timing = toolTiming(tool);
   return (
     <li>
@@ -193,7 +209,11 @@ function SubagentToolDetails({ tool, index }: { tool: SubagentTool; index: numbe
         type="button"
         disabled={!hasDetails}
         aria-expanded={hasDetails ? expanded : undefined}
-        onClick={() => hasDetails && setExpanded((current) => !current)}
+        onClick={() => {
+          if (!hasDetails) return;
+          if (!expanded && response.canExpand && !response.disabled) void response.load();
+          setExpanded((current) => !current);
+        }}
         class="flex w-full items-center gap-2 px-3 py-1.5 text-left enabled:hover:bg-tint disabled:cursor-default"
       >
         {hasDetails ? (
@@ -216,6 +236,7 @@ function SubagentToolDetails({ tool, index }: { tool: SubagentTool; index: numbe
             {timing.label}
           </span>
         )}
+        {response.loading && <Loader class="h-3 w-3 flex-none animate-spin text-ink-400" />}
         <span class={`flex-none text-[10px] ${tool.isError ? "text-accent-red" : "text-ink-400"}`}>
           {tool.isError ? "failed" : statusLabel(tool.status)}
         </span>
@@ -228,15 +249,55 @@ function SubagentToolDetails({ tool, index }: { tool: SubagentTool; index: numbe
               <CodeBlock text={formatToolInput(tool.input)} lang="json" />
             </div>
           )}
-          {tool.output !== undefined && (
+          {(tool.output !== undefined || tool.outputRef !== undefined) && (
             <div>
               <div class="bg-tint px-3 py-1 text-[10px] font-medium text-ink-400">Output</div>
-              <CodeBlock text={tool.output} />
+              {response.content !== undefined && <CodeBlock text={response.content} />}
+              {response.error && <div class="px-3 py-2 text-[10px] text-accent-red">{response.error}</div>}
             </div>
           )}
         </div>
       )}
     </li>
+  );
+}
+
+function SubagentMessage({
+  message,
+  messageRef,
+  messageBytes,
+  chatId,
+  cwd,
+}: {
+  message: string;
+  messageRef?: string;
+  messageBytes?: number;
+  chatId?: string;
+  cwd?: string;
+}) {
+  const response = useTranscriptContent({
+    chatId,
+    content: message,
+    contentRef: messageRef,
+    contentBytes: messageBytes,
+  });
+  return (
+    <div class="codex-prose mt-2 text-[12px] leading-relaxed text-ink-200">
+      <Markdown chatId={chatId} cwd={cwd}>{response.content ?? message}</Markdown>
+      {response.canExpand && (
+        <div class="mt-2 flex items-center gap-2 text-[10px]">
+          <button
+            type="button"
+            disabled={response.disabled}
+            onClick={() => void response.load()}
+            class="text-accent-blue hover:underline disabled:opacity-50"
+          >
+            {response.label}
+          </button>
+          {response.error && <span class="text-accent-red">{response.error}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -271,6 +332,8 @@ function subagentTools(value: unknown): SubagentTool[] {
       isError: item.isError === true,
       input: item.input,
       output: typeof item.output === "string" ? item.output : undefined,
+      outputRef: typeof item.outputRef === "string" ? item.outputRef : undefined,
+      outputBytes: typeof item.outputBytes === "number" ? item.outputBytes : undefined,
       startedAt: typeof item.startedAt === "number" ? item.startedAt : undefined,
       completedAt: typeof item.completedAt === "number" ? item.completedAt : undefined,
       durationMs: typeof item.durationMs === "number" ? item.durationMs : undefined,

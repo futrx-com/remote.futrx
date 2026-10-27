@@ -14,6 +14,7 @@ test("preserves normalized skill identity and chat defaults", () => {
       null,
       {
         provider: "codex",
+        accountId: "",
         model: "gpt-5",
         mode: "default",
         reasoningEffort: "high",
@@ -28,6 +29,7 @@ test("preserves normalized skill identity and chat defaults", () => {
       createdAt: 1,
       lastMessageAt: 1,
       provider: "codex",
+      accountId: "",
       model: "gpt-5",
       mode: "default",
       reasoningEffort: "high",
@@ -65,6 +67,7 @@ test("prefers live workspace selections from another client", () => {
       createdAt: 1,
       lastMessageAt: 1,
       provider: "claude",
+      accountId: "work",
       model: "claude-opus-current",
       mode: "plan",
       reasoningEffort: "high",
@@ -83,6 +86,7 @@ test("prefers live workspace selections from another client", () => {
     },
     {
       provider: "codex",
+      accountId: "",
       model: "",
       mode: "default",
       reasoningEffort: "",
@@ -93,6 +97,7 @@ test("prefers live workspace selections from another client", () => {
   );
 
   assert.equal(resolved.provider, "claude");
+  assert.equal(resolved.accountId, "work");
   assert.equal(resolved.model, "claude-opus-current");
   assert.equal(resolved.mode, "plan");
   assert.equal(resolved.reasoningEffort, "high");
@@ -123,6 +128,7 @@ test("does not restore stale detail skills after a live workspace removal", () =
     },
     {
       provider: "codex",
+      accountId: "",
       model: "",
       mode: "default",
       reasoningEffort: "",
@@ -151,6 +157,7 @@ test("preserves an explicit per-chat Auto selection", () => {
     null,
     {
       provider: "codex",
+      accountId: "",
       model: "gpt-global-default",
       mode: "plan",
       reasoningEffort: "high",

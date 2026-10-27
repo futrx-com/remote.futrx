@@ -31,11 +31,12 @@ func TestProfileMatchesCodexProvisioningPolicy(t *testing.T) {
 			ContainerDir: "/root/.codex",
 			Files: []provisioning.CredentialFile{
 				{
-					HostPath:      "/root/.codex/auth.json",
-					ContainerPath: "/root/.codex/auth.json",
-					Mode:          "600",
-					PushRequired:  true,
-					PullRequired:  true,
+					HostPath:          "/root/.codex/auth.json",
+					ContainerPath:     "/root/.codex/auth.json",
+					Mode:              "600",
+					PushRequired:      true,
+					PullRequired:      true,
+					HostAuthoritative: true,
 				},
 			},
 			SeedOnLaunch: true,
