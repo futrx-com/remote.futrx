@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -23,24 +24,80 @@ type UserDirectory interface {
 	FirstAdmin(ctx context.Context) (*UserDirectoryEntry, error)
 }
 
-// UserDirectoryEntry is the minimal projection of a single admin the auth
-// service exposes via /auth/me. Status.Claimed is set when one exists,
-// Status.AdminEmail is its Email. Currently filled from FirstAdmin (the
-// oldest user with role=admin) so the login screen can show "server
-// administered by …" without leaking the full directory to anonymous
-// callers.
-type UserDirectoryEntry struct {
-	Email string
+var (
+	ErrSessionSuperseded   = errors.New("session superseded by a newer sign-in")
+	ErrInvalidPendingLogin = errors.New("invalid or expired pending login")
+)
+
+// pendingLogin is the signed, stateless payload carried between
+// CompletePasswordLogin/CompleteGoogleLogin (once credentials check out but
+// before the second factor is checked) and CompleteTwoFactorChallenge.
+type pendingLogin struct {
+	Email  string       `json:"email"`
+	Sub    string       `json:"sub"`
+	Method SignInMethod `json:"method"`
+	Exp    int64        `json:"exp"`
+}
+
+func (p pendingLogin) expired(now time.Time) bool {
+	return now.Unix() > p.Exp
+}
+
+// LoginResult is returned by the Complete*Login methods: either a login
+// completed outright (CookieValue set) or it needs a second factor
+// (PendingToken set, to be presented back to CompleteTwoFactorChallenge).
+type LoginResult struct {
+	Completed    bool
+	CookieValue  string
+	PendingToken string
+}
+
+// Options are application-wide account security policies supplied by the
+// composition root. Cryptographic protocol parameters remain package-owned.
+type Options struct {
+	PendingLoginTTL     time.Duration
+	EnrollmentTTL       time.Duration
+	RecoveryCodeCount   int
+	SessionHistoryLimit int
+	SetupTokenTTL       time.Duration
+}
+
+func (o Options) validate() error {
+	if o.PendingLoginTTL <= 0 {
+		return errors.New("pending login TTL must be positive")
+	}
+	if o.EnrollmentTTL <= 0 {
+		return errors.New("enrollment TTL must be positive")
+	}
+	if o.RecoveryCodeCount <= 0 {
+		return errors.New("recovery code count must be positive")
+	}
+	if o.SessionHistoryLimit <= 0 {
+		return errors.New("session history limit must be positive")
+	}
+	if err := validateSetupTokenTTL(o.SetupTokenTTL); err != nil {
+		return err
+	}
+	return nil
 }
 
 type Service struct {
-	users        UserDirectory
-	local        *LocalAdminAuthenticator
-	google       *GoogleAuthenticator
-	baseURL      string
-	cookieDomain string
-	sessions     *SessionCodec
-	audit        audit.Recorder
+	users             UserDirectory
+	local             *LocalAdminAuthenticator
+	google            *GoogleAuthenticator
+	setupTokenIssuer  *SetupTokenIssuer
+	baseURL           string
+	cookieDomain      string
+	codec             *sessionCodec
+	twoFactor         *twoFactorAuthenticator
+	registry          *sessionRegistry
+	pendingLoginCodec signedPayload[pendingLogin]
+	pendingLoginTTL   time.Duration
+	// sharePasses signs the cookie a public preview link is exchanged for.
+	// It shares the session key but not the session: a share pass proves one
+	// slug and port were once granted, never who the caller is.
+	sharePasses *sharePassCodec
+	audit       audit.Recorder
 }
 
 // Option configures optional Service collaborators.
@@ -66,13 +123,25 @@ func New(
 	oauthFactory OAuthProviderFactory,
 	baseURL string,
 	sessionKey []byte,
-	options ...Option,
+	twoFactorStore TwoFactorStore,
+	sessionRegistryStore SessionRegistryStore,
+	options Options,
+	auditOptions ...Option,
 ) (*Service, error) {
 	if store == nil {
 		return nil, errors.New("auth store is required")
 	}
 	if oauthFactory == nil {
 		return nil, errors.New("OAuth provider factory is required")
+	}
+	if twoFactorStore == nil {
+		return nil, errors.New("two-factor store is required")
+	}
+	if sessionRegistryStore == nil {
+		return nil, errors.New("session registry store is required")
+	}
+	if err := options.validate(); err != nil {
+		return nil, fmt.Errorf("auth options: %w", err)
 	}
 	baseURL, err := NormalizeBaseURL(baseURL)
 	if err != nil {
@@ -85,7 +154,9 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	local := newLocalAdminAuthenticator(store, users, localAdmin)
+	setupTokens := newSetupTokenGuard(store, options.SetupTokenTTL, time.Now)
+	local := newLocalAdminAuthenticator(store, users, setupTokens, localAdmin)
+	setupTokenIssuer := newSetupTokenIssuer(setupTokens, users, local.configured)
 	google, err := newGoogleAuthenticator(ctx, store, users, oauthFactory, baseURL, local.isLocalAdmin)
 	if err != nil {
 		return nil, err
@@ -102,15 +173,27 @@ func New(
 	}
 
 	service := &Service{
-		users:        users,
-		local:        local,
-		google:       google,
-		baseURL:      baseURL,
-		cookieDomain: cookieDomain,
-		sessions:     newSessionCodec(sessionKey),
-		audit:        audit.Nop{},
+		users:            users,
+		local:            local,
+		setupTokenIssuer: setupTokenIssuer,
+		google:           google,
+		baseURL:          baseURL,
+		cookieDomain:     cookieDomain,
+		codec:            newSessionCodec(sessionKey),
+		twoFactor: newTwoFactorAuthenticator(
+			twoFactorStore,
+			"remote.futrx",
+			sessionKey,
+			options.EnrollmentTTL,
+			options.RecoveryCodeCount,
+		),
+		registry:          newSessionRegistry(sessionRegistryStore, options.SessionHistoryLimit),
+		pendingLoginCodec: newPendingLoginPayload(sessionKey),
+		pendingLoginTTL:   options.PendingLoginTTL,
+		sharePasses:       newSharePassCodec(sessionKey),
+		audit:             audit.Nop{},
 	}
-	for _, option := range options {
+	for _, option := range auditOptions {
 		if option != nil {
 			option(service)
 		}
@@ -147,6 +230,19 @@ func (s *Service) Audit() audit.Recorder {
 	return s.audit
 }
 
+// SignSharePass mints the value for ShareCookieName. Callers must already have
+// validated the underlying share token for this slug and port.
+func (s *Service) SignSharePass(pass SharePass) string {
+	return s.sharePasses.sign(pass)
+}
+
+// VerifySharePass authenticates a ShareCookieName value. A valid pass proves
+// only that a share link once granted this slug and port; whether that link is
+// still live is the share service's question.
+func (s *Service) VerifySharePass(cookieValue string) (*SharePass, error) {
+	return s.sharePasses.verify(cookieValue)
+}
+
 func (s *Service) BaseURL() string {
 	return s.baseURL
 }
@@ -166,21 +262,40 @@ func (s *Service) LoginGoogle(ctx context.Context, code string) (User, error) {
 	if errors.As(err, &notInvited) {
 		attempted = notInvited.Email
 	}
-	s.recordLogin(ctx, "google", attempted, user, err)
+	if err != nil {
+		s.recordLogin(ctx, "google", attempted, user, err)
+	}
 	return user, err
 }
 
-func (s *Service) ClaimLocalAdmin(ctx context.Context, email, password, authorizedEmail string) (User, error) {
-	user, err := s.local.claim(ctx, email, password, authorizedEmail)
+// EnsureSetupToken issues a token when a claim made now would actually be
+// gated on one, and returns an empty string otherwise. Startup calls this on
+// every boot: a first-boot server therefore rotates its token each restart, so
+// anything that leaked beforehand is already dead. A configured server, and an
+// unclaimed one whose directory already has an administrator to authorise the
+// claim, both print nothing - a token they would never check is an operator
+// sent down a path that cannot complete.
+func (s *Service) EnsureSetupToken(ctx context.Context) (string, error) {
+	return s.setupTokenIssuer.EnsureSetupToken(ctx)
+}
+
+// SetupTokenTTL is how long a freshly issued setup token stays valid, so the
+// terminal message can state the real deadline rather than a guess.
+func (s *Service) SetupTokenTTL() time.Duration {
+	return s.setupTokenIssuer.SetupTokenTTL()
+}
+
+func (s *Service) ClaimLocalAdmin(ctx context.Context, req ClaimRequest) (User, error) {
+	user, err := s.local.claim(ctx, req)
 	if s.audit != nil {
 		entry := audit.Result(
 			audit.ActionAuthAdminClaim,
-			audit.Target{Type: audit.TargetUser, ID: audit.NormalizeActorEmail(email), Name: audit.NormalizeActorEmail(email)},
+			audit.Target{Type: audit.TargetUser, ID: audit.NormalizeActorEmail(req.Email), Name: audit.NormalizeActorEmail(req.Email)},
 			nil,
 			err,
 		)
 		entry.Actor = audit.Actor{
-			Email:   audit.NormalizeActorEmail(email),
+			Email:   audit.NormalizeActorEmail(req.Email),
 			Sub:     user.Sub,
 			IsAdmin: err == nil,
 		}
@@ -191,7 +306,9 @@ func (s *Service) ClaimLocalAdmin(ctx context.Context, email, password, authoriz
 
 func (s *Service) LoginLocal(ctx context.Context, email, password string) (User, error) {
 	user, err := s.local.login(email, password)
-	s.recordLogin(ctx, "local", email, user, err)
+	if err != nil {
+		s.recordLogin(ctx, "local", email, user, err)
+	}
 	return user, err
 }
 
@@ -224,15 +341,112 @@ func (s *Service) IsLocalAdmin(email string) bool {
 	return s.local.isLocalAdmin(email)
 }
 
-func (s *Service) SignSession(user User) string {
-	return s.sessions.sign(user)
+// IssueSession signs a new session for user, first consulting the account's
+// SecurityPreferences: if any of the three flags (single-session, history,
+// recovery-code alert) is on, it registers the sign-in with the session registry
+// and embeds the resulting session id; otherwise it behaves exactly like
+// SignSession (no registry write, no per-request registry lookup cost for
+// accounts that opt into nothing).
+func (s *Service) IssueSession(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (cookieValue string, resultErr error) {
+	defer func() {
+		callerCtx := audit.EnsureCaller(ctx, audit.Caller{IP: ip, UserAgent: userAgent})
+		s.recordLogin(callerCtx, string(method), user.Email, user, resultErr)
+	}()
+	prefs, err := s.registry.Preferences(ctx, user.Email)
+	if err != nil {
+		return "", err
+	}
+	sid := ""
+	if prefs.SingleSessionEnabled || prefs.HistoryEnabled || prefs.RecoveryCodeAlertEnabled {
+		sid, err = s.registry.IssueForAccount(ctx, user.Email, method, ip, userAgent)
+		if err != nil {
+			return "", err
+		}
+	}
+	return s.codec.sign(user, sid), nil
 }
 
-func (s *Service) CurrentSession(cookieValue string) (*Session, error) {
+// CompletePasswordLogin verifies credentials and either issues a session
+// outright (2FA off for this account) or returns a pending token that must
+// be completed via CompleteTwoFactorChallenge.
+func (s *Service) CompletePasswordLogin(ctx context.Context, email, password, ip, userAgent string) (LoginResult, error) {
+	user, err := s.LoginLocal(ctx, email, password)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return s.completeLogin(ctx, user, SignInMethodPassword, ip, userAgent)
+}
+
+// CompleteGoogleLogin is the Google analogue of CompletePasswordLogin.
+func (s *Service) CompleteGoogleLogin(ctx context.Context, code, ip, userAgent string) (LoginResult, error) {
+	user, err := s.LoginGoogle(ctx, code)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return s.completeLogin(ctx, user, SignInMethodGoogle, ip, userAgent)
+}
+
+func (s *Service) completeLogin(ctx context.Context, user User, method SignInMethod, ip, userAgent string) (LoginResult, error) {
+	if s.twoFactor.Enabled(ctx, user.Email) {
+		token := s.pendingLoginCodec.sign(pendingLogin{
+			Email:  user.Email,
+			Sub:    user.Sub,
+			Method: method,
+			Exp:    time.Now().Add(s.pendingLoginTTL).Unix(),
+		})
+		return LoginResult{Completed: false, PendingToken: token}, nil
+	}
+	cookieValue, err := s.IssueSession(ctx, user, method, ip, userAgent)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return LoginResult{Completed: true, CookieValue: cookieValue}, nil
+}
+
+// CompleteTwoFactorChallenge verifies a pending login's second factor and,
+// on success, issues the real session with the combined SignInMethod
+// (e.g. "password+totp", "google+recovery-code").
+func (s *Service) CompleteTwoFactorChallenge(ctx context.Context, pendingToken, code, ip, userAgent string) (LoginResult, error) {
+	pending, err := s.pendingLoginCodec.verify(pendingToken)
+	if err != nil {
+		s.recordLogin(ctx, "two-factor", "", User{}, ErrInvalidPendingLogin)
+		return LoginResult{}, ErrInvalidPendingLogin
+	}
+	usedRecoveryCode, err := s.twoFactor.VerifyChallenge(ctx, pending.Email, code)
+	if err != nil {
+		s.recordLogin(ctx, string(pending.Method)+"+two-factor", pending.Email, User{}, err)
+		return LoginResult{}, err
+	}
+	method := combineSignInMethod(pending.Method, usedRecoveryCode)
+	cookieValue, err := s.IssueSession(ctx, User{Email: pending.Email, Sub: pending.Sub}, method, ip, userAgent)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	return LoginResult{Completed: true, CookieValue: cookieValue}, nil
+}
+
+func combineSignInMethod(base SignInMethod, usedRecoveryCode bool) SignInMethod {
+	switch base {
+	case SignInMethodPassword:
+		if usedRecoveryCode {
+			return SignInMethodPasswordRecoveryCode
+		}
+		return SignInMethodPasswordTOTP
+	case SignInMethodGoogle:
+		if usedRecoveryCode {
+			return SignInMethodGoogleRecoveryCode
+		}
+		return SignInMethodGoogleTOTP
+	default:
+		return base
+	}
+}
+
+func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Session, error) {
 	if cookieValue == "" {
 		return nil, errors.New("missing session cookie")
 	}
-	session, err := s.sessions.verify(cookieValue)
+	session, err := s.codec.verify(cookieValue)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +456,19 @@ func (s *Service) CurrentSession(cookieValue string) (*Session, error) {
 	if s.IsLocalAdmin(session.Email) && session.Sub != "local-admin" {
 		return nil, ErrLocalAdminPasswordOnly
 	}
+	// Single active session is one more account-scoped rule here, consulted
+	// only when the account has independently turned SingleSessionEnabled on
+	// (sessionRegistry.IsActive treats every session as active otherwise).
+	if !s.registry.IsActive(ctx, session.Email, session.SID) {
+		return nil, ErrSessionSuperseded
+	}
 	return session, nil
+}
+
+// RevokeSession replaces email's active session id with an unissued id (used
+// on logout), a no-op for an account with no session registry record.
+func (s *Service) RevokeSession(ctx context.Context, email string) error {
+	return s.registry.Revoke(ctx, email)
 }
 
 func (s *Service) IsAdmin(ctx context.Context, email string) (bool, error) {
@@ -284,7 +510,7 @@ func (s *Service) Status(ctx context.Context, cookieValue string) Status {
 		}
 	}
 
-	session, err := s.CurrentSession(cookieValue)
+	session, err := s.CurrentSession(ctx, cookieValue)
 	if err != nil {
 		return status
 	}
@@ -293,9 +519,18 @@ func (s *Service) Status(ctx context.Context, cookieValue string) Status {
 	status.Sub = session.Sub
 	status.IsAdmin, _ = s.IsAdmin(ctx, session.Email)
 	status.IsRegistered, _ = s.IsRegistered(ctx, session.Email)
+	if prefs, _ := s.registry.Preferences(ctx, session.Email); prefs.RecoveryCodeAlertEnabled {
+		if alert, _ := s.registry.PendingAlert(ctx, session.Email); alert != nil {
+			status.SecurityAlert = alert
+		}
+	}
 	return status
 }
 
 func SessionDuration() time.Duration {
 	return sessionDuration
+}
+
+func (s *Service) PendingTwoFactorDuration() time.Duration {
+	return s.pendingLoginTTL
 }

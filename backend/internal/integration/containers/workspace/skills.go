@@ -5,9 +5,11 @@ package workspace
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,16 +19,75 @@ import (
 
 const ensureWorkspaceSymlinksTimeout = 10 * time.Second
 
+const canonicalWorkspaceSkillsDir = "/workspace/.agents/skills"
+
 // EnsureSkillLinks creates the canonical .agents skills directory, migrates
-// legacy skill children when possible, and points each configured
-// compatibility path at .agents/skills. Cheap and idempotent.
+// legacy skill children when possible, publishes the code-owned default
+// skills, and points each configured compatibility path at .agents/skills.
+// Cheap and idempotent.
 func (p *Provisioner) EnsureSkillLinks(ctx context.Context, containerName string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}
-	script := workspaceSkillLinksScript(p.profiles.Snapshot())
-	if _, err := command.RunWithTimeout(ctx, p.runner, ensureWorkspaceSymlinksTimeout, "exec", containerName, "--", "sh", "-c", script); err != nil {
+	profiles := p.profiles.Snapshot()
+	if err := p.ensureSkillTopology(ctx, containerName, profiles); err != nil {
 		return err
+	}
+	if err := p.ensureDefaultSkills(ctx, containerName); err != nil {
+		return err
+	}
+	// Home-level compatibility directories mirror canonical children rather
+	// than linking the directory itself, so refresh them after new defaults
+	// have been published.
+	return p.ensureSkillTopology(ctx, containerName, profiles)
+}
+
+func (p *Provisioner) ensureSkillTopology(ctx context.Context, containerName string, profiles []provisioning.Profile) error {
+	script := workspaceSkillLinksScript(profiles)
+	if _, err := command.RunWithTimeout(ctx, p.runner, ensureWorkspaceSymlinksTimeout, "exec", containerName, "--", "sh", "-c", script); err != nil {
+		return fmt.Errorf("ensure workspace skill topology: %w", err)
+	}
+	return nil
+}
+
+func (p *Provisioner) ensureDefaultSkills(ctx context.Context, containerName string) error {
+	if p.publisher == nil {
+		return errors.New("default skill publisher not configured")
+	}
+	skills := provisioning.DefaultSkills()
+	if len(skills) == 0 {
+		return nil
+	}
+
+	directories := map[string]struct{}{}
+	for _, skill := range skills {
+		for _, asset := range skill.Assets {
+			destination := path.Join(canonicalWorkspaceSkillsDir, skill.Command, asset.Path)
+			directories[path.Dir(destination)] = struct{}{}
+		}
+	}
+	orderedDirectories := make([]string, 0, len(directories))
+	for directory := range directories {
+		orderedDirectories = append(orderedDirectories, directory)
+	}
+	sort.Strings(orderedDirectories)
+
+	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	args := []string{"exec", containerName, "--", "install", "-d", "-m", "755"}
+	args = append(args, orderedDirectories...)
+	if out, err := p.runner.Run(dctx, args...); err != nil {
+		return fmt.Errorf("create default skill directories: %w; output: %s", err, out)
+	}
+
+	for _, skill := range skills {
+		for _, asset := range skill.Assets {
+			destination := path.Join(canonicalWorkspaceSkillsDir, skill.Command, asset.Path)
+			hashPath := path.Join(path.Dir(destination), "."+path.Base(destination)+".remote.sha256")
+			if err := p.publisher.PushVerified(ctx, containerName, asset.Content, hashPath, "644", destination); err != nil {
+				return fmt.Errorf("publish default skill %s/%s: %w", skill.Command, asset.Path, err)
+			}
+		}
 	}
 	return nil
 }

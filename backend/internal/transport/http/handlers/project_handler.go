@@ -13,8 +13,10 @@ import (
 	"strconv"
 	"strings"
 
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
@@ -23,29 +25,49 @@ type ProjectHandler struct {
 	projects           *serviceproject.Service
 	users              *serviceuser.Service
 	auth               *serviceauth.Service
+	usage              *UsageHandler
+	apps               *ApplicationsHandler
+	shares             *serviceshare.Service
+	publicHostname     string
 	projectHostPattern *regexp.Regexp
-	codeHostPattern    *regexp.Regexp
 }
 
+// NewProjectHandler builds the handler. apps may be nil, which leaves the
+// per-project application routes reporting the feature unavailable.
 func NewProjectHandler(
 	projects *serviceproject.Service,
 	users *serviceuser.Service,
 	auth *serviceauth.Service,
 	publicHostname string,
+	apps *ApplicationsHandler,
 ) *ProjectHandler {
 	publicHostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(publicHostname)), ".")
 	escapedHostname := regexp.QuoteMeta(publicHostname)
 	return &ProjectHandler{
-		projects: projects,
-		users:    users,
-		auth:     auth,
+		projects:       projects,
+		users:          users,
+		auth:           auth,
+		apps:           apps,
+		publicHostname: publicHostname,
 		projectHostPattern: regexp.MustCompile(
 			`^([a-z0-9][a-z0-9-]*)--(\d{4,5})\.dev\.` + escapedHostname + `$`,
 		),
-		codeHostPattern: regexp.MustCompile(
-			`^([a-z0-9][a-z0-9-]*)\.code\.` + escapedHostname + `$`,
-		),
 	}
+}
+
+// WithUsage attaches the usage handler so /api/projects/{id}/usage can be
+// served from the existing project route, which already resolves the project
+// and authorizes the caller.
+func (h *ProjectHandler) WithUsage(usage *UsageHandler) *ProjectHandler {
+	h.usage = usage
+	return h
+}
+
+// WithShares enables the public preview link routes under
+// /api/projects/{id}/shares. Without it those routes report 503.
+func (h *ProjectHandler) WithShares(shares *serviceshare.Service) *ProjectHandler {
+	h.shares = shares
+	return h
 }
 
 func (h *ProjectHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -179,6 +201,28 @@ func (h *ProjectHandler) HandleResource(w http.ResponseWriter, r *http.Request) 
 
 	if len(parts) >= 2 && parts[1] == "agent-browser" {
 		h.handleAgentBrowser(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "usage" {
+		if h.usage == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "usage ledger unavailable")
+			return
+		}
+		h.usage.HandleProjectSummary(w, r, string(id), email, isAdmin)
+		return
+	}
+	if len(parts) >= 2 && parts[1] == "shares" {
+		h.handleShares(w, r, id, parts)
+		return
+	}
+
+	if len(parts) >= 2 && parts[1] == "applications" {
+		if h.apps == nil {
+			httptransport.SendErr(w, http.StatusServiceUnavailable, "applications unavailable")
+			return
+		}
+		h.apps.HandleProject(w, r, string(id), parts)
 		return
 	}
 
@@ -410,7 +454,6 @@ func buildAgentBrowserURL(r *http.Request, slug string, port int) string {
 	if splitHost, _, err := net.SplitHostPort(host); err == nil {
 		host = splitHost
 	}
-	host = strings.TrimPrefix(host, "code.")
 	scheme := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
 	if scheme == "" {
 		if r.TLS != nil {
@@ -424,8 +467,8 @@ func buildAgentBrowserURL(r *http.Request, slug string, port int) string {
 	return fmt.Sprintf("%s://%s--%d.dev.%s/vnc.html?autoconnect=1&resize=scale&reconnect=1", scheme, slug, port, host)
 }
 
-// HandleTLSAsk lets Caddy issue on-demand certificates only for preview and
-// code subdomains belonging to projects that currently exist.
+// HandleTLSAsk admits certificates for existing project previews and running
+// project web installations.
 func (h *ProjectHandler) HandleTLSAsk(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -436,16 +479,39 @@ func (h *ProjectHandler) HandleTLSAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing domain", http.StatusBadRequest)
 		return
 	}
+	if httptransport.IsApplicationHost(domain, h.publicHostname) {
+		if h.apps == nil || h.apps.apps == nil {
+			http.NotFound(w, r)
+			return
+		}
+		// Named hosts get on-demand certificates like previews: admit only the
+		// canonical host of a running installation.
+		if label, slug, named := httptransport.ApplicationProject(domain, h.publicHostname); named {
+			project, err := h.projects.GetBySlug(r.Context(), slug)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			target, available, err := h.apps.apps.ProjectWebTargetBySubdomain(r.Context(), string(project.ID), label)
+			if err != nil || !available ||
+				!httptransport.MatchesApplicationHost(domain, project.Slug, target.Subdomain, h.publicHostname) {
+				http.NotFound(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
 	var slug string
 	if mm := h.projectHostPattern.FindStringSubmatch(domain); mm != nil {
 		slug = mm[1]
 		port, err := strconv.Atoi(mm[2])
-		if err != nil || port < 1024 || port > 65535 {
+		if err != nil || port < configconstants.ProjectPreviewMinPort || port > configconstants.ProjectPreviewMaxPort {
 			http.Error(w, "port out of range", http.StatusNotFound)
 			return
 		}
-	} else if mm := h.codeHostPattern.FindStringSubmatch(domain); mm != nil {
-		slug = mm[1]
 	} else {
 		http.Error(w, "host not a recognized project domain", http.StatusNotFound)
 		return
@@ -640,14 +706,19 @@ func (h *ProjectHandler) allowed(ctx context.Context, id serviceproject.ID, emai
 func sendProjectError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, serviceproject.ErrNameRequired),
+		errors.Is(err, serviceproject.ErrReservedNameSeparator),
 		errors.Is(err, serviceproject.ErrInvalidID),
 		errors.Is(err, serviceproject.ErrInvalidSecretKey),
 		errors.Is(err, serviceproject.ErrInvalidLimits):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, serviceproject.ErrSecretsUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
+	case errors.Is(err, serviceproject.ErrNameAlreadyExists):
+		httptransport.SendErr(w, http.StatusConflict, err.Error())
 	case errors.Is(err, serviceproject.ErrNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, "project not found")
+	case errors.Is(err, serviceproject.ErrInsufficientStorage):
+		httptransport.SendErr(w, http.StatusInsufficientStorage, err.Error())
 	default:
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
 	}

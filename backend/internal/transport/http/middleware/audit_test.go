@@ -2,9 +2,12 @@ package httpmiddleware
 
 import (
 	"context"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
@@ -41,6 +44,14 @@ func auditCallerProbe(seen *serviceaudit.Caller, found *bool) http.Handler {
 
 func newAuditMiddleware(t *testing.T, admins map[string]bool) (*serviceauth.Service, *Auth) {
 	t.Helper()
+	twoFactorStore, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionRegistryStore, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	auth, err := serviceauth.New(
 		context.Background(),
 		fileauth.New(t.TempDir()),
@@ -48,6 +59,15 @@ func newAuditMiddleware(t *testing.T, admins map[string]bool) (*serviceauth.Serv
 		func(string, string, string) serviceauth.OAuthProvider { return authTestOAuth{} },
 		"https://remote.example.com",
 		[]byte("test-session-key"),
+		twoFactorStore,
+		sessionRegistryStore,
+		serviceauth.Options{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
+			SetupTokenTTL:       30 * time.Minute,
+		},
 	)
 	if err != nil {
 		t.Fatalf("New auth service: %v", err)
@@ -77,9 +97,13 @@ func TestMiddlewarePropagatesTheAuditActor(t *testing.T) {
 			handler := middleware.Wrap(auditCallerProbe(&seen, &found))
 
 			req := httptest.NewRequest(http.MethodGet, "/api/projects", nil)
+			cookie, err := auth.IssueSession(context.Background(), serviceauth.User{Email: tc.email, Sub: "sub-1"}, serviceauth.SignInMethodPassword, "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
 			req.AddCookie(&http.Cookie{
 				Name:  serviceauth.SessionCookieName,
-				Value: auth.SignSession(serviceauth.User{Email: tc.email, Sub: "sub-1"}),
+				Value: cookie,
 			})
 			req.Header.Set("X-Forwarded-For", "203.0.113.5, 10.0.0.1")
 			req.Header.Set("User-Agent", "Mozilla/5.0 (test)")

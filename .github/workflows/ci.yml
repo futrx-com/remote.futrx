@@ -1,0 +1,121 @@
+# Validates pull requests and pushes to main/qa without needing LXD or a server.
+# Backend and frontend unit tests, builds, and infra shell tests only.
+# See CONTRIBUTING.md for the local equivalents of every step below.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, qa]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend + application catalog (go vet/test/build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: |
+            backend/go.sum
+            go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend bundle for go:embed
+        # backend/static.go embeds backend/public, which only exists after the
+        # Vite build. Without it go vet/test/build fail with
+        # "pattern public: no matching files found".
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Check gofmt
+        working-directory: .
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l backend catalog.go applications)"
+          if [ -n "$unformatted" ]; then
+            echo "unformatted Go files:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: Go vet
+        run: go vet ./...
+      - name: Go test
+        run: go test ./...
+      - name: Go build
+        run: go build ./...
+      # applications/ and every application's backend/ source live in the catalog module at
+      # the repository root, which backend's ./... never reaches. Without these
+      # steps an application whose backend stopped compiling would reach a release.
+      - name: Go vet (application catalog)
+        working-directory: .
+        run: go vet ./...
+      - name: Go test (application catalog)
+        working-directory: .
+        run: go test ./...
+      - name: Go build (application catalog)
+        working-directory: .
+        run: go build ./...
+      - name: Code Server installer tests
+        working-directory: .
+        run: node --test applications/code-server/infra/*.test.mjs
+
+  frontend:
+    name: frontend (npm test/build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run frontend tests
+        run: npm test
+      - name: Build frontend
+        run: npm run build
+
+  shell:
+    name: infra shell tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run infra and release classifier tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash infra/tests/health-check-test.sh
+          bash infra/tests/go-toolchain-test.sh
+          bash infra/tests/host-agent-install-test.sh
+          bash infra/tests/host-apt-test.sh
+          bash infra/tests/caddy-package-test.sh
+          bash infra/tests/remote-cli-test.sh
+          bash infra/tests/root-linger-test.sh
+          bash infra/tests/dns-resolve-test.sh
+          bash infra/tests/container-api-dns-test.sh
+          bash infra/tests/container-forwarding-test.sh
+          bash infra/tests/caddy-template-test.sh
+          bash infra/tests/swap-provision-test.sh
+          bash infra/tests/release-version-test.sh
+          bash infra/tests/deploy-app-script-test.sh
+          bash infra/tests/release-entrypoints-test.sh
+          bash infra/tests/qa-scripts-test.sh
+          bash .github/scripts/classify-release-test.sh

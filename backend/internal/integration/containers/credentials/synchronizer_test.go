@@ -107,6 +107,28 @@ func TestEnsurePushesOnlyStrictlyNewerFilesWithDefaultMode(t *testing.T) {
 	}
 }
 
+func TestEnsureAlwaysPushesHostAuthoritativeFile(t *testing.T) {
+	hostPath := filepath.Join(t.TempDir(), "auth.json")
+	if err := os.WriteFile(hostPath, []byte("credentials"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &recordingRunner{}
+	spec := provisioning.CredentialSpec{
+		Name: "agent",
+		Files: []provisioning.CredentialFile{{
+			HostPath: hostPath, ContainerPath: "/root/.agent/auth.json",
+			HostAuthoritative: true,
+		}},
+	}
+	if err := NewAdapter(runner).EnsureFiles(context.Background(), "c1", spec); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"file push --mode=600 " + hostPath + " c1/root/.agent/auth.json"}
+	if !reflect.DeepEqual(runner.calls, want) {
+		t.Fatalf("calls = %#v, want %#v", runner.calls, want)
+	}
+}
+
 func TestSyncFromContainerSkipsMissingOptionalFileButRejectsMissingRequiredFile(t *testing.T) {
 	runner := &recordingRunner{responses: map[string]runnerResponse{
 		"exec c1 -- test -f /root/.agent/optional.json": {out: "optional absent", err: errors.New("missing")},

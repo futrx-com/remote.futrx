@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Exercise the public curl|bash installation flow on a fresh QA server.
+# QA wrapper for exercising installation on a fresh, disposable server.
+#
+# It reads SSH/public-host settings from .qa.env (see .qa.env.example), refuses
+# a server with an existing Remote installation, performs the installation over
+# SSH, and verifies both local and public health. It does not recreate or clean
+# the QA server for you.
 
 set -euo pipefail
 
@@ -16,6 +21,9 @@ user. With a ref, resolves the pushed ref to an immutable commit and
 curl-installs that exact candidate commit. It refuses to run when
 /opt/remote.futrx already exists; recreate the server before using this command
 to repeat a clean-install test.
+
+Candidate mode requires a clean local checkout whose HEAD matches the requested
+ref on origin. Connection settings come from .qa.env (see .qa.env.example).
 EOF
 }
 

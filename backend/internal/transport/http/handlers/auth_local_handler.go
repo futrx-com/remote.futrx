@@ -28,8 +28,9 @@ func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		SetupToken string `json:"setupToken"`
 	}
 	if err := readJSONBody(r, &body); err != nil {
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
@@ -42,14 +43,22 @@ func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	authorizedEmail, _ := callerEmailFromRequest(r, h.auth)
-	user, err := h.auth.ClaimLocalAdmin(r.Context(), body.Email, body.Password, authorizedEmail)
+	user, err := h.auth.ClaimLocalAdmin(r.Context(), serviceauth.ClaimRequest{
+		Email:           body.Email,
+		Password:        body.Password,
+		SetupToken:      body.SetupToken,
+		AuthorizedEmail: authorizedEmail,
+	})
 	if err != nil {
 		h.logins.Failure(key)
 		switch {
 		case errors.Is(err, serviceauth.ErrLocalAdminAlreadyClaimed):
 			httptransport.SendErr(w, http.StatusConflict, err.Error())
-		case errors.Is(err, serviceauth.ErrAdminClaimUnauthorized):
+		case errors.Is(err, serviceauth.ErrAdminClaimUnauthorized),
+			errors.Is(err, serviceauth.ErrSetupTokenRequired):
 			httptransport.SendErr(w, http.StatusForbidden, err.Error())
+		case errors.Is(err, serviceauth.ErrSetupTokenUnavailable):
+			httptransport.SendErr(w, http.StatusServiceUnavailable, serviceauth.ErrSetupTokenUnavailable.Error())
 		case errors.Is(err, serviceauth.ErrPasswordTooShort),
 			errors.Is(err, serviceauth.ErrPasswordTooLong):
 			httptransport.SendErr(w, http.StatusBadRequest, err.Error())
@@ -59,8 +68,15 @@ func (h *localAuthHandler) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.logins.Success(key)
-	setSessionCookie(w, h.auth, user)
-	httptransport.SendJSON(w, http.StatusCreated, h.auth.Status(r.Context(), h.auth.SignSession(user)))
+	// A brand-new account cannot have a 2FA record yet, so claim always
+	// issues a session directly rather than going through CompletePasswordLogin.
+	cookieValue, err := h.auth.IssueSession(r.Context(), user, serviceauth.SignInMethodPassword, localClientIP(r), r.UserAgent())
+	if err != nil {
+		httptransport.SendErr(w, http.StatusInternalServerError, "failed to start session")
+		return
+	}
+	setSessionCookie(w, h.auth, cookieValue)
+	httptransport.SendJSON(w, http.StatusCreated, h.auth.Status(r.Context(), cookieValue))
 }
 
 func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
@@ -76,21 +92,26 @@ func (h *localAuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		httptransport.SendErr(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	key := localClientIP(r) + "|login"
+	key := localLoginRateLimitKey(r)
 	if !h.logins.Allow(key) {
 		w.Header().Set("Retry-After", "300")
 		httptransport.SendErr(w, http.StatusTooManyRequests, "too many attempts; try again in a few minutes")
 		return
 	}
-	user, err := h.auth.LoginLocal(r.Context(), body.Email, body.Password)
+	result, err := h.auth.CompletePasswordLogin(r.Context(), body.Email, body.Password, localClientIP(r), r.UserAgent())
 	if err != nil {
 		h.logins.Failure(key)
 		httptransport.SendErr(w, http.StatusUnauthorized, serviceauth.ErrInvalidCredentials.Error())
 		return
 	}
 	h.logins.Success(key)
-	setSessionCookie(w, h.auth, user)
-	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), h.auth.SignSession(user)))
+	if !result.Completed {
+		setPendingCookie(w, h.auth, result.PendingToken)
+		httptransport.SendJSON(w, http.StatusOK, map[string]bool{"twoFactorRequired": true})
+		return
+	}
+	setSessionCookie(w, h.auth, result.CookieValue)
+	httptransport.SendJSON(w, http.StatusOK, h.auth.Status(r.Context(), result.CookieValue))
 }
 
 const localLoginWindow = 5 * time.Minute
@@ -138,10 +159,22 @@ func (l *localLoginLimiter) Success(key string) {
 	l.mu.Unlock()
 }
 
+// localClientIP returns the client address our own reverse proxy observed.
+// Caddy fronts the backend on loopback and appends the peer address to any
+// X-Forwarded-For the caller supplied, so the rightmost entry is the last hop
+// we vouch for; every entry left of it is caller-controlled and must never key
+// a rate limiter. Falls back to the peer address for direct (unproxied) access.
 func localClientIP(r *http.Request) string {
-	ip := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0])
-	if ip == "" {
-		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		hops := strings.Split(forwarded, ",")
+		if ip := strings.TrimSpace(hops[len(hops)-1]); ip != "" {
+			return ip
+		}
 	}
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	return ip
+}
+
+func localLoginRateLimitKey(r *http.Request) string {
+	return localClientIP(r) + "|login"
 }

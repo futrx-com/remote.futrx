@@ -3,6 +3,8 @@ package httphandlers
 import (
 	"context"
 	"encoding/json"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -43,6 +45,14 @@ func (auditTestOAuth) ExchangeUser(context.Context, string) (serviceauth.User, e
 
 func newAuditTestHandler(t *testing.T) (*http.ServeMux, *serviceauth.Service, *serviceaudit.Service) {
 	t.Helper()
+	twoFactorStore, err := filetwofactor.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionRegistryStore, err := filesessions.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	auth, err := serviceauth.New(
 		context.Background(),
 		fileauth.New(t.TempDir()),
@@ -53,6 +63,15 @@ func newAuditTestHandler(t *testing.T) (*http.ServeMux, *serviceauth.Service, *s
 		func(string, string, string) serviceauth.OAuthProvider { return auditTestOAuth{} },
 		"https://remote.example.com",
 		[]byte("test-session-key"),
+		twoFactorStore,
+		sessionRegistryStore,
+		serviceauth.Options{
+			PendingLoginTTL:     5 * time.Minute,
+			EnrollmentTTL:       10 * time.Minute,
+			RecoveryCodeCount:   10,
+			SessionHistoryLimit: 20,
+			SetupTokenTTL:       30 * time.Minute,
+		},
 	)
 	if err != nil {
 		t.Fatalf("New auth service: %v", err)
@@ -67,12 +86,12 @@ func newAuditTestHandler(t *testing.T) (*http.ServeMux, *serviceauth.Service, *s
 	return mux, auth, auditLog
 }
 
-func auditRequest(mux *http.ServeMux, auth *serviceauth.Service, method, path, email string) *httptest.ResponseRecorder {
+func auditRequest(t *testing.T, mux *http.ServeMux, auth *serviceauth.Service, method, path, email string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
 	if email != "" {
 		req.AddCookie(&http.Cookie{
 			Name:  serviceauth.SessionCookieName,
-			Value: auth.SignSession(serviceauth.User{Email: email, Sub: "sub-" + email}),
+			Value: auditSession(t, auth, email, "sub-"+email),
 		})
 	}
 	rec := httptest.NewRecorder()
@@ -98,7 +117,7 @@ func TestAuditRoutesAreAdminOnly(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rec := auditRequest(mux, auth, http.MethodGet, tc.path, tc.email)
+			rec := auditRequest(t, mux, auth, http.MethodGet, tc.path, tc.email)
 			if rec.Code != tc.want {
 				t.Fatalf("status = %d, want %d (%s)", rec.Code, tc.want, rec.Body.String())
 			}
@@ -111,7 +130,7 @@ func TestAuditRoutesRejectNonGetMethods(t *testing.T) {
 
 	for _, path := range []string{"/api/admin/audit", "/api/admin/audit/export"} {
 		for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodPut} {
-			rec := auditRequest(mux, auth, method, path, "admin@example.com")
+			rec := auditRequest(t, mux, auth, method, path, "admin@example.com")
 			if rec.Code != http.StatusMethodNotAllowed {
 				t.Fatalf("%s %s = %d, want %d", method, path, rec.Code, http.StatusMethodNotAllowed)
 			}
@@ -130,7 +149,7 @@ func TestAuditQueryAppliesFiltersAndPaginates(t *testing.T) {
 		auditLog.Record(context.Background(), entry)
 	}
 
-	rec := auditRequest(mux, auth, http.MethodGet, "/api/admin/audit?action=project.&limit=1", "admin@example.com")
+	rec := auditRequest(t, mux, auth, http.MethodGet, "/api/admin/audit?action=project.&limit=1", "admin@example.com")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -146,6 +165,7 @@ func TestAuditQueryAppliesFiltersAndPaginates(t *testing.T) {
 	}
 
 	rec = auditRequest(
+		t,
 		mux, auth, http.MethodGet,
 		"/api/admin/audit?action=project.&limit=1&cursor="+page.NextCursor,
 		"admin@example.com",
@@ -162,7 +182,7 @@ func TestAuditQueryRejectsUnparseableTimeBounds(t *testing.T) {
 	mux, auth, _ := newAuditTestHandler(t)
 
 	for _, query := range []string{"?from=yesterday", "?to=soon"} {
-		rec := auditRequest(mux, auth, http.MethodGet, "/api/admin/audit"+query, "admin@example.com")
+		rec := auditRequest(t, mux, auth, http.MethodGet, "/api/admin/audit"+query, "admin@example.com")
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("status for %s = %d, want %d", query, rec.Code, http.StatusBadRequest)
 		}
@@ -176,7 +196,7 @@ func TestAuditExportStreamsJSONLAttachment(t *testing.T) {
 	entry.Actor = serviceaudit.Actor{Email: "admin@example.com"}
 	auditLog.Record(context.Background(), entry)
 
-	rec := auditRequest(mux, auth, http.MethodGet, "/api/admin/audit/export", "admin@example.com")
+	rec := auditRequest(t, mux, auth, http.MethodGet, "/api/admin/audit/export", "admin@example.com")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d (%s)", rec.Code, rec.Body.String())
 	}
@@ -224,4 +244,13 @@ func TestParseAuditTimeAcceptsRFC3339AndMillis(t *testing.T) {
 			}
 		})
 	}
+}
+
+func auditSession(t *testing.T, auth *serviceauth.Service, email, sub string) string {
+	t.Helper()
+	cookie, err := auth.IssueSession(context.Background(), serviceauth.User{Email: email, Sub: sub}, serviceauth.SignInMethodPassword, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cookie
 }

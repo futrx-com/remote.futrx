@@ -1,0 +1,29 @@
+.code-server-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.code-server-settings label { font-size: 13px; font-weight: 600; color: rgb(var(--fg-bright)); }
+.code-server-settings textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: min(50vh, 420px);
+  padding: 0.75rem;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: rgb(var(--bg-inset-rgb));
+  color: rgb(var(--fg));
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.code-server-settings p { margin: 0; font-size: 12px; color: rgb(var(--fg-muted)); }
+.code-server-settings__actions { display: flex; justify-content: flex-end; }
+.code-server-settings__actions button {
+  padding: 0.5rem 0.85rem;
+  border-radius: 0.5rem;
+  background: rgb(var(--accent-blue));
+  color: white;
+  cursor: pointer;
+}
+.code-server-settings__actions button:disabled { opacity: 0.5; cursor: default; }

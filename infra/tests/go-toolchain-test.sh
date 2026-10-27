@@ -13,8 +13,23 @@ ok()   { :; }
 ERROR_LOG=""
 err()  { ERROR_LOG="${ERROR_LOG}${*}"$'\n'; }
 
+fail() {
+    printf 'FAIL: %s\n' "$*" >&2
+    exit 1
+}
+
 TEST_ROOT="$(command mktemp -d "${TMPDIR:-/tmp}/remote-go-toolchain-test.XXXXXX")"
 trap 'command rm -rf "$TEST_ROOT"' EXIT
+
+# Scenarios must not see a Go the host happens to have on PATH: a CI runner
+# whose system Go matches the pin would turn a fresh install into a no-op.
+# Expose only the utilities the installer and this harness actually use.
+TEST_SYSTEM_BIN="$TEST_ROOT/system-bin"
+command mkdir -p "$TEST_SYSTEM_BIN"
+for tool in chmod grep head ln mkdir mktemp mv rm rmdir sed; do
+    tool_path="$(command -v "$tool")" || fail "missing test dependency: $tool"
+    command ln -s "$tool_path" "$TEST_SYSTEM_BIN/$tool"
+done
 
 TEST_ARCH=amd64
 CURL_CALLS=0
@@ -27,11 +42,6 @@ FAKE_ARCHIVE_LAYOUT=official
 FAIL_GO_INSTALL_MOVE=0
 FAIL_GO_RESTORE_MOVE=0
 LAST_GO_BACKUP=""
-
-fail() {
-    printf 'FAIL: %s\n' "$*" >&2
-    exit 1
-}
 
 assert_eq() {
     local expected="$1" actual="$2" label="$3"
@@ -134,7 +144,7 @@ use_install_root() {
     GO_INSTALL_ROOT="$TEST_ROOT/$name/usr/local"
     export GO_INSTALL_ROOT
     mkdir -p "$GO_INSTALL_ROOT/bin"
-    PATH="$GO_INSTALL_ROOT/bin:/usr/bin:/bin"
+    PATH="$GO_INSTALL_ROOT/bin:$TEST_SYSTEM_BIN"
     export PATH
     hash -r
 }
@@ -172,7 +182,7 @@ assert_eq 0 "$CURL_CALLS" "idempotent rerun download count"
 use_install_root distro-upgrade
 DISTRO_GO_ROOT="$TEST_ROOT/distro-upgrade/usr"
 write_fake_go_tree "$DISTRO_GO_ROOT" "$OLD_GO_VERSION"
-PATH="$GO_INSTALL_ROOT/bin:$DISTRO_GO_ROOT/bin:/usr/bin:/bin"
+PATH="$GO_INSTALL_ROOT/bin:$DISTRO_GO_ROOT/bin:$TEST_SYSTEM_BIN"
 export PATH
 hash -r
 CURL_CALLS=0

@@ -10,6 +10,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 const skillFileName = "SKILL.md"
@@ -18,34 +22,74 @@ type Service struct {
 	agentsHome string
 	claudeHome string
 	codexHome  string
+	providers  ProviderCatalog
+}
+
+type ProviderCatalog interface {
+	HasProvider(provider string) bool
+	Descriptor(provider string) (agentmodule.Descriptor, bool)
+	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	LegacySkillRoots(provider string) []string
+	WorkspaceSkillHome(provider string) string
+}
+
+type defaultProviderCatalog interface {
+	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+}
+
+type Option func(*Service)
+
+func WithProviderCatalog(providers ProviderCatalog) Option {
+	return func(service *Service) {
+		service.providers = providers
+	}
 }
 
 type rootSpec struct {
-	path   string
-	source string
+	path           string
+	source         string
+	remoteCommands map[string]bool
 }
 
-func New() *Service {
-	return NewWithSkillHomes(defaultAgentsHome(), defaultClaudeHome(), defaultCodexHome())
+func New(options ...Option) *Service {
+	return NewWithSkillHomes(defaultAgentsHome(), defaultClaudeHome(), defaultCodexHome(), options...)
 }
 
-func NewWithHomes(claudeHome, codexHome string) *Service {
-	return NewWithSkillHomes("", claudeHome, codexHome)
+func NewWithHomes(claudeHome, codexHome string, options ...Option) *Service {
+	return NewWithSkillHomes("", claudeHome, codexHome, options...)
 }
 
-func NewWithSkillHomes(agentsHome, claudeHome, codexHome string) *Service {
-	return &Service{
+func NewWithSkillHomes(agentsHome, claudeHome, codexHome string, options ...Option) *Service {
+	service := &Service{
 		agentsHome: agentsHome,
 		claudeHome: claudeHome,
 		codexHome:  codexHome,
 	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace string) ([]Skill, error) {
-	switch provider {
-	case ProviderClaude, ProviderCodex, ProviderKimi, ProviderAntigravity:
-	default:
+	if !agent.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
 		return nil, ErrInvalidProvider
+	}
+	descriptor := agentmodule.Descriptor{}
+	if s.providers != nil {
+		descriptor, _ = s.providers.Descriptor(string(provider))
+		scope := agentmodule.ScopeHost
+		if projectWorkspace != "" {
+			scope = agentmodule.ScopeProject
+		}
+		if !s.providers.SupportsScope(string(provider), scope) {
+			return nil, ErrInvalidProvider
+		}
+		if descriptor.Features.Skills == agentmodule.SkillsNone {
+			return []Skill{}, nil
+		}
 	}
 
 	var skills []Skill
@@ -57,19 +101,16 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	// .agents/skills is the project source of truth. The provider-specific
 	// paths are legacy compatibility fallbacks and are deduped below.
 	if projectWorkspace != "" {
-		for _, root := range projectRoots(projectWorkspace) {
+		defaults, remoteCommands := defaultProjectSkills(provider)
+		for _, root := range s.projectRoots(projectWorkspace, string(provider), remoteCommands) {
 			if err := collectSkills(ctx, provider, root, &skills); err != nil {
 				return nil, err
 			}
 		}
-		if !hasSkillCommand(skills, "scheduled-tasks") {
-			skills = append(skills, Skill{
-				Name:        "Scheduled Tasks",
-				Command:     "scheduled-tasks",
-				Description: "Create and manage persistent one-time or recurring tasks that return to this chat.",
-				Provider:    provider,
-				Source:      "remote",
-			})
+		for _, skill := range defaults {
+			if !hasSkillCommand(skills, skill.Command) {
+				skills = append(skills, skill)
+			}
 		}
 	}
 	if skills == nil {
@@ -86,6 +127,15 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 		return left < right
 	})
 	return skills, nil
+}
+
+func (s *Service) DefaultProvider(scope agentmodule.ExecutionScope) Provider {
+	if providers, ok := s.providers.(defaultProviderCatalog); ok {
+		if provider := providers.DefaultProvider(scope); provider != "" {
+			return provider
+		}
+	}
+	return ProviderCodex
 }
 
 func hasSkillCommand(skills []Skill, command string) bool {
@@ -106,24 +156,46 @@ func (s *Service) roots(provider Provider) []rootSpec {
 	if s.agentsHome != "" {
 		roots = append(roots, rootSpec{path: filepath.Join(s.agentsHome, "skills"), source: "user"})
 	}
-	switch provider {
-	case ProviderClaude:
-		return append(roots, rootSpec{path: filepath.Join(s.claudeHome, "skills"), source: "user"})
-	case ProviderCodex:
-		return append(roots, rootSpec{path: filepath.Join(s.codexHome, "skills"), source: "user"})
-	case ProviderKimi, ProviderAntigravity:
+	if s.providers != nil {
+		for _, path := range s.providers.LegacySkillRoots(string(provider)) {
+			roots = append(roots, rootSpec{path: path, source: "user"})
+		}
 		return roots
-	default:
-		return nil
 	}
+	legacyRoots := map[Provider]string{
+		ProviderClaude: filepath.Join(s.claudeHome, "skills"),
+		ProviderCodex:  filepath.Join(s.codexHome, "skills"),
+	}
+	if path := legacyRoots[provider]; path != "" {
+		roots = append(roots, rootSpec{path: path, source: "user"})
+	}
+	return roots
 }
 
-func projectRoots(projectWorkspace string) []rootSpec {
-	return []rootSpec{
-		{path: filepath.Join(projectWorkspace, ".agents", "skills"), source: "project"},
-		{path: filepath.Join(projectWorkspace, ".claude", "skills"), source: "project"},
-		{path: filepath.Join(projectWorkspace, ".codex", "skills"), source: "project"},
+func (s *Service) projectRoots(projectWorkspace, provider string, remoteCommands map[string]bool) []rootSpec {
+	roots := []rootSpec{{
+		path:           filepath.Join(projectWorkspace, ".agents", "skills"),
+		source:         "project",
+		remoteCommands: remoteCommands,
+	}}
+	if s.providers == nil {
+		return append(roots,
+			rootSpec{path: filepath.Join(projectWorkspace, ".claude", "skills"), source: "project"},
+			rootSpec{path: filepath.Join(projectWorkspace, ".codex", "skills"), source: "project"},
+		)
 	}
+	configuredHome := s.providers.WorkspaceSkillHome(provider)
+	if configuredHome == "" {
+		return roots
+	}
+	workspaceHome := filepath.Clean(configuredHome)
+	relative, err := filepath.Rel("/workspace", workspaceHome)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return roots
+	}
+	return append(roots, rootSpec{
+		path: filepath.Join(projectWorkspace, relative, "skills"), source: "project",
+	})
 }
 
 func dedupeSkills(skills []Skill) []Skill {
@@ -189,10 +261,38 @@ func collectSkills(ctx context.Context, provider Provider, root rootSpec, out *[
 			return nil
 		}
 		skill.Provider = provider
-		skill.Source = sourceForPath(root, path)
+		skill.Source = sourceForPath(root, path, skill.Command)
 		*out = append(*out, skill)
 		return nil
 	})
+}
+
+func defaultProjectSkills(provider Provider) ([]Skill, map[string]bool) {
+	defaults := provisioning.DefaultSkills()
+	skills := make([]Skill, 0, len(defaults))
+	commands := make(map[string]bool, len(defaults))
+	for _, defaultSkill := range defaults {
+		command := strings.TrimSpace(defaultSkill.Command)
+		if command == "" {
+			continue
+		}
+		var metadata Skill
+		for _, asset := range defaultSkill.Assets {
+			if asset.Path == skillFileName {
+				metadata = parseSkillMetadata(asset.Content)
+				break
+			}
+		}
+		if strings.TrimSpace(metadata.Name) == "" {
+			metadata.Name = command
+		}
+		metadata.Command = command
+		metadata.Provider = provider
+		metadata.Source = "remote"
+		skills = append(skills, metadata)
+		commands[strings.ToLower(command)] = true
+	}
+	return skills, commands
 }
 
 func readSkillFile(path string) (Skill, error) {
@@ -257,10 +357,14 @@ func cleanYAMLScalar(value string) string {
 	return strings.TrimSpace(value)
 }
 
-func sourceForPath(root rootSpec, path string) string {
-	rel, err := filepath.Rel(root.path, path)
+func sourceForPath(root rootSpec, skillPath, command string) string {
+	rel, err := filepath.Rel(root.path, skillPath)
 	if err != nil {
 		return root.source
+	}
+	if root.remoteCommands[strings.ToLower(strings.TrimSpace(command))] &&
+		filepath.Clean(rel) == filepath.Join(command, skillFileName) {
+		return "remote"
 	}
 	if strings.HasPrefix(rel, ".system"+string(filepath.Separator)) {
 		return "system"

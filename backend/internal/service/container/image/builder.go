@@ -33,10 +33,12 @@ const (
 	baseImageBuilderName = "futrx-remote-dev-builder"
 
 	baseImageBuildTimeout    = 15 * time.Minute
-	baseImagePublishTimeout  = 5 * time.Minute
+	baseImagePublishTimeout  = 15 * time.Minute
 	baseImageNetworkWarmup   = 3 * time.Second
+	baseImageNetworkTimeout  = 90 * time.Second
+	baseImageNetworkPoll     = 2 * time.Second
 	baseImageProgressTick    = 30 * time.Second
-	baseImageBuildStageCount = 6
+	baseImageBuildStageCount = 5
 	deleteTimeout            = 30 * time.Second
 )
 
@@ -106,12 +108,13 @@ func (b *Builder) reportProgress(progress Progress) {
 // Builder owns the disposable builder lifecycle and publishes the
 // profile-derived development image consumed by project containers.
 type Builder struct {
-	runtime                 Runtime
-	profiles                ProfileSource
-	browserInstallScript    string
-	codeServerInstallScript []byte
-	networkWarmup           time.Duration
-	progress                ProgressReporter
+	runtime              Runtime
+	profiles             ProfileSource
+	browserInstallScript string
+	networkWarmup        time.Duration
+	networkTimeout       time.Duration
+	networkPoll          time.Duration
+	progress             ProgressReporter
 }
 
 // NewBuilder returns an image builder configured with the feature install
@@ -120,16 +123,16 @@ func NewBuilder(
 	runtime Runtime,
 	profileSource ProfileSource,
 	browserInstallScript string,
-	codeServerInstallScript []byte,
 	progress ProgressReporter,
 ) *Builder {
 	return &Builder{
-		runtime:                 runtime,
-		profiles:                profileSource,
-		browserInstallScript:    browserInstallScript,
-		codeServerInstallScript: codeServerInstallScript,
-		networkWarmup:           baseImageNetworkWarmup,
-		progress:                progress,
+		runtime:              runtime,
+		profiles:             profileSource,
+		browserInstallScript: browserInstallScript,
+		networkWarmup:        baseImageNetworkWarmup,
+		networkTimeout:       baseImageNetworkTimeout,
+		networkPoll:          baseImageNetworkPoll,
+		progress:             progress,
 	}
 }
 
@@ -184,9 +187,10 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return bctx.Err()
 	}
 
-	// Fail fast on a container that can only reach IPv6 (see egress.go).
-	if _, err := b.runtime.ExecuteScript(bctx, baseImageBuilderName, ipv4EgressProbe); err != nil {
-		return errors.New(ipv4EgressHint)
+	// Block until the builder has IPv4 egress, rather than failing the build
+	// on a container that is merely still booting (see egress.go).
+	if err := b.waitForIPv4Egress(bctx); err != nil {
+		return err
 	}
 
 	out, err = b.runBuildStage(2, "Installing system tools, Node.js, and agent CLIs", func() (string, error) {
@@ -203,14 +207,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 		return fmt.Errorf("agent browser install script: %w; output: %s", err, output.TruncateTail(out, 2000))
 	}
 
-	out, err = b.runBuildStage(4, "Installing the browser IDE", func() (string, error) {
-		return b.runtime.ExecuteScript(bctx, baseImageBuilderName, string(b.codeServerInstallScript))
-	})
-	if err != nil {
-		return fmt.Errorf("code-server install script: %w; output: %s", err, output.TruncateTail(out, 2000))
-	}
-
-	out, err = b.runBuildStage(5, "Finalizing the builder container", func() (string, error) {
+	out, err = b.runBuildStage(4, "Finalizing the builder container", func() (string, error) {
 		return b.runtime.StopContainer(bctx, baseImageBuilderName)
 	})
 	if err != nil {
@@ -219,7 +216,7 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 
 	pctx, pcancel := context.WithTimeout(ctx, baseImagePublishTimeout)
 	defer pcancel()
-	out, err = b.runBuildStage(6, "Publishing the reusable workspace image", func() (string, error) {
+	out, err = b.runBuildStage(5, "Publishing the reusable workspace image", func() (string, error) {
 		return b.runtime.PublishImage(
 			pctx,
 			baseImageBuilderName,
@@ -232,4 +229,35 @@ func (b *Builder) Build(ctx context.Context, alias string) error {
 	}
 
 	return nil
+}
+
+// waitForIPv4Egress blocks until the builder container can open an outbound
+// IPv4 connection, or until networkTimeout has passed without one.
+//
+// A container that has not yet finished DHCP on the bridge has no IPv4 route
+// at all, so connect() fails immediately with ENETUNREACH — indistinguishable
+// from a blocked path except in timing, and far more common. Probing once
+// after a fixed warmup therefore fails healthy hosts whenever the lease takes
+// longer than the warmup, which it does on a loaded or small machine. Polling
+// costs a healthy build only the time the lease actually needs, and the build
+// has a 15-minute budget to spend.
+func (b *Builder) waitForIPv4Egress(ctx context.Context) error {
+	deadline := time.Now().Add(b.networkTimeout)
+	for attempts := 1; ; attempts++ {
+		_, err := b.runtime.ExecuteScript(ctx, baseImageBuilderName, ipv4EgressProbe)
+		if err == nil {
+			return nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf(ipv4EgressHint, b.networkTimeout, attempts)
+		}
+		select {
+		case <-time.After(b.networkPoll):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }

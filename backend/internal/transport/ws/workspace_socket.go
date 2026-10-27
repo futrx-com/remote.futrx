@@ -96,9 +96,13 @@ func (s *WorkspaceSocket) handle(upgrader websocket.Upgrader, w http.ResponseWri
 		return
 	}
 
-	if s.visibility != nil && !isAdmin {
+	// Build the initial set of allowed project IDs for non-admin users.
+	// This set is updated dynamically as project.upsert events arrive.
+	needsFilter := s.visibility != nil && !isAdmin
+	allowed := projectIDSet(projects)
+	if needsFilter {
 		projects = s.filterProjects(r.Context(), projects, email)
-		allowed := projectIDSet(projects)
+		allowed = projectIDSet(projects)
 		chats = s.filterChats(chats, allowed)
 	}
 
@@ -123,6 +127,18 @@ func (s *WorkspaceSocket) handle(upgrader websocket.Upgrader, w http.ResponseWri
 				if !ok {
 					return
 				}
+
+				// Filter real-time events for non-admin users so
+				// they only see projects and chats they have access
+				// to. Admin users and single-user dev mode bypass
+				// filtering entirely.
+				if needsFilter {
+					ev, ok = filterEvent(s.visibility, email, allowed, ev)
+					if !ok {
+						continue
+					}
+				}
+
 				_ = conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
 				if err := conn.WriteJSON(ev); err != nil {
 					return
@@ -143,6 +159,81 @@ func (s *WorkspaceSocket) handle(upgrader websocket.Upgrader, w http.ResponseWri
 			close(done)
 			return
 		}
+	}
+}
+
+// filterEvent decides whether ev should be forwarded to a non-admin client
+// identified by email. It returns the (possibly transformed) event and true
+// if the event should be sent, or a zero event and false to suppress it.
+//
+// The allowed map is maintained per-connection: project.upsert events that
+// pass the access check add the project; project.delete events and failed
+// access checks remove it. When an upsert arrives for a project the user
+// previously had access to but no longer does, the event is rewritten as a
+// project.delete so the client UI removes the stale entry.
+func filterEvent(
+	vis WorkspaceVisibility,
+	email string,
+	allowed map[serviceproject.ID]struct{},
+	ev workspacehub.Event,
+) (workspacehub.Event, bool) {
+	switch ev.Type {
+	case "project.upsert":
+		if ev.Project == nil {
+			return ev, false
+		}
+		// Use a short-lived background context: the original request
+		// context may already be cancelled for long-lived connections.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ok, err := vis.HasAccess(ctx, ev.Project.ID, email)
+		if err != nil || !ok {
+			// If the user previously had access, they need a delete
+			// event so the UI removes the now-inaccessible project.
+			if _, had := allowed[ev.Project.ID]; had {
+				delete(allowed, ev.Project.ID)
+				return workspacehub.Event{
+					Type: "project.delete",
+					ID:   string(ev.Project.ID),
+				}, true
+			}
+			return ev, false
+		}
+		allowed[ev.Project.ID] = struct{}{}
+		return ev, true
+
+	case "project.delete":
+		pid := serviceproject.ID(ev.ID)
+		delete(allowed, pid)
+		// Only forward the delete if the user knew about this project.
+		if _, had := allowed[pid]; had {
+			return ev, true
+		}
+		// Still forward: the client might have it from an earlier
+		// snapshot and a delete for an unknown ID is harmless.
+		return ev, true
+
+	case "chat.upsert":
+		if ev.Chat == nil {
+			return ev, false
+		}
+		// Loose chats (not bound to a project) are visible to everyone.
+		if ev.Chat.ProjectID == "" {
+			return ev, true
+		}
+		if _, ok := allowed[serviceproject.ID(ev.Chat.ProjectID)]; ok {
+			return ev, true
+		}
+		return ev, false
+
+	case "chat.delete":
+		// chat.delete carries only an ID, not a project reference, so
+		// we cannot filter it. Deleting an unknown chat on the client
+		// is a harmless no-op, so we allow it through.
+		return ev, true
+
+	default:
+		return ev, true
 	}
 }
 

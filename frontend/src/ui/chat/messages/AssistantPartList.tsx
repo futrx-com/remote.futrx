@@ -1,30 +1,50 @@
 import type { ComponentChildren } from "preact";
+import { providerDisplayLabel } from "../../../config/chat";
 import type { AssistantMessagePart } from "../../../models/chatMessage";
 import { ToolCall } from "../tool-calls/ToolCall";
 import { StreamingText } from "./StreamingText";
+import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolGroup } from "./ToolGroup";
+import { InteractionCard } from "../interactions/InteractionCard";
+import { CollaborationCard } from "./CollaborationCard";
+import type { ChatInteractionResponder } from "../../../types/chatApi";
+import { showTerminalTurnStatus } from "./turnVisibility";
 
 type ToolPart = Extract<AssistantMessagePart, { kind: "tool" }>;
 
 export function AssistantPartList({
   parts,
+  hydratedPartIndex,
   streaming,
   chatId,
   cwd,
   onAnswerQuestion,
+  onRespondInteraction,
+  streamingPresentation,
 }: {
   parts: AssistantMessagePart[];
+  hydratedPartIndex?: number;
   streaming: boolean;
   chatId?: string;
   cwd?: string;
-  onAnswerQuestion?: (text: string) => void;
+  onAnswerQuestion?: (text: string) => boolean;
+  onRespondInteraction?: ChatInteractionResponder;
+  streamingPresentation: "blocks" | "tokens";
 }) {
-  return <>{renderAssistantParts(parts, { streaming, chatId, cwd, onAnswerQuestion })}</>;
+  return <>{renderAssistantParts(parts, { streaming, hydratedPartIndex, chatId, cwd, onAnswerQuestion, onRespondInteraction, streamingPresentation })}</>;
 }
 
 function renderAssistantParts(
   parts: AssistantMessagePart[],
-  context: { streaming: boolean; chatId?: string; cwd?: string; onAnswerQuestion?: (text: string) => void }
+  context: {
+    streaming: boolean;
+    hydratedPartIndex?: number;
+    chatId?: string;
+    cwd?: string;
+    onAnswerQuestion?: (text: string) => boolean;
+    onRespondInteraction?: ChatInteractionResponder;
+    streamingPresentation: "blocks" | "tokens";
+  }
 ): ComponentChildren[] {
   const rendered: ComponentChildren[] = [];
   let toolGroup: ToolPart[] = [];
@@ -55,8 +75,15 @@ function renderAssistantParts(
 
     if (part.kind === "text") {
       rendered.push(
-        <div key={index} class="text-[15px] leading-7 text-ink-100">
-          <StreamingText text={part.text} streaming={context.streaming} chatId={context.chatId} cwd={context.cwd} />
+        <div key={index} class="codex-prose min-w-0 max-w-full text-[14.5px] leading-[1.7] text-ink-100 [overflow-wrap:anywhere]">
+          <StreamingText
+            text={part.text}
+            hydrated={index === context.hydratedPartIndex}
+            streaming={context.streaming && index === parts.length - 1}
+            presentation={context.streamingPresentation}
+            chatId={context.chatId}
+            cwd={context.cwd}
+          />
         </div>
       );
       return;
@@ -64,8 +91,44 @@ function renderAssistantParts(
 
     if (part.kind === "thinking") {
       rendered.push(
-        <div key={index} class="text-[13px] italic text-ink-300 border-l-2 border-accent-yellow/[0.45] pl-3 my-2">
-          {part.text}
+        <ThinkingBlock
+          key={`thinking-${index}`}
+          text={part.text}
+          active={context.streaming && index === parts.length - 1}
+        />
+      );
+      return;
+    }
+
+    if (part.kind === "interaction") {
+      rendered.push(
+        <InteractionCard key={part.id} part={part} onRespond={context.onRespondInteraction} />
+      );
+      return;
+    }
+
+    if (part.kind === "collaboration") {
+      rendered.push(
+        <CollaborationCard
+          key={part.id}
+          part={part}
+          chatId={context.chatId}
+          cwd={context.cwd}
+        />
+      );
+      return;
+    }
+
+    if (part.kind === "turn-status") {
+      // The thread-level activity label represents a running turn. Only
+      // Failures need a persistent transcript status line. An interruption
+      // ends the activity indicator without adding another message row.
+      if (!showTerminalTurnStatus(part.status)) return;
+      const providerLabel = part.provider ? providerDisplayLabel(part.provider) : "Agent";
+      rendered.push(
+        <div key={`status-${index}`} class="my-2 flex items-center gap-2 text-[11px] text-ink-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-accent-blue" aria-hidden="true" />
+          {providerLabel} turn: {part.status}
         </div>
       );
       return;
@@ -79,6 +142,9 @@ function renderAssistantParts(
         name={part.name}
         input={part.input}
         output={part.output}
+        outputRef={part.outputRef}
+        outputBytes={part.outputBytes}
+        outputTruncated={part.outputTruncated}
         isError={part.isError}
         status={part.status}
         onAnswerQuestion={context.onAnswerQuestion}

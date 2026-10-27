@@ -1,10 +1,130 @@
-export {
-  CHAT_MODE_OPTIONS as MODE_OPTIONS,
-  CHAT_PROVIDER_OPTIONS as PROVIDER_OPTIONS,
-  modelDisplayLabel,
-  modelOptionsForProvider,
-  modelShortLabel,
-  providerDisplayLabel,
-  reasoningEffortOptionsForProvider,
-  serviceTierOptionsForProvider,
-} from "./chatCatalog";
+import type { ApprovalPolicy, SandboxPolicy } from "../models/chat";
+import { capitalize } from "./text.ts";
+
+/** Longest title a chat can be renamed to. Auto-titles stop well short of it. */
+export const CHAT_TITLE_MAX_LENGTH = 120;
+
+export const DEFAULT_TOOL_OUTPUT_PREVIEW_CHARS = 6000;
+export const READ_TOOL_OUTPUT_PREVIEW_CHARS = 8000;
+
+export const APPROVAL_POLICY_OPTIONS: readonly {
+  value: ApprovalPolicy;
+  label: string;
+}[] = [
+  { value: "on-request", label: "Ask when needed" },
+  { value: "untrusted", label: "Untrusted only" },
+  { value: "never", label: "Never ask" },
+];
+
+export const SANDBOX_POLICY_OPTIONS: readonly {
+  value: SandboxPolicy;
+  label: string;
+  description: string;
+  details: readonly string[];
+}[] = [
+  {
+    value: "workspaceWrite",
+    label: "Workspace write",
+    description: "Edit project files and run commands without internet access.",
+    details: [
+      "Read files throughout the container",
+      "Create, edit, and delete files in the project workspace",
+      "Run commands, but without internet access",
+      "Cannot change system files or install system packages",
+    ],
+  },
+  {
+    value: "readOnly",
+    label: "Read only",
+    description: "Inspect files and run safe commands without making changes.",
+    details: [
+      "Read and inspect files throughout the container",
+      "Run commands that do not change files",
+      "No internet access",
+      "Cannot create, edit, or delete files",
+    ],
+  },
+  {
+    value: "dangerFullAccess",
+    label: "Full access",
+    description: "Use the internet and make unrestricted changes in the container.",
+    details: [
+      "Read, create, edit, and delete files anywhere in the container",
+      "Run commands without filesystem restrictions",
+      "Access the internet and external services",
+      "Install packages and change system configuration",
+    ],
+  },
+];
+
+export function modelShortLabel(model?: string): string {
+  return model || "auto";
+}
+
+export function providerDisplayLabel(provider?: string): string {
+  if (!provider) return "Codex";
+  const knownLabels: Record<string, string> = {
+    antigravity: "Antigravity",
+    claude: "Claude",
+    codex: "Codex",
+    kimi: "Kimi",
+    minimax: "MiniMax",
+  };
+  return knownLabels[provider] ?? provider
+    .split("-")
+    .filter(Boolean)
+    .map(capitalize)
+    .join(" ");
+}
+
+/**
+ * Where a chat's attachments land. The backend anchors them at
+ * `<workspace root>/.uploads` and keeps that root stable on purpose — its own
+ * comment in service.go says it does so "so the frontend can predict it
+ * exactly". These are that prediction; they must not drift from it.
+ */
+export const CHAT_UPLOAD_PATHS = {
+  /** Subdirectory isolating attachments from the source tree. */
+  dirName: ".uploads",
+  /** The stable root a project chat's uploads hang off, whatever its live cwd. */
+  projectRoot: "/workspace",
+} as const;
+
+/**
+ * How long the composer waits for an extension's claim on a finished
+ * attachment before giving up on it.
+ *
+ * A claim backed by a backend call is already bounded by the backend host, so a
+ * well-behaved one settles far inside this. The bound is for the one that
+ * does not: an extension whose promise never settles would otherwise leave
+ * send disabled for the rest of the session.
+ */
+export const ATTACHMENT_CLAIM_TIMEOUT_MS = 5 * 60_000;
+
+/** Keep a find-in-chat match this far from the scroller's edges when revealing it. */
+export const CHAT_FIND_REVEAL_MARGIN = 80;
+
+/**
+ * The CSS highlight layers find-in-chat paints into. These names are the
+ * contract with `::highlight(...)` in index.css and have to stay in step with
+ * it, the way `STORAGE_KEYS.themeChoice` does with index.html.
+ *
+ * Two layers, so the current match reads differently from the rest: it is
+ * painted separately rather than held out of `all`, and its rule wins by being
+ * registered second.
+ */
+export const CHAT_FIND_HIGHLIGHTS = {
+  all: "chat-find",
+  current: "chat-find-current",
+} as const;
+
+/** Opts a subtree out of find-in-chat's matches — the find bar itself, for one. */
+export const CHAT_FIND_SKIP_ATTRIBUTE = "data-find-skip";
+
+/**
+ * What find-in-chat refuses to read: markup carrying no rendered text, hidden
+ * subtrees, and anything opted out above. Text the reader cannot see is not
+ * text the find bar should match.
+ */
+export const CHAT_FIND_SKIP_SELECTOR =
+  `script, style, [hidden], [${CHAT_FIND_SKIP_ATTRIBUTE}]`;

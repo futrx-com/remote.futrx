@@ -2,8 +2,7 @@
 
 Remote records who did what on the box: sign-ins, project and membership
 changes, secret reads and writes, container lifecycle transitions, agent runs,
-scheduled-task edits, settings changes, self-updates, and workspace file,
-terminal, and IDE access. The trail is append-only JSONL on the host, readable
+settings changes, self-updates, and workspace file access. The trail is append-only JSONL on the host, readable
 by administrators in **Settings → Audit log** and over an admin-only API.
 
 The audit log is a forensic record, not a metrics system. It answers "who
@@ -78,12 +77,11 @@ every project action, `project.secret.` only the secret ones.
 | `project.container.` | `start`, `stop`, `restart`, `recycle`, `repair-network`, `limits` |
 | `project.browser.` | `start`, `stop` |
 | `chat.` | `create`, `delete` |
-| `agent.run.` | `start`, `cancel` — `meta` carries `provider`, `chatId`, `projectId`, and the scheduled task/run ids for unattended turns |
-| `schedule.` | `create`, `update`, `arm`, `delete`, `run-now` |
+| `agent.run.` | `start`, `cancel` — `meta` carries `provider`, `chatId`, `projectId`, and application, instance, and request ids for application-owned turns |
 | `settings.` | `google-oauth.configure`, `agent.connect`, `agent.disconnect` |
 | `self-update.` | `trigger` |
 | `workspace.file.` | `upload`, `download`, `archive-download` |
-| `workspace.` | `git.checkout`, `ide.open`, `terminal.open`, `terminal.close` |
+| `workspace.` | `git.checkout` |
 
 `project.container.start` is only recorded when the container was not already
 running. Every agent run calls start for convergence, so recording the no-op
@@ -104,7 +102,7 @@ Sign-in routes are the exception: a login request has no session to resolve, so
 those handlers supply the attempted identity themselves and the middleware
 contributes only the IP and user agent.
 
-Long-lived WebSockets (chat runs, container terminals) copy the caller onto a
+Long-lived chat WebSockets copy the caller onto a
 background-rooted context, because a run outlives the request that started it.
 
 ## Reading it
@@ -200,9 +198,12 @@ for that log line if the trail matters to you.
 
 ## What is not covered
 
+- Application-owned actions: Scheduled Tasks edits, Terminal sessions, and
+  Code Server openings are outside the core audit hooks. Agent runs started
+  by applications are recorded with their application identity.
 - Anything happening **inside** a container after the boundary is crossed. The
-  log records that a terminal was opened or an agent run started, not the
-  commands typed or the files the agent touched. The chat event log is the
+  log records that an agent run started, not the commands typed or the files
+  the agent touched. The chat event log is the
   record for agent activity.
 - Read-only browsing: listing projects, opening a chat, or viewing the file
   tree is not recorded. Secret reads are, because they disclose credentials.

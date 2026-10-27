@@ -1,5 +1,5 @@
 import type { RefObject } from "preact";
-import { ChevronDown } from "../../primitives/icons";
+import { Check, ChevronDown } from "../../primitives/icons";
 
 export function ModelPicker({
   modelRef,
@@ -25,17 +25,18 @@ export function ModelPicker({
       <button
         type="button"
         onClick={onToggle}
-        class="h-9 inline-flex items-center justify-center gap-1.5 text-[13px] font-medium px-2.5 sm:px-3 rounded-md
-               bg-white/[0.06] hover:bg-white/10 border border-white/10 text-ink-100 disabled:opacity-50"
+        class="inline-flex h-8 items-center justify-center gap-1.5 rounded-control px-2.5 text-[13px]
+               font-medium text-ink-200 transition-colors hover:bg-tint-strong hover:text-ink-50
+               disabled:opacity-50 sm:px-3"
         disabled={streaming}
         title={streaming ? "Cannot change model while streaming" : "Switch model"}
       >
         <span>{displayLabel(model)}</span>
-        <ChevronDown class="w-3.5 h-3.5 text-ink-300" />
+        <ChevronDown class="h-3 w-3 text-ink-400" />
       </button>
       {open && (
-        <div class="theme-menu-surface absolute right-0 top-full mt-2 z-40 w-[220px]
-                    bg-[#151922] border border-white/[0.12] rounded-lg shadow-2xl overflow-hidden p-1">
+        <div class="theme-menu-surface menu-pop absolute right-0 top-full z-40 mt-1.5 w-[230px]
+                    overflow-hidden rounded-card border border-line bg-raised p-1 shadow-pop">
           {options.map((option) => {
             const active = (model || "") === option.value ||
               (option.value !== "" && displayLabel(model).toLowerCase() === option.value);
@@ -44,14 +45,14 @@ export function ModelPicker({
                 key={option.value}
                 type="button"
                 onClick={() => onPick(option.value)}
-                class={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-md text-left
-                        ${active ? "bg-accent-blue/[0.16] text-accent-blue" : "hover:bg-white/[0.07] text-ink-100"}`}
+                class={`flex w-full items-center justify-between gap-3 rounded-control px-2.5 py-2 text-left transition-colors
+                        ${active ? "bg-tint-active" : "hover:bg-tint-strong"}`}
               >
                 <span>
-                  <span class="block text-[14px] font-medium">{option.label}</span>
-                  <span class="block text-[12px] text-ink-300">{option.sub}</span>
+                  <span class={`block text-[13px] ${active ? "font-medium text-ink-50" : "text-ink-100"}`}>{option.label}</span>
+                  <span class="block text-[11.5px] text-ink-400">{option.sub}</span>
                 </span>
-                {active && <span class="h-2 w-2 rounded-full bg-accent-blue" />}
+                {active && <Check class="h-3.5 w-3.5 flex-none text-accent-blue" />}
               </button>
             );
           })}

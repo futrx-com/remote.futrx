@@ -6,11 +6,13 @@ Start with the symptom below. Use **Refresh** after a recovery action so that th
 
 ### The server asks me to create an admin
 
-No local administrator has claimed the installation yet. Create the first account with the intended owner email and a password of at least 12 characters. The claim endpoint is public only while the server is unclaimed.
+No local administrator has claimed the installation yet. Open the setup link printed to the server terminal at startup - the form only accepts the one-time token it carries - then create the first account with the intended owner email and a password of at least 12 characters. If the link expired or was lost, run `sudo remote setup-token` on the host to print a new one; issuing a new token invalidates the previous one.
 
 ### A member sees “waiting for administrator”
 
-The host has not completed local-admin setup or no agent provider is connected. A server admin must finish the displayed setup. Members cannot connect host-wide provider credentials.
+The host has not completed local-admin setup or no configured access-gate agent
+is ready. A server admin must finish the displayed module access flow. Members
+cannot configure host-wide managed provider credentials.
 
 ### Google sign-in returns access denied
 
@@ -38,6 +40,10 @@ There is no password-reset screen. Host access is required to repair the local-a
 5. Check the backend and LXD logs on the host.
 
 Creating a project requires metadata, durable directories, an LXD launch, mounts, limits, and best-effort provisioning.
+
+### Project creation says there is not enough disk space
+
+Before creating a project, Remote checks the LXD storage pool that new containers use. It needs room for the base image plus 2 GiB, and the message shows how much is free and how much is needed. Free up space on the host and try again. With the default `dir` pool, that space comes from the host's root filesystem, which also holds the durable project directories.
 
 ### Project is stopped, missing, or in error
 
@@ -68,7 +74,28 @@ Only `/workspace` and provider homes survive container replacement. Reinstallabl
 
 ### The provider is unavailable
 
-An admin should open **Settings → Agents**, refresh the provider login, and wait for the authenticated state. Reopen or restart the project if credential propagation is stale.
+Follow the provider's instructions under **Settings → Agents**. For a managed
+flow, an admin can refresh its login and wait for the authenticated state. For
+an external flow such as Antigravity, authenticate in the project Terminal and
+then choose **Refresh models**. A no-auth module has no login action; verify its
+CLI/configuration instead. Reopen or restart the project if credential
+propagation is stale.
+
+### Models or controls are missing or stale
+
+Make sure the project is running, then open the provider/model picker and
+choose **Refresh models**. This bypasses the
+shared backend entry and probes the CLIs in the active project container, or on
+the host for a loose chat. Use it after a CLI or configuration change, an
+account-entitlement change, or a manual terminal login.
+
+Healthy results are held in backend memory for 24 hours; a result containing
+any provider fallback or warning is held for 2 hours. Expiry is checked on the
+next request, and restarting the backend clears the cache. The browser keeps
+the previous catalog visible while refresh runs. Provider-level fallback and
+partial-discovery warnings are not generally rendered in the picker, so if
+choices remain absent or generic, inspect the API response or backend logs and
+verify the provider CLI directly.
 
 ### A run does not start
 
@@ -76,7 +103,7 @@ Check:
 
 1. The workspace socket and chat socket are connected.
 2. The project is running.
-3. The selected provider is authenticated.
+3. The selected provider's declared authentication/access requirement is satisfied.
 4. No other client already owns the one-run-per-chat lock.
 5. The chosen model, reasoning, or speed value is accepted by that provider.
 
@@ -104,22 +131,36 @@ Provider switches, rewinds, missing sessions, and some forks can start a fresh p
 
 Runs execute under the current backend process and cannot be reattached after it restarts. Review the durable files and chat events, then start a new prompt. Verify partial changes before continuing.
 
-### Kimi behaves differently from Claude or Codex
+### Kimi behaves differently from Claude, Codex, or MiniMax
 
-Kimi currently has no usage telemetry, its fork starts fresh, selected skills are stored but not injected as provider triggers, and it does not receive the equivalent Browser MCP plumbing.
+Kimi currently has no usage telemetry, its fork starts fresh, and it does not
+receive the equivalent Browser MCP plumbing. Selected skills are injected as
+instructions to read their canonical `SKILL.md` paths rather than as native
+provider triggers.
+
+### MiniMax says its Token Plan subscription key is not configured
+
+MiniMax is available only in project chats and requires a Token Plan
+subscription. Open **Settings → Agents**, choose the MiniMax sign-in action,
+follow the Token Plan link if needed, and save a named `sk-cp-…` subscription key.
+Standard pay-as-you-go API keys are rejected. The locked MiniMax row then moves
+from **Sign in to use** to **Connected**, and its model list becomes available.
+If MiniMax rejects the subscription key, the form remains open and the existing
+saved accounts, if any, remain unchanged.
 
 ### Antigravity says it is not signed in
 
-Antigravity is authenticated per project, not from **Settings → Agents**. Open
-the project's **Terminal**, run `agy`, complete the displayed URL-and-code
-flow, then retry the chat prompt. A container replacement removes
-Antigravity's `/root/.gemini` state, so sign in again after that kind of
-upgrade or recovery.
+Antigravity is authenticated per project. Its **Settings → Agents** card shows
+instructions but cannot perform the external login. Open the project's
+**Terminal**, run `agy`, complete the displayed URL-and-code
+flow, exit the CLI, and choose **Refresh models** in the chat picker before
+retrying the prompt. Its `/root/.gemini/antigravity-cli` state is durable
+across container replacement.
 
-Antigravity also differs from Claude and Codex: it streams plain text rather
-than structured tool/usage events, general selected skills are not injected,
-the Browser skill is not wired, and a fork starts fresh. The built-in
-Scheduled Tasks skill is supported explicitly.
+Antigravity also differs from Claude, Codex, and MiniMax: it streams plain text rather
+than structured tool/usage events, the Browser skill is not wired, and a fork
+starts fresh. Selected skills are injected as canonical `SKILL.md` instruction
+paths, and Scheduled Tasks also receives its scoped capability.
 
 ## Attachments, files, terminal, and IDE
 
@@ -143,21 +184,39 @@ type.
 
 Folder ZIP downloads are limited to 1 GiB and two simultaneous archives across the server. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
 
-### Terminal closed after a network interruption
+### The chat header has no terminal button
 
-Each Terminal overlay is a new non-persistent PTY. Closing the overlay or losing its socket kills that shell, and there is no reconnect. Run durable processes under an appropriate project process manager or terminal multiplexer that you configure inside the project.
+The terminal is the **Terminal** application. It appears only in a project chat
+whose project has the application installed and running. Install it from the
+project's Applications page, or ask an administrator to install it globally so
+every project gets it. If it is installed but stopped, start it there.
 
-### IDE opens the wrong place
+### Terminal shows Reconnecting
 
-Open **Open in IDE** from the intended project chat, or use an
-agent-generated validated absolute workspace path. The default path is
-`/workspace`. Links can include `:line` or `:line:column`; Remote validates the
-path and passes a code-server workbench payload so the cursor opens at that
-location.
+The Terminal pane reconnects by itself while it is open and returns to the same
+shell with its recent output. If it stays on **Reconnecting**, check that the
+project and its Terminal application are running, and that your browser can
+reach `terminal--<project-slug>.<host>`.
 
-### A user can open an IDE for a project they do not belong to
+### Terminal came back with a new shell
 
-This is a known authorization gap: the IDE proxy currently checks registered-user status but not project membership. Remove the person from the global user directory if access must stop, and do not invite mutually untrusted users to the same server.
+A shell nobody is viewing is ended after 10 minutes, and stopping, restarting,
+or upgrading the Terminal application ends every shell in the project. Run
+durable processes under a service manager inside the project.
+
+### An application file opener opens the wrong place
+
+Open the application action from the intended project chat, or use a validated
+absolute workspace path. Links can include `:line` or `:line:column`; the
+installed application decides how to open that location.
+
+### A user can open an application web route for another project
+
+Application web routes require project membership and a running installation.
+If a removed member still has an open connection, close that browser session or
+stop the application. Project containers share a bridge, so processes in another
+container may reach application sockets directly; see the
+[known limitations](../known-limitations.md).
 
 ## Preview and browser
 
@@ -207,35 +266,19 @@ The backend supports creating a safety checkpoint before checkout, but the curre
 
 ## Scheduled tasks
 
-### The agent created a task but it never runs
+### Scheduling access is unavailable
 
-Agent-created tasks start paused by design. Open **Schedules** in the same
-project chat, review the definition, and select **Arm**. The agent cannot arm
-or resume a task on your behalf.
+Install and start **Scheduled Tasks** in this project’s Applications page. New
+project turns receive the application skill and runtime access automatically;
+no project secret or manual skill selection is needed.
 
-### A recurring task is rejected as too frequent
+### A task has not fired
 
-The default minimum interval is five minutes. Widen the five-field cron
-expression. An operator can change `SCHEDULE_MIN_INTERVAL`, but lowering the
-guardrail increases unattended workload.
-
-### A task says queued or skipped
-
-Only one run can use a chat at a time. The default overlap policy coalesces
-missed occurrences into one pending follow-up. A task configured to skip
-records and consumes the busy occurrence instead. Open the chat, let the
-current run finish, and refresh **Schedules**.
-
-### A task is completed, exhausted, or in error and cannot resume
-
-Those are terminal states. `completed` means its standing goal was marked
-done; `exhausted` means it reached `maxRuns`; `error` usually means the owner,
-chat, or project authorization is no longer valid. Fix the underlying access
-or definition problem and create a new task.
-
-### I switched successfully but cannot see a branch
-
-History restore checks out the selected commit in detached HEAD. Create or switch to a branch in Terminal or IDE before making work you intend to retain.
+Confirm the application is running and the task is enabled. Check its stored
+time and timezone using the clock action. A busy chat waits for its current turn
+to finish; stopped applications deliver one overdue occurrence after starting.
+Refresh the application popup for the last error. Legacy built-in task
+definitions must be recreated through the application.
 
 ## Secrets and sharing
 

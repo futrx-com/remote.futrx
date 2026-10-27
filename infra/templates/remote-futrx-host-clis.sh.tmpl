@@ -1,0 +1,6 @@
+# remote.futrx managed host agent CLIs.
+# The installer and systemd unit use the same leading PATH entry.
+case ":${PATH:-}:" in
+    *":${HOST_CLI_BIN_DIR}:"*) ;;
+    *) export PATH="${HOST_CLI_BIN_DIR}${PATH:+:$PATH}" ;;
+esac

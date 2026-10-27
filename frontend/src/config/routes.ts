@@ -4,6 +4,16 @@ function applicationPath(path: ApplicationPath): ApplicationPath {
   return path;
 }
 
+/**
+ * Encodes a backend route for a URL while leaving its separators alone, so a
+ * backend sees the path it declared ("kv/greeting") rather than an escaped one.
+ */
+function backendSuffix(path: string): string {
+  const trimmed = path.replace(/^\/+/, "");
+  if (!trimmed) return "";
+  return `/${trimmed.split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export const API_ROUTES = {
   authSession: "/auth/me",
   googleOAuth: "/api/admin/auth/google",
@@ -12,6 +22,10 @@ export const API_ROUTES = {
       `/api/admin/audit${query ? `?${query}` : ""}`,
     export: (query: string) =>
       `/api/admin/audit/export${query ? `?${query}` : ""}`,
+  },
+  email: {
+    settings: "/api/admin/email",
+    test: "/api/admin/email/test",
   },
   chats: {
     collection: "/api/chats",
@@ -29,10 +43,10 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/files/download-folder${path ? `?path=${encodeURIComponent(path)}` : ""}`,
     mediaOpen: (id: string, path: string) =>
       `/api/chats/${encodeURIComponent(id)}/media-open?path=${encodeURIComponent(path)}`,
-    ideOpen: (id: string, path: string) =>
-      `/api/chats/${encodeURIComponent(id)}/ide-open?path=${encodeURIComponent(path)}`,
-    events: (id: string, query: string) =>
-      `/api/chats/${encodeURIComponent(id)}/events${query ? `?${query}` : ""}`,
+    transcript: (id: string, query: string) =>
+      `/api/chats/${encodeURIComponent(id)}/transcript${query ? `?${query}` : ""}`,
+    transcriptContent: (id: string, query: string) =>
+      `/api/chats/${encodeURIComponent(id)}/transcript/content?${query}`,
     rewind: (id: string) => `/api/chats/${encodeURIComponent(id)}/rewind`,
     historyRepos: (id: string) =>
       `/api/chats/${encodeURIComponent(id)}/history/repos`,
@@ -42,26 +56,27 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/history/diff?${query}`,
     historyCheckout: (id: string) =>
       `/api/chats/${encodeURIComponent(id)}/history/checkout`,
-    schedules: (id: string) =>
-      `/api/chats/${encodeURIComponent(id)}/schedules`,
   },
-  schedules: {
-    item: (id: string) => `/api/schedules/${encodeURIComponent(id)}`,
-    run: (id: string) => `/api/schedules/${encodeURIComponent(id)}/run`,
-  },
-  claudeAuth: {
-    status: "/api/claude/auth-status",
-    startLogin: "/api/claude/login/start",
-    submitCode: "/api/claude/login/code",
-    cancelLogin: "/api/claude/login/cancel",
-  },
-  codexAuth: {
-    status: "/api/codex/auth-status",
-    startDeviceLogin: "/api/codex/login/device",
-  },
-  kimiAuth: {
-    status: "/api/kimi/auth-status",
-    startDeviceLogin: "/api/kimi/login/device",
+  agentAuth: {
+    catalog: "/api/agent-auth",
+    startCodeLogin: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/login/start`,
+    submitCode: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/login/code`,
+    cancelCodeLogin: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/login/cancel`,
+    startDeviceLogin: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/login/device`,
+    apiKey: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/login/api-key`,
+    importAccount: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/accounts/import`,
+    startAccountLogin: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/accounts/login`,
+    activateAccount: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/accounts/activate`,
+    accounts: (provider: string) =>
+      `/api/${encodeURIComponent(provider)}/accounts`,
   },
   projects: {
     collection: "/api/projects",
@@ -85,18 +100,86 @@ export const API_ROUTES = {
       `/api/projects/${encodeURIComponent(id)}/secrets`,
     secret: (id: string, key: string) =>
       `/api/projects/${encodeURIComponent(id)}/secrets/${encodeURIComponent(key)}`,
+    usage: (id: string, query = "") =>
+      `/api/projects/${encodeURIComponent(id)}/usage${query ? `?${query}` : ""}`,
+    shares: (id: string) => `/api/projects/${encodeURIComponent(id)}/shares`,
+    share: (id: string, shareId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`,
     access: (id: string) => `/api/projects/${encodeURIComponent(id)}/access`,
     accessMember: (id: string, email: string) =>
       `/api/projects/${encodeURIComponent(id)}/access/${encodeURIComponent(email)}`,
+    applications: (id: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications`,
+    applicationInstallations: (id: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/installations`,
+    application: (id: string, appId: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}`,
+    applicationAction: (id: string, appId: string, action: string) =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/${action}`,
+    applicationBackend: (id: string, appId: string, path = "") =>
+      `/api/projects/${encodeURIComponent(id)}/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
+  },
+  applications: {
+    catalog: "/api/applications/catalog",
+    ui: "/api/applications/ui",
+    uiAsset: (applicationId: string, assetPath: string) =>
+      `/api/applications/catalog/${encodeURIComponent(applicationId)}/ui/${assetPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/")}`,
+    /** Uploaded application packages: the writable half of the catalog. */
+    packages: "/api/applications/packages",
+    package: (packageId: string, uninstallInstalled: boolean) =>
+      `/api/applications/packages/${encodeURIComponent(packageId)}${
+        uninstallInstalled ? "?uninstall=true" : ""
+      }`,
+    collection: "/api/applications",
+    installations: "/api/applications/installations",
+    item: (appId: string) => `/api/applications/${encodeURIComponent(appId)}`,
+    action: (appId: string, action: string) =>
+      `/api/applications/${encodeURIComponent(appId)}/${action}`,
+    /** An instance's Go backend: the bare prefix describes it, deeper paths call it. */
+    backend: (appId: string, path = "") =>
+      `/api/applications/${encodeURIComponent(appId)}/backend${backendSuffix(path)}`,
   },
   settings: "/api/me/settings",
+  agentQuota: "/api/agent-quota",
+  security: {
+    summary: "/api/me/security",
+    enroll: "/api/me/security/2fa/enroll",
+    confirm: "/api/me/security/2fa/confirm",
+    disable: "/api/me/security/2fa/disable",
+    regenerateRecoveryCodes: "/api/me/security/2fa/recovery-codes/regenerate",
+    preferences: "/api/me/security/preferences",
+    ackAlert: "/api/me/security/alerts/ack",
+  },
+  usage: {
+    summary: (query: string) => `/api/usage/summary${query ? `?${query}` : ""}`,
+    records: (query: string) => `/api/usage/records${query ? `?${query}` : ""}`,
+    prices: "/api/admin/usage/prices",
+    rebuild: "/api/admin/usage/rebuild",
+  },
+  push: {
+    config: "/api/push/config",
+    subscriptions: "/api/push/subscriptions",
+    subscriptionStatus: "/api/push/subscriptions/status",
+    test: "/api/push/test",
+    presence: "/api/push/presence",
+  },
+  auth2fa: {
+    verify: "/auth/2fa/verify",
+    cancel: "/auth/2fa/cancel",
+  },
   serverInfo: "/api/server/info",
   selfUpdate: {
     status: "/api/admin/update/status",
+    releaseNotes: (tag: string) => `/api/admin/update/release-notes?tag=${encodeURIComponent(tag)}`,
     check: "/api/admin/update/check",
     apply: "/api/admin/update/apply",
   },
   skills: (query: string) => `/api/skills?${query}`,
+  agentCapabilities: (query: string) =>
+    `/api/agent-capabilities${query ? `?${query}` : ""}`,
   uploads: "/api/uploads",
   users: {
     collection: "/api/admin/users",
@@ -109,15 +192,21 @@ export const API_ROUTES = {
 
 export const WEB_SOCKET_ROUTES = {
   workspace: applicationPath("/ws/workspace"),
-  claudeAuthStatus: applicationPath("/ws/claude/auth-status"),
-  codexAuthStatus: applicationPath("/ws/codex/auth-status"),
-  kimiAuthStatus: applicationPath("/ws/kimi/auth-status"),
+  agentAuthStatus: (provider: string): ApplicationPath =>
+    applicationPath(`/ws/agent-auth/${encodeURIComponent(provider)}`),
   chat: (chatId: string, sinceSeq: number): ApplicationPath => {
     const route = applicationPath(`/ws/chat/${encodeURIComponent(chatId)}`);
     return sinceSeq > 0
       ? applicationPath(`${route}?since=${sinceSeq}`)
       : route;
   },
-  terminal: (chatId: string): ApplicationPath =>
-    applicationPath(`/ws/terminal?chat=${encodeURIComponent(chatId)}`),
 } as const;
+
+// The chat media-open URL is the only chat route an embedded image or link
+// may target with a click handler that opens the in-app viewer. Match the
+// route shape so callers do not have to share a substring across files.
+const CHAT_MEDIA_OPEN_PATTERN = /^\/api\/chats\/[^/?]+\/media-open\?/;
+
+export function isChatMediaOpenUrl(url: string): boolean {
+  return CHAT_MEDIA_OPEN_PATTERN.test(url);
+}

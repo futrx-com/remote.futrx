@@ -7,6 +7,9 @@ import type { ProjectMeta } from "../../models/project";
 import { useProjectContainersController } from "../../state/hooks/projects/useProjectContainersController";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
+import { useProjectUsage } from "../../state/hooks/usage/useProjectUsage";
+import { useProjectApplications } from "../../state/hooks/applications/useApplications";
+import { extensionHost } from "../extensions/extensionHost";
 
 export function ProjectContainersContainer({
   projects,
@@ -23,9 +26,16 @@ export function ProjectContainersContainer({
 }) {
   const { auth } = useAuthContext();
   const controller = useProjectContainersController(projects, selectedProjectId);
-  const { selectedProject, info, secrets, access } = controller;
+  const { selectedProject, info, secrets, access, shares } = controller;
   const [activeTab, setActiveTab] = useState<ProjectSettingsTab>("info");
   const serverInfo = useServerInfo(activeTab === "settings");
+  const usage = useProjectUsage(selectedProject?.id);
+  const applications = useProjectApplications({
+    project: selectedProject,
+    enabled: activeTab === "applications",
+    managesPackages: auth.isAdmin,
+    onApplicationsSettled: extensionHost.sync,
+  });
 
   const deleteSelectedProject = useCallback(async () => {
     if (!selectedProject) return;
@@ -40,18 +50,25 @@ export function ProjectContainersContainer({
       infoRecord={info.record}
       secretsRecord={secrets.record}
       accessRecord={access.record}
+      sharesRecord={shares.record}
       refreshing={controller.refreshing}
       isAdmin={auth.isAdmin}
       serverMemoryTotalBytes={serverInfo.info?.memory.totalBytes}
       serverMemoryLoading={serverInfo.loading}
+      usageSummary={usage.summary}
+      usageLoading={usage.loading}
+      usageError={usage.error}
       onRefresh={() => void controller.refresh()}
       onBack={onBack}
       onHamburger={onHamburger}
       onTabChange={setActiveTab}
       onSaveSecret={secrets.save}
       onDeleteSecret={secrets.remove}
+      applications={applications}
       onAddMember={access.add}
       onRemoveMember={access.remove}
+      onCreateShare={shares.create}
+      onRevokeShare={shares.revoke}
       onRepairNetwork={info.repairNetwork}
       onSetResourceLimits={info.setLimits}
       onStartProject={info.start}

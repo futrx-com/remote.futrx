@@ -131,7 +131,7 @@ workflow.
 | Area | Current behavior |
 | --- | --- |
 | Repository discovery | Workspace root through maximum depth 6 |
-| Skipped directories | `.git`, `.agents`, `.browser`, `.cache`, `.claude`, `.codex`, `.media`, `.vscode`, `node_modules`, `.next`, `dist`, `build`, `out`, `coverage`, `vendor`, `tmp`, and `__pycache__` |
+| Skipped directories | `.git`, `.agents`, `.browser`, `.cache`, `.claude`, `.codex`, `.minimax`, `.media`, `.vscode`, `node_modules`, `.next`, `dist`, `build`, `out`, `coverage`, `vendor`, `tmp`, and `__pycache__` |
 | Commit source | All refs, date ordered |
 | Commits requested by the drawer | 100 |
 | Backend commit cap | 200 |
@@ -159,7 +159,7 @@ use an external backup for data that Git does not contain.
 
 ## Related documentation
 
-- [Files, Terminal, and IDE](05-files-terminal-and-ide.md)
+- [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md)
 - [Workspace tools architecture](../02-workspaces/05-workspace-tools.md)
 - [Prompts, context, and conversation](04-prompts-context-and-conversation.md)
 - [Troubleshooting](12-troubleshooting.md)

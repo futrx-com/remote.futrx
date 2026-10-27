@@ -11,52 +11,52 @@ export function useChatDrawerController({
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
-  const [schedulesOpen, setSchedulesOpen] = useState(false);
+  const [extensionDrawerId, setExtensionDrawerId] = useState<string | null>(null);
 
   useEffect(() => {
     setHistoryOpen(false);
     setFilesOpen(false);
-    setSchedulesOpen(false);
+    setExtensionDrawerId(null);
   }, [chatId]);
 
   function openBrowser() {
     setHistoryOpen(false);
     setFilesOpen(false);
-    setSchedulesOpen(false);
+    setExtensionDrawerId(null);
     showBrowser();
   }
 
   function openHistory() {
     hideBrowser();
     setFilesOpen(false);
-    setSchedulesOpen(false);
+    setExtensionDrawerId(null);
     setHistoryOpen(true);
   }
 
   function openFiles() {
     hideBrowser();
     setHistoryOpen(false);
-    setSchedulesOpen(false);
+    setExtensionDrawerId(null);
     setFilesOpen(true);
   }
 
-  function openSchedules() {
+  function openExtensionDrawer(drawerId: string) {
     hideBrowser();
     setHistoryOpen(false);
     setFilesOpen(false);
-    setSchedulesOpen(true);
+    setExtensionDrawerId(drawerId);
   }
 
   return {
     historyOpen,
     filesOpen,
-    schedulesOpen,
+    extensionDrawerId,
     openBrowser,
     openHistory,
     openFiles,
-    openSchedules,
+    openExtensionDrawer,
     closeHistory: () => setHistoryOpen(false),
     closeFiles: () => setFilesOpen(false),
-    closeSchedules: () => setSchedulesOpen(false),
+    closeExtensionDrawer: () => setExtensionDrawerId(null),
   };
 }

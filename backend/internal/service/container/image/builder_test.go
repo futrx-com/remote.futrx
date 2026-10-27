@@ -88,7 +88,7 @@ func configuredProfiles() []provisioning.Profile {
 func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 	runtime := &recordingRuntime{available: true}
 	profiles := &recordingProfileSource{profiles: configuredProfiles()}
-	builder := NewBuilder(runtime, profiles, "browser-install", []byte("code-server-install"), nil)
+	builder := NewBuilder(runtime, profiles, "browser-install", nil)
 	builder.networkWarmup = 0
 
 	if err := builder.Build(context.Background(), ""); err != nil {
@@ -105,7 +105,6 @@ func TestBuildPreservesImageWorkflowOrder(t *testing.T) {
 		"script " + baseImageBuilderName + " " + ipv4EgressProbe,
 		"script " + baseImageBuilderName + " " + installScript,
 		"script " + baseImageBuilderName + " browser-install",
-		"script " + baseImageBuilderName + " code-server-install",
 		"stop " + baseImageBuilderName,
 		"publish " + baseImageBuilderName + " " + Alias + " futrx remote dev base: ubuntu 24.04 + node 22 + alpha-cli",
 		"delete " + baseImageBuilderName,
@@ -127,24 +126,26 @@ func TestBuildStopsBeforeAnyStageWhenContainerHasNoIPv4Egress(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	builder.networkWarmup = 0
+	builder.networkTimeout = 0
+	builder.networkPoll = 0
 
 	err := builder.Build(context.Background(), "")
 	if err == nil {
 		t.Fatal("Build succeeded, want an IPv4 egress failure")
 	}
-	// The message has to name the cause, not the probe: this failure used to
-	// surface as a curl timeout against github.com four stages later.
-	for _, want := range []string{"cannot reach any IPv4", "Docker", "DOCKER-USER"} {
+	// The message has to leave the operator somewhere to go: this failure used
+	// to surface as a curl timeout against github.com four stages later, and
+	// then as a confident accusation against a Docker that was not installed.
+	for _, want := range []string{"no IPv4 egress", "ip_forward", "ipv4.nat", "iptables-legacy"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error %q does not mention %q", err, want)
 		}
 	}
 	for _, event := range runtime.events {
-		if strings.Contains(event, "browser-install") || strings.Contains(event, "code-server-install") {
+		if strings.Contains(event, "browser-install") {
 			t.Fatalf("build ran install stages despite no IPv4 egress: %q", runtime.events)
 		}
 	}
@@ -166,7 +167,6 @@ func TestBuildPreservesErrorOutputAndDeferredCleanup(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 	builder.networkWarmup = 0
@@ -187,7 +187,6 @@ func TestBuildUnavailablePreservesErrorAndDoesNotMutateRuntime(t *testing.T) {
 		runtime,
 		&recordingProfileSource{profiles: configuredProfiles()},
 		"browser-install",
-		[]byte("code-server-install"),
 		nil,
 	)
 
@@ -208,5 +207,63 @@ func assertEvents(t *testing.T, got, want []string) {
 		if got[i] != want[i] {
 			t.Fatalf("event %d:\n got: %q\nwant: %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestBuildWaitsForIPv4EgressInsteadOfFailingOnABootingContainer(t *testing.T) {
+	// A container that has not finished DHCP yet fails the probe instantly with
+	// ENETUNREACH. That is the overwhelmingly common case on a fresh launch, and
+	// a single probe after a fixed warmup turned it into a failed build that
+	// blamed the host firewall.
+	runtime := &recordingRuntime{
+		available: true,
+		scriptResponses: []runtimeResponse{
+			{output: "", err: errors.New("exit 1")}, // no route yet
+			{output: "", err: errors.New("exit 1")}, // still no route
+		},
+	}
+	builder := NewBuilder(
+		runtime,
+		&recordingProfileSource{profiles: configuredProfiles()},
+		"browser-install",
+		nil,
+	)
+	builder.networkWarmup = 0
+	builder.networkPoll = 0
+
+	if err := builder.Build(context.Background(), ""); err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+
+	probes := 0
+	for _, event := range runtime.events {
+		if strings.Contains(event, ipv4EgressProbe) {
+			probes++
+		}
+	}
+	if probes != 3 {
+		t.Fatalf("egress probes = %d, want 3 (two failures then success)", probes)
+	}
+	if !strings.Contains(strings.Join(runtime.events, "\n"), "browser-install") {
+		t.Fatalf("build did not continue past the probe: %q", runtime.events)
+	}
+}
+
+func TestWaitForIPv4EgressStopsWhenTheBuildIsCanceled(t *testing.T) {
+	runtime := &recordingRuntime{
+		available:       true,
+		scriptResponses: []runtimeResponse{{output: "", err: errors.New("exit 1")}},
+	}
+	builder := NewBuilder(
+		runtime,
+		&recordingProfileSource{profiles: configuredProfiles()},
+		"browser-install",
+		nil,
+	)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := builder.waitForIPv4Egress(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitForIPv4Egress error = %v, want context.Canceled", err)
 	}
 }

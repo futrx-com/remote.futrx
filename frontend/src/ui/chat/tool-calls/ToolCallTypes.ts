@@ -13,7 +13,13 @@ export interface ToolCallProps {
   name: string;
   input: Record<string, unknown> | undefined;
   output?: string;
+  outputRef?: string;
+  outputBytes?: number;
+  outputTruncated?: boolean;
+  outputExpanded?: boolean;
+  onOpen?: () => void;
+  loadingResponse?: boolean;
   isError?: boolean;
   status: "running" | "done";
-  onAnswerQuestion?: (text: string) => void;
+  onAnswerQuestion?: (text: string) => boolean;
 }

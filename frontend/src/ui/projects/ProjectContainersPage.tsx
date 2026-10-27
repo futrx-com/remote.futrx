@@ -1,23 +1,51 @@
+import { ExtensionSlot } from "../primitives/ExtensionSlot";
+import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ComponentChildren, ComponentType } from "preact";
-import type {
-  AccessRecord,
-  ProjectContainerRecord,
-  SecretsRecord,
-} from "../../state/projects/projectContainerRecords";
+import { useCallback, useState } from "preact/hooks";
+import { projectShareService } from "../../services/projects/projectShareService";
 import { Empty } from "./project-containers/ProjectContainerPrimitives";
 import { ProjectActions } from "./project-containers/ProjectActions";
 import {
   ContainerStateBadge,
   ProjectInfoSection,
 } from "./project-containers/ProjectInfoSection";
-import { ProjectSecretsSection } from "./project-containers/ProjectSecretsSection";
+import {
+  ProjectSecretsSection,
+  type SecretDraft,
+} from "./project-containers/ProjectSecretsSection";
+import { ProjectPreviewSharesSection } from "./project-containers/ProjectPreviewSharesSection";
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
+import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
-import type { ContainerLimits, ProjectContainerInfo, ProjectMeta } from "../../models/project";
-import { ChevronLeft, Info, Key, Loader, Menu, RotateCcw, Settings, Users } from "../primitives/icons";
+import type {
+  AccessRecord,
+  ContainerLimits,
+  CreatedProjectShare,
+  ProjectContainerInfo,
+  ProjectContainerRecord,
+  ProjectMeta,
+  SecretsRecord,
+  SharesRecord,
+} from "../../models/project";
+import type { UsageSummary } from "../../models/usage";
+import { ApplicationsSection } from "../applications/ApplicationsSection";
+import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import {
+  ChevronLeft,
+  ExternalLink,
+  Info,
+  Key,
+  Loader,
+  Menu,
+  RotateCcw,
+  Server,
+  Settings,
+  Users,
+} from "../primitives/icons";
+import { useConfirm } from "../../state/context/ConfirmContext";
 
-export type ProjectSettingsTab = "info" | "settings" | "secrets" | "sharing";
+export type ProjectSettingsTab = "info" | "settings" | "secrets" | "applications" | "sharing";
 
 const tabs: Array<{
   id: ProjectSettingsTab;
@@ -44,9 +72,16 @@ const tabs: Array<{
     Icon: Key,
   },
   {
+    id: "applications",
+    label: "Applications",
+    description: "Install databases and other services into this project's container.",
+    Icon: Server,
+  },
+  {
     id: "sharing",
     label: "Sharing",
-    description: "Control which registered users can access this project.",
+    description:
+      "Control which registered users can access this project, and hand out public preview links.",
     Icon: Users,
   },
 ];
@@ -57,18 +92,25 @@ export function ProjectContainersPage({
   infoRecord,
   secretsRecord,
   accessRecord,
+  sharesRecord,
   refreshing,
   isAdmin,
   serverMemoryTotalBytes,
   serverMemoryLoading,
+  usageSummary,
+  usageLoading,
+  usageError,
   onRefresh,
   onBack,
   onHamburger,
   onTabChange,
   onSaveSecret,
   onDeleteSecret,
+  applications,
   onAddMember,
   onRemoveMember,
+  onCreateShare,
+  onRevokeShare,
   onRepairNetwork,
   onSetResourceLimits,
   onStartProject,
@@ -81,18 +123,25 @@ export function ProjectContainersPage({
   infoRecord: ProjectContainerRecord;
   secretsRecord: SecretsRecord;
   accessRecord: AccessRecord;
+  sharesRecord: SharesRecord;
   refreshing: boolean;
   isAdmin: boolean;
   serverMemoryTotalBytes?: number;
   serverMemoryLoading: boolean;
+  usageSummary: UsageSummary | null;
+  usageLoading: boolean;
+  usageError: string | null;
   onRefresh: () => void;
   onBack: () => void;
   onHamburger: () => void;
   onTabChange: (tab: ProjectSettingsTab) => void;
   onSaveSecret: (key: string, value: string) => Promise<void>;
   onDeleteSecret: (key: string) => Promise<void>;
+  applications: ApplicationsController;
   onAddMember: (email: string) => Promise<void>;
   onRemoveMember: (email: string) => Promise<void>;
+  onCreateShare: (port: number, ttlHours: number, label?: string) => Promise<CreatedProjectShare>;
+  onRevokeShare: (shareId: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
   onSetResourceLimits: (limits: ContainerLimits) => Promise<void>;
   onStartProject: () => Promise<void>;
@@ -100,15 +149,43 @@ export function ProjectContainersPage({
   onRestartProject: () => Promise<void>;
   onDeleteProject: () => Promise<void>;
 }) {
+  const confirm = useConfirm();
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+
+  // Draft state for the "Add new secret" form — owned here so it survives tab
+  // switches. SecretEditor is a conditionally-rendered subtree that would
+  // otherwise be unmounted (and lose its local state) on every navigation.
+  const [secretDraft, setSecretDraft] = useState<SecretDraft>({ key: "", value: "" });
+
+  const hasDraft = secretDraft.key.trim() !== "" || secretDraft.value !== "";
+
+  // Guard tab navigation: if there is a non-empty draft and the user is leaving
+  // the Secrets tab, ask for confirmation before silently discarding it.
+  const handleTabChange = useCallback(
+    async (next: ProjectSettingsTab) => {
+      if (next === activeTab) return;
+      if (activeTab === "secrets" && hasDraft) {
+        const ok = await confirm({
+          title: "Discard unsaved secret?",
+          message: `You have an unsaved draft for "${secretDraft.key || "(no key)"}". Switching tabs will keep the draft — it will be here when you return.`,
+          confirmLabel: "Switch anyway",
+          cancelLabel: "Stay on Secrets",
+          tone: "neutral",
+        });
+        if (!ok) return;
+      }
+      onTabChange(next);
+    },
+    [activeTab, hasDraft, secretDraft.key, confirm, onTabChange]
+  );
 
   return (
     <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-      <header class="codex-header top-chrome flex-none z-20 bg-[#101318] border-b border-white/10 px-3 pb-2 flex items-center gap-2 min-h-[52px]">
+      <header class="codex-header top-chrome z-20 flex-none border-b border-line px-3 pb-2 flex items-center gap-2 min-h-[52px]">
         <button
           type="button"
           onClick={onHamburger}
-          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-white/[0.08] grid place-items-center"
+          class="md:hidden h-10 w-10 text-ink-100 rounded-md hover:bg-tint-strong grid place-items-center"
           aria-label="Toggle sidebar"
         >
           <Menu class="w-5 h-5" />
@@ -117,7 +194,7 @@ export function ProjectContainersPage({
           type="button"
           onClick={onBack}
           class="hidden md:inline-flex items-center gap-1.5 h-10 px-2 text-ink-200 hover:text-ink-50
-                 hover:bg-white/[0.08] rounded-md text-sm"
+                 hover:bg-tint-strong rounded-md text-sm"
         >
           <ChevronLeft class="w-4 h-4" /> Chats
         </button>
@@ -131,7 +208,7 @@ export function ProjectContainersPage({
           type="button"
           onClick={onRefresh}
           disabled={refreshing}
-          class="h-10 w-10 rounded-md text-ink-300 hover:text-ink-50 hover:bg-white/[0.08]
+          class="h-10 w-10 rounded-md text-ink-300 hover:text-ink-50 hover:bg-tint-strong
                  disabled:cursor-wait grid place-items-center"
           aria-label="Refresh"
           title="Refresh"
@@ -143,14 +220,14 @@ export function ProjectContainersPage({
       <div class="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         <ProjectSettingsNavigation
           activeTab={activeTab}
-          onTabChange={onTabChange}
-          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-white/10 bg-[#0f1217] p-3"
+          onTabChange={handleTabChange}
+          className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <ProjectSettingsNavigation
           activeTab={activeTab}
-          onTabChange={onTabChange}
+          onTabChange={handleTabChange}
           mobile
-          className="theme-submenu-surface md:hidden flex-none border-b border-white/10 bg-[#0f1217] px-3 py-2 overflow-x-auto no-scrollbar"
+          className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
         />
 
         <main
@@ -176,6 +253,9 @@ export function ProjectContainersPage({
                       project={project}
                       info={infoRecord.data}
                       refreshedAt={infoRecord.refreshedAt}
+                      usageSummary={usageSummary}
+                      usageLoading={usageLoading}
+                      usageError={usageError}
                     />
                     <ProjectInfoSection
                       project={project}
@@ -187,6 +267,7 @@ export function ProjectContainersPage({
 
                 {activeTab === "settings" && (
                   <div class="space-y-4">
+                    <ExtensionSlot name={EXTENSION_SLOTS.projectSettingsPanel} scope="project" projectId={project.id} />
                     <ProjectResourceLimits
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
@@ -220,24 +301,51 @@ export function ProjectContainersPage({
                   >
                     <ProjectSecretsSection
                       record={secretsRecord}
+                      draft={secretDraft}
+                      onDraftChange={(patch) =>
+                        setSecretDraft((prev) => ({ ...prev, ...patch }))
+                      }
                       onSave={onSaveSecret}
                       onDelete={onDeleteSecret}
                     />
                   </ProjectSettingsPanel>
                 )}
 
-                {activeTab === "sharing" && (
+                {activeTab === "applications" && (
                   <ProjectSettingsPanel
-                    title="Project access"
-                    description={accessDescription(accessRecord)}
-                    Icon={Users}
+                    title="Applications"
+                    description="Install and manage databases and services in this project's container."
+                    Icon={Server}
                   >
-                    <ProjectSharingSection
-                      record={accessRecord}
-                      onAdd={onAddMember}
-                      onRemove={onRemoveMember}
-                    />
+                    <ApplicationsSection controller={applications} />
                   </ProjectSettingsPanel>
+                )}
+
+                {activeTab === "sharing" && (
+                  <div class="space-y-4">
+                    <ProjectSettingsPanel
+                      title="Project access"
+                      description={accessDescription(accessRecord)}
+                      Icon={Users}
+                    >
+                      <ProjectSharingSection
+                        record={accessRecord}
+                        onAdd={onAddMember}
+                        onRemove={onRemoveMember}
+                      />
+                    </ProjectSettingsPanel>
+                    <ProjectSettingsPanel
+                      title="Public preview links"
+                      description={sharesDescription(sharesRecord)}
+                      Icon={ExternalLink}
+                    >
+                      <ProjectPreviewSharesSection
+                        record={sharesRecord}
+                        onCreate={onCreateShare}
+                        onRevoke={onRevokeShare}
+                      />
+                    </ProjectSettingsPanel>
+                  </div>
                 )}
               </>
             )}
@@ -255,7 +363,7 @@ function ProjectSettingsNavigation({
   className,
 }: {
   activeTab: ProjectSettingsTab;
-  onTabChange: (tab: ProjectSettingsTab) => void;
+  onTabChange: (tab: ProjectSettingsTab) => void | Promise<void>;
   mobile?: boolean;
   className: string;
 }) {
@@ -279,8 +387,8 @@ function ProjectSettingsNavigation({
               onClick={() => onTabChange(id)}
               class={`${mobile ? "h-9 px-3" : "w-full h-10 px-3"} rounded-md inline-flex items-center gap-2.5 border text-[13px] font-medium transition-colors ${
                 active
-                  ? "border-white/10 bg-white/[0.08] text-ink-50"
-                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-white/[0.05]"
+                  ? "border-line bg-tint-strong text-ink-50"
+                  : "border-transparent text-ink-300 hover:text-ink-100 hover:bg-tint"
               }`}
             >
               <Icon class={`w-4 h-4 flex-none ${active ? "text-accent-blue" : "text-ink-400"}`} />
@@ -305,9 +413,9 @@ function ProjectSettingsPanel({
   children: ComponentChildren;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] overflow-hidden">
-      <header class="px-4 py-3 flex items-start gap-3 border-b border-white/[0.06]">
-        <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface overflow-hidden">
+      <header class="px-4 py-3 flex items-start gap-3 border-b border-line">
+        <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
           <Icon class="w-4 h-4 text-ink-200" />
         </div>
         <div class="flex-1 min-w-0">
@@ -334,18 +442,32 @@ function accessDescription(record: AccessRecord): string {
   return `${count} project member${count === 1 ? "" : "s"}`;
 }
 
+function sharesDescription(record: SharesRecord): string {
+  if (record.loading && !record.data) return "Loading public preview links…";
+  if (record.error) return "Public preview links could not be loaded.";
+  return projectShareService.describeCount(
+    projectShareService.live(record.data ?? [], Date.now()).length,
+  );
+}
+
 function ProjectHeader({
   project,
   info,
   refreshedAt,
+  usageSummary,
+  usageLoading,
+  usageError,
 }: {
   project: ProjectMeta;
   info?: ProjectContainerInfo;
   refreshedAt?: number;
+  usageSummary: UsageSummary | null;
+  usageLoading: boolean;
+  usageError: string | null;
 }) {
   return (
-    <section class="rounded-lg border border-white/10 bg-[#101318] px-4 py-3 flex items-start gap-3">
-      <div class="mt-0.5 w-9 h-9 rounded-md bg-white/[0.06] border border-white/10 grid place-items-center flex-none">
+    <section class="rounded-card border border-line bg-surface px-4 py-3 flex items-start gap-3">
+      <div class="mt-0.5 grid h-8 w-8 flex-none place-items-center rounded-control bg-tint">
         <Settings class="w-4 h-4 text-ink-200" />
       </div>
       <div class="flex-1 min-w-0">
@@ -356,6 +478,7 @@ function ProjectHeader({
         <div class="text-[12.5px] text-ink-300 mt-0.5 leading-snug font-mono truncate">
           {project.containerName || project.slug}
         </div>
+        <ProjectUsageLine summary={usageSummary} loading={usageLoading} error={usageError} />
       </div>
       {refreshedAt && (
         <div class="text-[11px] text-ink-400 mt-1.5">refreshed {fmtRelative(refreshedAt)}</div>

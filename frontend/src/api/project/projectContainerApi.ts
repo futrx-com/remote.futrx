@@ -1,10 +1,13 @@
 import { requestJson } from "../apiRequest";
 import type {
   ContainerLimits,
-  ProjectContainerInfo,
   ProjectMeta,
 } from "../../models/project";
 import { API_ROUTES } from "../../config/routes";
+import {
+  normalizeProjectContainerInfo,
+  type ProjectContainerInfoPayload,
+} from "./projectContainerInfo.ts";
 
 export const projectContainerApi = {
   start: (id: string) =>
@@ -17,22 +20,22 @@ export const projectContainerApi = {
     requestJson<ProjectMeta>("POST", API_ROUTES.projects.restart(id), {}),
 
   fetchContainerInfo: (id: string) =>
-    requestJson<ProjectContainerInfo>(
+    requestJson<ProjectContainerInfoPayload>(
       "GET",
       API_ROUTES.projects.container(id)
-    ),
+    ).then(normalizeProjectContainerInfo),
 
   setContainerLimits: (id: string, limits: ContainerLimits) =>
-    requestJson<ProjectContainerInfo>(
+    requestJson<ProjectContainerInfoPayload>(
       "PUT",
       API_ROUTES.projects.limits(id),
       limits
-    ),
+    ).then(normalizeProjectContainerInfo),
 
   repairNetwork: (id: string) =>
-    requestJson<ProjectContainerInfo>(
+    requestJson<ProjectContainerInfoPayload>(
       "POST",
       API_ROUTES.projects.repairNetwork(id),
       {}
-    ),
+    ).then(normalizeProjectContainerInfo),
 };

@@ -27,8 +27,10 @@ func (c *Client) Available() bool {
 	return c.runner.Available()
 }
 
-func (c *Client) Version(ctx context.Context, containerName, binary string) (string, error) {
-	return command.RunWithTimeout(ctx, c.runner, queryTimeout, "exec", containerName, "--", binary, "--version")
+func (c *Client) Version(ctx context.Context, containerName, binary string, arguments ...string) (string, error) {
+	commandArgs := []string{"exec", containerName, "--", binary}
+	commandArgs = append(commandArgs, arguments...)
+	return command.RunWithTimeout(ctx, c.runner, queryTimeout, commandArgs...)
 }
 
 func (c *Client) CommandExists(ctx context.Context, containerName, commandName string) bool {

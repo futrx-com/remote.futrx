@@ -88,6 +88,16 @@ export interface CodexContainerStatus {
   version?: string;
 }
 
+export interface AgentContainerStatus {
+  id: string;
+  label: string;
+  installed: boolean;
+  version?: string;
+  instructionsPath?: string;
+  instructionsInstalled?: boolean;
+  instructionsInSync?: boolean;
+}
+
 export interface AuthBundleFileStatus {
   hostPath: string;
   containerPath: string;
@@ -123,6 +133,7 @@ export interface ProjectContainerInfo {
   limitOverrides?: ContainerLimits;
   claude: ClaudeContainerStatus;
   codex: CodexContainerStatus;
+  agents?: AgentContainerStatus[];
   authBundles: AuthBundleStatus[];
 }
 
@@ -130,6 +141,31 @@ export interface ProjectSecret {
   key: string;
   value: string;
   updatedAt: number;
+}
+
+/** Metadata for a public preview link returned by list operations. */
+export interface ProjectShare {
+  id: string;
+  port: number;
+  label?: string;
+  createdBy?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+/**
+ * A newly-created public preview link. The URL carries the plaintext token and
+ * is returned exactly once, while metadata-only list responses never include it.
+ */
+export interface CreatedProjectShare extends ProjectShare {
+  url: string;
+}
+
+export interface SharePortRow {
+  port: number;
+  process?: string;
+  /** Number of cached links currently pointing at this port. */
+  shareCount: number;
 }
 
 export interface ContainerApp {
@@ -153,4 +189,52 @@ export interface AgentBrowserInfo {
   viewerCount?: number;
   uptimeSec?: number;
   lastActivity?: number;
+}
+
+/** What one agent-browser status report means for the drawer. */
+export interface AgentBrowserView {
+  status: AgentBrowserStatus;
+  guiUrl: string;
+  error: string | null;
+  keepPolling: boolean;
+}
+
+export interface CreateProjectValidation {
+  ok: boolean;
+  slug: string;
+  // Error text when ok is false; informational "Saved as <slug>" when the
+  // slug differs from what was typed.
+  message: string;
+}
+
+/** Lets an in-flight project load see that its caller has moved on. */
+export interface ProjectDataLoadSignal {
+  cancelled: boolean;
+}
+
+export interface ProjectContainerRecord {
+  loading: boolean;
+  data?: ProjectContainerInfo;
+  error?: string;
+  refreshedAt?: number;
+}
+
+export interface SecretsRecord {
+  loading: boolean;
+  data?: ProjectSecret[];
+  error?: string;
+}
+
+export interface SharesRecord {
+  loading: boolean;
+  data?: ProjectShare[];
+  /** Listening ports discovered in the container, used to offer share targets. */
+  apps?: ContainerApp[];
+  error?: string;
+}
+
+export interface AccessRecord {
+  loading: boolean;
+  data?: string[];
+  error?: string;
 }

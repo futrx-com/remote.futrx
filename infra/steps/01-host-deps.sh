@@ -1,23 +1,41 @@
 #!/usr/bin/env bash
-# Host-level system dependencies: apt base, Node 22, Go, Caddy, agent CLIs, LXD.
+# Host-level system dependencies: apt base, Node 22, Go, Caddy, and LXD.
 # Idempotent — re-runs are fast no-ops when everything's already installed.
 #
 # Expects from caller:
 #   - log / ok / warn / err helpers
 #   - $INFRA_DIR (path to infra/ in the cloned repo)
-#   - $HOSTNAME (for diagnostic messages only)
+#   - $HOSTNAME (public hostname pinned in the bridge DNS)
 #   - $SKIP_DNS_CHECK (0 / 1)
 #
 # Sets in environment for later steps:
 #   - $LXD_BRIDGE_IP (for the resolved drop-in)
 set -euo pipefail
 
+step_01_host_deps() {
 export DEBIAN_FRONTEND=noninteractive
+# shellcheck source=../lib/host-apt.sh
+. "$INFRA_DIR/lib/host-apt.sh"
 
 # ───────────────── base apt deps ─────────────────
+# Only what Remote itself needs. Tools that exist for one optional installable
+# application — restic, for instance — are not listed here: the application
+# declares its own host tool and Remote downloads it, checksum-pinned, when
+# someone installs that application. A host that installs none of them keeps
+# exactly the packages below.
 log "apt update + base packages"
-apt-get update -qq
-apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base
+host_apt_get update -qq
+apt-get install -y -qq git curl ca-certificates gnupg jq tmux gettext-base dnsutils
+
+# ───────────────── swap (spike buffer) ─────────────────
+# Running several dev servers at once produces a large, short-lived RSS spike
+# (~5x steady state) that a swapless box can't survive — it OOM-kills the dev
+# servers. Provision a swap file sized from RAM and free disk before the
+# memory-heavy work below (Go build, base-image build). Skips gracefully when
+# swap already exists or the disk has no room. See lib/swap-provision.sh.
+# shellcheck source=../lib/swap-provision.sh
+. "$INFRA_DIR/lib/swap-provision.sh"
+ensure_swap
 
 # ───────────────── version pins ─────────────────
 # infra/versions.env (a symlink to the canonical manifest embedded by the
@@ -31,8 +49,7 @@ if [ ! -r "$VERSIONS_FILE" ]; then
 fi
 # shellcheck source=/dev/null
 . "$VERSIONS_FILE"
-for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION \
-         CLAUDE_CODE_VERSION CODEX_CLI_VERSION KIMI_CODE_VERSION; do
+for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION; do
     if [ -z "${!v:-}" ]; then
         err "version manifest is missing $v: $VERSIONS_FILE"
         exit 1
@@ -40,17 +57,17 @@ for v in NODE_MAJOR NODE_MIN_VERSION GO_VERSION \
 done
 
 # ───────────────── Node (pinned major) ─────────────────
-CURRENT_NODE_MAJOR=""
-CURRENT_NODE_VERSION=""
-if command -v node >/dev/null; then
-    CURRENT_NODE_VERSION="$(node -v | sed 's/^v//')"
-    CURRENT_NODE_MAJOR="${CURRENT_NODE_VERSION%%.*}"
+CURRENT_NODE_VERSION="$(node -p 'process.versions.node' 2>/dev/null || true)"
+if [[ ! "$CURRENT_NODE_VERSION" =~ ^${NODE_MAJOR}\.[0-9]+\.[0-9]+$ ]] \
+   || ! dpkg --compare-versions "$CURRENT_NODE_VERSION" ge "$NODE_MIN_VERSION"; then
+    printf 'Installing Node %s.x (>=%s) from NodeSource\n' "$NODE_MAJOR" "$NODE_MIN_VERSION"
+    install_nodesource_node "$NODE_MAJOR" || return 1
 fi
-if [ "$CURRENT_NODE_MAJOR" != "$NODE_MAJOR" ] \
-   || dpkg --compare-versions "${CURRENT_NODE_VERSION:-0}" lt "$NODE_MIN_VERSION"; then
-    log "Installing Node ${NODE_MAJOR}.x (>=${NODE_MIN_VERSION}) from NodeSource (was ${CURRENT_NODE_VERSION:-missing})"
-    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-    apt-get install -y -qq nodejs
+CURRENT_NODE_VERSION="$(node -p 'process.versions.node' 2>/dev/null || true)"
+if [[ ! "$CURRENT_NODE_VERSION" =~ ^${NODE_MAJOR}\.[0-9]+\.[0-9]+$ ]] \
+   || ! dpkg --compare-versions "$CURRENT_NODE_VERSION" ge "$NODE_MIN_VERSION"; then
+    printf 'Node %s.x >=%s is required; installed runtime is missing, incompatible, or below the required version\n' "$NODE_MAJOR" "$NODE_MIN_VERSION" >&2
+    return 1
 fi
 ok "node $(node -v)  npm $(npm -v)"
 
@@ -90,51 +107,80 @@ ok "ports 80 + 443 OK"
 
 # ───────────────── Caddy ─────────────────
 if ! command -v caddy >/dev/null; then
-    log "Installing Caddy (Cloudsmith repo)"
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-        > /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update -qq
-    apt-get install -y -qq caddy
+    log "Installing Caddy (verified official GitHub package)"
+    # shellcheck source=../lib/caddy-package.sh
+    . "$INFRA_DIR/lib/caddy-package.sh"
+    install_caddy_from_github
 fi
 ok "$(caddy version | head -1)"
 
-# ───────────────── agent CLIs (host-side auth/provisioning) ─────────────────
-# Pins come from the same versions.env sourced above (also embedded by the Go
-# container manager). Re-running the installer upgrades stale host binaries
-# instead of only checking existence.
-agent_cli_version() {
-    "$1" --version 2>&1 \
-        | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?' \
-        | head -1 || true
-}
-
-ensure_agent_cli() {
-    local label="$1" binary="$2" package="$3" expected="$4" current=""
-    if command -v "$binary" >/dev/null; then
-        current="$(agent_cli_version "$binary")"
-    fi
-    if [ "$current" != "$expected" ]; then
-        log "Installing $label $expected (was ${current:-missing})"
-        npm install -g "${package}@${expected}" --silent 2>&1 | tail -3
-    fi
-    ok "$label $("$binary" --version 2>&1 | head -1)"
-}
-
-ensure_agent_cli "Claude Code" claude @anthropic-ai/claude-code "$CLAUDE_CODE_VERSION"
-ensure_agent_cli "Codex" codex @openai/codex "$CODEX_CLI_VERSION"
-ensure_agent_cli "Kimi Code" kimi @moonshot-ai/kimi-code "$KIMI_CODE_VERSION"
-
 # ───────────────── LXD (one container per project) ─────────────────
-if ! command -v lxc >/dev/null; then
-    log "Installing LXD via snap"
-    if ! command -v snap >/dev/null; then
-        apt-get install -y -qq snapd
-        systemctl enable --now snapd.socket
-        for _ in 1 2 3 4 5; do snap wait system seed.loaded && break; sleep 1; done
+LXD_HOST_HELPERS="$INFRA_DIR/lib/lxd-host.sh"
+if [ ! -r "$LXD_HOST_HELPERS" ]; then
+    err "missing LXD host helpers: $LXD_HOST_HELPERS"
+    exit 1
+fi
+# shellcheck source=../lib/lxd-host.sh
+. "$LXD_HOST_HELPERS"
+
+NESTED_UNPRIVILEGED_LXC=0
+LXD_IDMAP_BASE=1000000
+LXD_IDMAP_SIZE=65536
+if unprivileged_lxc_host; then
+    NESTED_UNPRIVILEGED_LXC=1
+
+    # Remote deliberately keeps every project container unprivileged. The
+    # backend also chowns bind-mounted project data to this exact LXD idmap.
+    # An outer Proxmox LXC must therefore delegate the complete range; falling
+    # back to privileged inner containers would remove a primary isolation
+    # boundary and would make the existing ownership contract incorrect.
+    if ! nested_lxd_idmap_available \
+        /proc/self/uid_map /proc/self/gid_map "$LXD_IDMAP_BASE" "$LXD_IDMAP_SIZE"; then
+        err "This is an unprivileged LXC host without Remote's nested UID/GID allocation."
+        cat >&2 <<EOF
+
+  Remote project containers are intentionally unprivileged and map their root
+  user to host UID/GID $LXD_IDMAP_BASE. The outer Proxmox container must expose
+  the full $LXD_IDMAP_SIZE-ID range beginning at $LXD_IDMAP_BASE in both
+  /proc/self/uid_map and /proc/self/gid_map.
+
+  Configure that subordinate range and enable nesting in the Proxmox container
+  settings, restart the container, then run this installer again. The installer
+  will not silently use privileged project containers because that weakens the
+  security boundary between agent workspaces and the host.
+EOF
+        exit 1
     fi
-    snap install lxd
+fi
+
+if [ "$NESTED_UNPRIVILEGED_LXC" = "1" ] && [ "${ID:-}" = "debian" ]; then
+    # Snap packages need SquashFS loop/FUSE mounts and access to the host
+    # AppArmor security filesystem, which Proxmox does not expose to an
+    # unprivileged LXC by default. Debian's native package avoids that
+    # packaging-layer requirement while providing the same LXD API/CLI.
+    if ! command -v lxc >/dev/null; then
+        log "Installing native Debian LXD packages for nested LXC"
+        apt-get install -y -qq lxd lxd-client
+        systemctl enable --now lxd.socket
+    fi
+else
+    # Checked via `snap list lxd`, not `command -v lxc`: Ubuntu 24.04 ships the
+    # `lxd-installer` transitional package, which pre-populates /usr/bin/lxc and
+    # /usr/sbin/lxd as shims that lazily install the snap on first invocation.
+    # `command -v lxc` finds those shims on a completely fresh box, so this step
+    # would silently skip the real install — and the first real LXD command
+    # later in this script (or `lxd init --auto` below) would trigger the
+    # shim's own uncontrolled auto-install instead, outside our retry/wait
+    # logic and prone to leaving the host half-installed on any hiccup.
+    if ! snap list lxd >/dev/null 2>&1; then
+        log "Installing LXD via snap"
+        if ! command -v snap >/dev/null; then
+            apt-get install -y -qq snapd
+            systemctl enable --now snapd.socket
+            for _ in 1 2 3 4 5; do snap wait system seed.loaded && break; sleep 1; done
+        fi
+        snap install lxd
+    fi
     export PATH="/snap/bin:$PATH"
 fi
 
@@ -143,6 +189,12 @@ fi
 if ! lxc network show lxdbr0 >/dev/null 2>&1; then
     log "lxd init --auto"
     lxd init --auto
+fi
+if [ "$NESTED_UNPRIVILEGED_LXC" = "1" ]; then
+    # Debian's native package takes its initial allocation from /etc/subuid;
+    # pin the profile to the idmap Remote's host-file ownership code expects.
+    lxc profile set default security.idmap.base "$LXD_IDMAP_BASE"
+    ok "nested LXD uses unprivileged idmap ${LXD_IDMAP_BASE}-$((LXD_IDMAP_BASE + LXD_IDMAP_SIZE - 1))"
 fi
 ok "lxd $(lxc version --format=csv 2>/dev/null | tr ',' ' ' | awk '{print $1}' || echo ok)"
 
@@ -188,6 +240,19 @@ else
     export LXD_BRIDGE_IP
 fi
 
+# Containers must reach the host API without public-IP hairpin routing or
+# inheriting a loopback entry for HOSTNAME from the host's /etc/hosts.
+# update.sh invokes this step through install.sh, including --skip-workspaces.
+# This check is independent of --skip-dns-check (public DNS propagation).
+# shellcheck source=../lib/container-api-dns.sh
+. "$INFRA_DIR/lib/container-api-dns.sh"
+log "Configuring $LXD_BRIDGE DNS: $HOSTNAME → ${LXD_BRIDGE_IP:-missing}"
+if ! ensure_container_api_dns "$LXD_BRIDGE" "$HOSTNAME" "${LXD_BRIDGE_IP:-}"; then
+    err "Container API DNS setup failed; stopping host convergence."
+    exit 1
+fi
+ok "bridge DNS resolves $HOSTNAME only to $LXD_BRIDGE_IP"
+
 # ───────────────── systemd-resolved: forward *.lxd to the bridge ─────────────────
 if [ -n "${LXD_BRIDGE_IP:-}" ] && systemctl is-active --quiet systemd-resolved; then
     log "systemd-resolved drop-in for *.lxd → ${LXD_BRIDGE_IP}"
@@ -196,3 +261,4 @@ if [ -n "${LXD_BRIDGE_IP:-}" ] && systemctl is-active --quiet systemd-resolved; 
                     /etc/systemd/resolved.conf.d/lxd.conf
     systemctl restart systemd-resolved
 fi
+}

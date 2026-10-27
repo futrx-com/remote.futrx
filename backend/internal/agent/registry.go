@@ -12,6 +12,7 @@ var ErrInvalidProvider = errors.New("invalid agent provider")
 // looked up by application services at run time.
 type Registry struct {
 	providers map[ProviderID]Provider
+	order     []ProviderID
 }
 
 func NewRegistry() *Registry {
@@ -33,6 +34,7 @@ func (r *Registry) Register(provider Provider) error {
 		return fmt.Errorf("%w: provider %q is already registered", ErrInvalidProvider, id)
 	}
 	r.providers[id] = provider
+	r.order = append(r.order, id)
 	return nil
 }
 
@@ -41,4 +43,34 @@ func (r *Registry) Lookup(id ProviderID) Provider {
 		return nil
 	}
 	return r.providers[id]
+}
+
+// CapabilityProviders returns registered providers in composition order using
+// only the capability-discovery contract needed by catalog consumers.
+func (r *Registry) CapabilityProviders() []CapabilityProvider {
+	if r == nil {
+		return nil
+	}
+	providers := make([]CapabilityProvider, 0, len(r.order))
+	for _, id := range r.order {
+		if provider := r.providers[id]; provider != nil {
+			providers = append(providers, provider)
+		}
+	}
+	return providers
+}
+
+// PlanUsageReaders returns, in composition order, the registered providers
+// that can read their accounts' plan limits on demand.
+func (r *Registry) PlanUsageReaders() []PlanUsageReader {
+	if r == nil {
+		return nil
+	}
+	var readers []PlanUsageReader
+	for _, id := range r.order {
+		if reader, ok := r.providers[id].(PlanUsageReader); ok {
+			readers = append(readers, reader)
+		}
+	}
+	return readers
 }

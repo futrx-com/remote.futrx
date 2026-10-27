@@ -27,7 +27,8 @@ func TestContainerStackExposesCompleteCapabilityBundles(t *testing.T) {
 		projects.Inspector != stack.Inspection ||
 		projects.Network != stack.Network ||
 		projects.Listeners != stack.Listeners ||
-		projects.Browser != stack.Browser {
+		projects.Browser != stack.Browser ||
+		projects.Setup != stack.UserSetup {
 		t.Fatal("project dependencies do not match the composed container capabilities")
 	}
 
@@ -38,6 +39,7 @@ func TestContainerStackExposesCompleteCapabilityBundles(t *testing.T) {
 	if agents.CLI != stack.CLI ||
 		agents.Credentials != stack.Credentials ||
 		agents.Workspace != stack.Workspace ||
+		agents.RuntimeAssets != stack.RuntimeAssets ||
 		agents.Browser != stack.Browser ||
 		agents.Lifecycle != stack.Lifecycle {
 		t.Fatal("agent dependencies do not match the composed container capabilities")

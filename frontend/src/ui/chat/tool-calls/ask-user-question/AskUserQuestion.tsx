@@ -12,7 +12,7 @@ interface Props {
   toolUseId: string;
   chatId: string;
   input: AskUserQuestionInput;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string) => boolean;
 }
 
 export function AskUserQuestion({ toolUseId, input, onSubmit }: Props) {
@@ -40,7 +40,7 @@ export function AskUserQuestion({ toolUseId, input, onSubmit }: Props) {
       <div class="p-3 space-y-3">
         {question.header && (
           <div class="inline-block text-[10px] font-mono
-                      px-1.5 py-0.5 rounded bg-white/[0.06] text-ink-200 border border-white/10">
+                      px-1.5 py-0.5 rounded bg-tint text-ink-200 border border-line">
             {question.header}
           </div>
         )}
@@ -66,6 +66,11 @@ export function AskUserQuestion({ toolUseId, input, onSubmit }: Props) {
           />
         </div>
 
+        {wizard.sendFailed && (
+          <p class="text-[11px] text-accent-red">
+            Your answer could not be sent. Check the connection and try again.
+          </p>
+        )}
         <QuestionPager
           page={wizard.page}
           total={wizard.total}

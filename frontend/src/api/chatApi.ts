@@ -2,7 +2,11 @@ import { requestJson } from "./apiRequest";
 import { chatEventsApi } from "./chat/chatEventsApi";
 import { chatFilesApi } from "./chat/chatFilesApi";
 import { chatHistoryApi } from "./chat/chatHistoryApi";
-import { chatScheduleApi } from "./chat/chatScheduleApi";
+import {
+  fetchFullTranscriptContent,
+  fetchTranscript,
+  fetchTranscriptContent,
+} from "./chat/chatTranscriptApi";
 import type { ChatMeta, CreateChatInput, UpdateChatInput } from "../models/chat";
 import { API_ROUTES } from "../config/routes";
 
@@ -23,9 +27,10 @@ export const chatApi = {
   fork: (id: string) =>
     requestJson<ChatMeta>("POST", API_ROUTES.chats.fork(id), {}),
   ...chatFilesApi,
-  fetchEvents: chatEventsApi.fetchEvents,
+  fetchTranscript,
+  fetchTranscriptContent,
+  fetchFullTranscriptContent,
   rewind: chatEventsApi.rewind,
   ...chatHistoryApi,
-  ...chatScheduleApi,
   openStream: chatEventsApi.openStream,
 };

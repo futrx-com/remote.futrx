@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Update an existing QA installation to one exact pushed Git ref.
+# QA wrapper for a full infrastructure update of an existing installation.
+#
+# It resolves a pushed branch, tag, or commit to an immutable SHA, runs the
+# production infra/update.sh on the QA host, and verifies local and public
+# health. This is disruptive and can rebuild the base image and recycle
+# eligible project containers. Use infra/qa/deploy-app.sh for an app-only
+# pushed candidate or infra/qa/deploy-local.sh for an uncommitted app-only
+# candidate. Connection settings come from .qa.env (see .qa.env.example).
 
 set -euo pipefail
 
@@ -12,7 +19,12 @@ usage() {
 Usage: bash infra/qa/update.sh <branch|tag|commit>
 
 Updates an existing QA installation to an exact pushed Git commit. It refuses
-to provision a fresh server; use infra/qa/install.sh for the first install.
+to provision a fresh server; use infra/qa/install.sh for the first install. It
+runs the complete production infrastructure path, including host convergence,
+base-image rebuild, and eligible workspace recycling.
+
+The requested ref must resolve to the clean local HEAD and to the same commit
+on origin. Coordinate a maintenance window before running it.
 EOF
 }
 
@@ -50,6 +62,12 @@ fi
 
 # Fetching above places the exact object in this checkout, allowing update.sh
 # to pin the deployment by immutable SHA even when the source was a branch.
+# Select it before invoking the entrypoint so QA can recover even when its
+# current checkout contains a broken updater.
+git reset --hard "$candidate_sha"
+FUTRX_INSTALL_DIR="$install_dir" \
+FUTRX_LEGACY_INSTALL_DIR="/opt/remote.futrx.dev" \
+FUTRX_UPDATE_REEXECED=1 \
 bash infra/update.sh "--ref=$candidate_sha"
 
 deployed_sha="$(git rev-parse --verify 'HEAD^{commit}')"

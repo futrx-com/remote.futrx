@@ -18,7 +18,7 @@ const failedInstallWaitTimeout = 90 * time.Second
 // Runtime translates CLI queries and mutations into container operations.
 type Runtime interface {
 	Available() bool
-	Version(ctx context.Context, containerName, binary string) (string, error)
+	Version(ctx context.Context, containerName, binary string, arguments ...string) (string, error)
 	CommandExists(ctx context.Context, containerName, command string) bool
 	InstallRunning(ctx context.Context, containerName, packageName string) bool
 	InstallNPM(ctx context.Context, containerName, npmPackage string) (string, error)
@@ -117,7 +117,7 @@ func (p *Provisioner) ready(ctx context.Context, containerName string, spec prov
 	if !spec.CheckVersion {
 		return p.runtime.CommandExists(ctx, containerName, spec.Binary)
 	}
-	out, err := p.runtime.Version(ctx, containerName, spec.Binary)
+	out, err := p.runtime.Version(ctx, containerName, spec.Binary, spec.VersionArgs...)
 	return err == nil && semanticVersionAtLeast(out, spec.Version)
 }
 

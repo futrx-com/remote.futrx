@@ -95,10 +95,40 @@ func TestHubAllowsOnlyOneRunPerChat(t *testing.T) {
 		t.Fatal("cancel was not called")
 	}
 
-	if _, ok := hub.StartRun("abcd", func() {}); !ok {
-		t.Fatal("new run should start after cancel")
+	if !hub.IsRunning("abcd") {
+		t.Fatal("cancelled run should retain the lock until it finishes")
+	}
+	if _, ok := hub.StartRun("abcd", func() {}); ok {
+		t.Fatal("new run should not start while cancellation is still draining")
 	}
 	hub.FinishRun("abcd", runID)
+	if hub.IsRunning("abcd") {
+		t.Fatal("finished cancelled run should release the lock")
+	}
+	if _, ok := hub.StartRun("abcd", func() {}); !ok {
+		t.Fatal("new run should start after cancelled run finishes")
+	}
+}
+
+func TestHubRepeatedCancelIsIdempotentUntilRunFinishes(t *testing.T) {
+	hub := New(nil)
+	cancelled := 0
+	runID, ok := hub.StartRun("abcd", func() { cancelled++ })
+	if !ok {
+		t.Fatal("run should start")
+	}
+
+	if !hub.CancelRun("abcd") || !hub.CancelRun("abcd") {
+		t.Fatal("repeated cancellation should find the draining run")
+	}
+	if cancelled != 1 {
+		t.Fatalf("cancel calls = %d, want 1", cancelled)
+	}
+
+	hub.FinishRun("abcd", runID)
+	if hub.CancelRun("abcd") {
+		t.Fatal("finished run should no longer be cancellable")
+	}
 }
 
 func TestHubPublishesRunningTransitions(t *testing.T) {
@@ -116,6 +146,15 @@ func TestHubPublishesRunningTransitions(t *testing.T) {
 	}
 	if running := receiveRunning(t, updates); !running {
 		t.Fatal("expected running=true update")
+	}
+
+	if !hub.CancelRun("abcd") {
+		t.Fatal("run should accept cancellation")
+	}
+	select {
+	case running := <-updates:
+		t.Fatalf("cancel published premature running=%v update", running)
+	default:
 	}
 
 	hub.FinishRun("abcd", runID)

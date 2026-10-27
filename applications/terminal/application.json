@@ -1,0 +1,24 @@
+{
+  "id": "terminal",
+  "name": "Terminal",
+  "description": "A shell in the project container, docked beside the chat.",
+  "category": "development",
+  "version": "3",
+  "icon": "terminal",
+  "scopes": ["project", "global"],
+  "globallyInstalledInsideContainers": true,
+  "service": {
+    "name": "remote-terminal",
+    "description": "Project terminal sessions",
+    "command": ["/usr/local/bin/remote-terminal", "serve", "--port", "8843"],
+    "restart": "on-failure",
+    "restartSec": 2
+  },
+  "web": {
+    "port": 8843,
+    "subdomain": "terminal"
+  },
+  "ui": {
+    "entry": "scripts/main.js"
+  }
+}

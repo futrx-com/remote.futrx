@@ -19,14 +19,20 @@ func (i *containerAgentInspector) inspect(ctx context.Context, containerName str
 	profiles := i.profiles.Snapshot()
 	statuses := make([]serviceproject.AgentContainerStatus, 0, len(profiles))
 	for _, profile := range profiles {
-		status := serviceproject.AgentContainerStatus{ID: profile.ID}
+		status := serviceproject.AgentContainerStatus{ID: profile.ID, Label: profile.CLI.Name}
 		if _, err := i.commands.run(ctx, "exec", containerName, "--", "which", profile.CLI.Binary); err == nil {
 			status.Installed = true
-			if version, err := i.commands.run(ctx, "exec", containerName, "--", profile.CLI.Binary, "--version"); err == nil {
-				status.Version = strings.TrimSpace(version)
+			versionArgs := []string{"exec", containerName, "--", profile.CLI.Binary}
+			versionArgs = append(versionArgs, profile.CLI.VersionArgs...)
+			if len(profile.CLI.VersionArgs) > 0 {
+				version, err := i.commands.run(ctx, versionArgs...)
+				if err == nil {
+					status.Version = strings.TrimSpace(version)
+				}
 			}
 		}
 		if profile.Instructions != nil {
+			status.InstructionsPath = profile.Instructions.Path
 			if _, err := i.commands.run(ctx, "exec", containerName, "--", "test", "-f", profile.Instructions.Path); err == nil {
 				status.InstructionsInstalled = true
 			}

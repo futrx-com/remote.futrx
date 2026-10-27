@@ -1,7 +1,7 @@
 # User guide
 
 This guide explains how to use every user-facing part of Remote: onboarding,
-projects, chats, four agent providers, scheduled tasks, workspace tools,
+projects, chats, five agent providers, scheduled tasks, workspace tools,
 previews, the shared Agent Browser, Git recovery, secrets, sharing, users, and
 server information.
 
@@ -17,7 +17,7 @@ If this is your first session:
 2. [Create a project and learn the sidebar](02-projects-and-sidebar.md).
 3. [Create a chat and choose an agent](03-chat-and-agent-controls.md).
 4. [Send work, attach context, queue a follow-up, or answer an agent question](04-prompts-context-and-conversation.md).
-5. Open the result through [Files, Terminal, or IDE](05-files-terminal-and-ide.md).
+5. Open the result through [Files, Terminal, or application editors](05-files-terminal-and-application-editors.md).
 6. For a web app, use [Preview and Inspect](06-previews-and-inspector.md).
 7. For a real signed-in website, use the [Agent Browser](07-agent-browser.md).
 8. Use [Git History](08-git-history-and-restore.md) before or after risky changes.
@@ -30,13 +30,14 @@ If this is your first session:
 | --- | --- |
 | Claim a new server or sign in | [First run and sign-in](01-first-run-and-sign-in.md) |
 | Connect Claude, Codex, or Kimi | [Global settings, users, and providers](10-global-settings-users-providers.md) |
+| Configure MiniMax for one project | [Global settings, users, and providers](10-global-settings-users-providers.md#use-minimax) |
 | Sign in to Antigravity for one project | [Global settings, users, and providers](10-global-settings-users-providers.md#use-antigravity) |
 | Create, search, reorder, start, or stop projects | [Projects and sidebar](02-projects-and-sidebar.md) |
 | Pick a provider, model, thinking level, speed, mode, or skill | [Chat and agent controls](03-chat-and-agent-controls.md) |
 | Attach files, queue work, cancel a run, fork, rewind, or mark unread | [Prompts, context, and conversation](04-prompts-context-and-conversation.md) |
-| Browse or download files | [Files, Terminal, and IDE](05-files-terminal-and-ide.md) |
-| Run a command manually | [Files, Terminal, and IDE](05-files-terminal-and-ide.md) |
-| Open the browser IDE | [Files, Terminal, and IDE](05-files-terminal-and-ide.md) |
+| Browse or download files | [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md) |
+| Run a command manually | [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md) |
+| Open the browser IDE | [Files, Terminal, and application editors](05-files-terminal-and-application-editors.md) |
 | Preview a local web app or select an element | [Previews and inspector](06-previews-and-inspector.md) |
 | Let an agent use a website where I am signed in | [Agent Browser](07-agent-browser.md) |
 | Inspect commits, prepare a recovery point, or switch clean versions | [Git history and restore](08-git-history-and-restore.md) |
@@ -63,7 +64,7 @@ flowchart LR
 | --- | --- |
 | Projects sidebar | Project and chat creation, search, status, ordering, read state, forking, and deletion |
 | Chat | Agent selection, prompt context, streamed reasoning and tool activity, per-tab drafts and queues, questions, usage, and history |
-| Workspace tools | The durable `/workspace` through files, downloads, a shell, code-server, and Git |
+| Workspace tools | The durable `/workspace` through files, downloads, a shell, application actions, and Git |
 | Scheduled tasks | Host-owned one-time or recurring prompts that return to a project chat |
 | Project settings | Container state, diagnostics, resource limits, secrets, membership, and recovery |
 | Global settings | Appearance, host-wide agent credentials, platform users, Google OAuth, and host metrics |
@@ -91,10 +92,9 @@ flowchart LR
 The durable center is the project, not one chat or one container generation.
 
 - `/workspace` survives normal stop, restart, and container replacement.
-- Claude, Codex, and Kimi provider homes are separate durable mounts.
-- Antigravity stores its sign-in and conversation state in the replaceable
-  container root; it survives ordinary stop/start but not container
-  replacement.
+- Claude, Codex, MiniMax, Kimi, and Antigravity provider homes are separate durable
+  mounts. Antigravity persists only `/root/.gemini/antigravity-cli`, not the
+  entire `.gemini` tree.
 - The Agent Browser profile lives in the workspace, so site sessions can survive container replacement.
 - Chat metadata and event history live in the host control plane.
 - Scheduled-task definitions, claims, and run state live in the host control

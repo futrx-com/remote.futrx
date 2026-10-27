@@ -33,14 +33,14 @@ func TestProjectCreateIsAudited(t *testing.T) {
 		nil,
 		serviceproject.WithAudit(auditLog),
 	)
-	NewProjectHandler(projects, nil, auth, "remote.futrx.com").RegisterRoutes(mux)
+	NewProjectHandler(projects, nil, auth, "remote.futrx.com", nil).RegisterRoutes(mux)
 
 	handler := httpmiddleware.NewAuth(auth).
 		RequireLocalAdminSetup(func() bool { return true }).
 		RequireProviderLogin(func() bool { return true }).
 		Wrap(mux)
 
-	session := auth.SignSession(serviceauth.User{Email: "admin@example.com", Sub: "local-admin"})
+	session := auditSession(t, auth, "admin@example.com", "local-admin")
 	createReq := httptest.NewRequest(http.MethodPost, "/api/projects", strings.NewReader(`{"name":"Audited Project"}`))
 	createReq.AddCookie(&http.Cookie{Name: serviceauth.SessionCookieName, Value: session})
 	createReq.Header.Set("X-Forwarded-For", "203.0.113.11")
@@ -118,13 +118,13 @@ func TestProjectMemberRemovalIsAudited(t *testing.T) {
 		access,
 		serviceproject.WithAudit(auditLog),
 	)
-	NewProjectHandler(projects, nil, auth, "remote.futrx.com").RegisterRoutes(mux)
+	NewProjectHandler(projects, nil, auth, "remote.futrx.com", nil).RegisterRoutes(mux)
 
 	handler := httpmiddleware.NewAuth(auth).
 		RequireLocalAdminSetup(func() bool { return true }).
 		RequireProviderLogin(func() bool { return true }).
 		Wrap(mux)
-	session := auth.SignSession(serviceauth.User{Email: "admin@example.com", Sub: "local-admin"})
+	session := auditSession(t, auth, "admin@example.com", "local-admin")
 
 	createReq := httptest.NewRequest(http.MethodPost, "/api/projects", strings.NewReader(`{"name":"Shared"}`))
 	createReq.AddCookie(&http.Cookie{Name: serviceauth.SessionCookieName, Value: session})

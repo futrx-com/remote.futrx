@@ -9,6 +9,7 @@ export function PromptTextarea({
   onTextChange,
   onPaste,
   onSend,
+  onKeyDown,
 }: {
   textareaRef: RefObject<HTMLTextAreaElement>;
   text: string;
@@ -18,13 +19,18 @@ export function PromptTextarea({
   onTextChange: (text: string) => void;
   onPaste: (event: ClipboardEvent) => void;
   onSend: () => void;
+  // Return true to signal the key was handled (e.g. by the slash palette) so
+  // the default composer handling below is skipped.
+  onKeyDown?: (event: KeyboardEvent) => boolean;
 }) {
   return (
     <textarea
       ref={textareaRef}
+      dir="auto"
       value={text}
       onInput={(event) => onTextChange((event.currentTarget as HTMLTextAreaElement).value)}
       onKeyDown={(event) => {
+        if (onKeyDown?.(event)) return;
         if (
           event.key === "Enter" &&
           (event.ctrlKey || event.metaKey) &&
@@ -50,12 +56,10 @@ export function PromptTextarea({
         "Ask anything, @ to add files, / for commands"
       }
       disabled={disconnected}
-      class="codex-composer-textarea flex-1 resize-none rounded-md
-             bg-transparent border-0 text-ink-100 placeholder:text-ink-300
-             focus:outline-none
-             px-2.5 py-2.5 text-[16px] sm:text-[14px] leading-normal
-             min-h-[40px] max-h-[220px]
-             disabled:opacity-60 transition-colors"
+      class="codex-composer-textarea w-full resize-none border-0 bg-transparent px-1.5 py-1.5
+             text-[16px] leading-relaxed text-ink-100 placeholder:text-ink-400
+             focus:outline-none disabled:opacity-60
+             min-h-[44px] max-h-[220px] sm:text-[14.5px]"
     />
   );
 }

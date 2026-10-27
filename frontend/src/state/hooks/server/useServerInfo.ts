@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { serverInfoApi } from "../../../api/serverInfoApi";
+import { SERVER_INFO_REFRESH_INTERVAL_MS } from "../../../config/server";
 import type { ServerInfo } from "../../../models/serverInfo";
-
-const refreshIntervalMs = 15_000;
 
 export function useServerInfo(enabled: boolean) {
   const [info, setInfo] = useState<ServerInfo | null>(null);
@@ -34,7 +33,7 @@ export function useServerInfo(enabled: boolean) {
   useEffect(() => {
     if (!enabled) return;
     void refresh();
-    const interval = window.setInterval(() => void refresh(), refreshIntervalMs);
+    const interval = window.setInterval(() => void refresh(), SERVER_INFO_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(interval);
   }, [enabled, refresh]);
 

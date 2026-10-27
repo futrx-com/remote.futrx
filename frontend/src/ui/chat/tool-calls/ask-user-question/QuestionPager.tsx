@@ -22,7 +22,7 @@ export function QuestionPager({
         onClick={() => onPageChange(Math.max(0, page - 1))}
         disabled={page === 0}
         class="flex items-center gap-1 text-sm px-3 h-10 rounded-md
-               text-ink-200 hover:text-ink-100 hover:bg-white/[0.08]
+               text-ink-200 hover:text-ink-100 hover:bg-tint-strong
                disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
       >
         <ChevronLeft class="w-3.5 h-3.5" /> Back
@@ -34,7 +34,7 @@ export function QuestionPager({
           disabled={!canAdvance}
           class="flex items-center gap-1.5 bg-accent-blue hover:bg-accent-blue/85 h-10
                  disabled:bg-ink-500 disabled:cursor-not-allowed
-                 text-white text-sm font-medium px-3.5 rounded-md"
+                 text-on-accent text-sm font-medium px-3.5 rounded-control"
         >
           Send answer <ChevronRight class="w-3.5 h-3.5" />
         </button>
@@ -45,7 +45,7 @@ export function QuestionPager({
           disabled={!canAdvance}
           class="flex items-center gap-1.5 bg-accent-blue/90 hover:bg-accent-blue h-10
                  disabled:bg-ink-500 disabled:cursor-not-allowed
-                 text-white text-sm font-medium px-3.5 rounded-md"
+                 text-on-accent text-sm font-medium px-3.5 rounded-control"
         >
           Next <ChevronRight class="w-3.5 h-3.5" />
         </button>

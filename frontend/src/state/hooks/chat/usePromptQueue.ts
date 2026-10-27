@@ -1,8 +1,11 @@
+import { useStore } from "zustand";
 import { useEffect, useState } from "preact/hooks";
 import type { ChatStatus, PromptOutcome, QueuedPrompt } from "../../../models/chat";
-import { queueId } from "../../../shared/ids";
-import { chatComposerSessionStore } from "../../chat/composerSessionStore";
-import { promptQueueState } from "../../chat/promptQueueState";
+import { idService } from "../../../services/platform/idService.ts";
+import { chatComposerSessionStore } from "../../stores/chat/composerSessionStore";
+import { promptQueueState } from "./promptQueueState";
+
+const EMPTY_QUEUE: QueuedPrompt[] = [];
 
 export function usePromptQueue({
   chatId,
@@ -23,8 +26,13 @@ export function usePromptQueue({
   // ChatContainer remount that happens on every chat switch. They resume
   // auto-sending when you return to the chat (sending is tied to the active
   // chat's connection, so a backgrounded chat's queue waits until it is open).
-  const [queuedPrompts, setQueuedPromptsState] = useState<QueuedPrompt[]>(() =>
-    chatComposerSessionStore.getQueuedPrompts(chatId),
+  const queuedPrompts = useStore(
+    chatComposerSessionStore,
+    (state) => state.promptQueues.get(chatId) ?? EMPTY_QUEUE,
+  );
+  const setQueuedPrompts = useStore(
+    chatComposerSessionStore,
+    (state) => state.setQueuedPrompts,
   );
   // Dispatch latch: the queued prompt currently on the wire awaiting the
   // server's verdict. Deliberately not persisted — the prompt itself stays
@@ -32,11 +40,9 @@ export function usePromptQueue({
   const [inflightId, setInflightId] = useState<string | null>(null);
 
   function commitQueuedPrompts(updater: QueuedPrompt[] | ((prev: QueuedPrompt[]) => QueuedPrompt[])) {
-    setQueuedPromptsState((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      chatComposerSessionStore.setQueuedPrompts(chatId, next);
-      return next;
-    });
+    const previous = chatComposerSessionStore.getState().promptQueues.get(chatId) ?? EMPTY_QUEUE;
+    const next = typeof updater === "function" ? updater(previous) : updater;
+    setQueuedPrompts(chatId, next);
   }
 
   // A dispatched prompt is removed only when the server accepts it; a
@@ -66,7 +72,7 @@ export function usePromptQueue({
   return {
     queuedPrompts,
     queuePrompt: (text: string) =>
-      commitQueuedPrompts((prev) => [...prev, { id: queueId(), text }]),
+      commitQueuedPrompts((prev) => [...prev, { id: idService.timeOrdered(), text }]),
     removeQueuedPrompt: (id: string) =>
       commitQueuedPrompts((prev) => prev.filter((prompt) => prompt.id !== id)),
     clearQueuedPrompts: () => commitQueuedPrompts([]),

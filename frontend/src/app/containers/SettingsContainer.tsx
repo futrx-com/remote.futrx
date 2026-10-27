@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useCallback, useState } from "preact/hooks";
 import {
   SettingsPage,
   type SettingsTab,
@@ -7,23 +7,69 @@ import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
 import { useAuditLog } from "../../state/hooks/admin/useAuditLog";
+import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
-import { useSelfUpdate } from "../../state/hooks/server/useSelfUpdate";
+import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
+import { useReleaseNotes } from "../../state/hooks/server/useReleaseNotes";
+import { usePushNotifications } from "../../state/hooks/push/usePushNotifications";
+import { useUsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
+import { usageApi } from "../../api/usageApi";
+import { useGlobalApplications } from "../../state/hooks/applications/useApplications";
+import { extensionHost } from "../extensions/extensionHost";
 
 export function SettingsContainer({
+  selfUpdate,
   onBack,
   onHamburger,
+  activeTab,
+  onTabChange,
 }: {
+  selfUpdate: SelfUpdateController;
   onBack: () => void;
   onHamburger: () => void;
+  activeTab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
 }) {
-  const { auth, codexAuth, kimiAuth } = useAuthContext();
+  const { auth } = useAuthContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
-  const [activeTab, setActiveTab] = useState<SettingsTab>("appearance");
   const serverInfo = useServerInfo(activeTab === "info");
-  const selfUpdate = useSelfUpdate(activeTab === "updates" && auth.isAdmin);
   const auditLog = useAuditLog(activeTab === "audit" && auth.isAdmin);
+  const releaseNotes = useReleaseNotes(
+    activeTab === "updates" && auth.isAdmin && !selfUpdate.status?.lastCheck?.error,
+    selfUpdate.status?.lastCheck?.latestTag,
+  );
+  const security = useSecuritySettings(activeTab === "security");
+  const applications = useGlobalApplications({
+    enabled: activeTab === "applications" && auth.isAdmin,
+    managesPackages: auth.isAdmin,
+    onApplicationsSettled: extensionHost.sync,
+  });
+  const usageDashboard = useUsageDashboard(activeTab === "usage");
+  const [usageRebuilding, setUsageRebuilding] = useState(false);
+  const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
+
+  const rebuildUsage = useCallback(async () => {
+    setUsageRebuilding(true);
+    setUsageRebuildMessage(null);
+    try {
+      const result = await usageApi.rebuild();
+      setUsageRebuildMessage(
+        `Rebuilt ${result.records} record${result.records === 1 ? "" : "s"} from ${result.chats} chat${
+          result.chats === 1 ? "" : "s"
+        }.`
+      );
+      await usageDashboard.refresh();
+    } catch (cause) {
+      setUsageRebuildMessage(`Rebuild failed: ${(cause as Error).message}`);
+    } finally {
+      setUsageRebuilding(false);
+    }
+  }, [usageDashboard]);
+  const push = usePushNotifications(
+    activeTab === "notifications",
+    auth.email || auth.adminEmail
+  );
 
   return (
     <SettingsPage
@@ -36,6 +82,7 @@ export function SettingsContainer({
       serverInfoRefreshing={serverInfo.refreshing}
       serverInfoError={serverInfo.error}
       selfUpdate={selfUpdate.status}
+      releaseNotes={releaseNotes}
       selfUpdateLoading={selfUpdate.loading}
       selfUpdateChecking={selfUpdate.checking}
       selfUpdateApplying={selfUpdate.applying}
@@ -43,30 +90,24 @@ export function SettingsContainer({
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
       auditLog={auditLog}
+      usageDashboard={usageDashboard}
+      usageRebuilding={usageRebuilding}
+      usageRebuildMessage={usageRebuildMessage}
+      onRebuildUsage={rebuildUsage}
       appearanceTheme={userSettings.settings.appearance.theme}
       appearanceLoading={userSettings.loading}
       appearanceSaving={userSettings.saving}
       appearanceError={userSettings.error}
-      codexAuthenticated={codexAuth.authenticated}
-      codexUsesApiKey={codexAuth.usesApiKey}
-      codexDeviceLogin={codexAuth.deviceLogin}
-      codexLoading={codexAuth.loading}
-      codexStarting={codexAuth.starting}
-      codexError={codexAuth.error}
+      push={push}
       onBack={onBack}
       onHamburger={onHamburger}
-      onTabChange={setActiveTab}
+      onTabChange={onTabChange}
       onRefreshServerInfo={serverInfo.refresh}
       onCheckForUpdates={selfUpdate.check}
       onApplyUpdate={selfUpdate.apply}
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
-      onStartCodexDeviceLogin={codexAuth.startDeviceLogin}
-      kimiAuthenticated={kimiAuth.authenticated}
-      kimiDeviceLogin={kimiAuth.deviceLogin}
-      kimiLoading={kimiAuth.loading}
-      kimiStarting={kimiAuth.starting}
-      kimiError={kimiAuth.error}
-      onStartKimiDeviceLogin={kimiAuth.startDeviceLogin}
+      security={security}
+      applications={applications}
     />
   );
 }

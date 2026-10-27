@@ -15,6 +15,7 @@
 # Expects from caller: log / ok / warn / err helpers.
 set -euo pipefail
 
+step_06_ssh_hardening() {
 DROPIN=/etc/ssh/sshd_config.d/10-futrx-hardening.conf
 
 log "Hardening sshd (key-only auth)"
@@ -57,3 +58,4 @@ else
 fi
 
 ok "sshd: password auth disabled (public-key only)"
+}

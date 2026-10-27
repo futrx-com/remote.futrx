@@ -4,8 +4,8 @@ This document describes how remote.futrx is put together: its runtime topology, 
 
 ## What it is
 
-remote.futrx is a **single-server, self-hosted** workspace for the Claude
-Code, Codex, Kimi Code, and Antigravity agent CLIs. A user creates a project,
+remote.futrx is a **single-server, self-hosted** workspace for Claude Code,
+Codex, MiniMax through the Codex harness, Kimi Code, and Antigravity. A user creates a project,
 the platform gives that project an isolated Linux container, and the user
 drives interactive or scheduled agent turns against the project's files from
 the browser—with chat, terminal, code editor, file manager, Git history, task
@@ -21,13 +21,13 @@ flowchart TB
 
     subgraph Host["Single host (Ubuntu/Debian, runs as root)"]
         Caddy["Caddy — public HTTPS edge<br/>on-demand TLS, forward_auth, cookie stripping"]
-        Go["Go backend — 127.0.0.1:7682<br/>embedded Preact SPA + REST + 5 WebSocket families"]
-        Stores["File stores under DATA_DIR<br/>JSON metadata + JSONL chat logs"]
+        Go["Go backend — 127.0.0.1:7682<br/>embedded Preact SPA + REST + WebSockets"]
+        Stores["Stores under DATA_DIR<br/>JSON metadata + JSONL chat logs<br/>derived SQLite chat index"]
         LXD["LXD daemon"]
 
         subgraph C1["Project container A (unprivileged LXD)"]
             AgentA["Agent CLI (root, skip-permissions)"]
-            IDEA["code-server :8842 (auth: none)"]
+            AppWeb["Optional installed application web service"]
             AppA["Project dev servers"]
             BrowA["Agent Browser — Chromium + noVNC :6080"]
         end
@@ -37,7 +37,7 @@ flowchart TB
 
     User -->|HTTPS| Caddy
     Caddy -->|"main host → loopback"| Go
-    Caddy -->|"&lt;slug&gt;.code.host → :8842"| IDEA
+    Go -->|"authenticated label--project.host gateway"| AppWeb
     Caddy -->|"&lt;slug&gt;--&lt;port&gt;.dev.host → :port"| AppA
     Caddy -->|"&lt;slug&gt;--6080.dev.host → :6080"| BrowA
     Go -->|reads/writes| Stores
@@ -51,24 +51,24 @@ flowchart TB
 
 - The Go backend is **one process, bound to loopback** (`HOST=127.0.0.1:7682`, [`backend/internal/config/config.go`](backend/internal/config/config.go)). Caddy is the only thing listening on the public interface.
 - The backend runs as **root** ([`infra/templates/remote.futrx.service.tmpl`](infra/templates/remote.futrx.service.tmpl), `User=root`) because it drives the `lxc` CLI and chowns workspace files into the container idmap. This is a deliberate design choice with security consequences — see the [threat model](docs/threat-model.md).
-- There is **no database.** All platform state is flat files under `DATA_DIR` (`/opt/remote.futrx/data`): JSON for auth/users/projects/access/secrets, append-only JSONL for chat event logs. Concurrency is guarded by in-process mutexes only.
-- Each project is **one unprivileged LXD container** built from a shared base image (`futrx-remote-dev-base`: Ubuntu 24.04 + Node 22 + pinned agent CLIs + Chromium + code-server). Durable state lives on the host and is bind-mounted in.
+- There is **no external database service.** Authoritative platform state is flat files under `DATA_DIR` (`/opt/remote.futrx/data`): JSON for auth/users/projects/access/secrets and append-only JSONL for chat event logs. A disposable embedded SQLite database persists chat event offsets and transcript-turn ranges for bounded reads, validating them against JSONL file metadata and a prefix fingerprint before extending them. Concurrency is guarded by in-process mutexes only.
+- Each project is **one unprivileged LXD container** built from a shared base image (`futrx-remote-dev-base`: Ubuntu 24.04 + Node 22 + pinned agent CLIs + Chromium). Durable state lives on the host and is bind-mounted in. Optional applications add their own software when installed.
 
-## The four public host classes
+## Public host classes
 
-Caddy ([`infra/templates/Caddyfile.tmpl`](infra/templates/Caddyfile.tmpl)) terminates HTTPS for four classes of hostname and routes each differently. This routing table *is* the external attack surface:
+Caddy ([`infra/templates/Caddyfile.tmpl`](infra/templates/Caddyfile.tmpl)) terminates HTTPS for the main host, project preview hosts, and installation app hosts. This routing table *is* the external attack surface:
 
 | Host pattern | Routes to | Auth at the edge |
 | --- | --- | --- |
 | `remote.example.com` (main) | Go backend on loopback | App session middleware; `/internal/*` blocked externally |
-| `code.<host>` and `<slug>.code.<host>` | code-server IDE in container on `:8842` | `forward_auth` → `/auth/verify` (**registered user only — no project membership check**) |
-| `<slug>--<port>.dev.<host>` | Project dev server on `<slug>.lxd:<port>` | `forward_auth` → `/auth/verify` (**project membership enforced**) |
+| `<slug>--<port>.dev.<host>` | Project dev server on `<slug>.lxd:<port>` | `forward_auth` → `/auth/verify` (**project membership enforced**, or a valid public share link for that exact slug+port) |
+| `<label>--<project-slug>.<host>` | Go application gateway → declared project app port | Session, registered account, project membership and running installation |
 | `<slug>--6080.dev.<host>` | Agent Browser noVNC on `:6080` | `forward_auth` → `/auth/verify` (project membership, via the dev pattern) |
 
 Two properties of this table are load-bearing and both are analyzed in the threat model:
 
-1. **Wildcard subdomains use on-demand TLS**, gated by the backend's `/internal/tls-ask` so only slugs of existing projects can mint certificates ([`project_handler.go` `HandleTLSAsk`](backend/internal/transport/http/handlers/project_handler.go)).
-2. **Caddy strips the platform cookies** (`remote_session`, `remote_oauth_state`, `return_to`) via `header_up` before proxying any request into a container, so untrusted in-container code can never see a replayable session token. This is the mechanism behind the "isolated previews" claim.
+1. **Wildcard subdomains use on-demand TLS**, gated by the backend's `/internal/tls-ask` so only existing project previews and running web installations can mint certificates ([`project_handler.go` `HandleTLSAsk`](backend/internal/transport/http/handlers/project_handler.go)).
+2. **Caddy strips the platform cookies** (`remote_session`, `remote_2fa_pending`, `remote_oauth_state`, `return_to`, `remote_share`) via `header_up` before proxying preview requests into a container. The backend's authenticated application web route separately strips cookies before forwarding to an installed application's declared port.
 
 ## Backend layering
 
@@ -91,20 +91,53 @@ integration/ & stores/  ── the outside world: lxc CLI, git CLI, tmux, host f
 
 Composition roots: [`backend/cmd/remote/main.go`](backend/cmd/remote/main.go) (server), [`backend/internal/service/services.go`](backend/internal/service/services.go) (services), [`backend/internal/config/containers.go`](backend/internal/config/containers.go) (the container-capability stack).
 
+### Sending email from a service
+
+`Services.Mailer` ([`service/email/mailer.go`](backend/internal/service/email/mailer.go)) is the one entry point for outbound email. A calling service composes a message with a fluent builder and never touches the stored SMTP configuration, MIME multipart, `net/smtp`, or HTML email markup:
+
+```go
+err := deps.Services.Mailer.Mail().
+    ToUser(ownerEmail).                       // or .To("someone@example.com")
+    Subject("Your run finished").
+    Heading("Run finished").
+    Text("The agent finished the run you started.").
+    KeyValues([2]string{"Project", name}, [2]string{"Duration", d.String()}).
+    Button("Open the run", runURL).           // http/https only; anything else fails the mail
+    Note("You are receiving this because you started the run.").
+    SendAsync(ctx)                            // or Send(ctx) when the outcome matters
+```
+
+- **Blocks, one shell.** `Heading`, `Text`, `Button`, `List`, `KeyValues`, `Code`, `Divider`, `Note` stack inside the single branded card. Each block renders both the HTML and its plain-text equivalent, so every message ships a matching `text/plain` alternative that nobody has to hand-write.
+- **Errors are deferred** to `Build`, so the chain stays unbroken and the caller writes one error check. `SendAsync` still runs that validation and recipient resolution synchronously and returns the error immediately — only the actual SMTP round trip happens in the background, never a composition mistake.
+- **One message per recipient**, deduplicated — no recipient learns who else was mailed. Each recipient is its own SMTP session (there is no pooling), so a very large recipient list is not the intended use.
+- **`SendAsync` never blocks a request**: the background goroutine closes over the already-built messages, never the builder, and delivers on its own 30s budget with a bounded number of concurrent SMTP sessions (`maxConcurrentSends`), outliving the request context. Delivery is best-effort and in-memory — a send in flight when the process exits is lost.
+- **An unconfigured server is a logged no-op**, not an error — the same way push degrades without a VAPID key, and the log line masks the address (`j***@example.com`). A feature must not fail because an administrator has not configured SMTP. Mail that must actually arrive — a 2FA code, an invitation — calls `.Required()` before `Send`/`SendAsync`, which turns that same case into `ErrNotConfigured` instead of a silent drop. The admin-facing test send in `email.Service` uses `Required()` for the same reason: an administrator asked directly and must be told.
+
+`email.Service` still owns the configuration itself (normalise → verify against the live SMTP server → persist to `DATA_DIR/smtp.json`) and is handed only to the admin settings handler.
+
 ## Identity, sessions, and access
 
 Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-workspaces/02-auth-users-and-access.md)):
 
-1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup.
+1. **Platform identity.** Exactly one local-admin account (email + password, argon2id, min 12 chars, in `local-admin.json`); every other user signs in through **Google OAuth only** and must be invited first. There is no self-signup. The first claim is gated on a one-time token generated at startup and printed only to the server terminal (`setup-token.json` holds its SHA-256, never the token), so an unclaimed server cannot be taken over by whoever loads the page first; once an administrator exists, that administrator authorises any further claim instead.
 2. **Agent-provider credentials.** Host-wide OAuth tokens for
-   Claude/Codex/Kimi, connected once by an admin and **shared by all projects
-   and users** on the box. Antigravity instead authenticates through `agy`
-   inside one project and stores that state in the replaceable container root.
+   Claude/Codex/Kimi, managed by an admin and **shared by all projects and
+   users** on the box. Claude and Codex can each retain multiple named
+   subscription credentials but expose one validated active host identity at
+   a time. The saved-account vault (`agent-accounts.json`) and its activation
+   rules belong to [`service/agent/auth`](backend/internal/service/agent/auth);
+   provider adapters supply only credential placement, validation, identity,
+   and isolated login. MiniMax instead reads `MINIMAX_API_KEY` from each
+   project's secret store, while Antigravity authenticates through `agy`
+   inside one project and stores that state in its project-specific durable
+   provider mount.
 3. **Per-project membership.** A flat email access-list per project (`projectaccess/<id>.json`). Any member — not only admins — can read/write that project's secrets and edit its member list.
 
-**Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches the preview/IDE subdomains for `forward_auth`. There is no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
+**Sessions** are stateless HMAC-SHA256 tokens (`{email, sub, iat, exp, sid}`, 30-day expiry) signed by a random key at `DATA_DIR/session.key` ([`session_codec.go`](backend/internal/service/auth/session_codec.go)). The cookie is `HttpOnly; Secure; SameSite=Lax` and **domain-scoped to the base host** so it reaches preview subdomains for `forward_auth`. By default there is still no server-side session store: logout only clears the cookie, and per-request `IsRegistered` checks are the only way a session is invalidated early.
 
-**Request gating** ([`middleware/auth.go`](backend/internal/transport/http/middleware/auth.go)): the middleware covers `/api/*` and `/ws*` only. It requires a valid session for a registered user, then two setup preconditions (local admin claimed; at least one provider authenticated). Admin-only routes and project-membership routes re-check authorization per handler.
+An account can opt in, from Settings → Security, to a small tracked-session model layered on top of the same stateless cookie, via three independent per-account toggles held in `SessionRegistry` ([`session_registry.go`](backend/internal/service/auth/session_registry.go)): **single active session** (a new login supersedes the account's previous session id, checked inside `CurrentSession` alongside the existing local-admin-vs-Google rule), **sign-in history** (a bounded, newest-first record of past logins), and **recovery-code alert** (settable only while TOTP 2FA is also enabled; flags a login that used a recovery code instead of the authenticator app, surfaced on `/auth/me`). TOTP 2FA itself is a fourth, independent toggle (`twofactor.go`) that adds a second factor to the login flow (`/auth/2fa/verify`) without requiring any of the other three. None of the four toggles affects an account that has not turned it on: `CurrentSession`'s registry lookup, the history write, and the alert check are all short-circuited by the account's cached `SecurityPreferences`/2FA-enrollment state, so the stateless, zero-lookup path described above is exactly what unopted accounts still get.
+
+**Request gating** ([`middleware/auth.go`](backend/internal/transport/http/middleware/auth.go)): the middleware covers `/api/*` and `/ws*` only. It requires a valid session for a registered user, then two setup preconditions: local admin claimed, and at least one module marked `SatisfiesAccessGate` ready. A no-auth gate module is ready immediately; managed code/device modules require an authenticated binding; external auth cannot be a gate because Remote has no authoritative status signal for it. The module-driven auth catalog and streams remain reachable while this gate is closed. Admin-only routes and project-membership routes re-check authorization per handler.
 
 ## Request lifecycle: a prompt
 
@@ -114,32 +147,104 @@ sequenceDiagram
     participant SPA as Preact SPA
     participant WS as /ws/chat/{id}
     participant Prompt as prompt.Service
-    participant Life as container lifecycle
+    participant Runtime as module.Runtime
+    participant Provider as agent.Provider
+    participant Prep as execution.Preparer
+    participant Cmd as integration/agents/runtime
+    participant Projects as agent.ProjectResolver
     participant LXD as LXD container
     participant CLI as Agent CLI
 
     User->>SPA: Type prompt, send
     SPA->>WS: {type:"prompt", text}
     WS->>Prompt: StartPrompt (single run per chat)
-    Prompt->>Life: ensure container running
-    Life->>LXD: lxc start / reconcile mounts
-    Prompt->>LXD: push credentials, skills, instructions
-    Prompt->>CLI: lxc exec selected provider CLI (root, skip-permissions)
-    CLI-->>Prompt: provider JSONL stream
+    Prompt->>Runtime: validate scope + lookup provider
+    Prompt->>Provider: Run(provider-neutral request)
+    opt Project chat
+        Provider->>Prep: Prepare(project + selected features)
+        Prep->>Projects: resolve + start/reconcile
+        Projects->>LXD: enforce lifecycle
+        Prep->>LXD: provision CLI, credentials, and assets
+        Prep->>Projects: load project secrets
+        Prep-->>Provider: prepared container target
+        Provider->>Cmd: build common lxc exec envelope
+    end
+    Provider->>CLI: execute native host/container command
+    CLI-->>Provider: provider-native stream/protocol
+    Provider-->>Prompt: normalized agent events
     Prompt-->>WS: normalized events (persisted to JSONL, broadcast)
     WS-->>SPA: live text / reasoning / tool calls / usage
-    Prompt->>LXD: on success, sync refreshed credentials back to host
+    opt Successful project run with managed credentials
+        Provider->>LXD: best-effort credential sync to host
+    end
 ```
 
 The run hub ([`service/runhub/hub.go`](backend/internal/service/runhub/hub.go))
 enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
-adapters ([`agent/claude`](backend/internal/agent/claude),
-[`agent/codex`](backend/internal/agent/codex),
-[`agent/kimi`](backend/internal/agent/kimi), and
-[`agent/antigravity`](backend/internal/agent/antigravity)) normalize each
-CLI's available output into a shared event stream. Antigravity print mode
+adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
+[`integration/agents/codex`](backend/internal/integration/agents/codex),
+[`integration/agents/minimax`](backend/internal/integration/agents/minimax),
+[`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
+[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
+provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
+
+Agent composition uses the validated provider-owned factory contract in
+[`service/agent/module`](backend/internal/service/agent/module). Each adapter
+package exposes one `NewFactory()` from its local `factory.go` and is
+compile-time checked against `module.FactoryBuilder`. The factory keeps public
+descriptor metadata separate from its private provisioning profile and
+project-preparation policy. `AuthNone` modules omit the binding; all other auth
+modes require one. Project-capable modules must provide a profile; a host-only
+module may provide one when it runs a locally installed CLI, or omit it for a
+remote integration.
+
+Catalog construction rejects duplicate or unsafe IDs, multiple defaults,
+invalid auth/scope/feature combinations, and overlapping persistent-state
+mounts before the server starts. `Catalog.Build` then returns one
+`module.Runtime` that owns matching provider and authentication registries, so
+consumers cannot combine state built from different catalogs. The provider
+runtime contract itself stays narrow: identity, capability discovery, and
+execution.
+
+Provider-specific commands, protocols, parsers, credentials, capability
+probes, and profiles live in the concrete
+[`integration/agents`](backend/internal/integration/agents) adapters. Neutral
+provider contracts remain in [`agent`](backend/internal/agent), and shared project
+start/provision/secret orchestration lives in
+[`service/agent/execution`](backend/internal/service/agent/execution), while
+[`integration/agents/runtime`](backend/internal/integration/agents/runtime)
+assembles the common process and `lxc exec` command shapes used by those
+adapters. Each provider factory declares its small preparation policy and
+retains native CLI argument and transport ownership.
+
+The explicit composition root in
+[`config/agents.go`](backend/internal/config/agents.go) only lists provider
+`NewFactory` functions in deterministic order. There is no backend discovery or
+package `init` registration. `service.New` passes application-facing
+`module.BuildDependencies`—the narrow
+[`ProjectResolver`](backend/internal/agent/project.go), full container ports,
+and global credential-sync timeout—to `Catalog.Build`. For every project-scoped
+module, `module.Factory` constructs `execution.Preparer` from a deep clone of
+the validated profile and the provider's `ProjectPreparationPolicy`. It then
+projects only `ProjectPreparer`, `CredentialCollector`, and the sync timeout
+into the provider callback, alongside an independent validated profile clone.
+Those factory dependencies do not expose project-service models or the full
+container port set. Current adapters use the shared preparer; importing project
+services directly or copying its CLI/workspace/browser/lifecycle workflow would
+violate the integration contract.
+
+When application authentication is enabled, service startup additionally
+requires at least one managed or no-auth module that declares
+`SatisfiesAccessGate`; this prevents a valid-looking catalog from leaving every
+application route permanently behind an impossible onboarding gate.
+
+The catalog also owns the provider default. At most one module may be marked
+default, and it must support host execution; Codex is the current built-in
+default. When no explicit provider is stored, chat creation, user settings,
+and skill lookup ask the catalog for the default compatible with the requested
+scope, falling back deterministically to the first compatible module.
 
 A chat with **no project** ("loose chat") runs the CLI directly on the host instead of in a container. This path is convenient but removes the container boundary; its consequences are the subject of several threat-model entries.
 
@@ -152,85 +257,216 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project metadata | `DATA_DIR/projects/<id>/meta.json` | JSON | slug is the container name |
 | Project membership | `DATA_DIR/projectaccess/<id>.json` | JSON | flat email list |
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
+| Public preview links | `DATA_DIR/projectshares/<id>.json` | JSON | SHA-256 token digests only, mode 0600 |
 | Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
-| Scheduled tasks | `DATA_DIR/scheduled-tasks/tasks.json` | JSON | definitions, deadlines, durable claims, pending state, and last outcomes |
+| Agent quota snapshots | `DATA_DIR/agent-quota.json` | JSON | latest provider-reported plan windows per provider account, mode 0600 |
+| Chat event index | `DATA_DIR/transcript-index.sqlite` | SQLite | disposable event-offset and transcript-turn index rebuilt from chat JSONL |
+| Application agent receipts | `DATA_DIR/application-turns/<instance-hash>/<request-hash>.json` | JSON | accepted input, turn identity and execution results |
+| Application workflow state | each backend instance's `DataDir` | application-owned | Scheduled Tasks stores definitions, deadlines and claims in `tasks.json` |
+| Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
+| Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
 | Audit log | `DATA_DIR/audit/audit-YYYY-MM.jsonl` | JSONL | append-only, one file per month, mode 0600, pruned by retention |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
+| SMTP credentials | `DATA_DIR/smtp.json` | JSON | Gmail address + app password, plaintext, mode 0600 |
 | Provider tokens | `/root/.claude*`, `/root/.codex`, `/root/.kimi-code` | provider files | copied into every container |
-| Antigravity project auth/session | project container `/root/.gemini/antigravity-cli` | provider files | survives stop/start, not container replacement |
+| MiniMax project state | `/var/lib/remote/projects/<slug>/agent-home/minimax` | Codex-harness files | bind-mounted to `/root/.minimax`; its API key remains in the project secret store |
+| Antigravity project auth/session | `/var/lib/remote/projects/<slug>/agent-home/antigravity` | provider files | bind-mounted to `/root/.gemini/antigravity-cli`; survives container replacement |
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
 
-JSON and metadata writes use temp-file + rename. Chat events are different: they append directly to JSONL with `O_APPEND`. Neither path adds `fsync`, file locking, or a transaction spanning multiple stores. The design assumes exactly one backend process touching `DATA_DIR`.
+JSON and metadata writes use temp-file + rename. Chat events are different: they append directly to JSONL with `O_APPEND`. The SQLite chat index is derived state, transactionally refreshed from those logs, and is not a source of truth. Most authoritative stores do not add `fsync`, file locking, or a transaction spanning multiple stores. Application agent receipts and Scheduled Tasks snapshots fsync both file and directory. The design assumes exactly one backend process touching `DATA_DIR`.
 
 ## Container model
 
 Containers are **cattle**; durable state lives on the host and is bind-mounted in ([deep dive](docs/02-workspaces/03-projects-and-containers.md), [`lifecycle/service.go`](backend/internal/service/container/lifecycle/service.go)):
 
-- **Four bind mounts per project:** `workspace` → `/workspace`, and `agent-home/{claude,codex,kimi}` → `/root/.{claude,codex,kimi-code}`. Host dirs are chowned to uid/gid `1000000` (the unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap races.
-- **Antigravity is not a fifth mount.** Its `agy` state currently lives under
-  `/root/.gemini` in the replaceable rootfs.
+- **Six bind mounts per project:** `workspace` → `/workspace`, plus the
+  provider-declared persistent directories for Claude, Codex, MiniMax, Kimi,
+  and Antigravity. Antigravity mounts only `/root/.gemini/antigravity-cli`, not the
+  whole `.gemini` tree. Host dirs are chowned to uid/gid `1000000` (the
+  unprivileged-root idmap) via `os.OpenRoot`+`Lchown` to defeat symlink-swap
+  races.
 - **A managed LXD profile** (`futrx-workspace`, [`resources/manager.go`](backend/internal/integration/containers/resources/manager.go)) targets **4 GiB memory, 6 CPUs, 2000 processes** and sets `security.nesting=true` for nested-container workloads. Chromium currently launches with `--no-sandbox`, so that setting is not a Chromium sandbox guarantee. Default/profile resource convergence is best-effort because errors from the default `resources.Ensure` path are discarded; explicit per-project overrides fail launch when they cannot be applied. There is **no default disk quota.**
 - **Networking:** containers share LXD's default bridge; Caddy reaches them by `<slug>.lxd:<port>` DNS. The bridge has no inter-container ACLs by default.
-- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, and skill links.
+- **Everything else crosses via `lxc file push/pull` and `lxc exec`:** credentials, project secrets (as `environment.*` config and `--env` args), agent instructions, provider runtime assets, and skill links.
 
 The rootfs is disposable — [`upgrade-workspaces`](backend/cmd/upgrade-workspaces/main.go) replaces containers wholesale onto a new base image, so anything installed outside `/workspace` and the agent homes is lost on upgrade.
 
-## Scheduled execution
+## Application-owned agent workflows
 
-Scheduled tasks are a control-plane capability, not container cron jobs. The
-backend stores definitions and persisted claims in
-`DATA_DIR/scheduled-tasks/tasks.json`, owns one timer loop, and injects each due
-prompt through the normal prompt service and one-run-per-chat hub.
+Scheduled Tasks is an installable project application. Its backend owns the
+clock, cron calculation, task definitions, claims, completion rules and next
+occurrences. Its CLI, skill and UI ship in the package. New tasks are active;
+the retired core scheduler's data is not automatically imported.
 
-Interactive agents receive a short-lived, owner/chat/project-fenced `manage`
-capability only when the **Scheduled Tasks** skill is selected. A scheduled
-turn receives a narrower `complete-self` capability for its own task and run.
-Agent-created tasks start disabled and require a human **Arm** action. Default
-guardrails are a five-minute minimum recurrence, two concurrent scheduled
-runs, and twenty standing tasks per project.
+Core provides a generic installation-scoped `Runtime.AgentTurns` capability for
+starting and reading ordinary agent turns, durable execution receipts, scoped
+application tool calls and opt-in background backend recovery. The applications
+service owns policy; the SDK and application process host provide the contract
+and RPC transport; provider integration stays in `internal/integration/agents`.
+Other applications use these same capabilities without scheduler dependencies.
 
-See [Scheduled tasks](docs/02-workspaces/06-scheduled-tasks.md) for the claim,
-overlap, authorization, cron, and crash-recovery state machine.
+See [Application agent runtime](docs/dev/installable-applications/25-application-agent-runtime.md)
+for execution authority and recovery, and [Scheduled tasks](docs/02-workspaces/06-scheduled-tasks.md)
+for the application-owned workflow.
 
-## Previews, IDE, and the Agent Browser
+## Previews, installed applications, and the Agent Browser
 
-Three capabilities live inside each container ([deep dive](docs/03-platform/06-previews-and-browser.md)):
+Project containers expose these capabilities ([deep dive](docs/03-platform/06-previews-and-browser.md)):
 
 - **App previews:** the backend runs `ss` inside the container to discover listening ports ([`listeners/scanner.go`](backend/internal/integration/containers/listeners/scanner.go), loopback binds excluded), and each becomes a `<slug>--<port>.dev.<host>` URL. No per-app proxy config is written — DNS + Caddy regex do the routing.
-- **Per-project IDE:** a pinned code-server listens on `127.0.0.1:8081` with `auth: none`, reachable only through a socket-activated proxy on `:8842` that scales to zero when idle. Authentication is entirely at the Caddy edge.
-- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude or Codex.
+- **Installed application web services:** an application can declare a project port and a required `web.subdomain` label. The backend checks membership and installation status on every `<label>--<project-slug>.<host>` request. `/apps/<slug>/<application-id>/` only redirects to that isolated origin. No editor is installed by core.
+- **Agent Browser:** one shared headed Chromium per project, driven by the user via noVNC (`:6080`) and by the agent via MCP-over-CDP (`127.0.0.1:9222`) — the *same* browser session, so the agent inherits whatever sites the user logged into. The human UI can start and view it directly; selecting the `browser` skill enables agent MCP access for Claude, Codex, or MiniMax.
 
 ## Frontend
 
-A **Preact** (not React) SPA built with Vite + Tailwind, whose production build is embedded into the Go binary via `go:embed` and served same-origin ([deep dive](docs/03-platform/07-data-and-frontend-state.md)). It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML` anywhere, keeping the XSS surface narrow.
+A **Preact** (not React) SPA built with Vite + Tailwind, whose production build is embedded into the Go binary via `go:embed` and served same-origin ([deep dive](docs/03-platform/07-data-and-frontend-state.md)). It is an installable **PWA**: `frontend/public/` supplies the manifest, icons, and a service worker for Web Push plus network-first navigation. The worker deliberately does not cache the app shell or API data; it caches only the self-contained `/offline.html` fallback and serves it when navigation cannot reach the network. Cache cleanup is restricted to Remote-owned offline-cache names.
+
+**Notifications.** The backend raises a Web Push notification when an agent calls `AskUserQuestion`, when a turn completes or fails, and when a scheduled run finishes. The trigger hangs off the chat repository's append path ([`push_notifier.go`](backend/internal/service/push_notifier.go)), so every producer — interactive prompts, scheduled runs, crash recovery — is covered by construction. The audience mirrors chat visibility: project members plus admins, or every registered user for a loose chat. VAPID signing and RFC 8291 payload encryption are implemented against the standard library only ([`integration/webpush`](backend/internal/integration/webpush/)), so push services relay ciphertext they cannot read and the dependency list is unchanged. It is strictly layered (`config → models → transport → api → state → app → ui`), uses no external state store and no URL router, and talks to the backend over REST (`fetch`, cookie session) plus WebSockets for live data. All auth is the same-origin cookie — **no token ever touches JavaScript**, and there are no CSRF tokens (protection rests on `SameSite=Lax` and the same-origin edge). The markdown renderer emits vnodes only, with an href allowlist and no `innerHTML`, keeping the XSS surface narrow — the one place the SPA does assign markup is the catalog extension host below, which renders assets compiled into the binary rather than anything a request supplied.
+
+**Catalog UI extensions.** An installable application may ship a `ui/`
+directory ([`applications/README.md`](applications/README.md)), and
+the SPA loads it for the apps a user has **installed** — globally, or in a
+project they belong to, and only while the instance is running
+(`GET /api/applications/ui`; being in the catalog grants nothing). The install
+scope travels with each entry and becomes the render scope: a globally
+installed extension draws everywhere, a project-installed one only while the
+user is actually working inside that project — leaving it puts the extension
+away entirely — which the registry enforces per contribution rather than
+trusting the extension. Stylesheets
+are injected, `scripts/main.js` is dynamically imported, and it registers
+contributions into a closed set of named slots ([`frontend/src/app/extensions/`](frontend/src/app/extensions/)):
+the chat header rail, the composer deck, project rows, the sidebar header and
+its search field, and the applications surfaces. This is what lets a backend add
+interface — an icon that opens a workspace in another editor, a panel, a popup,
+a pane docked beside the chat —
+alongside whatever its `install.sh` provisions in a container. Each slot carries
+its own icon sizing, so a contributed button matches its neighbours without the
+extension knowing the app's chrome densities.
+Contributions render into plain DOM nodes rather than the component tree, so
+extension code stays framework-free, and a throwing entry module, predicate, or
+handler is caught per contribution.
+
+An application also declares a `type`: a `service` application runs software on a port and
+gets a container (a dedicated LXD one at global scope), while `ui` and
+`backend` applications install nothing in any container — their whole payload is the
+extension or the backend, so installing one allocates no container, port, or
+proxy device. That keeps "add a button to the UI" from provisioning a Linux
+container to do it, and both install on a host with no container runtime at
+all.
+
+**Catalog application backends.** The other half of "everything is a backend": an
+application may also ship a `backend/` directory of Go source
+([`docs/dev/installable-applications/15-application-backends.md`](docs/dev/installable-applications/15-application-backends.md)).
+The server compiles it and runs it as a child process over
+**hashicorp/go-plugin**, one process per installed instance, and forwards HTTP
+calls to it at `/api/applications/<instance>/backend/<path>` — which the
+application's own `ui/` reaches through `remote.backend.call(...)`. So an application can
+add a *server-side* feature rather than only a button that calls an endpoint
+someone else had to write. The contract a backend implements is
+[`pkg/applications`](backend/pkg/applications/), a dependency-free package of wire
+types; the transport that carries it is `pkg/applications/rpc`, deliberately
+go-plugin's net/rpc mode rather than gRPC, since backends are Go programs
+compiled from a catalog embedded in this same binary and a language-neutral
+protocol would buy nothing but protobuf codegen.
+
+The catalog ships **source, not binaries**, because it is embedded in a server
+that runs on whatever architecture it runs on, and because source is reviewable
+as a diff. [`internal/integration/applications`](backend/internal/integration/applications/)
+materializes an application's `backend/` beside a copy of the SDK into a generated
+module whose dependency versions are read from the running binary's own build
+info — so `go build` resolves entirely from the module cache the server's build
+already populated, and the normal path needs no network. Binaries are cached by
+a fingerprint of source, SDK, module files, and Go version, so a cold build
+happens once per edit and every later start is a stat and a handshake. Backends
+recover lazily on the next call by default. `backend.background` opts running
+installations into startup and periodic recovery; stopped installations stay
+stopped. The per-instance `DataDir` retains application state. Generic agent
+execution receipts also survive separately under `DATA_DIR/application-turns`.
+
+The trust boundary here is **the build, not the request** — for both halves,
+and it has to carry more weight for the backend one. `ui/` assets are embedded
+by `//go:embed` next to the SPA and served from
+`/api/applications/catalog/<application>/ui/<path>` to signed-in users only, so
+extension code carries exactly the privileges of first-party frontend code and
+is reviewed as such. `backend/` source is embedded the same way and then *runs
+as a child of the server process*, with the server's privileges and the
+install's secrets, so it is reviewed as backend code. There is no sandbox for
+either and none is implied; the server-side guarantees are narrower and
+specific — the registry resolves asset paths inside one application's `ui/` and
+nowhere else, responses are typed from the file extension with `nosniff`, and
+on the backend path the caller identity is stamped from the session while the
+caller's own `Cookie` and `Authorization` headers are withheld, so a backend can
+authorize a user without being able to act as them. Process isolation buys
+robustness rather than containment: a panicking or hanging backend costs one
+call, not the server.
+
+**Agent authentication UI.** The frontend loads ordered module metadata and a
+normalized auth snapshot from `GET /api/agent-auth`, then subscribes to
+`/ws/agent-auth/<provider>` for each managed flow. The same descriptor fields
+drive onboarding eligibility, Settings cards, provider labels/instructions,
+and code-versus-device controls. External and no-auth modules render without
+inventing managed login actions. Legacy provider-specific status endpoints and
+WebSockets remain available for compatibility, but the current UI does not
+depend on their provider-specific payloads.
 
 ## Deployment and supply chain
 
 Deployment is a single-box, root-driven, idempotent-converge model ([deep dive](docs/04-operations/09-deployment-and-operations.md)):
 
-- **[`infra/install.sh`](infra/install.sh)** is both bootstrap and deployer. It clones to `/opt/remote.futrx`, walks `infra/steps/01..07` (host deps, app build, Caddy, systemd service, base image, SSH hardening, network-heal timer), and is re-runnable.
-- **[`infra/update.sh`](infra/update.sh)** fetches and hard-resets to `origin/main`, rebuilds, and recycles containers onto a fresh base image. Busy-workspace detection is intended to skip active runs but is not currently reliable; use a maintenance window or `--skip-workspaces` when interruption is unacceptable.
-- **CI** ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) deploys on push to `main` by SSHing to the box as root and running the fast build-and-restart path.
-- **Version pinning:** every pin — agent CLIs, host toolchain, code-server, Playwright/Chrome-for-Testing — lives in one manifest ([`versions.env`](backend/internal/agent/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the code-server `.deb`, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
+- **[`infra/install.sh`](infra/install.sh)** is both bootstrap and deployer. It
+  clones/selects `/opt/remote.futrx`, re-executes the chosen checkout, then
+  walks `infra/steps/00..07` (checkout guard, host deps, host agents/app build,
+  Caddy, systemd service, base image, SSH hardening, network-heal timer). It is
+  re-runnable without mixing manifests from the old and selected commits.
+- **Host agent CLI installation is catalog-driven.** After selecting the target
+  checkout, the application step runs `cmd/install-host-agents`, which
+  converges every host-scoped module with
+  a local profile using that profile's binary, provider-declared version
+  arguments, exact semver pin, npm package or install script, timeout, and
+  verification policy. Every installer mode targets the application-owned
+  `data/host-clis` prefix; the installer, systemd service, and login-shell
+  profile all put its `bin` directory first and verify that ordinary command
+  resolution selects the same absolute executable that was installed. This
+  prevents a stale host-global binary from shadowing a newly installed pin.
+  Host-only remote integrations may
+  omit a profile and install nothing. The base image and runtime repair consume
+  the same profiles for project-scoped modules.
+- **[`infra/update.sh`](infra/update.sh)** fetches and hard-resets to the
+  requested tag/ref (default `origin/main`), rebuilds, and recycles containers
+  onto a fresh base image. Busy-workspace detection is intended to skip active
+  runs but is not currently reliable; use a maintenance window or
+  `--skip-workspaces` when interruption is unacceptable.
+- **CI publishes releases; it does not deploy production.**
+  [`.github/workflows/release-on-tag.yml`](.github/workflows/release-on-tag.yml)
+  creates a GitHub Release for a semantic-version tag after classifying it.
+  Production changes are applied separately by an operator through Remote's
+  updater or `infra/update.sh`.
+- **Version pinning:** core pins for agent CLIs, the host toolchain, and Playwright/Chrome-for-Testing live in one manifest ([`versions.env`](backend/internal/agent/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. Applications pin their own dependencies. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
 
-The security consequences of the root-on-push deploy chain and the unverified fetches are covered in the [threat model](docs/threat-model.md).
+The security consequences of applying unsigned update refs as root and of
+unverified upstream fetches are covered in the
+[threat model](docs/threat-model.md).
 
 ## Trust boundaries at a glance
 
 These are the boundaries the [threat model](docs/threat-model.md) reasons about:
 
 1. **Internet → Caddy → backend.** External users hit only Caddy; the backend trusts Caddy's `X-Forwarded-*` headers because only loopback reaches it.
-2. **Registered user → other users' projects.** Enforced per-resource in handlers and at `forward_auth` — but unevenly (dev previews check membership; the IDE host class does not).
+2. **Registered user → other users' projects.** Enforced per-resource in handlers and at `forward_auth`; project previews and application web routes check membership.
 3. **Container → host, and container → sibling container.** Unprivileged LXC namespaces plus resource caps are the boundary; the shared bridge and in-container `auth: none` services are the soft spots.
 4. **Agent → everything it can reach.** The agent runs as root inside its container (or on the host for loose chats) with safety rails off, so any content it ingests (web pages, files, attachments) is a potential injection vector.
-5. **Host → upstreams.** The installer, updater, base-image build, and CI all pull code from GitHub and package registries as root.
+5. **Host → upstreams.** The root-run installer, updater, and base-image build
+   pull code and packages from GitHub and external registries; release CI is a
+   separate publication path and does not deploy the host.
 
 ## Where to read next
 
 - [`docs/01-overview/`](docs/01-overview/) — system overview and the code map
 - [`docs/02-workspaces/`](docs/02-workspaces/) — auth, projects/containers, chat/agents, workspace tools
+- [`docs/dev/agents/`](docs/dev/agents/) — agent module contracts and the complete extension guide
+- [`docs/dev/installable-applications/`](docs/dev/installable-applications/) — the installable-application format, extension slots, and application backends
 - [`docs/03-platform/`](docs/03-platform/) — previews & browser, data & frontend state, API & realtime
 - [`docs/04-operations/`](docs/04-operations/) — deployment, operations, and the [audit log](docs/04-operations/10-audit-log.md)
 - [Threat model](docs/threat-model.md) · [Known limitations](docs/known-limitations.md)

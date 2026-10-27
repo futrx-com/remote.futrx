@@ -52,7 +52,7 @@ Concurrent chats in one project share the same files, processes, ports, browser 
 
 1. Open the existing project chat.
 2. Wait for any active run to finish or cancel it.
-3. Choose **Codex**, **Claude**, **Kimi**, or **Antigravity** in the composer.
+3. Choose **Codex**, **MiniMax**, **Claude**, **Kimi**, or **Antigravity** in the composer.
 4. Recheck the model, thinking level, speed, and selected skills.
 5. State what the new provider should continue or verify.
 6. Send the prompt.
@@ -64,27 +64,22 @@ cleanly; when a provider session is missing, Remote supplies a bounded visible
 transcript to a fresh session. Kimi and Antigravity forks start fresh.
 
 Antigravity must first be signed in by running `agy` in that project's
-Terminal. Its sign-in and session state are not part of Remote's durable
+Terminal. Exit the CLI and choose **Refresh models** in the chat picker before
+selecting it. Its sign-in and session state are not part of Remote's durable
 provider-home mounts.
 
 ## Schedule a monitor and walk away
 
-1. Open the project chat that should own the future work.
-2. Select **Scheduled Tasks** in **Skill set**.
-3. Ask the agent to create a one-time or recurring task with an explicit
-   timezone, completion condition, and maximum run count.
-4. Wait for the agent to report the parked task.
-5. Open **Schedules** in the chat header.
-6. Review the saved prompt, timing, timezone, and limit.
-7. Select **Arm**.
-8. Close the browser if desired. The host scheduler owns the timer.
-9. Return later to the same chat to inspect each scheduled run in the normal
-   transcript.
+1. Install and start **Scheduled Tasks** in the project’s Applications page.
+2. Open the chat that should own future work.
+3. Ask the agent to schedule a check with an explicit timezone, completion
+   condition and maximum run count.
+4. Wait for the active task’s ID and timing, then close the browser if desired.
+5. Return to the same chat to read its ordinary agent turns.
 
-Pause the task when monitoring should stop temporarily. Let the agent complete
-the standing task only after the declared goal is actually terminal. See
-[Scheduled tasks](09-scheduled-tasks.md) for overlap, ownership, and server
-guardrails.
+Use the application clock action to pause, resume or delete tasks. Let the agent
+complete its current schedule after the goal is terminal. See
+[Scheduled tasks](09-scheduled-tasks.md).
 
 ## Give an agent a signed-in website
 
@@ -95,7 +90,7 @@ Use the Agent Browser when the task needs a real login, consent screen, anti-bot
 3. Wait for the live browser pane.
 4. Sign in yourself.
 5. Return to the composer.
-6. Select the `browser` skill for Claude or Codex.
+6. Select the `browser` skill for Claude, Codex, or MiniMax.
 7. Describe the permitted website task and the stopping condition.
 8. Watch the shared browser and intervene when needed.
 9. Use the square **Stop the agent browser** control when finished.

@@ -44,12 +44,20 @@ func (c *Client) PublishImage(
 	alias,
 	description string,
 ) (string, error) {
+	// --compression none: LXD's default gzip pack of the multi-GB rootfs is
+	// far slower than the publish timeout on single-vCPU hosts, killing the
+	// build (see #40). The published image only ever lives on this host via
+	// `lxd launch`, so compression buys nothing except CPU time and slower
+	// starts. Disabling it brings publish from a multi-hour gzip pack down to
+	// ~1 minute even on one core.
 	return c.runner.Run(
 		ctx,
 		"publish",
 		containerName,
 		"--alias",
 		alias,
+		"--compression",
+		"none",
 		"description="+description,
 	)
 }

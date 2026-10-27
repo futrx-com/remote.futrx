@@ -1,0 +1,51 @@
+<!--
+  Panel rendered under the applications list. Loaded by scripts/main.js through
+  remote.views.load("panel"); application.json maps that public name to this
+  file explicitly so the example demonstrates the full ui.views contract.
+-->
+<section class="hello-remote">
+  <h4 class="hello-remote__title">Hello Remote</h4>
+  <p class="hello-remote__message" data-hello-message>Calling the backend…</p>
+  <div class="hello-remote__row">
+    <button class="hello-remote__button" type="button" data-hello-greet>
+      Greet again
+    </button>
+    <span class="hello-remote__count">
+      greetings served: <strong data-hello-count>0</strong>
+    </span>
+  </div>
+  <div class="hello-remote__container">
+    <div class="hello-remote__container-heading">
+      <h5>Supervised service</h5>
+      <button class="hello-remote__button" type="button" data-service-refresh>
+        Refresh
+      </button>
+    </div>
+    <p class="hello-remote__note" data-service-status>Calling the supervised service…</p>
+    <dl class="hello-remote__facts" data-service-facts hidden>
+      <div><dt>systemd unit</dt><dd data-service-unit></dd></div>
+      <div><dt>Build version</dt><dd data-service-version></dd></div>
+      <div><dt>Provisioned version</dt><dd data-service-provisioning></dd></div>
+      <div><dt>Port mapping</dt><dd data-service-ports></dd></div>
+    </dl>
+  </div>
+  <div class="hello-remote__container">
+    <div class="hello-remote__container-heading">
+      <h5>LXD container</h5>
+      <button class="hello-remote__button" type="button" data-container-refresh>
+        Refresh
+      </button>
+    </div>
+    <p class="hello-remote__note" data-container-status>Inspecting the container…</p>
+    <dl class="hello-remote__facts" data-container-facts hidden>
+      <div><dt>Name</dt><dd data-container-name></dd></div>
+      <div><dt>Hostname</dt><dd data-container-hostname></dd></div>
+      <div><dt>Operating system</dt><dd data-container-os></dd></div>
+      <div><dt>Kernel</dt><dd data-container-kernel></dd></div>
+      <div><dt>Architecture</dt><dd data-container-architecture></dd></div>
+      <div><dt>CPUs</dt><dd data-container-cpus></dd></div>
+      <div><dt>Memory</dt><dd data-container-memory></dd></div>
+      <div><dt>Uptime</dt><dd data-container-uptime></dd></div>
+    </dl>
+  </div>
+</section>

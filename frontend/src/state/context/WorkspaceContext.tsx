@@ -1,37 +1,45 @@
 import type { ComponentChildren } from "preact";
 import { createContext } from "preact";
-import { useContext, useEffect, useReducer } from "preact/hooks";
-import type { ChatMeta, CreateChatInput } from "../../models/chat";
+import { useCallback, useContext, useEffect, useMemo } from "preact/hooks";
+import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
 import { chatApi } from "../../api/chatApi";
+import { createChatInput } from "./createChatInput";
 import { projectApi } from "../../api/projectApi";
 import { useWorkspaceData } from "../hooks/workspace/useWorkspaceData";
+import { useWorkspacePushLifecycle } from "../hooks/push/useWorkspacePushLifecycle";
+import { useWorkspaceTitle } from "../hooks/workspace/useWorkspaceTitle";
+import { useWorkspaceNavigation } from "../hooks/workspace/useWorkspaceNavigation";
 import { useUserSettingsContext } from "./UserSettingsContext";
-import {
-  workspaceUiState,
-  type WorkspaceUiState,
-} from "../workspace/workspaceUiState";
-import { workspaceSidebarState } from "../workspace/workspaceSidebarState";
+import type { SettingsTab, WorkspaceUiState } from "../../models/workspace";
+import { workspaceSidebarService } from "../../services/workspace/workspaceSidebarService.ts";
+import { agentCapabilityCatalogStore } from "../stores/agents/agentCapabilityCatalogStore";
+import { useAuthContext } from "./AuthContext";
 
 interface WorkspaceContextValue {
   chats: ChatMeta[];
   projects: ProjectMeta[];
   activeChat: ChatMeta | null;
+  /** False until the first workspace snapshot lands. An empty list before that
+   *  means "not known yet" — surfaces must show placeholders, not empty states. */
+  loaded: boolean;
   ui: WorkspaceUiState;
   selectChat: (chatId: string | null) => void;
   openSidebar: () => void;
   closeSidebar: () => void;
   showChat: () => void;
-  showSettings: () => void;
+  showSettings: (tab?: SettingsTab) => void;
+  selectSettingsTab: (tab: SettingsTab) => void;
   showProjectContainers: (projectId: string | null) => void;
+  openCreateProject: () => void;
+  closeCreateProject: () => void;
   createProject: (name: string) => Promise<ProjectMeta>;
   createChat: (projectId?: string) => Promise<ChatMeta>;
   deleteChat: (chatId: string) => Promise<void>;
   forkChat: (chatId: string) => Promise<ChatMeta>;
+  renameChat: (chatId: string, title: string) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   reorderProjects: (projectIds: string[]) => Promise<void>;
-  startProject: (projectId: string) => Promise<void>;
-  stopProject: (projectId: string) => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -43,91 +51,144 @@ export function WorkspaceProvider({
   enabled: boolean;
   children: ComponentChildren;
 }) {
+  ////////////////
+  // Local State
+  ////////////////
   const data = useWorkspaceData(enabled);
+  const { auth, agentAuth } = useAuthContext();
   const { settings } = useUserSettingsContext();
-  const [ui, dispatch] = useReducer(workspaceUiState.reduce, workspaceUiState.createInitial());
-  const activeChat = workspaceSidebarState.activeChat(data.chats, ui.activeChatId);
+  const {
+    ui, selectChat, openSidebar, closeSidebar, showChat, showSettings,
+    selectSettingsTab, showProjectContainers, openCreateProject, closeCreateProject,
+  } = useWorkspaceNavigation(data.chats, data.loaded, enabled);
+  const activeChat = workspaceSidebarService.activeChat(data.chats, ui.activeChatId);
+  const account = auth.email || auth.adminEmail;
+  const capabilityUserId = account || "anonymous";
+  const activeCapabilityProjectId = activeChat?.projectId;
 
-  useEffect(() => {
-    const chatId = workspaceSidebarState.initialChatId(enabled, ui.activeChatId, data.chats);
-    if (chatId) dispatch({ type: "select-chat", chatId });
-  }, [data.chats, enabled, ui.activeChatId]);
+  ////////////////
+  // Handlers
+  ////////////////
+  const activateNewChat = useCallback((chat: ChatMeta): ChatMeta => {
+    data.seedChat(chat);
+    selectChat(chat.id);
+    return chat;
+  }, [data.seedChat, selectChat]);
 
-  useEffect(() => {
-    if (workspaceSidebarState.isActiveChatMissing(data.chats, ui.activeChatId)) {
-      dispatch({ type: "select-chat", chatId: null });
-    }
-  }, [data.chats, ui.activeChatId]);
-
-  async function createProject(name: string): Promise<ProjectMeta> {
+  const createProject = useCallback(async (name: string): Promise<ProjectMeta> => {
     const project = await projectApi.create(name);
     return project;
-  }
+  }, []);
 
-  async function createChat(projectId?: string): Promise<ChatMeta> {
-    const input: CreateChatInput = {
-      provider: settings.chat.provider,
-      model: settings.chat.model,
-      mode: settings.chat.mode,
-      reasoningEffort: settings.chat.reasoningEffort,
-      serviceTier: settings.chat.serviceTier,
-      ...(projectId ? { projectId } : {}),
-    };
-    const chat = await chatApi.create(input);
-    dispatch({ type: "select-chat", chatId: chat.id });
-    return chat;
-  }
+  const createChat = useCallback(async (projectId?: string): Promise<ChatMeta> => {
+    const chat = await chatApi.create(createChatInput(settings, projectId, agentAuth.providers));
+    return activateNewChat(chat);
+  }, [settings, agentAuth.providers, activateNewChat]);
 
-  async function deleteChat(chatId: string) {
+  const deleteChat = useCallback(async (chatId: string) => {
     await chatApi.delete(chatId);
-  }
+  }, []);
 
-  async function forkChat(chatId: string): Promise<ChatMeta> {
+  const forkChat = useCallback(async (chatId: string): Promise<ChatMeta> => {
     const chat = await chatApi.fork(chatId);
-    dispatch({ type: "select-chat", chatId: chat.id });
-    return chat;
-  }
+    return activateNewChat(chat);
+  }, [activateNewChat]);
 
-  async function deleteProject(projectId: string) {
+  const renameChat = useCallback(async (chatId: string, title: string) => {
+    // The server pushes the renamed chat to every open sidebar; seeding the
+    // response too means this one shows the new title without waiting for it.
+    data.seedChat(await chatApi.update(chatId, { title }));
+  }, [data.seedChat]);
+
+  const deleteProject = useCallback(async (projectId: string) => {
     await projectApi.delete(projectId);
-  }
+    agentCapabilityCatalogStore.getState().removeProject(capabilityUserId, projectId);
+  }, [capabilityUserId]);
 
-  async function reorderProjects(projectIds: string[]) {
+  const reorderProjects = useCallback(async (projectIds: string[]) => {
     await projectApi.reorder(projectIds);
-  }
+  }, []);
 
-  async function startProject(projectId: string) {
-    await projectApi.start(projectId);
-  }
+  ////////////////
+  // Effects
+  ////////////////
+  useEffect(() => {
+    if (!enabled || !activeChat) return;
+    void agentCapabilityCatalogStore.getState()
+      .load(capabilityUserId, activeCapabilityProjectId)
+      .catch(() => undefined);
+  }, [enabled, capabilityUserId, activeCapabilityProjectId, activeChat?.id]);
 
-  async function stopProject(projectId: string) {
-    await projectApi.stop(projectId);
-  }
+  useWorkspacePushLifecycle({
+    account: enabled ? account : "",
+    activeChatId: ui.activeChatId,
+    view: ui.view,
+    openChat: selectChat,
+  });
+
+  useWorkspaceTitle({
+    chats: data.chats,
+    activeChatId: ui.activeChatId,
+    view: ui.view,
+    enabled,
+    loaded: data.loaded,
+  });
+
+  ////////////////
+  // Context Value
+  ////////////////
+  // preact force-renders every subscriber whenever the provider's value fails a
+  // `!=` check, so a fresh literal here repainted the whole workspace subtree on
+  // any render of this provider — including ones driven by upstream auth or
+  // settings ticks this tree does not read.
+  const value = useMemo<WorkspaceContextValue>(() => ({
+    chats: data.chats,
+    projects: data.projects,
+    activeChat,
+    loaded: data.loaded,
+    ui,
+    selectChat,
+    openSidebar,
+    closeSidebar,
+    showChat,
+    showSettings,
+    selectSettingsTab,
+    showProjectContainers,
+    openCreateProject,
+    closeCreateProject,
+    createProject,
+    createChat,
+    deleteChat,
+    forkChat,
+    renameChat,
+    deleteProject,
+    reorderProjects,
+  }), [
+    data.chats,
+    data.projects,
+    data.loaded,
+    activeChat,
+    ui,
+    selectChat,
+    openSidebar,
+    closeSidebar,
+    showChat,
+    showSettings,
+    selectSettingsTab,
+    showProjectContainers,
+    openCreateProject,
+    closeCreateProject,
+    createProject,
+    createChat,
+    deleteChat,
+    forkChat,
+    renameChat,
+    deleteProject,
+    reorderProjects,
+  ]);
 
   return (
-    <WorkspaceContext.Provider
-      value={{
-        chats: data.chats,
-        projects: data.projects,
-        activeChat,
-        ui,
-        selectChat: (chatId) => dispatch({ type: "select-chat", chatId }),
-        openSidebar: () => dispatch({ type: "open-sidebar" }),
-        closeSidebar: () => dispatch({ type: "close-sidebar" }),
-        showChat: () => dispatch({ type: "show-chat" }),
-        showSettings: () => dispatch({ type: "show-settings" }),
-        showProjectContainers: (projectId) =>
-          dispatch({ type: "show-project-containers", projectId }),
-        createProject,
-        createChat,
-        deleteChat,
-        forkChat,
-        deleteProject,
-        reorderProjects,
-        startProject,
-        stopProject,
-      }}
-    >
+    <WorkspaceContext.Provider value={value}>
       {children}
     </WorkspaceContext.Provider>
   );

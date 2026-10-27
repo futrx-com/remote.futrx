@@ -6,7 +6,65 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
+
+type skillTestProviderCatalog map[string]agentmodule.Descriptor
+
+func (c skillTestProviderCatalog) HasProvider(provider string) bool {
+	_, ok := c[provider]
+	return ok
+}
+
+func (c skillTestProviderCatalog) Descriptor(provider string) (agentmodule.Descriptor, bool) {
+	descriptor, ok := c[provider]
+	return descriptor, ok
+}
+
+func (c skillTestProviderCatalog) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+	descriptor, ok := c[provider]
+	if !ok {
+		return false
+	}
+	for _, configured := range descriptor.ExecutionScopes {
+		if configured == scope {
+			return true
+		}
+	}
+	return false
+}
+
+func (c skillTestProviderCatalog) LegacySkillRoots(string) []string { return nil }
+
+func (c skillTestProviderCatalog) WorkspaceSkillHome(provider string) string {
+	if provider == "future-agent" {
+		return "/workspace/.future"
+	}
+	return ""
+}
+
+type defaultSkillTestProviderCatalog struct {
+	skillTestProviderCatalog
+	provider Provider
+}
+
+func (c defaultSkillTestProviderCatalog) DefaultProvider(agentmodule.ExecutionScope) Provider {
+	return c.provider
+}
+
+func TestDefaultProviderUsesModuleCatalog(t *testing.T) {
+	catalog := defaultSkillTestProviderCatalog{
+		skillTestProviderCatalog: skillTestProviderCatalog{"future-agent": {
+			ID: "future-agent", ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+		}},
+		provider: "future-agent",
+	}
+	service := NewWithSkillHomes(t.TempDir(), t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
+	if got := service.DefaultProvider(agentmodule.ScopeHost); got != "future-agent" {
+		t.Fatalf("default provider = %q, want future-agent", got)
+	}
+}
 
 func TestListSkillsFiltersBundled(t *testing.T) {
 	// CLI-bundled skills live under .system and plugins/cache; the
@@ -50,7 +108,7 @@ func TestListSkillsUsesAgentsAsProjectSourceOfTruth(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 3 {
-		t.Fatalf("expected canonical, legacy fallback, and scheduled task skills, got %#v", got)
+		t.Fatalf("expected canonical, legacy fallback, and Remote default skills, got %#v", got)
 	}
 	if got[0].Command != "custom" || got[0].Name != "Custom Skill" {
 		t.Fatalf("canonical skill should win duplicates, got %#v", got[0])
@@ -58,8 +116,8 @@ func TestListSkillsUsesAgentsAsProjectSourceOfTruth(t *testing.T) {
 	if got[1].Command != "legacy" {
 		t.Fatalf("expected legacy fallback skill, got %#v", got[1])
 	}
-	if got[2].Command != "scheduled-tasks" || got[2].Source != "remote" {
-		t.Fatalf("expected the built-in scheduled task skill, got %#v", got[2])
+	if got[2].Command != "remote-application" || got[2].Source != "remote" {
+		t.Fatalf("expected the built-in Remote application skill, got %#v", got[2])
 	}
 }
 
@@ -72,11 +130,32 @@ func TestListSkillsDoesNotDuplicateProjectScheduledTaskSkill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 {
+	if len(got) != 2 {
 		t.Fatalf("expected the project skill to suppress the built-in fallback, got %#v", got)
 	}
-	if got[0].Name != "Workspace Scheduled Tasks" || got[0].Source != "project" {
-		t.Fatalf("expected the project-defined skill, got %#v", got[0])
+	if got[1].Name != "Workspace Scheduled Tasks" || got[1].Source != "project" {
+		t.Fatalf("expected the project-defined skill, got %#v", got[1])
+	}
+}
+
+func TestListSkillsKeepsProvisionedDefaultSkillRemoteOwned(t *testing.T) {
+	workspace := t.TempDir()
+	writeSkill(t, filepath.Join(workspace, ".agents", "skills", "remote-application", "SKILL.md"), `---
+name: remote-application
+description: Build a Remote application.
+---
+`)
+
+	service := NewWithSkillHomes("", t.TempDir(), t.TempDir())
+	got, err := service.List(context.Background(), ProviderCodex, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected only the default application skill, got %#v", got)
+	}
+	if got[0].Command != "remote-application" || got[0].Source != "remote" {
+		t.Fatalf("provisioned default skill = %#v, want remote-owned", got[0])
 	}
 }
 
@@ -112,9 +191,67 @@ func TestListMissingRootsReturnsEmptyList(t *testing.T) {
 
 func TestListRejectsInvalidProvider(t *testing.T) {
 	service := NewWithHomes(t.TempDir(), t.TempDir())
-	_, err := service.List(context.Background(), Provider("other"), "")
+	_, err := service.List(context.Background(), Provider("bad provider"), "")
 	if !errors.Is(err, ErrInvalidProvider) {
 		t.Fatalf("expected invalid provider error, got %v", err)
+	}
+}
+
+func TestListSupportsFutureProviderFromCanonicalSkillsRoot(t *testing.T) {
+	agentsHome := t.TempDir()
+	writeSkill(t, filepath.Join(agentsHome, "skills", "custom", "SKILL.md"), `# Custom Skill`)
+	service := NewWithSkillHomes(agentsHome, t.TempDir(), t.TempDir())
+
+	got, err := service.List(context.Background(), Provider("future-agent"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Provider != "future-agent" || got[0].Command != "custom" {
+		t.Fatalf("future provider skills = %#v", got)
+	}
+}
+
+func TestListUsesFutureProviderSkillAndScopeDeclaration(t *testing.T) {
+	workspace := t.TempDir()
+	writeSkill(t, filepath.Join(workspace, ".agents", "skills", "future", "SKILL.md"), `# Future Skill`)
+	writeSkill(t, filepath.Join(workspace, ".future", "skills", "compatible", "SKILL.md"), `# Compatible Skill`)
+	writeSkill(t, filepath.Join(workspace, ".claude", "skills", "claude-only", "SKILL.md"), `# Claude Only`)
+	catalog := skillTestProviderCatalog{"future-agent": {
+		ID:              "future-agent",
+		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+		Features: agentmodule.Features{
+			Skills: agentmodule.SkillsInstructions,
+		},
+	}}
+	service := NewWithSkillHomes(t.TempDir(), t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
+
+	got, err := service.List(context.Background(), "future-agent", workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].Command != "compatible" || got[1].Command != "future" || got[2].Command != "remote-application" {
+		t.Fatalf("future project skills = %#v", got)
+	}
+	if _, err := service.List(context.Background(), "future-agent", ""); !errors.Is(err, ErrInvalidProvider) {
+		t.Fatalf("future host skills error = %v, want ErrInvalidProvider", err)
+	}
+}
+
+func TestListReturnsEmptyWhenModuleDisablesSkills(t *testing.T) {
+	agentsHome := t.TempDir()
+	writeSkill(t, filepath.Join(agentsHome, "skills", "custom", "SKILL.md"), `# Custom`)
+	catalog := skillTestProviderCatalog{"no-skills": {
+		ID:              "no-skills",
+		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+		Features:        agentmodule.Features{Skills: agentmodule.SkillsNone},
+	}}
+	service := NewWithSkillHomes(agentsHome, t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
+	got, err := service.List(context.Background(), "no-skills", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("skills-disabled provider returned %#v", got)
 	}
 }
 

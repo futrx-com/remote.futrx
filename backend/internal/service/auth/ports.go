@@ -15,10 +15,52 @@ type LocalAdminStore interface {
 	DeleteLocalAdmin(context.Context, LocalAdminCredential) error
 }
 
+// SetupTokenStore persists the single first-boot setup token. SetupToken
+// returns (nil, nil) when none has been issued - that absence is the correct
+// "no setup pending" state, not an error.
+type SetupTokenStore interface {
+	SetupToken(context.Context) (*SetupTokenRecord, error)
+	SaveSetupToken(context.Context, SetupTokenRecord) error
+}
+
+// SetupTokenIssuerStore is the narrow persistent state needed by the
+// operator-only setup-token workflow. In particular, it does not expose the
+// session key or OAuth configuration required by the full auth service.
+type SetupTokenIssuerStore interface {
+	SetupTokenStore
+	LocalAdmin(context.Context) (*LocalAdminCredential, error)
+}
+
+// SetupTokenAdminDirectory is the one directory query needed to decide
+// whether a first-boot claim must be authorized by a setup token.
+type SetupTokenAdminDirectory interface {
+	FirstAdmin(context.Context) (*UserDirectoryEntry, error)
+}
+
 type Store interface {
 	OAuthConfigStore
 	LocalAdminStore
+	SetupTokenStore
 	SessionKey(context.Context) ([]byte, error)
+}
+
+// TwoFactorStore persists one TwoFactorRecord per enrolled account, keyed by
+// email. Get returns (nil, nil) when the account has never enrolled - that
+// absence is the correct "2FA not enabled" state, not an error.
+type TwoFactorStore interface {
+	Get(ctx context.Context, email string) (*TwoFactorRecord, error)
+	Save(ctx context.Context, email string, record TwoFactorRecord) error
+	Delete(ctx context.Context, email string) error
+}
+
+// SessionRegistryStore persists one SessionRegistryRecord per account, keyed
+// by email. Get returns (nil, nil) when the account has never touched any of
+// the three SecurityPreferences flags - that absence is the correct
+// "nothing enabled" state, not an error.
+type SessionRegistryStore interface {
+	Get(ctx context.Context, email string) (*SessionRegistryRecord, error)
+	Save(ctx context.Context, email string, record SessionRegistryRecord) error
+	Delete(ctx context.Context, email string) error
 }
 
 type OAuthProvider interface {

@@ -1,0 +1,102 @@
+{
+  "id": "hello-remote",
+  "name": "Hello Remote",
+  "description": "Reference example: custom infrastructure, service, port, host tool, skill, container commands, Go backend, multiple application event publishers, and every frontend extension slot.",
+  "category": "development",
+  "version": "14",
+  "icon": "ui/assets/logo.svg",
+  "scopes": ["global", "project"],
+  "base": "ubuntu:24.04",
+  "install": "infra/install.sh",
+  "port": {
+    "internal": 4780,
+    "defaultExternal": 4780,
+    "protocol": "tcp",
+    "bindAddress": "127.0.0.1"
+  },
+  "env": [
+    {
+      "key": "HELLO_GREETING",
+      "label": "Greeting",
+      "default": "Hello"
+    }
+  ],
+  "service": {
+    "name": "hello-remote",
+    "description": "Hello Remote example service",
+    "command": [
+      "/usr/local/bin/hello-remote-service",
+      "serve",
+      "--port",
+      "{{internalPort}}"
+    ],
+    "user": "hello-remote",
+    "group": "hello-remote",
+    "restart": "on-failure",
+    "restartSec": 1,
+    "environment": [
+      {"key": "HELLO_GREETING_B64", "fromEnv": "HELLO_GREETING", "encoding": "base64"}
+    ],
+    "hardening": {
+      "noNewPrivileges": true,
+      "privateTmp": true,
+      "protectHome": true,
+      "protectSystem": "strict"
+    }
+  },
+  "healthcheck": {
+    "command": "/usr/local/bin/hello-remote-service health --port {{internalPort}}"
+  },
+  "hostTools": [
+    {
+      "name": "restic",
+      "version": "0.18.0",
+      "downloads": {
+        "amd64": {
+          "url": "https://github.com/restic/restic/releases/download/v0.18.0/restic_0.18.0_linux_amd64.bz2",
+          "sha256": "98f6dd8bf5b59058d04bfd8dab58e196cc2a680666ccee90275a3b722374438e",
+          "compression": "bzip2"
+        },
+        "arm64": {
+          "url": "https://github.com/restic/restic/releases/download/v0.18.0/restic_0.18.0_linux_arm64.bz2",
+          "sha256": "ce18179c25dc5f2e33e3c233ba1e580f9de1a4566d2977e8d9600210363ec209",
+          "compression": "bzip2"
+        }
+      },
+      "versionArgs": ["version"]
+    }
+  ],
+  "publishers": [
+    {
+      "name": "greetings",
+      "events": [
+        {
+          "name": "greeted",
+          "version": 1,
+          "description": "A greeting visit was counted."
+        }
+      ]
+    },
+    {
+      "name": "inspections",
+      "events": [
+        {
+          "name": "container-inspected",
+          "version": 1,
+          "description": "The application successfully inspected its container."
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "entry": "scripts/main.js",
+    "styles": ["style/hello.css"],
+    "views": {
+      "panel": "views/panel.html"
+    }
+  },
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 10000
+  }
+}

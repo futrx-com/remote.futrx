@@ -2,35 +2,52 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Attachment } from "../../../models/upload";
 import { startChatUpload } from "../../../api/uploadApi";
 import type { UploadHandle } from "../../../types/uploadApi";
-import { randomId } from "../../../shared/ids";
-import { chatAttachmentState } from "../../chat/chatAttachmentState";
+import { idService } from "../../../services/platform/idService.ts";
+import { chatAttachmentService } from "../../../services/chat/chatAttachmentService.ts";
+import { announceUpload } from "./attachmentClaimPolicy.ts";
 
 export function useAttachmentUpload(
   chatId: string,
-  attachmentBasePath: string
+  attachmentBasePath: string,
+  projectId?: string
 ) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(false);
 
+  // Read when an upload finishes rather than captured: doUpload is keyed on
+  // chatId alone and outlives an edit to either of these.
   const attachmentBasePathRef = useRef(attachmentBasePath);
+  const projectIdRef = useRef(projectId);
   // Outstanding tus handles, keyed by attachment id. Lets us abort on remove.
   const handlesRef = useRef<Map<string, UploadHandle>>(new Map());
 
+  // Reaches state only through handlesRef and a setAttachments updater, so it
+  // closes over nothing that can go stale — which is what makes [] honest here,
+  // and what made the previous capture harmless rather than a bug.
+  const clearAttachments = useCallback(() => {
+    for (const handle of handlesRef.current.values()) void handle.abort();
+    handlesRef.current.clear();
+    setAttachments((prev) => {
+      prev.forEach((attachment) => chatAttachmentService.revokeObjectUrl(attachment));
+      return [];
+    });
+  }, []);
+
   useEffect(() => {
     clearAttachments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]);
+  }, [chatId, clearAttachments]);
 
   useEffect(
     () => () => {
       clearAttachments();
     },
-    []
+    [clearAttachments]
   );
 
   useEffect(() => {
     attachmentBasePathRef.current = attachmentBasePath;
-  }, [attachmentBasePath]);
+    projectIdRef.current = projectId;
+  }, [attachmentBasePath, projectId]);
 
   const doUpload = useCallback(
     async (files: File[]) => {
@@ -42,8 +59,8 @@ export function useAttachmentUpload(
       // the tus resume fingerprint), while keeping the original name as the
       // friendly label shown in the composer chip.
       const items = files.map((file) => {
-        const id = randomId();
-        const uploadName = chatAttachmentState.uniqueUploadName(file.name, id);
+        const id = idService.random();
+        const uploadName = chatAttachmentService.uniqueUploadName(file.name, id);
         const uploadFile =
           uploadName === file.name
             ? file
@@ -83,22 +100,44 @@ export function useAttachmentUpload(
             },
             onSuccess() {
               handlesRef.current.delete(att.id);
+              const directory = attachmentBasePathRef.current;
+              const serverPath = chatAttachmentService.absoluteUploadPath(
+                directory,
+                uploadFile.name
+              );
               setAttachments((prev) =>
                 prev.map((a) =>
                   a.id === att.id
-                    ? {
-                        ...a,
-                        progress: 1,
-                        serverPath: chatAttachmentState.absoluteUploadPath(
-                          attachmentBasePathRef.current,
-                          uploadFile.name
-                        ),
-                        error: undefined,
-                      }
+                    ? { ...a, progress: 1, serverPath, error: undefined }
                     : a
                 )
               );
-              resolve();
+              // Announced after the attachment is on disk and before the
+              // prompt can reference it. A handler that only observes costs
+              // nothing; one that claims the attachment is moving it, and the
+              // upload is not finished until it says where it went.
+              const claimed = announceUpload({
+                chatId,
+                projectId: projectIdRef.current,
+                fileName: uploadFile.name,
+                directory,
+                path: serverPath,
+                size: uploadFile.size,
+              });
+              if (!claimed) {
+                resolve();
+                return;
+              }
+              void claimed.then((relocated) => {
+                if (relocated) {
+                  setAttachments((prev) =>
+                    prev.map((a) =>
+                      a.id === att.id ? { ...a, serverPath: relocated } : a
+                    )
+                  );
+                }
+                resolve();
+              });
             },
             onError(err) {
               handlesRef.current.delete(att.id);
@@ -121,7 +160,7 @@ export function useAttachmentUpload(
     [chatId]
   );
 
-  function removeAttachment(id: string) {
+  const removeAttachment = useCallback((id: string) => {
     const handle = handlesRef.current.get(id);
     if (handle) {
       void handle.abort();
@@ -129,19 +168,10 @@ export function useAttachmentUpload(
     }
     setAttachments((prev) => {
       const target = prev.find((attachment) => attachment.id === id);
-      if (target) chatAttachmentState.revoke(target);
+      if (target) chatAttachmentService.revokeObjectUrl(target);
       return prev.filter((attachment) => attachment.id !== id);
     });
-  }
-
-  function clearAttachments() {
-    for (const handle of handlesRef.current.values()) void handle.abort();
-    handlesRef.current.clear();
-    setAttachments((prev) => {
-      prev.forEach((attachment) => chatAttachmentState.revoke(attachment));
-      return [];
-    });
-  }
+  }, []);
 
   return {
     attachments,

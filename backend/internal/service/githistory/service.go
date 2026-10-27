@@ -19,7 +19,7 @@ const (
 )
 
 var skippedDirectories = []string{
-	".git", ".agents", ".browser", ".cache", ".claude", ".codex", ".media", ".vscode",
+	".git", ".agents", ".browser", ".cache", ".claude", ".codex", ".minimax", ".media", ".vscode",
 	"node_modules", ".next", "dist", "build", "out", "coverage", "vendor", "tmp", "__pycache__",
 }
 

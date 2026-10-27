@@ -19,11 +19,6 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
-// VNCPort is the in-container port the noVNC/websockify front
-// listens on. It is the only externally-reachable port of the GUI stack and is
-// surfaced to the user through the existing dev-URL proxy.
-const VNCPort = 6080
-
 // Adapter owns the raw LXD process, installation, and asset operations used by
 // the browser application service. It deliberately does not decide when a
 // browser stack must be provisioned before a runtime transition.

@@ -23,7 +23,7 @@ func (r *PrincipalResolver) Session(request *http.Request) (*serviceauth.Session
 	if r == nil || r.auth == nil {
 		return nil, errors.New("no auth service")
 	}
-	return r.auth.CurrentSession(SessionCookieValue(request))
+	return r.auth.CurrentSession(request.Context(), SessionCookieValue(request))
 }
 
 func (r *PrincipalResolver) Email(request *http.Request) (string, error) {

@@ -1,0 +1,40 @@
+{
+  "id": "scheduled-tasks",
+  "name": "Scheduled Tasks",
+  "description": "Wake the agent in the same project chat at a specific time",
+  "category": "productivity",
+  "version": "5",
+  "icon": "clock",
+  "scopes": [
+    "project",
+    "global"
+  ],
+  "install": "infra/install.sh",
+  "uninstall": "infra/uninstall.sh",
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 30000,
+    "background": true,
+    "agentTurns": true,
+    "agentTools": true
+  },
+  "publishers": [
+    {
+      "name": "tasks",
+      "events": [
+        {
+          "name": "due",
+          "version": 1,
+          "description": "A durable scheduled message is ready for the project agent."
+        }
+      ]
+    }
+  ],
+  "ui": {
+    "entry": "scripts/main.js",
+    "styles": [
+      "style/tasks.css",
+      "style/deleteConfirmation.css"
+    ]
+  }
+}

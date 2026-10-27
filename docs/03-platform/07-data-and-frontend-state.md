@@ -1,6 +1,6 @@
 # Data and frontend state
 
-The application does not use a database. Durable metadata is stored as JSON files; chat events use append-only JSONL. Project source files live in a separate host workspace tree.
+The application does not use an external database service. Durable metadata is stored as JSON files; chat events use append-only JSONL. A disposable embedded SQLite database indexes chat event offsets and transcript turns for bounded reads. Project source files live in a separate host workspace tree.
 
 ## Host storage layout
 
@@ -9,6 +9,7 @@ The application does not use a database. Durable metadata is stored as JSON file
 ├── chats/<chat-id>/
 │   ├── meta.json
 │   └── events.jsonl
+├── transcript-index.sqlite              derived chat event offsets and transcript turns
 ├── projects/<project-id>/meta.json
 ├── projectaccess/<project-id>.json
 ├── projectsecrets/<project-id>.json
@@ -16,8 +17,11 @@ The application does not use a database. Durable metadata is stored as JSON file
 ├── users.json
 ├── local-admin.json
 ├── oauth.json
+├── smtp.json                           provider-neutral SMTP configuration; mode `0600`
+├── agent-quota.json                    last reported plan windows per provider account
 ├── session.key
-├── scheduled-tasks/tasks.json          standing definitions, claims, and run state
+├── applications/data/<instance>/tasks.json  application-owned schedules and claims
+├── application-turns/<instance-sha256>/<request-sha256>.json  generic agent execution receipts
 └── uploads/tmp/                        tus chunks and sidecars
 
 /var/lib/remote/projects/<slug>/
@@ -28,14 +32,28 @@ The application does not use a database. Durable metadata is stored as JSON file
 │   └── ...                              user source and generated files
 └── agent-home/                         durable provider-owned state
     ├── codex/                           mounted at /root/.codex
+    ├── minimax/                         mounted at /root/.minimax
     ├── claude/                          mounted at /root/.claude
-    └── kimi/                            mounted at /root/.kimi-code
-
-# Antigravity is different:
-# /root/.gemini/antigravity-cli lives in the replaceable container root.
+    ├── kimi/                            mounted at /root/.kimi-code
+    └── antigravity/                     mounted at /root/.gemini/antigravity-cli
 ```
 
+Application `DataDir` holds workflow state: Scheduled Tasks stores its own
+definitions, claims, retries, and acknowledgments there. The separate
+`application-turns/` store holds accepted SDK requests and agent execution
+results, with hashed paths, private files, and atomic writes. Receipts survive
+stop/start, upgrades, and server restarts; uninstall removes them. Applications
+save their results before `AgentTurns.Forget`, which removes the receipt and
+retains chat history. A server restart makes unfinished receipts interrupted;
+retrying the same request can run it again. See
+[Application agent runtime](../dev/installable-applications/25-application-agent-runtime.md).
+
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
+When a chat selects a saved Claude or Codex account, its run uses a stable
+`run-accounts/<scope>` subdirectory inside that provider home. The scope is a
+hash of account, project, and chat identifiers, so concurrent chats do not
+share credential or session files. Shared instructions, settings, and skills
+remain linked from the canonical provider home.
 
 ## Entity relationships
 
@@ -108,19 +126,124 @@ flowchart LR
     Append --> Seq["Assign next monotonic seq"]
     Seq --> Meta["Update lastMessageAt for visible events"]
     Meta --> Cache["Refresh in-memory metadata index"]
-    Append --> Replay["Replay pages or events after seq"]
+    Append -.-> Index["Refresh derived SQLite offset/turn index"]
+    Append --> Replay["Replay live events after seq"]
+    Append --> Transcript["Project complete, compacted turn pages"]
+    Index -.-> Replay
+    Index -.-> Transcript
     Replay --> Client["Chat UI"]
+    Transcript --> Client
 ```
 
 Chat metadata includes title, provider, provider session IDs, working directory, project ID, read markers, model/mode controls, selected skills, and fork state. The `running` flag and cancellation handle are computed from the in-memory run hub and are not persisted. Provider child processes may survive a backend restart, so the restarted control plane cannot automatically rediscover or cancel them.
 
-Scheduled-task definitions are separate from chat metadata. One versioned
-`scheduled-tasks/tasks.json` document holds every task plus persisted active
-claims, pending occurrence state, retry deadline, counts, and last result.
-Writes atomically replace the document. The scheduler loop is in-memory, but it
-reconstructs deadlines and abandons stale claims after a backend restart.
+The raw event log remains the source for live reconnects. History requests page
+a read-time transcript projection by `turnId` (or legacy `user` boundaries) and
+coalesce adjacent streaming text/reasoning deltas. The cursor is still a raw
+event sequence, so existing chat files require no migration.
 
-Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp. Chat deletion removes that chat directory.
+`DATA_DIR/transcript-index.sqlite` is derived from the chat JSONL logs. At
+startup, a background worker backfills up to the 10 most recently active chats;
+other chats are backfilled lazily on first access. The result persists across
+backend restarts and is refreshed incrementally as bytes are appended. File
+size and modification time, incomplete-tail state, and a prefix fingerprint
+checked before untrusted growth decide when to rebuild transactionally. A
+rewind requests an immediate rebuild, while deletion removes the chat's rows.
+Indexed-read failures fall back to scanning canonical JSONL. The index can be
+deleted while the service is stopped and will rebuild automatically. The
+browser initially requests 10 complete turns and requests older history in
+20-turn pages. See the
+[durable chat transcript index developer guide](../dev/chat-transcript-index/)
+for the layer ownership and read, write, and recovery flows.
+
+Scheduled-task definitions live in each installed application’s host `DataDir`
+as `tasks.json`. The application atomically persists definitions and active run
+claims before emitting due messages. Claims are retried after a backend restart;
+core acknowledges agent results. Stop/start and upgrades retain state; uninstall
+removes it.
+
+Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
+
+## Agent quota snapshots
+
+Subscription windows follow a separate path from the usage ledger. Claude's
+adapter owns its stream normalization in `claude/quota.go`. Live Codex runs
+use `codexharness/app_server_quota.go` for the `account/rateLimits/updated`
+notifications the app server sends with every token count that carries rate
+limits. Only the Codex product's recognized five-hour and seven-day durations
+become plan windows; other products and durations are ignored, and a window
+that an update leaves out keeps its last reading. A run never requests
+`account/rateLimits/read` itself: the app server finishes in-flight requests
+before it exits, so an unanswered read would delay the end of the turn.
+
+The Usage tab also reads plan limits on demand, the way Claude Code's `/usage`
+and Codex's `/status` do. Providers that can do this implement
+`agent.PlanUsageReader`, and `agentmodule.Runtime.PlanUsageReaders` lists them.
+Claude's reader in `claude/plan_usage.go` runs the CLI headless and sends one
+`get_usage` control request; Codex's in `codex/plan_usage.go` starts an app
+server of its own and sends `account/rateLimits/read`. Each saved account is
+read in a private CLI home made from its vault credential, one account at a
+time, and a login the CLI refreshed is offered back through
+`CaptureRunCredential`. The host login is read in place, and only while the
+provider has no active saved account. No prompt or turn is sent.
+MiniMax's reader calls `/v1/token_plan/remains` once for each saved Token Plan
+key and uses the coding bucket's explicit remaining percentages. It does not
+infer a percentage from the API's ambiguous count fields.
+
+A plan belongs to one provider account. For a saved-account run, the Claude
+and Codex adapters wrap the run's event callback with
+`agentruntime.EmitForAccount`, which stamps the saved account ID on every
+event. A run on a provider's current host login, which chats without a
+pinned account use while no saved account is active, leaves `AccountID`
+empty. The prompt service's run event relay
+records `EventQuotaUpdated` through its `QuotaRecorder` contract with the
+provider and account; quota events are not chat transcript events, and a
+cancelled prompt still records readings that arrived before the cancel.
+`service/agent/quota` owns the latest session and weekly readings per
+provider account and lists them by provider and then account ID. It keys
+readings only by account ID; which saved accounts exist and what they are
+called stays with the saved-account service. Its `Refresh` asks every plan
+reader at most once per `PlanUsageRefreshInterval`; callers within the
+interval, or while a read runs, share one answer, and the read continues,
+bounded by `PlanUsageReadTimeout`, after a caller stops waiting. A live answer
+replaces the account's windows. A failed read keeps them and records why; that
+error is kept in memory only and returned beside the account.
+
+`stores/fileagentquota` persists `{"accounts": [...]}` to
+`DATA_DIR/agent-quota.json` using a mode-`0600` temporary file and rename.
+Updates and their synchronous, best-effort writes are serialized so an older
+save cannot overwrite a newer snapshot. Reads use a separate lock and do not
+wait for file writes. Inputs, loaded data, saved snapshots, and returned views
+have independent window and percentage values. Missing or unreadable
+snapshots, including files from before readings were kept per account, load
+as empty and do not prevent startup. Without a repository, readings remain
+available for the lifetime of the process.
+
+`GET /api/agent-quota` calls `Refresh` and then returns the view to signed-in
+users, or without a session when application authentication is disabled.
+Responses are not cached. In the frontend, `agentQuotaApi` validates the
+response and `models/agentQuota.ts` describes its data. The Usage section's
+`usePlanQuota` hook owns a serialized refresh every 15 seconds after the
+previous request settles, with a 45-second request timeout and cancellation
+on unmount. A failed refresh retains the last successful snapshot; a
+successful empty response clears it. Its adjacent `planQuotaState` projection
+joins readings with the agent-auth catalog from `AuthContext`. Each saved
+account that has reported a window, or whose latest read failed, is listed in
+catalog order with its label, email, plan type, active flag, and error. While
+no saved account is active, the current login's reading is listed too, under
+the provider heading when it is the only plan and as "Current login" beside
+saved accounts; once an account is active it is hidden. A removed account's
+reading is never shown.
+The projection builds display contracts in `models/planQuota.ts` from
+`config/planQuota.ts`: each provider's window labels and measure, as its CLI
+prints them (Claude's floored percentage used, Codex's and MiniMax's rounded
+percentage left), tones, and thresholds. Missing percentages stay absent, so a
+status-only window never acquires a zero-percent bar. A reported zero has zero
+bar width, and bars are capped at 100%. Reset times are absolute in the
+viewer's time zone, with the date only when the reset is not today, and an
+expired reset is marked as awaiting a new reading. A reading says how old it
+is only once it is five minutes old. Ages and reset countdowns advance every
+15 seconds even if refreshes fail.
 
 ## Project persistence
 
@@ -129,8 +252,11 @@ Project metadata and workspaces are separate:
 - `data/projects/<id>/meta.json` stores identity, slug, container name, status, order, resource overrides, and timestamps.
 - `/var/lib/remote/projects/<slug>/workspace` stores durable project content.
 - `/var/lib/remote/projects/<slug>/agent-home/*` stores durable provider configuration, authentication, and session state.
-- Antigravity's `/root/.gemini/antigravity-cli` is not in that host tree and
-  does not survive container replacement.
+- `/var/lib/remote/projects/<slug>/agent-home/minimax` stores the isolated
+  Codex-harness catalog and MiniMax sessions; the host injects the managed key
+  only when starting MiniMax.
+- `/var/lib/remote/projects/<slug>/agent-home/antigravity` stores durable
+  Antigravity state and is mounted at `/root/.gemini/antigravity-cli`.
 - Access and secrets use separate mode-`0600` files.
 - Metadata writes use a temporary file and rename where implemented.
 
@@ -140,6 +266,9 @@ Project metadata and workspaces are separate:
 | --- | --- |
 | `local-admin.json` | Local administrator email and password hash |
 | `oauth.json` | Google OAuth client ID and secret |
+| `smtp.json` | Provider-neutral SMTP configuration (host/port/TLS/auth, sender address); mode `0600` |
+| `agent-api-keys.json` | Legacy singleton provider API keys; MiniMax entries are migrated into named accounts; mode `0600` |
+| `agent-accounts.json` | Saved Claude/Codex subscription credentials and MiniMax Token Plan keys, grouped by provider with an active/default account ID; mode `0600`; credentials are never returned by the API |
 | `session.key` | Random key used to sign platform sessions |
 | `users.json` | Registered emails, roles, inviter, and timestamps |
 | `user-settings/sha256-*.json` | Theme and default chat provider/model/mode/reasoning/tier |
@@ -161,18 +290,49 @@ flowchart TD
 
     ActiveChat["Active ChatContainer"] --> ChatHook["useChat metadata, history, stream"]
     ActiveChat --> Composer["draft, queue, attachments"]
-    ActiveChat --> Drawers["files, history, schedules, browser, terminal"]
+    ActiveChat --> Drawers["files, history, browser, application drawers"]
 ```
 
 | State | Lifetime |
 | --- | --- |
-| Authentication and user settings | Preact context; reloaded from HTTP after page reload |
-| Projects and chat summaries | Workspace WebSocket; server is authoritative |
+| Authentication and user settings | Preact context; reloaded from HTTP after page reload. Host-chat and project-chat preferences each retain the last provider/account/model selection. |
+| Agent auth registry | Ordered `GET /api/agent-auth` snapshot in `AuthContext`, updated by one normalized WebSocket per managed provider |
+| Projects and chat summaries | Workspace WebSocket; server is authoritative. A chat created or forked from this client is seeded into the list on the create response so the new selection holds until its `chat.upsert` arrives |
 | Active view, selected chat, sidebar open state | In-memory reducer |
 | Chat events | Initial HTTP page plus reconnecting WebSocket updates |
 | Composer drafts and queued prompts | In-memory map mirrored to per-tab `sessionStorage`, keyed by chat ID |
+| Agent capability catalog | Last response in page memory, keyed by normalized user plus host/project scope; backend process memory owns TTL freshness |
+| Service-worker offline cache | Only the versioned, self-contained `/offline.html`; navigation and application data remain network-first |
+| Frontend build | Page's own stamp from `<meta name="remote-build">`; the served stamp from `/build.json` in `frontendBuildStore`. `useFrontendBuildSync` reloads onto a newer build (see [deployment](../04-operations/09-deployment-and-operations.md#frontend-build-after-a-deploy)). The last build this tab reloaded for is kept in per-tab `sessionStorage`. |
 | Browser drawer width | Browser `localStorage` |
 | Answered interactive question state | Browser storage used by the question renderer |
+
+## Agent capability cache ownership
+
+Agent models and their dependent controls are runtime discovery data, not
+durable application records. The backend keeps one process-local entry for the
+host and one for each project ID plus current container name. Live,
+warning-free catalogs expire after 24 hours; a fallback or warning anywhere in
+the catalog reduces its TTL to 2 hours. Expiry is lazy, manual refresh replaces
+the entry, and a backend restart clears all entries. Overlapping requests for
+one scope share a single discovery operation.
+
+The frontend store holds the last response per normalized user and scope only
+in the current page. It leaves that response visible while requesting the
+backend and coalesces duplicate page-level requests, but it neither persists
+the catalog nor decides when backend data is fresh. A managed provider's
+authenticated flag changing, or a login reaching completed with a new start
+revision, requests refreshes for currently subscribed scopes; intermediate
+login-status changes do not. The sidebar's project **Start** action requests
+one for that project, while the Project workspaces lifecycle actions do not. A
+request already in flight remains coalesced. Terminal-driven changes such as
+Antigravity sign-in require the user to choose **Refresh models**.
+
+The capability payload also exposes immutable module metadata alongside live
+CLI discovery: execution scopes, authentication mode and instructions,
+resume/fork support, skill strategy, and browser/application-tool feature flags.
+This metadata is decorated from the validated backend module catalog; it does
+not originate from provider CLI output.
 
 ## Workspace synchronization
 
@@ -211,8 +371,9 @@ The initial snapshot is filtered to permitted projects for members. Current live
 - Store composition: [`backend/internal/stores/stores.go`](../../backend/internal/stores/stores.go)
 - Chat store: [`backend/internal/stores/filechat/store.go`](../../backend/internal/stores/filechat/store.go)
 - Project store: [`backend/internal/stores/fileproject/store.go`](../../backend/internal/stores/fileproject/store.go)
-- Scheduled-task store: [`backend/internal/stores/fileschedule/store.go`](../../backend/internal/stores/fileschedule/store.go)
+- Scheduled-task persistence and clock: [`applications/scheduled-tasks/backend/api/`](../../applications/scheduled-tasks/backend/api/)
 - Workspace context: [`frontend/src/state/context/WorkspaceContext.tsx`](../../frontend/src/state/context/WorkspaceContext.tsx)
 - Workspace data hook: [`frontend/src/state/hooks/workspace/useWorkspaceData.ts`](../../frontend/src/state/hooks/workspace/useWorkspaceData.ts)
-- Per-tab composer persistence: [`frontend/src/state/chat/composerSessionStore.ts`](../../frontend/src/state/chat/composerSessionStore.ts)
-- Scheduled-task drawer and client API: [`frontend/src/ui/chat/schedules/`](../../frontend/src/ui/chat/schedules/), [`frontend/src/api/chat/chatScheduleApi.ts`](../../frontend/src/api/chat/chatScheduleApi.ts)
+- Per-tab composer persistence: [`frontend/src/state/stores/chat/composerSessionStore.ts`](../../frontend/src/state/stores/chat/composerSessionStore.ts)
+- Frontend build sync: [`frontend/src/state/hooks/server/useFrontendBuildSync.ts`](../../frontend/src/state/hooks/server/useFrontendBuildSync.ts), [`frontend/src/state/hooks/server/frontendBuildReloadState.ts`](../../frontend/src/state/hooks/server/frontendBuildReloadState.ts), [`frontend/src/state/stores/server/frontendBuildStore.ts`](../../frontend/src/state/stores/server/frontendBuildStore.ts), and the stamp plugin in [`frontend/vite.config.ts`](../../frontend/vite.config.ts)
+- Scheduled-task UI: [`applications/scheduled-tasks/ui/`](../../applications/scheduled-tasks/ui/)

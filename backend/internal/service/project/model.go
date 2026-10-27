@@ -70,25 +70,26 @@ func ValidID(id ID) bool {
 // exposed at GET /api/projects/{id}/container. Fields are best-effort: a
 // stopped or missing container leaves dependent sub-structs zero-valued.
 type ContainerInspect struct {
-	Name           string                `json:"name"`
-	State          ContainerState        `json:"state"`
-	BootAutostart  bool                  `json:"bootAutostart"`
-	Image          string                `json:"image,omitempty"`
-	Type           string                `json:"type,omitempty"`
-	Architecture   string                `json:"architecture,omitempty"`
-	PID            int                   `json:"pid,omitempty"`
-	CreatedAt      string                `json:"createdAt,omitempty"`
-	LastUsedAt     string                `json:"lastUsedAt,omitempty"`
-	Workspace      *WorkspaceInfo        `json:"workspace,omitempty"`
-	Resources      *ResourceInfo         `json:"resources,omitempty"`
-	Network        []NetworkInterface    `json:"network,omitempty"`
-	OS             *OSInfo               `json:"os,omitempty"`
-	Disks          []DiskUsage           `json:"disks,omitempty"`
-	Limits         *ContainerLimits      `json:"limits,omitempty"`
-	LimitOverrides *ContainerLimits      `json:"limitOverrides,omitempty"`
-	Claude         ClaudeContainerStatus `json:"claude"`
-	Codex          CodexContainerStatus  `json:"codex"`
-	AuthBundles    []AuthBundleStatus    `json:"authBundles"`
+	Name           string                 `json:"name"`
+	State          ContainerState         `json:"state"`
+	BootAutostart  bool                   `json:"bootAutostart"`
+	Image          string                 `json:"image,omitempty"`
+	Type           string                 `json:"type,omitempty"`
+	Architecture   string                 `json:"architecture,omitempty"`
+	PID            int                    `json:"pid,omitempty"`
+	CreatedAt      string                 `json:"createdAt,omitempty"`
+	LastUsedAt     string                 `json:"lastUsedAt,omitempty"`
+	Workspace      *WorkspaceInfo         `json:"workspace,omitempty"`
+	Resources      *ResourceInfo          `json:"resources,omitempty"`
+	Network        []NetworkInterface     `json:"network,omitempty"`
+	OS             *OSInfo                `json:"os,omitempty"`
+	Disks          []DiskUsage            `json:"disks,omitempty"`
+	Limits         *ContainerLimits       `json:"limits,omitempty"`
+	LimitOverrides *ContainerLimits       `json:"limitOverrides,omitempty"`
+	Claude         ClaudeContainerStatus  `json:"claude"`
+	Codex          CodexContainerStatus   `json:"codex"`
+	Agents         []AgentContainerStatus `json:"agents,omitempty"`
+	AuthBundles    []AuthBundleStatus     `json:"authBundles"`
 }
 
 type WorkspaceInfo struct {
@@ -153,17 +154,20 @@ type CodexContainerStatus struct {
 }
 
 // AgentContainerStatus is the provider-neutral diagnostic shape returned by
-// container integrations. SetAgentStatuses adapts it to the legacy HTTP fields
-// without making the integration depend on individual agent names or paths.
+// container integrations and exposed by the project inspection API. The
+// Claude and Codex fields remain compatibility mirrors for older clients.
 type AgentContainerStatus struct {
-	ID                    string
-	Installed             bool
-	Version               string
-	InstructionsInstalled bool
-	InstructionsInSync    bool
+	ID                    string `json:"id"`
+	Label                 string `json:"label"`
+	Installed             bool   `json:"installed"`
+	Version               string `json:"version,omitempty"`
+	InstructionsPath      string `json:"instructionsPath,omitempty"`
+	InstructionsInstalled bool   `json:"instructionsInstalled,omitempty"`
+	InstructionsInSync    bool   `json:"instructionsInSync,omitempty"`
 }
 
 func (i *ContainerInspect) SetAgentStatuses(statuses []AgentContainerStatus) {
+	i.Agents = append([]AgentContainerStatus(nil), statuses...)
 	for _, status := range statuses {
 		switch status.ID {
 		case "claude":
