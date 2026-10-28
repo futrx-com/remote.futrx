@@ -140,6 +140,7 @@ export const API_ROUTES = {
   agentQuota: "/api/agent-quota",
   security: {
     summary: "/api/me/security",
+    password: "/api/me/security/password",
     enroll: "/api/me/security/2fa/enroll",
     confirm: "/api/me/security/2fa/confirm",
     disable: "/api/me/security/2fa/disable",

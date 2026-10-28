@@ -44,7 +44,23 @@ catalog, streams, and compatibility auth routes needed to finish onboarding.
 | DELETE | `/api/admin/users/{email}` | Remove a user; admin only |
 | PUT | `/api/admin/users/{email}/role` | Promote or demote a user; admin only |
 | GET, PATCH | `/api/me/settings` | Read or update current user's appearance and chat defaults |
+| GET | `/api/me/security` | Current account security summary, including `passwordSignIn` |
+| POST | `/api/me/security/password` | Change the current account password and revoke older sessions |
 | GET | `/api/server/info` | Host, CPU, memory, storage, network, and process snapshot |
+
+The password route accepts `{currentPassword, newPassword, code?}`. It requires
+an authenticated password account, the current password, and an authenticator
+or unused recovery code when 2FA is enabled. It returns 200 with auth `Status`
+and a refreshed `remote_session` cookie. Older sessions are rejected using the
+persisted `sessionsValidAfter` cut-off, subject to one-second issue-time resolution.
+
+Wrong password or invalid/replayed 2FA proof returns 403; missing proof, password
+reuse, or invalid new length returns 400. Google-only accounts and credential
+conflicts return 409. Five failed proofs in five minutes per client IP/account
+produce 429 with `Retry-After: 300`. Storage errors return 500 with a safe message
+that distinguishes an unchanged password, an unchanged password with older
+sessions revoked, and a saved password whose replacement session failed. No
+password value is returned or logged by this flow.
 
 ## Agent authentication, capabilities, and skills
 
