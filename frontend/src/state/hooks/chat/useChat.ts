@@ -39,7 +39,7 @@ interface UseChatResult {
   respondInteraction: ChatInteractionResponder;
   rewind: (beforeT: number) => Promise<ChatEventPage>;
   loadOlder: () => Promise<void>;
-  refreshMeta: () => Promise<void>;
+  refreshMeta: (throwOnError?: boolean) => Promise<void>;
 }
 
 /**
@@ -293,12 +293,15 @@ export function useChat(chatId: string): UseChatResult {
     }
   }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
 
-  const refreshMeta = useCallback(async () => {
+  const refreshMeta = useCallback(async (throwOnError = false) => {
     if (!chatId) return;
     try {
       const m = await chatApi.fetch(chatId);
       setMeta(m);
-    } catch {}
+    } catch (error) {
+      // Rewind reports refresh failures separately after the destructive action.
+      if (throwOnError) throw error;
+    }
   }, [chatId]);
 
   return {
