@@ -370,6 +370,7 @@ func (s *Service) withRunning(meta Meta) Meta {
 	if s.runs != nil {
 		meta.Running = s.runs.IsRunning(meta.ID)
 	}
+	meta.AwaitingAnswer = meta.QuestionState.AwaitingAnswer(meta.Running)
 	return meta
 }
 

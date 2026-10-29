@@ -31,6 +31,7 @@ test("preserves normalized skill identity and chat defaults", () => {
       provider: "codex",
       accountId: "",
       model: "gpt-5",
+      awaitingAnswer: false,
       mode: "default",
       reasoningEffort: "high",
       serviceTier: "priority",
@@ -172,4 +173,22 @@ test("preserves an explicit per-chat Auto selection", () => {
   assert.equal(resolved.mode, "default");
   assert.equal(resolved.reasoningEffort, "");
   assert.equal(resolved.serviceTier, "");
+});
+
+test("question status follows live workspace metadata instead of stale detail", () => {
+  const chat = { id: "chat", title: "Chat", createdAt: 1, lastMessageAt: 1 };
+  const defaults = {
+    provider: "codex", accountId: "", model: "", mode: "default",
+    reasoningEffort: "", serviceTier: "", approvalPolicy: "on-request" as const,
+    sandboxPolicy: "workspaceWrite" as const,
+  };
+  const waiting = chatPreferenceState.resolveMeta(
+    { ...chat, awaitingAnswer: true }, chat, defaults,
+  );
+  assert.equal(waiting.awaitingAnswer, true);
+
+  const resolved = chatPreferenceState.resolveMeta(
+    chat, { ...chat, awaitingAnswer: true }, defaults,
+  );
+  assert.equal(resolved.awaitingAnswer, false);
 });

@@ -26,6 +26,7 @@ export interface ChatMeta {
   lastMessageAt: number;
   lastReadAt?: number;
   running?: boolean;
+  awaitingAnswer?: boolean;
   model?: string;
   mode?: ChatMode;
   reasoningEffort?: ReasoningEffort;

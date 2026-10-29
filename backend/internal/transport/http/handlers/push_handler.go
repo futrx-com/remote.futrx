@@ -177,7 +177,7 @@ func (h *PushHandler) HandleTest(w http.ResponseWriter, r *http.Request) {
 
 	h.push.Notify(r.Context(), []string{email}, servicepush.Notification{
 		Kind:  servicepush.KindTest,
-		Title: "Notifications are working",
+		Title: "Notifications are working 🔔",
 		Body:  "You will be notified when an agent asks a question or finishes a turn.",
 		Tag:   "push-test",
 	})
