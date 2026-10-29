@@ -40,3 +40,23 @@ test("each drawer has its own pane name, element id and storage key", () => {
     extensionDrawerState.widthStorageKey("a-two"),
   );
 });
+
+test("header actions keep well-formed, unique buttons only", () => {
+  const onClick = () => {};
+  const error = console.error;
+  console.error = () => {};
+  try {
+    const actions = extensionDrawerState.validActions([
+      { id: "refresh", label: "Refresh", icon: "<svg/>", onClick, busy: true },
+      { id: "refresh", label: "Again", icon: "<svg/>", onClick },
+      { id: "Bad Id", label: "Bad", icon: "<svg/>", onClick },
+      { id: "no-click", label: "No click", icon: "<svg/>" } as never,
+    ]);
+    assert.deepEqual(actions, [
+      { id: "refresh", label: "Refresh", icon: "<svg/>", onClick, disabled: false, busy: true },
+    ]);
+    assert.deepEqual(extensionDrawerState.validActions(null), []);
+  } finally {
+    console.error = error;
+  }
+});

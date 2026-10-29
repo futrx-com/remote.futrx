@@ -54,6 +54,8 @@ remote.backend.describe(target?)                → Promise<descriptor>
 remote.backend.url(path, target?)               // string
 
 remote.files.registerOpener(open)                → dispose
+remote.files.open({ chatId, projectId, cwd, path }) → "media" | "editor" | "blocked" | "download" | "ignored"
+remote.files.editorUrl({ chatId, projectId, cwd, path }) → string | null
 
 remote.events.on(name, handler)                 → dispose
 
@@ -195,7 +197,7 @@ Use `mount` whenever the content needs wiring; use `html` for static markup.
 
 ## `remote.ui.registerDrawer(options)`
 
-Adds a pane on the right of the chat, alongside the built-in files, history
+Adds a pane on the right of the chat, alongside history
 and preview panes. Remote provides a toggle after the `chatHeaderActions`
 slot, a header with a close button, and a resize handle on the left edge.
 Your extension fills the body.
@@ -211,8 +213,11 @@ const dispose = remote.ui.registerDrawer({
   minWidth: 420,                  // optional
   when: (target) => Boolean(target.projectId),   // optional
   mount: (body, context) => {
-    // context: { chatId, projectId, cwd, setStatus }
+    // context: { chatId, projectId, cwd, setStatus, setActions }
     context.setStatus({ label: "Connected", active: true });
+    context.setActions?.([
+      { id: "refresh", label: "Refresh", icon: '<svg viewBox="0 0 24 24">…</svg>', onClick: reload },
+    ]);
     body.append(…);
     return () => { /* cleanup */ };
   },
@@ -222,10 +227,11 @@ const dispose = remote.ui.registerDrawer({
 | Behaviour | Detail |
 |---|---|
 | Scope | A project installation's drawer appears only in that project's chats, following the same scope rules as slots. Use `when` to limit it further; it receives `{ chatId, projectId, cwd }`. If `when` throws, the drawer is hidden. |
-| One pane at a time | Opening a drawer closes any other open workspace pane. Opening files, history, preview or another drawer closes it. On a phone, the pane covers the chat. |
+| One pane at a time | Opening a drawer closes any other open workspace pane. Opening history, preview or another application drawer closes it. On a phone, the pane covers the chat. |
 | `mount` lifecycle | Runs the first time the drawer is opened for a chat. The body then **stays mounted while the pane is closed**, so a connection or an editor in it survives closing and reopening. The cleanup runs when the user switches chat, when `chatId`, `projectId` or `cwd` changes, or when the drawer is removed. |
 | Closed pane | A closed pane has zero width. Use a `ResizeObserver` to watch the body size if your content needs to pause while hidden. |
-| `setStatus` | `setStatus({ label, active })` puts a line under the title and a dot beside it, green when `active`. `setStatus(null)` removes both. |
+| `setStatus` | `setStatus({ label, active })` puts a line under the title and a dot beside it, green when `active` and grey when `false`. Omit `active` for the line without a dot. `setStatus(null)` removes both. |
+| `setActions` | `setActions([{ id, label, icon, onClick, disabled, busy }])` draws icon buttons before the close button, styled like it. `busy` swaps the icon for a spinner and disables the button. Each call replaces the previous set; `setActions(null)` removes them. Buttons with an invalid or repeated `id` are skipped. Older hosts lack this method, so call it as `context.setActions?.(…)`. |
 | Width | The user's width is remembered per browser under `remote.futrx.extensionDrawerWidth.<applicationId>-<id>`, clamped between `minWidth` and 1100 px, and always leaves 360 px for the chat. |
 | `<iframe>` bodies | Remote disables pointer events on the body while resizing so an iframe cannot interrupt the drag. |
 | Errors | If `mount` or cleanup throws, Remote logs the error and continues rendering the pane and chat. |
@@ -564,14 +570,29 @@ its opener automatically; the returned disposer lets the extension remove it
 earlier. Do not rely on returning the disposer from `activate`: the current
 host awaits activation but does not consume its return value as a destructor.
 
-The Files drawer, Markdown links and attachment links use this API. Media
-keeps its viewer behavior and archives/unsupported media download. When no
-opener returns a URL, non-media files download.
-The generic workspace-link helper can fall back to a chat download URL when
-no supplied resolver handles the file. Markdown observes opener changes and
-active-project changes. The Files drawer currently also derives availability
-from the header-action slot; verify an extension
-that registers only an opener in that surface separately.
+The optional File Manager application calls `remote.files.open(request)` to
+use the same media viewer, project-scoped editor resolution, and download
+fallback as chat file links. The request includes `chatId`, `projectId`, `cwd`,
+and an absolute `/workspace/...` path, plus optional `line` and `column`.
+It rejects paths outside `/workspace` and explicit traversal segments. Media
+opens in the shared viewer; source/text files use a matching project opener;
+archives, unsupported media, and files with no matching opener download.
+The destination HTTP route still enforces filesystem and membership access.
+
+An editor URL is first offered to Remote's page as a click on a link to it, so
+an editor that runs inside the page and intercepts its links, such as Scratch
+Tab, opens the file as it does for chat links. If nothing claims the click,
+Remote opens the URL in a new tab, as for Code Server.
+
+Browsers only let a page open a new tab while it is handling the user's click.
+A surface that forwards the click from a cross-origin iframe, as File Manager
+does, can reach `open` after that moment. `open` then returns `"blocked"`, and
+the surface can show `remote.files.editorUrl(request)` as a link for the user to
+click. `editorUrl` returns the URL `open` would use, or `null` when the file
+would be viewed or downloaded instead.
+
+Markdown and attachment links continue to resolve registered openers without
+requiring File Manager. Markdown observes opener and active-project changes.
 
 Core does not provide an editor URL builder or sanitize the returned URL.
 An extension is trusted browser code; return only URLs appropriate to its

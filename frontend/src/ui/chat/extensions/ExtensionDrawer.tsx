@@ -4,13 +4,14 @@
 
 import { useEffect, useRef, useState } from "preact/hooks";
 import type {
+  ExtensionDrawerAction,
   ExtensionDrawerContribution,
   ExtensionDrawerStatus,
   ExtensionDrawerTarget,
 } from "../../../models/extension";
 import { EXTENSION_DRAWER_WIDTH } from "../../../config/extensions";
 import { extensionDrawerState } from "../../../state/hooks/chat/extensionDrawerState";
-import { X } from "../../primitives/icons";
+import { Loader, X } from "../../primitives/icons";
 import { ExtensionDrawerResizeHandle } from "./ExtensionDrawerResizeHandle";
 
 export function ExtensionDrawer({
@@ -30,6 +31,7 @@ export function ExtensionDrawer({
   // It is only torn down when the chat changes.
   const [openedChatId, setOpenedChatId] = useState<string | null>(() => (open ? chatId : null));
   const [status, setStatus] = useState<ExtensionDrawerStatus | null>(null);
+  const [actions, setActions] = useState<ExtensionDrawerAction[]>([]);
   const [width, setWidth] = useState(() =>
     extensionDrawerState.storedWidth(
       window.localStorage.getItem(extensionDrawerState.widthStorageKey(drawer.id)),
@@ -63,6 +65,9 @@ export function ExtensionDrawer({
         setStatus: (next) => {
           if (!disposed) setStatus(next ? { label: next.label, active: next.active } : null);
         },
+        setActions: (next) => {
+          if (!disposed) setActions(extensionDrawerState.validActions(next));
+        },
       });
     } catch (error) {
       console.error("[extensions] drawer mount failed", drawer.id, error);
@@ -76,6 +81,7 @@ export function ExtensionDrawer({
       }
       body.replaceChildren();
       setStatus(null);
+      setActions([]);
     };
   }, [drawer, mounted, chatId, projectId, cwd]);
 
@@ -161,7 +167,7 @@ export function ExtensionDrawer({
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2 min-w-0">
               <h2 class="truncate text-[15px] md:text-base font-semibold text-ink-50">{drawer.title}</h2>
-              {status && (
+              {status && status.active !== undefined && (
                 <span class={`h-2 w-2 rounded-full flex-none ${status.active ? "bg-accent-green" : "bg-ink-400"}`} />
               )}
             </div>
@@ -169,6 +175,27 @@ export function ExtensionDrawer({
               <div class="truncate text-[12px] text-ink-300 font-mono">{status.label}</div>
             )}
           </div>
+          {actions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              onClick={() => runAction(drawer.id, action)}
+              disabled={action.disabled || action.busy}
+              class="h-9 w-9 rounded-md bg-tint hover:bg-tint-strong border border-line text-ink-200 grid place-items-center disabled:cursor-wait"
+              title={action.label}
+              aria-label={action.label}
+            >
+              {action.busy ? (
+                <Loader class="w-4 h-4 animate-spin" />
+              ) : (
+                <span
+                  aria-hidden="true"
+                  class="grid h-4 w-4 place-items-center [&>svg]:h-full [&>svg]:w-full"
+                  dangerouslySetInnerHTML={{ __html: action.icon }}
+                />
+              )}
+            </button>
+          ))}
           <button
             type="button"
             onClick={onClose}
@@ -189,4 +216,13 @@ export function ExtensionDrawer({
       </div>
     </aside>
   );
+}
+
+// An application's click handler that throws must not take the pane down.
+function runAction(drawerId: string, action: ExtensionDrawerAction) {
+  try {
+    action.onClick();
+  } catch (error) {
+    console.error("[extensions] drawer action failed", drawerId, action.id, error);
+  }
 }

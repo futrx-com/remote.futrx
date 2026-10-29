@@ -116,14 +116,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			h.handleMarkUnread(w, r, id)
 		case "media-open":
 			h.handleMediaOpen(w, r, meta)
-		case "files":
-			h.handleFilesList(w, r, meta)
-		case "files/search":
-			h.handleFilesSearch(w, r, meta)
 		case "files/download":
 			h.handleFilesDownload(w, r, meta)
-		case "files/download-folder":
-			h.handleFilesDownloadFolder(w, r, meta)
 		case "history/repos":
 			h.handleHistoryRepos(w, r, meta)
 		case "history/commits":

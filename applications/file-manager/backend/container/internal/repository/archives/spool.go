@@ -1,4 +1,4 @@
-package httphandlers
+package archives
 
 import (
 	"context"
@@ -6,17 +6,10 @@ import (
 	"os"
 	"sync"
 
-	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
+	model "futrx.local/catalog/applications/file-manager/backend/container/internal/model/files/application"
 )
 
-const (
-	maxWorkspaceArchiveBytes       int64 = 1 << 30 // 1 GiB per download.
-	maxConcurrentWorkspaceArchives       = 2       // At most 2 GiB in aggregate temporary archives.
-)
-
-var errWorkspaceArchiveTooLarge = serviceworkspacefiles.ErrArchiveTooLarge
-
-type archiveSpooler struct {
+type Spool struct {
 	slots    chan struct{}
 	maxBytes int64
 }
@@ -27,22 +20,17 @@ type spooledArchive struct {
 	once    sync.Once
 }
 
-var workspaceArchiveSpooler = newArchiveSpooler(
-	maxConcurrentWorkspaceArchives,
-	maxWorkspaceArchiveBytes,
-)
-
-func newArchiveSpooler(maxConcurrent int, maxBytes int64) *archiveSpooler {
-	return &archiveSpooler{
+func New(maxConcurrent int, maxBytes int64) *Spool {
+	return &Spool{
 		slots:    make(chan struct{}, maxConcurrent),
 		maxBytes: maxBytes,
 	}
 }
 
-func (s *archiveSpooler) prepare(
+func (s *Spool) Prepare(
 	ctx context.Context,
 	writeArchive func(io.Writer) error,
-) (*spooledArchive, error) {
+) (io.ReadSeekCloser, error) {
 	if err := s.acquire(ctx); err != nil {
 		return nil, err
 	}
@@ -84,15 +72,16 @@ func (s *archiveSpooler) prepare(
 	return &spooledArchive{file: temporary, release: s.release}, nil
 }
 
-func (a *spooledArchive) close() {
+func (a *spooledArchive) Close() error {
 	a.once.Do(func() {
 		_ = a.file.Close()
 		_ = os.Remove(a.file.Name())
 		a.release()
 	})
+	return nil
 }
 
-func (s *archiveSpooler) acquire(ctx context.Context) error {
+func (s *Spool) acquire(ctx context.Context) error {
 	select {
 	case s.slots <- struct{}{}:
 		return nil
@@ -101,7 +90,7 @@ func (s *archiveSpooler) acquire(ctx context.Context) error {
 	}
 }
 
-func (s *archiveSpooler) release() {
+func (s *Spool) release() {
 	<-s.slots
 }
 
@@ -137,8 +126,14 @@ func (w *boundedContextWriter) Write(buffer []byte) (int, error) {
 		return n, io.ErrShortWrite
 	}
 	if exceedsLimit {
-		w.writeErr = errWorkspaceArchiveTooLarge
-		return n, errWorkspaceArchiveTooLarge
+		w.writeErr = model.ErrArchiveTooLarge
+		return n, model.ErrArchiveTooLarge
 	}
 	return n, nil
+}
+
+func (a *spooledArchive) Read(buffer []byte) (int, error) { return a.file.Read(buffer) }
+
+func (a *spooledArchive) Seek(offset int64, whence int) (int64, error) {
+	return a.file.Seek(offset, whence)
 }

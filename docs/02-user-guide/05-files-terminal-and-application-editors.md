@@ -1,8 +1,13 @@
 # Files, Terminal, and application editors
 
-Files and Terminal use the same project workspace. Files is built in; install
-the **Terminal** application to run shell commands. Other applications can add
-editing actions and file openers to a project chat.
+File Manager and Terminal are optional applications over the same project
+workspace. Install them in the projects where you need browsing or shell
+commands. Editor applications can add editing actions and file openers.
+
+Install **File Manager** from the project's Applications tab before browsing.
+The Files action is available only in projects with a running installation.
+Stopping or uninstalling the application removes the drawer and leaves workspace
+files intact. Chat attachment previews and file links remain available.
 
 ![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
 
@@ -53,11 +58,10 @@ Folders download as ZIP archives.
 1. Open **Files**.
 2. Enter at least two Unicode code points in **Search all files...**.
 3. Select a matching file row to open it, or use its download control. Search
-   result directories can be downloaded but are not expanded in the flat
-   search view.
+   result directories can also be expanded or downloaded.
 4. If Remote says **Showing the first matches only — refine your search to
    narrow it down**, add a more specific substring.
-5. Select **Clear search** to return to the directory tree.
+5. Clear the search field to return to the directory tree.
 
 Search matches path names by substring. It does not search file contents.
 
@@ -72,7 +76,7 @@ Search matches path names by substring. It does not search file contents.
 | Folder ZIP source data | 1 GiB |
 | Folder ZIP compressed spool | 1 GiB |
 | Entries in one folder ZIP | 200,000 |
-| Folder ZIP jobs | 2 concurrently across the entire Remote server |
+| Folder ZIP jobs | 2 concurrently per project File Manager service |
 
 A directory can therefore show a truncated warning even when its contents
 exist. Search can stop at its visit cap before finding every possible match.

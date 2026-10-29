@@ -31,13 +31,7 @@ test("openAction downloads archives and unrenderable media", () => {
   assert.deepEqual(fileService.openAction("photo.heic"), { action: "download" });
 });
 
-// The two size formatters are deliberately different — the file tree has a
-// column, an attachment chip has a corner. Keep them apart.
-test("formatBytes and formatBytesCompact stay different on purpose", () => {
-  assert.equal(fileService.formatBytes(980), "980 B");
-  assert.equal(fileService.formatBytes(4300), "4.2 KB");
-  assert.equal(fileService.formatBytes(132_120_576), "126 MB");
-
+test("formats attachment sizes compactly", () => {
   assert.equal(fileService.formatBytesCompact(980), "980B");
   assert.equal(fileService.formatBytesCompact(4300), "4 KB");
   assert.equal(fileService.formatBytesCompact(132_120_576), "126.0 MB");

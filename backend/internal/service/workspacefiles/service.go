@@ -1,7 +1,6 @@
 package workspacefiles
 
 import (
-	"context"
 	"errors"
 	"io"
 	"path"
@@ -12,34 +11,17 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/shared/workspacepath"
 )
 
-const (
-	// maxDirEntries bounds a single directory listing so a folder with a huge
-	// number of children can't produce an unbounded response. Browsing is lazy
-	// (one level per request), so this is per-directory, not per-tree.
-	maxDirEntries = 10000
-	// maxSearchResults bounds a name search across the whole workspace.
-	maxSearchResults = 300
-	// minSearchQuery is the shortest query we will walk the tree for.
-	minSearchQuery = 2
-)
-
 var (
 	ErrInvalidPath      = errors.New("invalid path")
 	ErrFileNotFound     = errors.New("file not found")
-	ErrFolderNotFound   = errors.New("folder not found")
 	ErrUnsupportedMedia = errors.New("file type cannot be opened in browser")
-	ErrArchiveTooLarge  = errors.New("workspace archive exceeds download size limit")
 )
 
 // Store is the filesystem boundary. Every method takes the workspace root plus a
 // path relative to it; the implementation is responsible for keeping access
 // inside the root (including resolving symlinks that might escape it).
 type Store interface {
-	DirectoryExists(root, relative string) bool
-	ListDir(root, relative string, maxEntries int) ([]*Node, bool, error)
 	OpenFile(root, relative string) (io.ReadSeekCloser, string, time.Time, error)
-	WriteArchive(ctx context.Context, root, relative string, destination io.Writer) error
-	Search(root, query string, limit int) ([]*Node, bool, error)
 }
 
 type Service struct {
@@ -50,24 +32,7 @@ func New(store Store) *Service {
 	return &Service{store: store}
 }
 
-// List returns the entries directly under relativePath within the workspace.
-// An empty relativePath lists the workspace root.
-func (s *Service) List(cwd, relativePath string) (Listing, error) {
-	root := workspacepath.Root(cwd)
-	if root == "" {
-		return Listing{}, ErrInvalidPath
-	}
-	rel := cleanRelative(relativePath)
-	entries, truncated, err := s.store.ListDir(root, rel, maxDirEntries)
-	if err != nil {
-		return Listing{}, ErrFolderNotFound
-	}
-	if entries == nil {
-		entries = []*Node{}
-	}
-	return Listing{Path: rel, Entries: entries, Truncated: truncated}, nil
-}
-
+// OpenFile retrieves a shared chat file without requiring an application install.
 func (s *Service) OpenFile(cwd, relativePath string) (*File, error) {
 	root := workspacepath.Root(cwd)
 	if root == "" {
@@ -109,45 +74,6 @@ func (s *Service) OpenMedia(cwd, rawPath string) (Media, error) {
 		},
 		ContentType: contentType,
 	}, nil
-}
-
-func (s *Service) PrepareArchive(cwd, relativePath string) (Archive, error) {
-	root := workspacepath.Root(cwd)
-	if root == "" {
-		return Archive{}, ErrInvalidPath
-	}
-	rel := cleanRelative(relativePath)
-	if !s.store.DirectoryExists(root, rel) {
-		return Archive{}, ErrFolderNotFound
-	}
-	name := path.Base(rel)
-	if rel == "" || name == "." || name == "/" {
-		name = "workspace"
-	}
-	return Archive{Name: name + ".zip", root: root, relative: rel}, nil
-}
-
-func (s *Service) WriteArchive(ctx context.Context, archive Archive, destination io.Writer) error {
-	return s.store.WriteArchive(ctx, archive.root, archive.relative, destination)
-}
-
-func (s *Service) Search(cwd, query string) (SearchResult, error) {
-	root := workspacepath.Root(cwd)
-	if root == "" {
-		return SearchResult{}, ErrInvalidPath
-	}
-	trimmed := strings.TrimSpace(query)
-	if len([]rune(trimmed)) < minSearchQuery {
-		return SearchResult{Entries: []*Node{}}, nil
-	}
-	entries, truncated, err := s.store.Search(root, trimmed, maxSearchResults)
-	if err != nil {
-		return SearchResult{}, ErrFolderNotFound
-	}
-	if entries == nil {
-		entries = []*Node{}
-	}
-	return SearchResult{Entries: entries, Truncated: truncated}, nil
 }
 
 // cleanRelative normalises a caller-supplied path into a forward-slash path

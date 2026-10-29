@@ -14,6 +14,8 @@ events, UI, and skills. [`scheduled-tasks/`](scheduled-tasks/) demonstrates
 application-owned workflows using the shared agent runtime.
 [`terminal/`](terminal/) is the project shell: a service inside the project
 container, reached through its web route and shown in a drawer beside the chat.
+[`file-manager/`](file-manager/) provides optional project workspace browsing,
+search, and downloads through its container service and chat drawer.
 Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
 repositories and reach a server as uploaded packages, so the catalog format can
 change here without a database application riding along in the same review.

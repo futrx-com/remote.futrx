@@ -1,7 +1,7 @@
 # Workspace tools
 
-The chat header opens Files, Git History, Schedules, Browser, and installed
-application actions and drawers, such as the Terminal application's. Most are views over the same project workspace; Schedules is a
+The chat header opens Git History, Browser, and installed application actions
+and drawers, including File Manager, Terminal, and Scheduled Tasks. Most are views over the same project workspace; Schedules is a
 host-control-plane view whose runs return to the same chat.
 
 ## Tool map
@@ -61,6 +61,11 @@ Important behavior:
 
 ## File manager
 
+Install the [File Manager application](../../applications/file-manager/README.md)
+in the project to add its Files drawer. It appears only while installed and running.
+Its service runs in the project container and is reached through Remote's
+authenticated application web gateway.
+
 ```mermaid
 flowchart LR
     Open["Open Files drawer"] --> Root["List workspace root"]
@@ -72,8 +77,8 @@ flowchart LR
     Expand --> Editor["Open in installed application"]
 ```
 
-The backend resolves all paths relative to the chat working directory and
-rejects traversal. Listings and search results can report truncation rather
+The application service resolves paths inside the project's `/workspace` and
+uses rooted filesystem operations to prevent symlink escapes. Listings and search results can report truncation rather
 than returning unbounded data.
 
 Selecting a file routes by type:
@@ -177,7 +182,8 @@ line and column. Without one, the file downloads.
 ## Code map
 
 - Upload handler: [`backend/internal/transport/http/upload_tus.go`](../../backend/internal/transport/http/upload_tus.go)
-- Workspace files: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
+- File Manager application: [`applications/file-manager/`](../../applications/file-manager/)
+- Shared chat file retrieval: [`backend/internal/service/workspacefiles/service.go`](../../backend/internal/service/workspacefiles/service.go)
 - Terminal application: [`applications/terminal/`](../../applications/terminal/)
 - Extension drawer host: [`frontend/src/ui/chat/extensions/ExtensionDrawer.tsx`](../../frontend/src/ui/chat/extensions/ExtensionDrawer.tsx)
 - Git history: [`backend/internal/service/githistory/service.go`](../../backend/internal/service/githistory/service.go)
