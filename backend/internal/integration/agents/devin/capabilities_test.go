@@ -208,14 +208,17 @@ func TestParseModelCatalogIncludesPlanMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(caps.Modes) != 2 {
-		t.Fatalf("modes = %#v, want default + plan", caps.Modes)
+	if len(caps.Modes) != 3 {
+		t.Fatalf("modes = %#v, want default + plan + bypass", caps.Modes)
 	}
 	if caps.Modes[0].Value != string(agent.RunModeDefault) {
 		t.Fatalf("first mode = %q, want default", caps.Modes[0].Value)
 	}
 	if caps.Modes[1].Value != string(agent.RunModePlan) {
 		t.Fatalf("second mode = %q, want plan", caps.Modes[1].Value)
+	}
+	if caps.Modes[2].Value != string(agent.RunModeBypass) {
+		t.Fatalf("third mode = %q, want bypass", caps.Modes[2].Value)
 	}
 	if caps.DefaultMode != agent.RunModeDefault {
 		t.Fatalf("default mode = %q", caps.DefaultMode)
@@ -236,8 +239,8 @@ func TestFallbackCapabilities(t *testing.T) {
 	if caps.Models[0].Description != "Devin default" {
 		t.Fatalf("auto model description = %q", caps.Models[0].Description)
 	}
-	if len(caps.Modes) != 2 {
-		t.Fatalf("modes = %#v, want default + plan", caps.Modes)
+	if len(caps.Modes) != 3 {
+		t.Fatalf("modes = %#v, want default + plan + bypass", caps.Modes)
 	}
 }
 

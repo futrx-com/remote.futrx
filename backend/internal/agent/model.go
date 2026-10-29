@@ -63,6 +63,12 @@ type RunMode string
 const (
 	RunModeDefault RunMode = "default"
 	RunModePlan    RunMode = "plan"
+	// RunModeBypass auto-approves provider tool permission requests without
+	// surfacing them to the UI. Providers that support bypass mode (currently
+	// Devin via ACP) short-circuit session/request_permission requests into an
+	// allow_session response. This is the ACP equivalent of
+	// --dangerously-skip-permissions used by the CLI print providers.
+	RunModeBypass RunMode = "bypass"
 )
 
 // RunPreferences contains provider-neutral launch preferences. Each provider

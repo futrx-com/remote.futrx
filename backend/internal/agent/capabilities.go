@@ -59,6 +59,17 @@ func ProviderModes(supportsPlan bool) []CapabilityOption {
 	return modes
 }
 
+// BypassModeOption is the provider-neutral capability option for bypass mode.
+// Providers append it to their Modes list when they can auto-approve tool
+// permission requests without surfacing them to the UI.
+func BypassModeOption() CapabilityOption {
+	return CapabilityOption{
+		Value:       string(RunModeBypass),
+		Label:       "Bypass",
+		Description: "Auto-approve tool permissions without prompting (dangerous)",
+	}
+}
+
 // WithAutoModel prepends the provider-default selection. Its controls mirror
 // the provider's declared default model, or the first model when none is
 // marked as default, so dependent selectors remain usable while the CLI

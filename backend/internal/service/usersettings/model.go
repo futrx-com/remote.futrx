@@ -57,6 +57,7 @@ type ChatMode string
 const (
 	ChatModeDefault ChatMode = "default"
 	ChatModePlan    ChatMode = "plan"
+	ChatModeBypass  ChatMode = "bypass"
 )
 
 type ReasoningEffort string
@@ -152,7 +153,7 @@ func ValidChatProvider(provider ChatProvider) bool {
 
 func ValidChatMode(mode ChatMode) bool {
 	switch mode {
-	case ChatModeDefault, ChatModePlan:
+	case ChatModeDefault, ChatModePlan, ChatModeBypass:
 		return true
 	default:
 		return false

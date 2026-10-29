@@ -41,7 +41,7 @@ func parseModelCatalog(raw []byte) (agent.Capabilities, error) {
 		Label:       "Devin",
 		Source:      agent.CapabilitySourceLive,
 		Models:      agent.WithAutoModel(models, "Devin default"),
-		Modes:       agent.ProviderModes(true),
+		Modes:       devinModes(),
 		DefaultMode: agent.RunModeDefault,
 	}
 	if defaultID != "" {

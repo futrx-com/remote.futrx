@@ -141,6 +141,22 @@ func TestUpdateClearsAnOldProvidersAccountWhenAnOlderClientChangesProvider(t *te
 	}
 }
 
+func TestUpdateAcceptsBypassMode(t *testing.T) {
+	repo := &memoryRepo{}
+	service := New(repo)
+	mode := ChatModeBypass
+
+	settings, err := service.Update(context.Background(), "sub:user", UpdateInput{
+		Chat: &ChatUpdate{Mode: &mode},
+	})
+	if err != nil {
+		t.Fatalf("bypass mode should be accepted: %v", err)
+	}
+	if settings.Chat.Mode != ChatModeBypass {
+		t.Fatalf("mode = %q, want bypass", settings.Chat.Mode)
+	}
+}
+
 func TestUpdatePreservesProviderDefinedCapabilityValues(t *testing.T) {
 	repo := &memoryRepo{}
 	effort := ReasoningEffort(" Future.V2 ")

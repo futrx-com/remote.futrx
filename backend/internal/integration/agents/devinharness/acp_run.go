@@ -343,6 +343,13 @@ func (run *acpRun) handlePostTerminalEnvelope(envelope acpEnvelope) {
 func (run *acpRun) handleEnvelope(envelope acpEnvelope) bool {
 	// Server-to-client request (method + id).
 	if envelope.Method != "" && len(envelope.ID) > 0 {
+		// Bypass mode auto-approves session/request_permission requests
+		// without surfacing them to the UI, mirroring the
+		// --dangerously-skip-permissions flag used by CLI print providers.
+		if run.req.Mode == agent.RunModeBypass && envelope.Method == "session/request_permission" {
+			run.protocolErr = run.autoApprovePermission(envelope)
+			return run.protocolErr == nil
+		}
 		run.protocolErr = run.requestHandler.Handle(envelope)
 		return run.protocolErr == nil
 	}
@@ -362,6 +369,84 @@ func (run *acpRun) handleEnvelope(envelope acpEnvelope) bool {
 	}
 	run.handlePromptResponse(responseID, envelope.Result)
 	return run.protocolErr == nil
+}
+
+// autoApprovePermission writes a session/request_permission response that
+// selects the most permissive option Devin offered (allow_session, then
+// allow_always, then allow_once, then the first option) without surfacing the
+// request to the UI. It emits an interaction request followed immediately by a
+// resolved "approved" event so the chat log records the auto-approval.
+func (run *acpRun) autoApprovePermission(envelope acpEnvelope) error {
+	requestID, err := jsonRPCIDKey(envelope.ID)
+	if err != nil {
+		return err
+	}
+
+	var params acpRequestPermissionParams
+	_ = json.Unmarshal(envelope.Params, &params)
+
+	optionID := findOptionID(params.Options, "allow_session")
+	if optionID == "" {
+		optionID = findOptionID(params.Options, "allow_always")
+	}
+	if optionID == "" {
+		optionID = findOptionID(params.Options, "allow_once")
+	}
+	if optionID == "" {
+		optionID = findOptionID(params.Options, "allow")
+	}
+	if optionID == "" && len(params.Options) > 0 {
+		optionID = params.Options[0].OptionID
+	}
+	if optionID == "" {
+		optionID = "allow_session"
+	}
+
+	result, err := json.Marshal(acpPermissionResult{
+		Outcome: acpPermissionOutcome{Outcome: "selected", OptionID: optionID},
+	})
+	if err != nil {
+		return err
+	}
+
+	wire := map[string]any{"jsonrpc": "2.0", "id": envelope.ID, "result": json.RawMessage(result)}
+	if err := run.process.write(wire); err != nil {
+		return err
+	}
+
+	// Emit the interaction request so the chat log shows what was approved,
+	// then immediately resolve it as approved.
+	run.emit(agent.Event{
+		T:              time.Now().UnixMilli(),
+		Type:           agent.EventInteractionRequest,
+		Provider:       run.req.Provider,
+		ConversationID: run.req.ConversationID,
+		ToolName:       envelope.Method,
+		Input:          translatePermissionParams(envelope.Params, params),
+		InteractionID:  requestID,
+		Status:         "permission",
+		Native: &agent.NativeEnvelope{
+			SchemaVersion: agent.NativeEnvelopeSchemaVersion,
+			Method:        envelope.Method,
+			RequestID:     requestID,
+			Payload:       cloneRaw(envelope.Params),
+		},
+	})
+	run.emit(agent.Event{
+		T:              time.Now().UnixMilli(),
+		Type:           agent.EventInteractionDone,
+		Provider:       run.req.Provider,
+		ConversationID: run.req.ConversationID,
+		ToolName:       envelope.Method,
+		InteractionID:  requestID,
+		Status:         "approved",
+		Native: &agent.NativeEnvelope{
+			SchemaVersion: agent.NativeEnvelopeSchemaVersion,
+			Method:        envelope.Method,
+			RequestID:     requestID,
+		},
+	})
+	return nil
 }
 
 func (run *acpRun) handleNotification(envelope acpEnvelope) {

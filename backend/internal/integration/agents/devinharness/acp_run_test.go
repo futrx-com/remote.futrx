@@ -2,7 +2,10 @@ package devinharness
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -496,5 +499,158 @@ done`
 	}
 	if !strings.Contains(err.Error(), agent.ErrSessionNotFound.Error()) {
 		t.Fatalf("error = %q, want it to contain %q", err.Error(), agent.ErrSessionNotFound.Error())
+	}
+}
+
+// TestRunACPBypassModeAutoApproves tests that when Mode == RunModeBypass, a
+// session/request_permission request is auto-approved without surfacing a
+// pending interaction to the UI. The harness should write back the nested ACP
+// response selecting the most permissive option and emit an interaction request
+// followed by a resolved "approved" event.
+func TestRunACPBypassModeAutoApproves(t *testing.T) {
+	// The script writes any permission response it receives (a line with
+	// "id":42 and "result") to a temp file, then sends the terminal prompt
+	// response. The test reads the temp file to verify the harness selected
+	// allow_session.
+	tmpfile := filepath.Join(t.TempDir(), "perm-response.json")
+	script := fmt.Sprintf(`
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"authMethods":[{"id":"devin-browser","name":"Log in with browser"}],"agentInfo":{"name":"affogato","title":"Devin Agent","version":"0.0.0-dev"}}}'
+      ;;
+    *'"method":"session/new"'*)
+      printf '%%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess-bypass"}}'
+      ;;
+    *'"method":"session/prompt"'*)
+      printf '%%s\n' '{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"sess-bypass","update":{"sessionUpdate":"tool_call","toolCallId":"tc-1","title":"Bash","status":"inProgress","rawInput":{"command":"echo hi"}}}}'
+      printf '%%s\n' '{"jsonrpc":"2.0","id":42,"method":"session/request_permission","params":{"sessionId":"sess-bypass","toolCall":{"toolCallId":"tc-1","title":"Bash","status":"pending"},"options":[{"optionId":"allow_once","name":"Allow once","kind":"allow_once"},{"optionId":"allow_session","name":"Allow for session","kind":"allow_always"},{"optionId":"reject_once","name":"Reject","kind":"reject_once"}]}}'
+      ;;
+    *'"id":42'*'"result"'*)
+      printf '%%s' "$line" > %q
+      printf '%%s\n' '{"jsonrpc":"2.0","id":3,"result":{"stopReason":"end_turn"}}'
+      ;;
+  esac
+done`, tmpfile)
+
+	var events []agent.Event
+	err := Run(
+		context.Background(),
+		exec.Command("sh", "-c", script),
+		agent.RunRequest{
+			Provider:       agent.ProviderDevin,
+			ConversationID: "chat-1",
+			Prompt:         "run a tool",
+			Mode:           agent.RunModeBypass,
+		},
+		"Devin",
+		func(event agent.Event) { events = append(events, event) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The harness should have written a permission response selecting
+	// allow_session (the most permissive option offered).
+	permResponse, readErr := os.ReadFile(tmpfile)
+	if readErr != nil {
+		t.Fatalf("permission response was not captured: %v", readErr)
+	}
+	if !strings.Contains(string(permResponse), `"outcome":"selected"`) {
+		t.Fatalf("permission response missing selected outcome: %s", permResponse)
+	}
+	if !strings.Contains(string(permResponse), `"optionId":"allow_session"`) {
+		t.Fatalf("permission response missing allow_session optionId: %s", permResponse)
+	}
+
+	// The harness should emit an interaction request and a resolved "approved"
+	// event, but no pending interaction should remain (the UI never has to
+	// answer it).
+	foundRequest := false
+	foundApproved := false
+	for _, event := range events {
+		if event.Type == agent.EventInteractionRequest && event.ToolName == "session/request_permission" {
+			foundRequest = true
+			if event.Status != "permission" {
+				t.Fatalf("interaction request status = %q, want permission", event.Status)
+			}
+		}
+		if event.Type == agent.EventInteractionDone && event.Status == "approved" {
+			foundApproved = true
+		}
+	}
+	if !foundRequest {
+		t.Fatal("missing interaction request event for auto-approved permission")
+	}
+	if !foundApproved {
+		t.Fatal("missing approved interaction done event for auto-approved permission")
+	}
+
+	// The run should complete normally.
+	foundCompletion := false
+	for _, event := range events {
+		if event.Type == agent.EventRunCompleted {
+			foundCompletion = true
+		}
+	}
+	if !foundCompletion {
+		t.Fatal("missing run completed event")
+	}
+}
+
+// TestRunACPDefaultModeSurfacesPermission tests that in default mode, a
+// session/request_permission request is surfaced to the UI as a pending
+// interaction (not auto-approved), confirming bypass mode is opt-in.
+func TestRunACPDefaultModeSurfacesPermission(t *testing.T) {
+	script := `
+while IFS= read -r line; do
+  case "$line" in
+    *'"method":"initialize"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"authMethods":[{"id":"devin-browser","name":"Log in with browser"}],"agentInfo":{"name":"affogato","title":"Devin Agent","version":"0.0.0-dev"}}}'
+      ;;
+    *'"method":"session/new"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"sess-default"}}'
+      ;;
+    *'"method":"session/prompt"'*)
+      printf '%s\n' '{"jsonrpc":"2.0","id":42,"method":"session/request_permission","params":{"sessionId":"sess-default","toolCall":{"toolCallId":"tc-1","title":"Bash","status":"pending"},"options":[{"optionId":"allow_once","name":"Allow once","kind":"allow_once"}]}}'
+      # Exit immediately so the harness sees the process close without a
+      # prompt response. The test only asserts the interaction request was
+      # surfaced and not auto-approved.
+      exit 0
+      ;;
+  esac
+done`
+
+	var events []agent.Event
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = Run(
+		ctx,
+		exec.Command("sh", "-c", script),
+		agent.RunRequest{
+			Provider:       agent.ProviderDevin,
+			ConversationID: "chat-1",
+			Prompt:         "run a tool",
+			Mode:           agent.RunModeDefault,
+		},
+		"Devin",
+		func(event agent.Event) { events = append(events, event) },
+	)
+
+	foundRequest := false
+	foundApproved := false
+	for _, event := range events {
+		if event.Type == agent.EventInteractionRequest && event.ToolName == "session/request_permission" {
+			foundRequest = true
+		}
+		if event.Type == agent.EventInteractionDone && event.Status == "approved" {
+			foundApproved = true
+		}
+	}
+	if !foundRequest {
+		t.Fatalf("missing interaction request event in default mode: %#v", events)
+	}
+	if foundApproved {
+		t.Fatal("default mode should not auto-approve permissions")
 	}
 }

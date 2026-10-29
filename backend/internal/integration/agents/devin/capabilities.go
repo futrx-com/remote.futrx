@@ -37,16 +37,24 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 }
 
 // fallbackCapabilities returns a minimal capability set when the live probe
-// fails. Devin supports default and plan modes.
+// fails. Devin supports default, plan, and bypass modes.
 func fallbackCapabilities() agent.Capabilities {
 	return agent.Capabilities{
 		Provider:    agent.ProviderDevin,
 		Label:       "Devin",
 		Source:      agent.CapabilitySourceFallback,
 		Models:      agent.WithAutoModel(nil, "Devin default"),
-		Modes:       agent.ProviderModes(true),
+		Modes:       devinModes(),
 		DefaultMode: agent.RunModeDefault,
 	}
+}
+
+// devinModes returns the mode options Devin advertises: default, plan, and
+// bypass. Bypass auto-approves session/request_permission requests inside the
+// ACP harness without surfacing them to the UI, mirroring the
+// --dangerously-skip-permissions flag used by the CLI print providers.
+func devinModes() []agent.CapabilityOption {
+	return append(agent.ProviderModes(true), agent.BypassModeOption())
 }
 
 // isNotLoggedInError reports whether a capability probe error indicates the
