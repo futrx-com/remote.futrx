@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	"log"
 	"os"
 	"strings"
@@ -90,16 +91,18 @@ type AccountConfig struct {
 // lifecycle stays in this package and providers supply only credential
 // mechanics.
 type AccountVault struct {
-	store AccountStore
+	audit      audit.Recorder
+	store      AccountStore
+	authorizer AccountAuthorizer
 }
 
 // NewAccountVault returns nil when store is nil, which disables saved
 // accounts.
-func NewAccountVault(store AccountStore) *AccountVault {
+func NewAccountVault(store AccountStore, authorizer AccountAuthorizer) *AccountVault {
 	if store == nil {
 		return nil
 	}
-	return &AccountVault{store: store}
+	return &AccountVault{store: store, authorizer: authorizer}
 }
 
 // Open loads config.Provider's saved accounts and reconciles the host login
@@ -112,7 +115,7 @@ func (v *AccountVault) Open(ctx context.Context, config AccountConfig) (*Account
 	if err != nil {
 		return nil, err
 	}
-	service := &AccountService{config: config, store: v.store, accounts: accounts}
+	service := &AccountService{config: config, store: v.store, accounts: accounts, authorizer: v.authorizer, audit: v.audit}
 	if err := service.reconcileHost(); err != nil {
 		log.Printf("%s accounts: %v", config.Provider, err)
 	}
@@ -129,8 +132,10 @@ func (v *AccountVault) Open(ctx context.Context, config AccountConfig) (*Account
 // rolled back: the host is marked stale, the error is reported, and BeginRun
 // writes the active account again before any run can use the old login.
 type AccountService struct {
-	config AccountConfig
-	store  AccountStore
+	audit      audit.Recorder
+	authorizer AccountAuthorizer
+	config     AccountConfig
+	store      AccountStore
 
 	// mutationMu serializes account changes, legacy run leases, isolated-run
 	// captures, and login completion. Provider validation, which may take
@@ -176,20 +181,25 @@ func (s *AccountService) AccountsSnapshot() AccountsSnapshot {
 // canonical host login. Empty accountID selects the configured default. The
 // bool is false only when no saved default exists, allowing legacy host login
 // behavior to continue until an account is imported.
-func (s *AccountService) CredentialForRun(accountID string) (RunCredential, bool, error) {
+func (s *AccountService) CredentialForRun(ctx context.Context, accountID string) (RunCredential, bool, error) {
 	accountID = strings.TrimSpace(accountID)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if accountID == "" {
 		accountID = s.accounts.ActiveAccountID
-		if accountID == "" {
-			return RunCredential{}, false, nil
-		}
+	}
+	if err := RequireAccountUse(ctx, s.authorizer, s.config.Provider, accountID); err != nil {
+		s.recordAccount(ctx, "agent.credential.acquire", accountID, err)
+		return RunCredential{}, false, err
+	}
+	if accountID == "" {
+		return RunCredential{}, false, nil
 	}
 	record, ok := s.accounts.Find(accountID)
 	if !ok {
 		return RunCredential{}, false, ErrAccountNotFound
 	}
+	s.recordAccount(ctx, "agent.credential.acquire", accountID, nil)
 	return RunCredential{
 		AccountID:  record.ID,
 		Credential: append(json.RawMessage(nil), record.Credential...),
@@ -247,7 +257,12 @@ func (s *AccountService) captureRunCredentialLocked(ctx context.Context, run Run
 
 // ImportCurrent validates the current host login and saves it as a new
 // active account.
-func (s *AccountService) ImportCurrent(ctx context.Context, label string) error {
+func (s *AccountService) ImportCurrent(ctx context.Context, label string) (resultErr error) {
+	defer func() { s.recordAccount(ctx, "agent.account.import", "", resultErr) }()
+	if err := RequireAccountManagement(ctx, s.authorizer, s.config.Provider); err != nil {
+		return err
+	}
+
 	label, err := normalizeAccountLabel(label)
 	if err != nil {
 		return err
@@ -288,7 +303,12 @@ func (s *AccountService) ImportCurrent(ctx context.Context, label string) error 
 
 // StartAccountLogin starts a provider login for a new account, or for the
 // saved account accountID. The finished login is saved by FinishLogin.
-func (s *AccountService) StartAccountLogin(ctx context.Context, label, accountID string) (LoginSnapshot, error) {
+func (s *AccountService) StartAccountLogin(ctx context.Context, label, accountID string) (result LoginSnapshot, resultErr error) {
+	defer func() { s.recordAccount(ctx, "agent.account.login", accountID, resultErr) }()
+	if err := RequireAccountManagement(ctx, s.authorizer, s.config.Provider); err != nil {
+		return LoginSnapshot{}, err
+	}
+
 	label, err := normalizeLoginLabel(label, accountID)
 	if err != nil {
 		return LoginSnapshot{}, err
@@ -428,7 +448,12 @@ func (s *AccountService) FinishLogin(exitErr error, output string) (bool, error)
 
 // ActivateAccount validates the saved account accountID and makes it the
 // host login.
-func (s *AccountService) ActivateAccount(ctx context.Context, accountID string) error {
+func (s *AccountService) ActivateAccount(ctx context.Context, accountID string) (resultErr error) {
+	defer func() { s.recordAccount(ctx, "agent.account.activate", accountID, resultErr) }()
+	if err := RequireAccountManagement(ctx, s.authorizer, s.config.Provider); err != nil {
+		return err
+	}
+
 	defer s.changed()
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -468,7 +493,12 @@ func (s *AccountService) ActivateAccount(ctx context.Context, accountID string) 
 }
 
 // DeleteAccount removes a saved account other than the active one.
-func (s *AccountService) DeleteAccount(ctx context.Context, accountID string) error {
+func (s *AccountService) DeleteAccount(ctx context.Context, accountID string) (resultErr error) {
+	defer func() { s.recordAccount(ctx, "agent.account.delete", accountID, resultErr) }()
+	if err := RequireAccountManagement(ctx, s.authorizer, s.config.Provider); err != nil {
+		return err
+	}
+
 	defer s.changed()
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -519,6 +549,14 @@ func (s *AccountService) beginRunLocked(ctx context.Context, accountID string) (
 		return nil, false, fmt.Errorf("%s %w", s.config.Label, ErrAccountLoginInProgress)
 	}
 	activeAccountID := s.accounts.ActiveAccountID
+	effectiveID := accountID
+	if effectiveID == "" {
+		effectiveID = activeAccountID
+	}
+	if err := RequireAccountUse(ctx, s.authorizer, s.config.Provider, effectiveID); err != nil {
+		s.mu.Unlock()
+		return nil, false, err
+	}
 	if accountID == "" || accountID == activeAccountID {
 		if err := s.reconcileHostLocked(); err != nil {
 			s.mu.Unlock()
@@ -842,4 +880,26 @@ func shortError(err error) error {
 		return err
 	}
 	return errors.New(err.Error()[:accountErrorLimit] + "...")
+}
+
+// WithAudit attaches the existing trail before any account service is opened.
+func (v *AccountVault) WithAudit(recorder audit.Recorder) *AccountVault {
+	if v != nil {
+		v.audit = recorder
+	}
+	return v
+}
+func (s *AccountService) recordAccount(ctx context.Context, action, id string, err error) {
+	if s.audit == nil {
+		return
+	}
+	if caller, ok := audit.CallerFrom(ctx); !ok || caller.Actor.Empty() {
+		return
+	}
+	entry := audit.Success(action, audit.Target{Type: audit.TargetAgent, ID: string(s.config.Provider)}, audit.Meta{"provider": string(s.config.Provider), "accountId": id})
+	entry.OK = err == nil
+	if err != nil {
+		entry.Error = "account operation failed"
+	}
+	s.audit.Record(ctx, entry)
 }

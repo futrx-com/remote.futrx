@@ -116,7 +116,7 @@ func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.EnableAccounts(ctx, NewAccountVault(accounts), "MiniMax"); err != nil {
+	if err := service.EnableAccounts(ctx, NewAccountVault(accounts, allowAccountUse{}), "MiniMax"); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := service.AccountsSnapshot()

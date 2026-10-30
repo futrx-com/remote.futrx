@@ -369,7 +369,7 @@ func TestNewAuthRestoresActiveAccountOverDifferentHostLogin(t *testing.T) {
 		ActiveAccountID: "one",
 		Accounts:        []agentauth.AccountRecord{{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-1", "")}},
 	}}
-	if _, err := NewAuth(agentauth.NewAccountVault(store)); err != nil {
+	if _, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{})); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(host, ".credentials.json")); !strings.Contains(got, "saved") {
@@ -392,7 +392,7 @@ func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ agent.Provid
 // every credential.
 func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
 	t.Helper()
-	auth, err := NewAuth(agentauth.NewAccountVault(store))
+	auth, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{}))
 	if err != nil {
 		t.Fatal(err)
 	}

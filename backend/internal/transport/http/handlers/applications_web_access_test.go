@@ -2,12 +2,15 @@ package httphandlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
@@ -370,4 +373,164 @@ func TestNamedApplicationWebHostUsesWildcard(t *testing.T) {
 			}
 		})
 	}
+}
+
+type webCapabilityPolicy struct {
+	mu     sync.Mutex
+	denied bool
+	checks []rbac.Check
+}
+
+func (p *webCapabilityPolicy) setDenied(denied bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.denied = denied
+}
+func (p *webCapabilityPolicy) Require(ctx context.Context, check rbac.Check) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	actor, ok := rbac.ActorFromContext(ctx)
+	if !ok || actor.Email != "member@example.test" {
+		return rbac.ErrDenied
+	}
+	p.checks = append(p.checks, check)
+	if p.denied {
+		return rbac.ErrDenied
+	}
+	return nil
+}
+
+func TestCurrentIDEAndTerminalAdmissionAndRevocation(t *testing.T) {
+	for _, app := range []struct{ id, label, key string }{
+		{"code-server", "code", "workspace.ide.open"}, {"terminal", "terminal", "workspace.terminal.use"},
+	} {
+		t.Run(app.id, func(t *testing.T) {
+			f := newWebFixture(t, "https://remote.test")
+			f.registry.application.ID, f.registry.application.Web.Subdomain = app.id, app.label
+			f.instance.ApplicationID = app.id
+			if err := f.store.Put(context.Background(), f.instance); err != nil {
+				t.Fatal(err)
+			}
+			policy := &webCapabilityPolicy{}
+			f.apps.apps = serviceapplications.New(f.registry, f.store, nil, nil, nil, serviceapplications.WithWorkspaceAuthorizer(policy))
+			called := false
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) }))
+			defer upstream.Close()
+			f.apps.webTransport = &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, strings.TrimPrefix(upstream.URL, "http://"))
+			}}
+			host := app.label + "--project.remote.test"
+			for _, denied := range []bool{false, true} {
+				policy.setDenied(denied)
+				for _, route := range []string{"https://" + host + "/", "https://remote.test/apps/project/" + app.id} {
+					for _, socket := range []bool{false, true} {
+						if socket && strings.Contains(route, "/apps/") {
+							continue
+						}
+						called = false
+						req := httptest.NewRequest("GET", route, nil)
+						req.AddCookie(f.cookie(t, "member@example.test"))
+						if socket {
+							req.Header.Set("Upgrade", "websocket")
+							req.Header.Set("Connection", "Upgrade")
+							req.Header.Set("Origin", "https://"+host)
+						}
+						response := httptest.NewRecorder()
+						f.handler().ServeHTTP(response, req)
+						if denied && (response.Code != 403 || called) {
+							t.Fatalf("denied %s socket=%v status=%d proxy=%v", route, socket, response.Code, called)
+						}
+						if !denied && response.Code != 200 && response.Code != 302 {
+							t.Fatalf("allowed: %d %s", response.Code, response.Body)
+						}
+					}
+				}
+			}
+			for _, check := range policy.checks {
+				if check.Permission != rbac.Key(app.key) || check.Scope != rbac.ProjectScope("aaaa1111") {
+					t.Fatal(check)
+				}
+			}
+			policy.setDenied(false)
+			if err := f.apps.apps.RequireWebAccess(context.Background(), f.instance.ID); !errors.Is(err, rbac.ErrDenied) {
+				t.Fatalf("anonymous service access: %v", err)
+			}
+		})
+	}
+}
+
+func TestTerminalWebSocketPermissionAndRevocation(t *testing.T) {
+	f := newWebFixture(t, "https://remote.test")
+	host := "terminal--project.remote.test"
+	f.registry.application.ID = "terminal"
+	f.registry.application.Web.Subdomain = "terminal"
+	f.instance.ApplicationID = "terminal"
+	if err := f.store.Put(context.Background(), f.instance); err != nil {
+		t.Fatal(err)
+	}
+	policy := &webCapabilityPolicy{}
+	f.apps.apps = serviceapplications.New(f.registry, f.store, nil, nil, nil, serviceapplications.WithWorkspaceAuthorizer(policy))
+	upgrader := httptransport.NewUpgrader()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Cookie") != "" {
+			t.Error("cookie reached socket server")
+		}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		kind, data, err := conn.ReadMessage()
+		if err == nil {
+			_ = conn.WriteMessage(kind, data)
+		}
+	}))
+	defer upstream.Close()
+	f.apps.webTransport = &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, strings.TrimPrefix(upstream.URL, "http://"))
+	}}
+	gateway := httptest.NewServer(f.handler())
+	defer gateway.Close()
+	dialer := websocket.Dialer{NetDial: func(network, _ string) (net.Conn, error) {
+		return net.Dial(network, strings.TrimPrefix(gateway.URL, "http://"))
+	}}
+	for _, origin := range []string{"https://" + host, "https://other--project.remote.test"} {
+		header := http.Header{"Origin": {origin}, "Cookie": {f.cookie(t, "member@example.test").String()}}
+		conn, response, err := dialer.Dial("ws://"+host+"/socket?x=1", header)
+		if origin != "https://"+host {
+			if err == nil {
+				conn.Close()
+				t.Fatal("cross-application socket accepted")
+			}
+			if response == nil || response.StatusCode != 403 {
+				t.Fatalf("cross-origin response=%v err=%v", response, err)
+			}
+			response.Body.Close()
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, []byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+		_, data, err := conn.ReadMessage()
+		conn.Close()
+		if err != nil || string(data) != "hello" {
+			t.Fatalf("echo=%q err=%v", data, err)
+		}
+	}
+
+	policy.setDenied(true)
+	header := http.Header{"Origin": {"https://" + host}, "Cookie": {f.cookie(t, "member@example.test").String()}}
+	conn, response, err := dialer.Dial("ws://"+host+"/socket", header)
+	if err == nil {
+		conn.Close()
+		t.Fatal("revoked terminal upgraded")
+	}
+	if response == nil || response.StatusCode != 403 {
+		t.Fatalf("revocation: %v %v", response, err)
+	}
+	response.Body.Close()
 }

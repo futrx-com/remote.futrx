@@ -50,7 +50,7 @@ func TestFactoryOffersSavedAccountsOnlyWithAVault(t *testing.T) {
 		want  bool
 	}{
 		{vault: nil, want: false},
-		{vault: agentauth.NewAccountVault(&memoryAccountStore{}), want: true},
+		{vault: agentauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{}), want: true},
 	} {
 		runtime := newTestRuntime(agentmodule.BuildDependencies{Accounts: test.vault})
 		binding, ok := runtime.AuthBinding(agent.ProviderClaude)
@@ -89,7 +89,7 @@ esac
 		},
 	}}
 	provider := newTestRuntime(agentmodule.BuildDependencies{
-		Accounts: agentauth.NewAccountVault(store),
+		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
 	}).Lookup(agent.ProviderClaude).(*Provider)
 	run := func(token, account string) {
 		t.Helper()
@@ -145,7 +145,7 @@ esac
 		dependencies agentmodule.BuildDependencies
 		want         string
 	}{
-		{"saved account", agentmodule.BuildDependencies{Accounts: agentauth.NewAccountVault(store)}, "one"},
+		{"saved account", agentmodule.BuildDependencies{Accounts: agentauth.NewAccountVault(store, allowAccountUse{})}, "one"},
 		{"host login", agentmodule.BuildDependencies{}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {

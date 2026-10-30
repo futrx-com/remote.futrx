@@ -24,7 +24,7 @@ func NewAuthHandler(auth *serviceauth.Service, access *serviceauth.AccessVerifie
 		googleLogin:  &googleLoginHandler{auth: auth},
 		local:        &localAuthHandler{auth: auth, logins: loginLimiter},
 		twoFactor:    &authTwoFactorHandler{auth: auth, limiter: loginLimiter},
-		session:      &authSessionHandler{auth: auth},
+		session:      &authSessionHandler{auth: auth, audit: auth.Audit()},
 		verify:       &authVerifyHandler{auth: auth, access: access},
 		googleConfig: &googleConfigHandler{auth: auth},
 	}

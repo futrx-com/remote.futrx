@@ -130,6 +130,9 @@ export function ComposerAgentPicker({
   function chooseModel(nextModel: string) {
     if (!viewedProvider || viewedProvider.disabled) return;
     const nextAccountId = resolveProviderAccountId(viewedAccounts, viewAccountId);
+    if (viewedAccounts?.defaultAllowed !== undefined && (nextAccountId
+      ? !viewedAccounts.items.some(a => a.id === nextAccountId)
+      : !viewedAccounts.defaultAllowed)) return;
     close();
     if (
       viewedProvider.value !== provider
@@ -444,7 +447,8 @@ function AccountList({
             </button>
           );
         })}
-        {!accounts?.items.length && (
+        {!accounts?.items.length && accounts?.defaultAllowed === false && <p class="p-5 text-sm text-ink-300">No authorized accounts. Ask an administrator to grant account access.</p>}
+        {!accounts?.items.length && accounts?.defaultAllowed !== false && (
           <div class="flex min-h-36 items-center justify-center p-5 text-center">
             <div class="max-w-[13rem]">
               <Users class="mx-auto h-5 w-5 text-ink-500" />

@@ -25,7 +25,7 @@ func TestAddNormalizesTheEmailAndGetIgnoresCase(t *testing.T) {
 	store := newStore(t, t.TempDir())
 	ctx := context.Background()
 
-	if err := store.Add(ctx, user.User{Email: " Alice@Example.com ", Role: user.RoleMember, AddedBy: "admin@example.com"}); err != nil {
+	if err := store.Add(ctx, user.User{Email: " Alice@Example.com ", Role: "", AddedBy: "admin@example.com"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -33,7 +33,7 @@ func TestAddNormalizesTheEmailAndGetIgnoresCase(t *testing.T) {
 	if err != nil || got == nil {
 		t.Fatalf("Get() = %#v, %v; want the user", got, err)
 	}
-	if got.Email != "alice@example.com" || got.Role != user.RoleMember || got.AddedBy != "admin@example.com" {
+	if got.Email != "alice@example.com" || got.Role != "" || got.AddedBy != "admin@example.com" {
 		t.Fatalf("Get() = %#v, want the normalized, stored user", got)
 	}
 	if missing, err := store.Get(ctx, "nobody@example.com"); err != nil || missing != nil {
@@ -72,7 +72,7 @@ func TestSetRoleRemoveAndCountPersistAcrossANewStore(t *testing.T) {
 	ctx := context.Background()
 	store := newStore(t, dataDir)
 	for _, email := range []string{"carol@example.com", "alice@example.com", "bob@example.com"} {
-		if err := store.Add(ctx, user.User{Email: email, Role: user.RoleMember}); err != nil {
+		if err := store.Add(ctx, user.User{Email: email, Role: ""}); err != nil {
 			t.Fatal(err)
 		}
 	}

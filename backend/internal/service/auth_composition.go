@@ -65,10 +65,10 @@ func NewSetupTokenIssuer(
 	return serviceauth.NewSetupTokenIssuer(ctx, store, userDirectoryAdapter{users: users}, ttl)
 }
 
-// newAuth composes the complete runtime auth service. Operator commands use
+// NewAuth composes the complete runtime auth service. Operator commands use
 // NewSetupTokenIssuer instead so they do not initialize unrelated auth
 // capabilities or create a session key.
-func newAuth(
+func NewAuth(
 	ctx context.Context,
 	store AuthStore,
 	users *serviceuser.Service,
@@ -76,6 +76,7 @@ func newAuth(
 	twoFactor serviceauth.TwoFactorStore,
 	sessionRegistry serviceauth.SessionRegistryStore,
 	options AuthOptions,
+	auditOptions ...serviceauth.Option,
 ) (*serviceauth.Service, error) {
 	if store == nil {
 		return nil, errors.New("authentication store is required")
@@ -111,5 +112,6 @@ func newAuth(
 			SessionHistoryLimit: options.SessionHistoryLimit,
 			SetupTokenTTL:       options.SetupTokenTTL,
 		},
+		auditOptions...,
 	)
 }

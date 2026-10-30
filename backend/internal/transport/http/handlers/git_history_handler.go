@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
@@ -71,6 +72,13 @@ func (h *ChatHandler) handleHistoryCheckout(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	checkout, err := h.history.Checkout(r.Context(), meta.Cwd, input)
+	recordAudit(
+		h.audit, r,
+		serviceaudit.ActionWorkspaceGitCheckout,
+		auditWorkspaceTarget(meta),
+		serviceaudit.Meta{"repo": input.Repo, "sha": input.SHA, "projectId": string(meta.ProjectID)},
+		err,
+	)
 	if err != nil {
 		sendGitHistoryCheckoutError(w, err)
 		return

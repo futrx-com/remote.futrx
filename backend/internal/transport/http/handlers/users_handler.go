@@ -63,8 +63,8 @@ func (h *UsersHandler) HandleCollection(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		role := serviceuser.NormalizeRole(body.Role)
-		if role == "" {
-			httptransport.SendErr(w, http.StatusBadRequest, "role must be 'admin' or 'member'")
+		if !serviceuser.ValidRole(role) {
+			httptransport.SendErr(w, http.StatusBadRequest, "role must be 'admin' or empty")
 			return
 		}
 		u, err := h.users.Add(r.Context(), body.Email, role, callerEmail)
@@ -110,8 +110,8 @@ func (h *UsersHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		role := serviceuser.NormalizeRole(body.Role)
-		if role == "" {
-			httptransport.SendErr(w, http.StatusBadRequest, "role must be 'admin' or 'member'")
+		if !serviceuser.ValidRole(role) {
+			httptransport.SendErr(w, http.StatusBadRequest, "role must be 'admin' or empty")
 			return
 		}
 		if h.auth.IsLocalAdmin(email) && role != serviceuser.RoleAdmin {

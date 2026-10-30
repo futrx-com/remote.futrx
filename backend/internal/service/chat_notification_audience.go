@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
@@ -36,7 +37,11 @@ func (a chatNotificationAudience) recipients(
 		return userEmails(users), nil
 	}
 
-	members, err := a.projects.ListAccess(ctx, serviceproject.ID(meta.ProjectID))
+	// Notification fan-out runs from background work with no authenticated
+	// actor; it reads the member list on the system's behalf.
+	members, err := a.projects.ListAccess(
+		servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(meta.ProjectID),
+	)
 	if err != nil {
 		return nil, err
 	}

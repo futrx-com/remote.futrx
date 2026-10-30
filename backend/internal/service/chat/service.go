@@ -6,12 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 type Service struct {
+	accountAccess        AccountAccess
+	selectionMu          sync.Mutex
+	authorizer           Authorizer
+	audit                audit.Recorder
 	repo                 Repository
 	transcriptEvents     TranscriptEventSource
 	transcriptWindow     TranscriptEventWindowSource
@@ -62,6 +68,12 @@ func WithProviderPolicy(policy ProviderPolicy) Option {
 	}
 }
 
+// WithAudit records chat creation and deletion. Deleting a chat destroys its
+// event log, so it belongs in the trail even though chats hold no secrets.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
 func New(
 	repo Repository,
 	projects ProjectResolver,
@@ -70,15 +82,31 @@ func New(
 	options ...Option,
 ) *Service {
 	service := &Service{
-		repo:     repo,
-		projects: projects,
-		tmux:     tmux,
-		runs:     runs,
+		repo:       repo,
+		authorizer: systemOnlyAuthorizer{},
+		projects:   projects,
+		tmux:       tmux,
+		runs:       runs,
+		audit:      audit.Nop{},
 	}
 	for _, option := range options {
-		option(service)
+		if option != nil {
+			option(service)
+		}
 	}
 	return service
+}
+
+func (s *Service) recordChat(ctx context.Context, action string, meta Meta, id ID, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	target := audit.Target{Type: audit.TargetChat, ID: string(id), Name: meta.Title}
+	entryMeta := audit.Meta{}
+	if meta.ProjectID != "" {
+		entryMeta["projectId"] = string(meta.ProjectID)
+	}
+	s.audit.Record(ctx, audit.Result(action, target, entryMeta, err))
 }
 
 func (s *Service) List(ctx context.Context) ([]Meta, error) {
@@ -104,6 +132,15 @@ func (s *Service) Get(ctx context.Context, id ID) (Meta, error) {
 }
 
 func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
+	if err := s.requireCreate(ctx, in.ProjectID); err != nil {
+		return Meta{}, err
+	}
+	meta, err := s.create(ctx, in)
+	s.recordChat(ctx, audit.ActionChatCreate, meta, meta.ID, err)
+	return meta, err
+}
+
+func (s *Service) create(ctx context.Context, in CreateInput) (Meta, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
 		title = "New chat"
@@ -118,6 +155,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (Meta, error) {
 		return Meta{}, ErrInvalidProvider
 	}
 
+	if err := s.requireAccount(ctx, provider, in.AccountID); err != nil {
+		return Meta{}, err
+	}
 	cwd := strings.TrimSpace(in.Cwd)
 	if cwd == "" && in.ProjectID != "" && s.projects != nil {
 		projectCwd, err := s.projects.WorkspaceForProject(ctx, in.ProjectID)
@@ -167,6 +207,12 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	}
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireCreate(ctx, src.ProjectID); err != nil {
+		return Meta{}, err
+	}
+	if err := s.requireAccount(ctx, src.Provider, src.AccountID); err != nil {
 		return Meta{}, err
 	}
 	if !s.validProviderScope(src.Provider, src.ProjectID) {
@@ -233,6 +279,10 @@ func (s *Service) appendCopiedEvent(ctx context.Context, id ID, event Event) (Ev
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
+	// Serialize selections so the authorization preflight and update see the
+	// same provider/account pair. Run-side credential checks remain independent.
+	s.selectionMu.Lock()
+	defer s.selectionMu.Unlock()
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
@@ -247,6 +297,24 @@ func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, erro
 		nextProvider, valid = s.providerForScope(*in.Provider, current.ProjectID)
 		if !valid {
 			return Meta{}, ErrInvalidProvider
+		}
+	}
+
+	if in.Provider != nil || in.AccountID != nil {
+		current, err := s.repo.Get(ctx, id)
+		if err != nil {
+			return Meta{}, err
+		}
+		selectedProvider, selectedID := current.Provider, current.AccountID
+		if in.Provider != nil && nextProvider != current.Provider {
+			selectedProvider = nextProvider
+			selectedID = ""
+		}
+		if in.AccountID != nil {
+			selectedID = strings.TrimSpace(*in.AccountID)
+		}
+		if err := s.requireAccount(ctx, selectedProvider, selectedID); err != nil {
+			return Meta{}, err
 		}
 	}
 
@@ -374,6 +442,13 @@ func (s *Service) withRunning(meta Meta) Meta {
 }
 
 func (s *Service) Delete(ctx context.Context, id ID) error {
+	existing, _ := s.repo.Get(ctx, id)
+	err := s.delete(ctx, id)
+	s.recordChat(ctx, audit.ActionChatDelete, existing, id, err)
+	return err
+}
+
+func (s *Service) delete(ctx context.Context, id ID) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}

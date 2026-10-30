@@ -1,3 +1,4 @@
+import { useEffectivePermissions } from "../../../state/hooks/permissions/useEffectivePermissions";
 import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";
 import { useDismissKeyDown } from "../../../state/hooks/shared/useDismissKeyDown.ts";
@@ -56,6 +57,8 @@ export function WorkspaceActions({
   showHistory: boolean;
   orientation: "horizontal" | "vertical";
 }) {
+  const permissions = useEffectivePermissions(projectId);
+  const permissionPrefix = projectId ? "workspace." : "workspace.host";
   const workspacePath = cwd && cwd !== "~" ? cwd : DEFAULT_WORKSPACE_PATH;
   const tooltipPlacement = orientation === "horizontal" ? "below" : "left";
 
@@ -87,7 +90,7 @@ export function WorkspaceActions({
           tooltipPlacement={tooltipPlacement}
         />
       ))}
-      {showHistory && (
+      {showHistory && permissions[permissionPrefix + "git.use"] && (
         <WorkspaceAction
           icon={<Clock aria-hidden="true" focusable="false" class={actionIcon} />}
           onClick={onToggleHistory}
@@ -99,7 +102,7 @@ export function WorkspaceActions({
           tooltipPlacement={tooltipPlacement}
         />
       )}
-      <WorkspaceAction
+      {permissions[permissionPrefix + "files.use"] && (<WorkspaceAction
         icon={<Folder aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleFiles}
         label={filesOpen ? "Close workspace files" : "Workspace files"}
@@ -109,7 +112,8 @@ export function WorkspaceActions({
         action="files"
         tooltipPlacement={tooltipPlacement}
       />
-      <WorkspaceAction
+      )}
+      {permissions[permissionPrefix + "browser.use"] && (<WorkspaceAction
         icon={<Monitor aria-hidden="true" focusable="false" class={actionIcon} />}
         onClick={onToggleBrowser}
         label={browserOpen ? "Close browser preview" : "Browser preview"}
@@ -118,7 +122,7 @@ export function WorkspaceActions({
         controls="workspace-browser-pane"
         action="browser"
         tooltipPlacement={tooltipPlacement}
-      />
+      />)}
     </div>
   );
 }

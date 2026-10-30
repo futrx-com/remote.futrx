@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	"sync"
 	"time"
 )
@@ -43,25 +45,27 @@ type Clock func() int64
 
 // Service is the policy layer for installable applications.
 type Service struct {
-	registry       Registry
-	store          Store
-	installer      Installer
-	projects       ProjectContainers
-	ports          PortAllocator
-	backends       BackendHost
-	packages       PackageCatalog
-	lifecycle      ApplicationLifecyclePublisher
-	eventSource    EventSource
-	eventContext   context.Context
-	eventRouter    *applicationEventRouter
-	agentRuntime   *agentRuntime
-	agentTools     *applicationTools
-	backgroundOnce sync.Once
-	background     *backgroundBackends
-	instanceLocks  instanceLockSet
-	installSlots   instanceLockSet
-	installRuns    installRuns
-	now            Clock
+	audit               audit.Recorder
+	workspaceAuthorizer workspaceaccess.Authorizer
+	registry            Registry
+	store               Store
+	installer           Installer
+	projects            ProjectContainers
+	ports               PortAllocator
+	backends            BackendHost
+	packages            PackageCatalog
+	lifecycle           ApplicationLifecyclePublisher
+	eventSource         EventSource
+	eventContext        context.Context
+	eventRouter         *applicationEventRouter
+	agentRuntime        *agentRuntime
+	agentTools          *applicationTools
+	backgroundOnce      sync.Once
+	background          *backgroundBackends
+	instanceLocks       instanceLockSet
+	installSlots        instanceLockSet
+	installRuns         installRuns
+	now                 Clock
 }
 
 // Option configures optional service dependencies. Backend backend hosting is

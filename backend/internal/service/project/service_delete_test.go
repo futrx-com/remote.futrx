@@ -40,6 +40,7 @@ func TestDeleteRemovesAssociatedChats(t *testing.T) {
 		ContainerDependencies{},
 		nil,
 		nil,
+		WithAuthorizer(allowAllAuthorizer{}),
 		WithChatCleanup(chats),
 	)
 
@@ -62,6 +63,7 @@ func TestDeletePreservesProjectWhenChatCleanupFails(t *testing.T) {
 		ContainerDependencies{},
 		nil,
 		nil,
+		WithAuthorizer(allowAllAuthorizer{}),
 		WithChatCleanup(&deleteTestChatCleanup{err: wantErr}),
 	)
 

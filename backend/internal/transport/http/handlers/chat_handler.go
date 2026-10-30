@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -22,6 +24,7 @@ type ChatHandler struct {
 	auth    *serviceauth.Service
 	files   *serviceworkspacefiles.Service
 	history *servicegithistory.Service
+	audit   serviceaudit.Recorder
 }
 
 func NewChatHandler(
@@ -38,6 +41,19 @@ func NewChatHandler(
 		files:   files,
 		history: history,
 	}
+}
+
+// WithAudit records the workspace actions this handler owns directly: file
+// downloads, archive downloads, and git checkouts.
+func (h *ChatHandler) WithAudit(recorder serviceaudit.Recorder) *ChatHandler {
+	h.audit = recorder
+	return h
+}
+
+// auditWorkspaceTarget labels a workspace action by the chat it came through,
+// keeping the project id in meta so a query can pivot either way.
+func auditWorkspaceTarget(meta servicechat.Meta) serviceaudit.Target {
+	return serviceaudit.Target{Type: serviceaudit.TargetChat, ID: string(meta.ID), Name: meta.Title}
 }
 
 func (h *ChatHandler) RegisterRoutes(mux *http.ServeMux) {
@@ -356,6 +372,8 @@ func int64Query(r *http.Request, key string, fallback int64) int64 {
 
 func sendChatError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
+		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),

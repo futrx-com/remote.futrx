@@ -391,7 +391,7 @@ func (h *accountHarness) open(t *testing.T, configure ...func(*AccountConfig)) *
 	for _, apply := range configure {
 		apply(&config)
 	}
-	service, err := NewAccountVault(h.store).Open(context.Background(), config)
+	service, err := NewAccountVault(h.store, allowAccountUse{}).Open(context.Background(), config)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -1261,11 +1261,11 @@ func TestAccountServiceRunCredentialsDoNotSwitchTheSharedHost(t *testing.T) {
 	legacyRelease := h.beginRun(t)
 	defer legacyRelease()
 
-	work, ok, err := h.service.CredentialForRun("work")
+	work, ok, err := h.service.CredentialForRun(context.Background(), "work")
 	if err != nil || !ok {
 		t.Fatalf("CredentialForRun(work) = (%#v, %t, %v)", work, ok, err)
 	}
-	home, ok, err := h.service.CredentialForRun("home")
+	home, ok, err := h.service.CredentialForRun(context.Background(), "home")
 	if err != nil || !ok {
 		t.Fatalf("CredentialForRun(home) during another run = (%#v, %t, %v)", home, ok, err)
 	}
@@ -1279,7 +1279,7 @@ func TestAccountServiceRunCredentialsDoNotSwitchTheSharedHost(t *testing.T) {
 
 func TestAccountServiceCapturesAnIsolatedRunIntoItsOwnAccount(t *testing.T) {
 	h := newAccountHarness(t, twoAccounts(), testCredential("w", "t1"))
-	run, ok, err := h.service.CredentialForRun("home")
+	run, ok, err := h.service.CredentialForRun(context.Background(), "home")
 	if err != nil || !ok {
 		t.Fatalf("CredentialForRun(home) = (%#v, %t, %v)", run, ok, err)
 	}
@@ -1457,8 +1457,8 @@ func TestAccountServiceCaptureAfterRunStoreFailureKeepsSavedLogin(t *testing.T) 
 }
 
 func TestNewAccountVaultWithoutStore(t *testing.T) {
-	if vault := NewAccountVault(nil); vault != nil {
-		t.Fatalf("NewAccountVault(nil) = %#v, want nil", vault)
+	if vault := NewAccountVault(nil, allowAccountUse{}); vault != nil {
+		t.Fatalf("NewAccountVault(nil, allowAccountUse{}) = %#v, want nil", vault)
 	}
 }
 
@@ -1475,7 +1475,7 @@ func TestAccountVaultOpenRejectsIncompleteConfig(t *testing.T) {
 		h := newAccountFakes(twoAccounts(), testCredential("w", "t1"))
 		config := h.config()
 		test.clear(&config)
-		if service, err := NewAccountVault(h.store).Open(context.Background(), config); err == nil || service != nil {
+		if service, err := NewAccountVault(h.store, allowAccountUse{}).Open(context.Background(), config); err == nil || service != nil {
 			t.Errorf("Open without %s = (%v, %v), want an error", test.name, service, err)
 		}
 		if h.store.loads != 0 {
@@ -1489,7 +1489,7 @@ func TestAccountVaultOpenReturnsStoreErrors(t *testing.T) {
 	loadErr := errors.New("corrupt accounts file")
 	h.store.loadErr = loadErr
 
-	if _, err := NewAccountVault(h.store).Open(context.Background(), h.config()); !errors.Is(err, loadErr) {
+	if _, err := NewAccountVault(h.store, allowAccountUse{}).Open(context.Background(), h.config()); !errors.Is(err, loadErr) {
 		t.Fatalf("Open with a failing store = %v", err)
 	}
 	if h.credentials.writeCount() != 0 {
