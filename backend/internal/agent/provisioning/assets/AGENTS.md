@@ -62,8 +62,14 @@ runs; do not ask users to add it as a project secret.
 above are host bind-mounts and survive container replacement. Other paths
 (`/usr/local/`, unmounted paths under `/root/`, and packages you apt-install)
 are gone if the container is recreated. If you install a tool the project
-needs again later, append the install line to `/workspace/setup.sh` so a fresh
-container can rebootstrap with `bash /workspace/setup.sh`.
+needs again later, append the install line to `/workspace/setup.sh` — the
+platform replays it automatically as container root from `/workspace` after
+reprovisioning. Make it executable (`chmod +x`) to opt in, and keep it
+idempotent. Successful setup is remembered inside the container; changing the
+script replays it on the next Start or Restart. Failures appear as project
+errors; fix the script and Start or Restart to retry. Project secrets are
+available to setup, and each run has a 15-minute budget. Setup uses `bash -e`;
+handle expected command failures explicitly.
 
 ## Secrets
 

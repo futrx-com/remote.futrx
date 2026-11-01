@@ -108,6 +108,7 @@ jobs:
           bash infra/tests/host-apt-test.sh
           bash infra/tests/caddy-package-test.sh
           bash infra/tests/remote-cli-test.sh
+          bash infra/tests/root-linger-test.sh
           bash infra/tests/dns-resolve-test.sh
           bash infra/tests/container-api-dns-test.sh
           bash infra/tests/container-forwarding-test.sh

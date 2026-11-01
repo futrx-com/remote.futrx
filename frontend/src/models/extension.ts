@@ -5,7 +5,7 @@ import type {
   AppInstance,
   AppScope,
 } from "./application";
-import type { FileOpenRequest } from "./files";
+import type { FileOpenRequest, FileOpenResult } from "./files";
 
 export interface ExtensionSlotCatalog {
   sidebarHeaderActions: "sidebar.header.actions";
@@ -117,13 +117,28 @@ export interface ExtensionDrawerTarget {
 /** The line under a drawer's title, and the dot beside it. */
 export interface ExtensionDrawerStatus {
   label: string;
-  /** Green dot when true, grey when false. */
-  active: boolean;
+  /** Green dot when true, grey when false, no dot when omitted. */
+  active?: boolean;
+}
+
+/** A button in a drawer's header, drawn before the close button. */
+export interface ExtensionDrawerAction {
+  /** Lowercase letters, digits and hyphens; unique within the drawer. */
+  id: string;
+  label: string;
+  /** Inline SVG. */
+  icon: string;
+  onClick: () => void;
+  disabled?: boolean;
+  /** Swap the icon for a spinner. */
+  busy?: boolean;
 }
 
 export interface ExtensionDrawerContext extends ExtensionDrawerTarget {
   /** Replace the header's status line; `null` removes it. */
   setStatus: (status: ExtensionDrawerStatus | null) => void;
+  /** Replace the header's buttons; `null` removes them. */
+  setActions: (actions: ExtensionDrawerAction[] | null) => void;
 }
 
 export type ExtensionDrawerPredicate = (target: ExtensionDrawerTarget) => boolean;
@@ -316,6 +331,9 @@ export interface ExtensionApi {
     url: (assetPath: string) => string;
   };
   files: {
+    open: (request: FileOpenRequest & { chatId: string }) => FileOpenResult;
+    /** The editor URL `open` would use for the file, or null. */
+    editorUrl: (request: FileOpenRequest & { chatId: string }) => string | null;
     registerOpener: (open: (request: FileOpenRequest) => string | null) => () => void;
   };
   backend: ExtensionBackendApi;

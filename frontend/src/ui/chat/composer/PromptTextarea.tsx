@@ -23,6 +23,9 @@ export function PromptTextarea({
   // the default composer handling below is skipped.
   onKeyDown?: (event: KeyboardEvent) => boolean;
 }) {
+  // Touch keyboards need Return for multiline prompts; sending has its own button.
+  const touchInput = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+
   return (
     <textarea
       ref={textareaRef}
@@ -33,7 +36,7 @@ export function PromptTextarea({
         if (onKeyDown?.(event)) return;
         if (
           event.key === "Enter" &&
-          (event.ctrlKey || event.metaKey) &&
+          (!touchInput || event.ctrlKey || event.metaKey) &&
           !event.shiftKey &&
           !event.isComposing
         ) {
@@ -43,8 +46,8 @@ export function PromptTextarea({
       }}
       onPaste={(event) => onPaste(event as ClipboardEvent)}
       rows={1}
-      enterkeyhint="enter"
-      aria-keyshortcuts="Control+Enter Meta+Enter"
+      enterkeyhint={touchInput ? "enter" : "send"}
+      aria-keyshortcuts={touchInput ? "Control+Enter Meta+Enter" : "Enter Control+Enter Meta+Enter"}
       autocomplete="off"
       autocapitalize="off"
       autocorrect="off"

@@ -15,22 +15,21 @@ the first nonempty returned URL wins in registry iteration order; there is no
 priority field or user-facing editor selection. Returning `null` or throwing
 allows the next opener to be tried; exceptions are logged.
 
-Core now passes project/workspace context from `ChatContainer` through the
-Files drawer, consults the registry for source/text files, and refreshes
-Markdown and attachment URLs when the opener set or active project changes.
-The shared workspace-link parser carries `:line[:column]`, translates eligible
-host workspace paths into `/workspace/...`, and rejects paths outside its
-current workspace checks. It does not perform filesystem realpath/symlink
-authorization; the target route must enforce file access.
+The optional [File Manager application](../../../applications/file-manager/README.md)
+uses `remote.files.open` with the drawer's project and chat context. Supported
+media opens in the shared viewer, text/code files use a matching opener, and
+other files download. Registering only an opener is sufficient; no header
+button is required.
 
-Media still uses the media viewer and archives/unsupported media download.
-Non-media requests with no matching opener use the download fallback. The Code
-Server migration removes the built-in IDE fallback. The Files drawer's
-availability selector currently also checks for a `chatHeaderActions` slot entry.
-An opener-only extension should be checked in the drawer separately from Markdown.
+Markdown and attachments use the same opener registry independently of File
+Manager. The workspace-link parser carries `:line[:column]`, translates eligible
+host paths into `/workspace/...`, and rejects paths outside the workspace.
+The destination HTTP route enforces filesystem containment and membership.
 
 ## Source and verification
 
+- [applications/file-manager/](../../../applications/file-manager/)
+- [frontend/src/services/files/openWorkspaceFile.ts](../../../frontend/src/services/files/openWorkspaceFile.ts)
 - [frontend/src/app/containers/ChatContainer.tsx](../../../frontend/src/app/containers/ChatContainer.tsx)
 - [frontend/src/app/extensions/extensionApi.ts](../../../frontend/src/app/extensions/extensionApi.ts)
 - [frontend/src/app/extensions/extensionHost.ts](../../../frontend/src/app/extensions/extensionHost.ts)
@@ -41,10 +40,7 @@ An opener-only extension should be checked in the drawer separately from Markdow
 - [frontend/src/services/files/fileService.ts](../../../frontend/src/services/files/fileService.ts)
 - [frontend/src/services/files/workspaceLinkService.test.ts](../../../frontend/src/services/files/workspaceLinkService.test.ts)
 - [frontend/src/services/files/workspaceLinkService.ts](../../../frontend/src/services/files/workspaceLinkService.ts)
-- [frontend/src/state/hooks/chat/useWorkspaceFileBrowser.ts](../../../frontend/src/state/hooks/chat/useWorkspaceFileBrowser.ts)
 - [frontend/src/state/hooks/chat/useWorkspaceFileUrl.ts](../../../frontend/src/state/hooks/chat/useWorkspaceFileUrl.ts)
-- [frontend/src/ui/chat/files/FileManagerDrawer.tsx](../../../frontend/src/ui/chat/files/FileManagerDrawer.tsx)
-- [frontend/src/ui/chat/files/FileTree.tsx](../../../frontend/src/ui/chat/files/FileTree.tsx)
 - [frontend/src/ui/chat/header/WorkspaceActions.tsx](../../../frontend/src/ui/chat/header/WorkspaceActions.tsx)
 - [frontend/src/ui/chat/markdown/Markdown.tsx](../../../frontend/src/ui/chat/markdown/Markdown.tsx)
 - [frontend/src/ui/chat/markdown/inlineParser.tsx](../../../frontend/src/ui/chat/markdown/inlineParser.tsx)

@@ -348,6 +348,46 @@ code, or resource data. Counts represent active reporting installations, not
 all installs: old, offline, cloned, and spoofed instances can make them
 incomplete or approximate.
 
+## Restoring project tools
+
+An executable `/workspace/setup.sh` runs as root inside its own project
+container, from `/workspace`, after the platform prepares the container. The
+project's stored environment values are passed to the script, including
+multiline secrets. Missing or non-executable scripts are skipped.
+
+Keep setup idempotent; `bash -e` propagates unhandled command failures. Each run
+has a 15-minute limit. Successful setup records the script checksum at
+`/var/lib/remote/user-setup.sha256` inside the replaceable container filesystem.
+The same script is skipped on later starts; a changed script or replacement
+container runs it again. Concurrent attempts serialize inside the container.
+
+A setup failure leaves the container available for repair and marks the
+project as errored with a bounded error message. Fix the script or credentials,
+then use Start or Restart to retry. Failed attempts never record success.
+Setup output capture retains at most 64 KiB; displayed failures retain at most
+4 KiB of output and redact supplied secret values.
+
+## Container creation reliability
+
+Fresh installs and full infrastructure updates enable lingering for root's
+systemd user manager. This keeps snap-packaged LXD client commands alive when
+an SSH session logs out while a container is being created. If `loginctl` is
+unavailable or enabling linger fails, installation continues with a warning.
+Application-only deployments do not apply this host setting.
+
+`FUTRX_LAUNCH_TIMEOUT` bounds the `lxc init` image-unpack operation. It defaults
+to 10 minutes; starting the container retains its separate timeout. On slow
+storage, set a positive Go duration through `systemctl edit remote.futrx.service`:
+
+```ini
+[Service]
+Environment=FUTRX_LAUNCH_TIMEOUT=20m
+```
+
+Run `systemctl daemon-reload` and `systemctl restart remote.futrx.service` to
+apply it. Unset, invalid, zero, or negative values use the 10-minute default.
+An earlier deadline or cancellation from the caller still takes precedence.
+
 ## Agent capability discovery timeout
 
 Capability discovery probes all registered agents compatible with the selected

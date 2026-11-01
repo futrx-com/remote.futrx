@@ -51,6 +51,12 @@ type ContainerEnvironment interface {
 	ApplyDiff(ctx context.Context, containerName string, set map[string]string, unset []string) error
 }
 
+// ContainerSetup restores project tooling after mounts and secrets are ready.
+// Implementations skip completed setup and retain failures for a later retry.
+type ContainerSetup interface {
+	Ensure(ctx context.Context, containerName string, environment map[string]string) error
+}
+
 // ContainerInspector returns a best-effort diagnostic snapshot.
 type ContainerInspector interface {
 	Inspect(ctx context.Context, containerName string) (ContainerInspect, error)
@@ -85,4 +91,5 @@ type ContainerDependencies struct {
 	Network     ContainerNetwork
 	Listeners   ContainerListeners
 	Browser     ContainerBrowser
+	Setup       ContainerSetup
 }

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspace files</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="search-bar">
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          id="search"
+          type="text"
+          placeholder="Search all files..."
+          aria-label="Search all files"
+          autocomplete="off"
+        />
+        <button id="clear" type="button" aria-label="Clear search" hidden></button>
+      </div>
+    </div>
+    <main id="entries" class="scrollbar-thin" aria-live="polite"></main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

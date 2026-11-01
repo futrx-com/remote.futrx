@@ -10,7 +10,20 @@
 #   - $INFRA_DIR, $INSTALL_DIR, $HOSTNAME, $SERVICE_PORT
 set -euo pipefail
 
+ensure_root_linger() {
+    # Snap's lxc client can attach to root's user manager during an SSH session.
+    # Keep that manager alive after logout so in-flight lxc init calls survive.
+    if ! command -v loginctl >/dev/null 2>&1; then
+        warn "loginctl is unavailable; could not enable root linger for LXD commands."
+        return 0
+    fi
+    if ! loginctl enable-linger root; then
+        warn "Could not enable root linger; SSH logout may interrupt LXD commands."
+    fi
+}
+
 step_04_backend_svc() {
+ensure_root_linger
 SERVICE_NAME="remote.futrx.service"
 SERVICE_UNIT_PATH="/etc/systemd/system/$SERVICE_NAME"
 LEGACY_SERVICE_NAME="remote.futrx.dev.service"

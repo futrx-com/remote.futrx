@@ -8,7 +8,6 @@ import { MediaViewerOverlay } from "../../ui/chat/files/MediaViewerOverlay";
 import type { ChatComposerProps } from "../../ui/chat/composer/ChatComposer";
 import { WorkspaceActions } from "../../ui/chat/header/WorkspaceActions";
 import { HistoryDrawer } from "../../ui/chat/history/HistoryDrawer";
-import { FileManagerDrawer } from "../../ui/chat/files/FileManagerDrawer";
 import { chatAttachmentService } from "../../services/chat/chatAttachmentService.ts";
 import { useChat } from "../../state/hooks/chat/useChat";
 import { useChatBrowserController } from "../../state/hooks/chat/useChatBrowserController";
@@ -125,21 +124,17 @@ export function ChatContainer({
     })),
     onToggleBrowser: browser.browserOpen ? browser.closeBrowserDrawer : drawers.openBrowser,
     onToggleHistory: drawers.historyOpen ? drawers.closeHistory : drawers.openHistory,
-    onToggleFiles: drawers.filesOpen ? drawers.closeFiles : drawers.openFiles,
     browserOpen: browser.browserOpen,
     historyOpen: drawers.historyOpen,
-    filesOpen: drawers.filesOpen,
     showHistory: hasRepos,
   };
   const activePane = drawers.historyOpen
     ? "history"
-    : drawers.filesOpen
-      ? "files"
-        : openExtensionDrawer
-          ? extensionDrawerState.paneName(openExtensionDrawer.id)
-          : browser.browserOpen
-            ? "browser"
-            : null;
+    : openExtensionDrawer
+      ? extensionDrawerState.paneName(openExtensionDrawer.id)
+      : browser.browserOpen
+        ? "browser"
+        : null;
   const previousMobilePane = useRef<typeof activePane>(null);
 
   useEffect(() => {
@@ -244,13 +239,6 @@ export function ChatContainer({
           chatId={chat.id}
           open={drawers.historyOpen}
           onClose={drawers.closeHistory}
-        />
-        <FileManagerDrawer
-          chatId={chat.id}
-          projectId={chat.projectId}
-          cwd={chat.cwd ?? ""}
-          open={drawers.filesOpen}
-          onClose={drawers.closeFiles}
         />
         <BrowserDrawer
           open={browser.browserOpen}

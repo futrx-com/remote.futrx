@@ -54,6 +54,9 @@ type CopiedEventAppender interface {
 	AppendCopiedEvent(ctx context.Context, id ID, event Event) (Event, error)
 }
 
+// ProjectResolver answers where a project's workspace lives. It reports
+// ErrProjectNotFound when the project is gone, which callers distinguish from a
+// workspace that could not be read.
 type ProjectResolver interface {
 	WorkspaceForProject(ctx context.Context, id ProjectID) (string, error)
 }

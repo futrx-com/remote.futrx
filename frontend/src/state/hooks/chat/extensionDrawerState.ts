@@ -1,4 +1,7 @@
 import { EXTENSION_DRAWER_WIDTH } from "../../../config/extensions.ts";
+import type { ExtensionDrawerAction } from "../../../models/extension.ts";
+
+const ACTION_ID = /^[a-z0-9-]+$/;
 
 export interface ExtensionDrawerWidthLimits {
   defaultWidth: number;
@@ -35,5 +38,36 @@ export const extensionDrawerState = {
     return Number.isFinite(width) && width > 0
       ? extensionDrawerState.clampWidth(width, limits.minWidth)
       : limits.defaultWidth;
+  },
+
+  /** Header buttons an application asked for, minus malformed or repeated ones. */
+  validActions(actions: ExtensionDrawerAction[] | null): ExtensionDrawerAction[] {
+    if (!Array.isArray(actions)) return [];
+    const seen = new Set<string>();
+    const valid: ExtensionDrawerAction[] = [];
+    for (const action of actions) {
+      if (
+        !action ||
+        typeof action.id !== "string" ||
+        !ACTION_ID.test(action.id) ||
+        seen.has(action.id) ||
+        typeof action.label !== "string" ||
+        typeof action.icon !== "string" ||
+        typeof action.onClick !== "function"
+      ) {
+        console.error("[extensions] invalid drawer action", action);
+        continue;
+      }
+      seen.add(action.id);
+      valid.push({
+        id: action.id,
+        label: action.label,
+        icon: action.icon,
+        onClick: action.onClick,
+        disabled: Boolean(action.disabled),
+        busy: Boolean(action.busy),
+      });
+    }
+    return valid;
   },
 };

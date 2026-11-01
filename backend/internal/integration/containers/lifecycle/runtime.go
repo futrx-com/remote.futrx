@@ -16,14 +16,14 @@ import (
 )
 
 const (
-	// TODO: We will need to investigate how to hook into a callback instead of increasing the timeout
-	launchTimeout  = 10 * time.Minute
-	migrateTimeout = 5 * time.Minute
-	startTimeout   = 30 * time.Second
-	stopTimeout    = 30 * time.Second
-	restartTimeout = 60 * time.Second
-	deleteTimeout  = 5 * time.Minute
-	queryTimeout   = 10 * time.Second
+	// Image unpacking on slow disks can take several minutes.
+	defaultLaunchTimeout = 10 * time.Minute
+	migrateTimeout       = 5 * time.Minute
+	startTimeout         = 30 * time.Second
+	stopTimeout          = 30 * time.Second
+	restartTimeout       = 60 * time.Second
+	deleteTimeout        = 5 * time.Minute
+	queryTimeout         = 10 * time.Second
 
 	// initFailureOutputBytes bounds the `lxc init` output kept in an error.
 	// That error becomes the project's status message, and a failed unpack
@@ -33,7 +33,8 @@ const (
 
 // Client translates lifecycle operations into LXD CLI calls.
 type Client struct {
-	runner command.Runner
+	runner        command.Runner
+	launchTimeout time.Duration
 }
 
 type deleteAttempt struct {
@@ -42,8 +43,11 @@ type deleteAttempt struct {
 	timedOut bool
 }
 
-func NewClient(runner command.Runner) *Client {
-	return &Client{runner: runner}
+func NewClient(runner command.Runner, launchTimeout time.Duration) *Client {
+	if launchTimeout <= 0 {
+		launchTimeout = defaultLaunchTimeout
+	}
+	return &Client{runner: runner, launchTimeout: launchTimeout}
 }
 
 func (c *Client) Available() bool {
@@ -53,7 +57,7 @@ func (c *Client) Available() bool {
 // Init creates a stopped container. Project storage is attached before Start,
 // so a container can never become RUNNING without its durable mounts.
 func (c *Client) Init(ctx context.Context, image, containerName string) error {
-	if out, err := command.RunWithTimeout(ctx, c.runner, launchTimeout, "init", image, containerName); err != nil {
+	if out, err := command.RunWithTimeout(ctx, c.runner, c.launchTimeout, "init", image, containerName); err != nil {
 		if strings.Contains(out, "No space left on device") {
 			return fmt.Errorf("%w: the LXD storage pool ran out of space while unpacking the base image", serviceproject.ErrInsufficientStorage)
 		}

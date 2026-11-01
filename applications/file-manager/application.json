@@ -1,0 +1,24 @@
+{
+  "id": "file-manager",
+  "name": "File Manager",
+  "description": "Browse, search, and download files from a project workspace.",
+  "category": "development",
+  "version": "4",
+  "icon": "folder",
+  "scopes": ["project", "global"],
+  "uninstall": "infra/uninstall.sh",
+  "service": {
+    "name": "remote-file-manager",
+    "description": "Project workspace file manager",
+    "command": ["/usr/local/bin/file-manager", "--port", "8844"],
+    "restart": "on-failure",
+    "restartSec": 2
+  },
+  "web": {
+    "port": 8844,
+    "subdomain": "files"
+  },
+  "ui": {
+    "entry": "scripts/main.js"
+  }
+}

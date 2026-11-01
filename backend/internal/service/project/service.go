@@ -18,6 +18,7 @@ type Service struct {
 	containerInspector ContainerInspector
 	containerNetwork   ContainerNetwork
 	containerListeners ContainerListeners
+	containerSetup     ContainerSetup
 
 	// access owns per-project membership and email normalization.
 	access *accessList
@@ -58,6 +59,7 @@ func New(
 		containerInspector: containers.Inspector,
 		containerNetwork:   containers.Network,
 		containerListeners: containers.Listeners,
+		containerSetup:     containers.Setup,
 		access:             newAccessList(access),
 		secrets:            newSecretStore(secrets, containers.Environment),
 		browsers:           newAgentBrowsers(containers.Browser, repo),
@@ -194,6 +196,9 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 		// (delete + relaunch with secrets already stored).
 		if syncErr := s.secrets.syncContainer(ctx, m.ID, m.ContainerName); syncErr != nil {
 			log.Printf("projects: sync env to %s after launch: %v", m.ContainerName, syncErr)
+		}
+		if err := s.ensureUserSetup(ctx, m); err != nil {
+			return s.repo.SetStatus(ctx, m.ID, StatusError, err.Error())
 		}
 	}
 	return s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
@@ -383,6 +388,9 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 				}
 			}
 		}
+		if err := s.ensureUserSetup(ctx, m); err != nil {
+			return s.setStartError(ctx, id, err)
+		}
 	}
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")
 }
@@ -435,7 +443,25 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 	if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 		log.Printf("projects: sync env to %s after upgrade: %v", m.ContainerName, syncErr)
 	}
+	if err := s.ensureUserSetup(ctx, m); err != nil {
+		return s.setStartError(ctx, id, err)
+	}
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")
+}
+
+func (s *Service) ensureUserSetup(ctx context.Context, m Meta) error {
+	if s.containerSetup == nil {
+		return nil
+	}
+	secrets, err := s.secrets.list(ctx, m.ID)
+	if err != nil {
+		return fmt.Errorf("load project setup environment: %w", err)
+	}
+	environment := make(map[string]string, len(secrets))
+	for _, secret := range secrets {
+		environment[secret.Key] = secret.Value
+	}
+	return s.containerSetup.Ensure(ctx, m.ContainerName, environment)
 }
 
 // setStartError keeps the persisted project status useful for the UI while
@@ -493,6 +519,9 @@ func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
 		}
 		if err := s.containerLifecycle.Restart(ctx, m.ContainerName); err != nil {
 			return s.repo.SetStatus(ctx, id, StatusError, err.Error())
+		}
+		if err := s.ensureUserSetup(ctx, m); err != nil {
+			return s.setStartError(ctx, id, err)
 		}
 	}
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")

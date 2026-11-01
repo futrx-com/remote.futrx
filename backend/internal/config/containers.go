@@ -17,6 +17,7 @@ import (
 	containernetwork "github.com/futrx-com/remote.futrx.com/internal/integration/containers/network"
 	containerresources "github.com/futrx-com/remote.futrx.com/internal/integration/containers/resources"
 	containerruntimeassets "github.com/futrx-com/remote.futrx.com/internal/integration/containers/runtimeassets"
+	containerusersetup "github.com/futrx-com/remote.futrx.com/internal/integration/containers/usersetup"
 	containerworkspace "github.com/futrx-com/remote.futrx.com/internal/integration/containers/workspace"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/hostfs"
 	servicebrowser "github.com/futrx-com/remote.futrx.com/internal/service/container/browser"
@@ -48,6 +49,7 @@ type ContainerStack struct {
 	Images        *serviceimage.Builder
 	AppInstaller  *containerapplications.Installer
 	AppPorts      *containerapplications.HostPortAllocator
+	UserSetup     *containerusersetup.Provisioner
 }
 
 // ContainerStackOptions supplies presentation and installation-specific
@@ -75,6 +77,7 @@ func (s ContainerStack) ProjectDependencies() serviceproject.ContainerDependenci
 		Network:     s.Network,
 		Listeners:   s.Listeners,
 		Browser:     s.Browser,
+		Setup:       s.UserSetup,
 	}
 }
 
@@ -131,7 +134,7 @@ func NewContainerStack(
 	)
 	resources := containerresources.NewManager(runner)
 	lifecycle := servicelifecycle.NewService(
-		containerlifecycle.NewClient(runner),
+		containerlifecycle.NewClient(runner, envDuration("FUTRX_LAUNCH_TIMEOUT", 0)),
 		serviceimage.Alias,
 		hostfs.NewWorkspacePreparer(hostMappedUID, hostMappedUID),
 		resources,
@@ -173,5 +176,6 @@ func NewContainerStack(
 		Images:        images,
 		AppInstaller:  appInstaller,
 		AppPorts:      appPorts,
+		UserSetup:     containerusersetup.NewProvisioner(runner),
 	}
 }

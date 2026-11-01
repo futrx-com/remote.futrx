@@ -45,3 +45,37 @@ func TestCommandPublishesOutputBeforeCompletion(t *testing.T) {
 		t.Fatal("command did not stop on cancellation")
 	}
 }
+
+func TestCaptureLimitRetainsTailWithoutChangingDefaultCapture(t *testing.T) {
+	for _, limit := range []int{0, 1024} {
+		ctx := context.Background()
+		if limit > 0 {
+			ctx = WithCaptureLimit(ctx, limit)
+		}
+		cmd := exec.CommandContext(ctx, "sh", "-c", "head -c 1048576 /dev/zero; printf LAST_BYTES")
+		out, err := CaptureOutput(ctx, cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := 1048576 + len("LAST_BYTES")
+		if limit > 0 {
+			want = limit
+		}
+		if len(out) != want || !strings.HasSuffix(out, "LAST_BYTES") {
+			t.Fatalf("limit=%d: size=%d, want %d with final bytes", limit, len(out), want)
+		}
+	}
+}
+
+func TestTailBufferNeverGrowsPastLimitAcrossChunks(t *testing.T) {
+	buffer := &tailBuffer{data: make([]byte, 0, 8), limit: 8}
+	for _, chunk := range []string{"abc", "defg", "hijkl", "0123456789", "!"} {
+		n, err := buffer.Write([]byte(chunk))
+		if err != nil || n != len(chunk) || len(buffer.data) > 8 || cap(buffer.data) > 8 {
+			t.Fatalf("unbounded buffer after %q", chunk)
+		}
+	}
+	if got := buffer.String(); got != "3456789!" {
+		t.Fatalf("tail = %q", got)
+	}
+}

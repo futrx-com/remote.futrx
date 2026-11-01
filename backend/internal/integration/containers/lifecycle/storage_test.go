@@ -16,7 +16,7 @@ func TestClientStorageSpaceReadsTheDefaultProfilePool(t *testing.T) {
 		{out: `{"space":{"used":30,"total":100},"inodes":{"used":1,"total":2}}`},
 	}}
 
-	pool, free, total, err := NewClient(runner).StorageSpace(context.Background())
+	pool, free, total, err := NewClient(runner, 0).StorageSpace(context.Background())
 	if err != nil {
 		t.Fatalf("StorageSpace() error = %v", err)
 	}
@@ -60,7 +60,7 @@ func TestClientStorageSpaceRejectsUnmeasurablePools(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			runner := &recordingRunner{available: true, responses: test.responses}
-			_, _, _, err := NewClient(runner).StorageSpace(context.Background())
+			_, _, _, err := NewClient(runner, 0).StorageSpace(context.Background())
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("StorageSpace() error = %v, want it to contain %q", err, test.wantErr)
 			}
@@ -73,7 +73,7 @@ func TestClientStorageSpaceNeverUnderflowsAnOverfullPool(t *testing.T) {
 		{out: `{"devices":{"root":{"pool":"default"}}}`},
 		{out: `{"space":{"used":120,"total":100}}`},
 	}}
-	_, free, _, err := NewClient(runner).StorageSpace(context.Background())
+	_, free, _, err := NewClient(runner, 0).StorageSpace(context.Background())
 	if err != nil || free != 0 {
 		t.Fatalf("StorageSpace() free = %d, error = %v; want 0, nil", free, err)
 	}
@@ -85,7 +85,7 @@ func TestClientImageSizeFollowsTheAlias(t *testing.T) {
 		{out: `{"fingerprint":"abc123","size":4294967296}`},
 	}}
 
-	size, err := NewClient(runner).ImageSize(context.Background(), "remote-base")
+	size, err := NewClient(runner, 0).ImageSize(context.Background(), "remote-base")
 	if err != nil || size != 4<<30 {
 		t.Fatalf("ImageSize() = %d, %v; want %d, nil", size, err, uint64(4<<30))
 	}
@@ -103,7 +103,7 @@ func TestClientInitReportsAFullPoolAsInsufficientStorage(t *testing.T) {
 		"Error: Failed creating instance from image: Unpack failed: tar: rootfs/var/cache: Cannot mkdir: No space left on device\n"
 	runner := &recordingRunner{available: true, responses: []runnerResponse{{out: out, err: errors.New("exit status 1")}}}
 
-	err := NewClient(runner).Init(context.Background(), "local:remote-base", "project-1")
+	err := NewClient(runner, 0).Init(context.Background(), "local:remote-base", "project-1")
 	if !errors.Is(err, serviceproject.ErrInsufficientStorage) {
 		t.Fatalf("Init() error = %v, want ErrInsufficientStorage", err)
 	}
@@ -121,7 +121,7 @@ func TestClientInitKeepsTheCauseAndDropsTransferProgress(t *testing.T) {
 	out.WriteString("\nError: Failed instance creation: Image not found\n")
 	runner := &recordingRunner{available: true, responses: []runnerResponse{{out: out.String(), err: errors.New("exit status 1")}}}
 
-	err := NewClient(runner).Init(context.Background(), "local:remote-base", "project-1")
+	err := NewClient(runner, 0).Init(context.Background(), "local:remote-base", "project-1")
 	if err == nil {
 		t.Fatal("Init() error = nil, want failure")
 	}

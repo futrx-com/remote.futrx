@@ -11,6 +11,8 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 
 install_cli() (
     log() { :; }
+    warn() { :; }
+    loginctl() { :; }
     # Stop before the step starts configuring systemd and the login profile.
     render_template() { exit 0; }
     install() {
