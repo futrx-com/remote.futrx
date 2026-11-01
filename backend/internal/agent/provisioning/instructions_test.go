@@ -24,3 +24,12 @@ func TestInstructionsTemplateUsesInstalledHostname(t *testing.T) {
 		t.Fatal("rendered instructions contain the production hostname")
 	}
 }
+
+func TestInstructionsTemplateIncludesQuestionNotificationContract(t *testing.T) {
+	contract := string(InstructionsTemplate("example.com"))
+	for _, want := range []string{"<notification_summary>", "the user a question", "input needed", "200 characters", "Do not put secrets"} {
+		if !strings.Contains(contract, want) {
+			t.Fatalf("notification contract does not contain %q: %s", want, contract)
+		}
+	}
+}

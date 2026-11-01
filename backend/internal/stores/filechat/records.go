@@ -30,6 +30,14 @@ type metaRecord struct {
 	ProjectID            string            `json:"projectId,omitempty"`
 	ForkPending          bool              `json:"forkPending,omitempty"`
 	SelectedSkills       []skillRefRecord  `json:"selectedSkills,omitempty"`
+
+	QuestionState *questionStateRecord `json:"questionState,omitempty"`
+}
+
+type questionStateRecord struct {
+	TurnID              string   `json:"turnId,omitempty"`
+	PendingInteractions []string `json:"pendingInteractions,omitempty"`
+	LegacyPending       bool     `json:"legacyPending,omitempty"`
 }
 
 type skillRefRecord struct {
@@ -41,6 +49,14 @@ type skillRefRecord struct {
 
 func metaRecordFromDomain(m servicechat.Meta) metaRecord {
 	m.NormalizeSessions()
+	var questionState *questionStateRecord
+	if m.QuestionState.AwaitingAnswer(true) {
+		questionState = &questionStateRecord{
+			TurnID:              m.QuestionState.TurnID,
+			PendingInteractions: m.QuestionState.PendingInteractions,
+			LegacyPending:       m.QuestionState.LegacyPending,
+		}
+	}
 	return metaRecord{
 		ID:                   string(m.ID),
 		Title:                m.Title,
@@ -64,6 +80,7 @@ func metaRecordFromDomain(m servicechat.Meta) metaRecord {
 		ProjectID:            string(m.ProjectID),
 		ForkPending:          m.ForkPending,
 		SelectedSkills:       skillRefRecordsFromDomain(m.SelectedSkills),
+		QuestionState:        questionState,
 	}
 }
 
@@ -98,6 +115,13 @@ func (r metaRecord) toDomain() servicechat.Meta {
 		SelectedSkills:       servicechat.NormalizeSelectedSkills(skillRefRecordsToDomain(r.SelectedSkills), provider),
 	}
 	meta.NormalizeSessions()
+	if r.QuestionState != nil {
+		meta.QuestionState = servicechat.QuestionState{
+			TurnID:              r.QuestionState.TurnID,
+			PendingInteractions: r.QuestionState.PendingInteractions,
+			LegacyPending:       r.QuestionState.LegacyPending,
+		}
+	}
 	return meta
 }
 

@@ -44,9 +44,11 @@ export function ThreadHeader({
         </h1>
         <span
           class={`ml-0.5 h-1.5 w-1.5 flex-none rounded-full ${
-            streaming ? "animate-pulse bg-accent-green" : "bg-ink-500"
+            chat.awaitingAnswer ? "bg-accent-blue" : streaming ? "animate-pulse bg-accent-green" : "bg-ink-500"
           }`}
-          title={`${providerDisplayLabel(chat.provider)} · ${streaming ? "Working" : "Ready"}`}
+          role="img"
+          aria-label={chat.awaitingAnswer ? "Needs your answer" : streaming ? "Working" : "Ready"}
+          title={`${providerDisplayLabel(chat.provider)} · ${chat.awaitingAnswer ? "Needs your answer" : streaming ? "Working" : "Ready"}`}
         />
       </div>
 
