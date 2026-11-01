@@ -8,7 +8,7 @@ export interface WorkspaceRoute {
 
 const SETTINGS_TABS = new Set<SettingsTab>([
   "appearance", "notifications", "agents", "users", "security",
-  "applications", "updates", "info", "usage",
+  "audit", "applications", "updates", "info", "usage",
 ]);
 
 export function parseWorkspaceRoute(pathname: string, search = ""): WorkspaceRoute {

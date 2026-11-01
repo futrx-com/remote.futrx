@@ -11,6 +11,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -151,6 +152,13 @@ func WithAgentPolicy(policy AgentPolicy) Option {
 	}
 }
 
+// WithAudit records the start and cancellation of every agent run.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(service *Service) {
+		service.audit = audit.RecorderOrNop(recorder)
+	}
+}
+
 type Service struct {
 	store            servicechat.Repository
 	tmux             TmuxClient
@@ -163,6 +171,7 @@ type Service struct {
 	quota            QuotaRecorder
 	startGate        StartGate
 	interactions     interactionResponseRouter
+	audit            audit.Recorder
 }
 
 func New(
@@ -183,6 +192,7 @@ func New(
 		hub:          hub,
 		agents:       agents,
 		interactions: newInteractionResponseRouter(),
+		audit:        audit.Nop{},
 	}
 	for _, option := range options {
 		if option != nil {
@@ -214,12 +224,14 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	runID, ok := rnr.hub.StartRun(input.ChatID, cancel)
 	if !ok {
 		cancel()
+		rnr.recordRun(parentCtx, audit.ActionAgentRunStart, input, ErrPromptAlreadyRunning)
 		emitTransient(ChatEvent{
 			T: time.Now().UnixMilli(), Type: "error",
 			Message: "a previous prompt is still running — cancel first",
 		})
 		return RunHandle{}, ErrPromptAlreadyRunning
 	}
+	rnr.recordRun(parentCtx, audit.ActionAgentRunStart, input, nil)
 	responses := rnr.interactions.open(input.ChatID, runID)
 
 	done := make(chan RunResult, 1)
@@ -250,8 +262,51 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	return RunHandle{ID: runID, TurnID: ledgerRunID, Done: done}, nil
 }
 
-func (rnr *Service) CancelPrompt(id servicechat.ID) bool {
-	return rnr.hub.CancelRun(id)
+func (rnr *Service) CancelPrompt(ctx context.Context, id servicechat.ID) bool {
+	canceled := rnr.hub.CancelRun(id)
+	if rnr.audit != nil {
+		rnr.audit.Record(ctx, audit.Result(
+			audit.ActionAgentRunCancel,
+			audit.Target{Type: audit.TargetChat, ID: string(id)},
+			audit.Meta{"canceled": canceled},
+			nil,
+		))
+	}
+	return canceled
+}
+
+// recordRun writes one agent-run line. The provider and project come from the
+// chat record, so a run is attributable even though the audit log never sees
+// the prompt text.
+func (rnr *Service) recordRun(ctx context.Context, action string, input StartInput, err error) {
+	if rnr.audit == nil {
+		return
+	}
+	meta := audit.Meta{"chatId": string(input.ChatID)}
+	if chat, chatErr := rnr.store.Get(ctx, input.ChatID); chatErr == nil {
+		meta["provider"] = string(providerIDFromChatProvider(chat.Provider))
+		if chat.ProjectID != "" {
+			meta["projectId"] = string(chat.ProjectID)
+		}
+	}
+	if input.ApplicationInstanceID != "" {
+		meta["applicationId"] = input.ApplicationID
+		meta["applicationInstanceId"] = input.ApplicationInstanceID
+		meta["applicationRequestId"] = input.ApplicationRequestID
+	}
+	entry := audit.Result(
+		action,
+		audit.Target{Type: audit.TargetChat, ID: string(input.ChatID)},
+		meta,
+		err,
+	)
+	if input.Actor.Email != "" {
+		entry.Actor = audit.Actor{
+			Email:   audit.NormalizeActorEmail(input.Actor.Email),
+			IsAdmin: input.Actor.IsAdmin,
+		}
+	}
+	rnr.audit.Record(ctx, entry)
 }
 
 func (rnr *Service) RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error {

@@ -16,6 +16,7 @@ import (
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceemail "github.com/futrx-com/remote.futrx.com/internal/service/email"
@@ -70,6 +71,8 @@ type Dependencies struct {
 	Auth              AuthStore
 	Users             serviceuser.Repository
 	UserSettings      serviceusersettings.Repository
+	Audit             serviceaudit.Store
+	AuditRetention    int
 	TwoFactor         serviceauth.TwoFactorStore
 	SessionRegistry   serviceauth.SessionRegistryStore
 	Push              PushStore
@@ -156,6 +159,7 @@ type Services struct {
 	// service/email.Mail.
 	Mailer     *serviceemail.Mailer
 	AgentQuota *agentquota.Service
+	Audit      *serviceaudit.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
@@ -170,6 +174,14 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			return Services{}, fmt.Errorf("agent module catalog: %w", err)
 		}
 	}
+
+	// The audit recorder is built first so every other service can take it.
+	auditRetention := deps.AuditRetention
+	if auditRetention == 0 {
+		auditRetention = serviceaudit.DefaultRetentionMonths
+	}
+	auditLog := serviceaudit.New(deps.Audit, serviceaudit.WithRetentionMonths(auditRetention))
+	auditLog.StartJanitor(ctx, 24*time.Hour)
 
 	workspace := workspacehub.New()
 	var runs *runhub.Hub
@@ -192,6 +204,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		deps.ProjectContainers,
 		deps.ProjectSecrets,
 		deps.ProjectAccess,
+		serviceproject.WithAudit(auditLog),
 		serviceproject.WithChatCleanup(projectChatCleanup{
 			chats: chats,
 			cancel: func(ctx context.Context, id servicechat.ID) error {
@@ -228,6 +241,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		chatProjectResolver{projects: projectService},
 		tmuxResolver,
 		runs,
+		servicechat.WithAudit(auditLog),
 		servicechat.WithTranscriptEventSource(deps.Chats),
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
 		servicechat.WithTranscriptProjectionSource(deps.Chats),
@@ -239,6 +253,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
 	userService := serviceuser.New(
 		deps.Users,
+		serviceuser.WithAudit(auditLog),
 		serviceuser.WithRemovalCleanup(userRemovalCleanup{
 			projects:        projectService,
 			subscriptions:   deps.Push,
@@ -254,12 +269,14 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		deps.TwoFactor,
 		deps.SessionRegistry,
 		deps.AuthOptions,
+		serviceauth.WithAudit(auditLog),
 	)
 	if err != nil {
 		return Services{}, err
 	}
 	var usageService *serviceusage.Service
 	promptOptions := []prompt.Option{
+		prompt.WithAudit(auditLog),
 		prompt.WithAgentPolicy(agentRuntime),
 	}
 	if deps.PromptStartGate != nil {
@@ -378,6 +395,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		Email:             emailService,
 		Mailer:            mailer,
 		AgentQuota:        agentQuotaService,
+		Audit:             auditLog,
 	}, nil
 }
 

@@ -265,6 +265,7 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Application workflow state | each backend instance's `DataDir` | application-owned | Scheduled Tasks stores definitions, deadlines and claims in `tasks.json` |
 | Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
 | Web Push signing key | `DATA_DIR/webpush-vapid.json` | JSON | VAPID P-256 pair, mode 0600; rotating it invalidates every browser subscription |
+| Audit log | `DATA_DIR/audit/audit-YYYY-MM.jsonl` | JSONL | append-only, one file per month, mode 0600, pruned by retention |
 | Session key | `DATA_DIR/session.key` | 32 random bytes | mode 0600 |
 | Google OAuth secret | `DATA_DIR/oauth.json` | JSON | plaintext, mode 0600 |
 | SMTP credentials | `DATA_DIR/smtp.json` | JSON | Gmail address + app password, plaintext, mode 0600 |
@@ -467,5 +468,5 @@ These are the boundaries the [threat model](docs/threat-model.md) reasons about:
 - [`docs/dev/agents/`](docs/dev/agents/) — agent module contracts and the complete extension guide
 - [`docs/dev/installable-applications/`](docs/dev/installable-applications/) — the installable-application format, extension slots, and application backends
 - [`docs/03-platform/`](docs/03-platform/) — previews & browser, data & frontend state, API & realtime
-- [`docs/04-operations/`](docs/04-operations/) — deployment and operations
+- [`docs/04-operations/`](docs/04-operations/) — deployment, operations, and the [audit log](docs/04-operations/10-audit-log.md)
 - [Threat model](docs/threat-model.md) · [Known limitations](docs/known-limitations.md)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
@@ -43,7 +44,15 @@ func (h *ChatHandler) handleFilesDownload(w http.ResponseWriter, r *http.Request
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	file, err := h.files.OpenFile(meta.Cwd, r.URL.Query().Get("path"))
+	path := r.URL.Query().Get("path")
+	file, err := h.files.OpenFile(meta.Cwd, path)
+	recordAudit(
+		h.audit, r,
+		serviceaudit.ActionWorkspaceFileDownload,
+		auditWorkspaceTarget(meta),
+		serviceaudit.Meta{"path": path, "projectId": string(meta.ProjectID)},
+		err,
+	)
 	if err != nil {
 		sendWorkspaceFileError(w, err)
 		return
@@ -60,7 +69,15 @@ func (h *ChatHandler) handleFilesDownloadFolder(w http.ResponseWriter, r *http.R
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	archive, err := h.files.PrepareArchive(meta.Cwd, r.URL.Query().Get("path"))
+	path := r.URL.Query().Get("path")
+	archive, err := h.files.PrepareArchive(meta.Cwd, path)
+	recordAudit(
+		h.audit, r,
+		serviceaudit.ActionWorkspaceArchiveDownload,
+		auditWorkspaceTarget(meta),
+		serviceaudit.Meta{"path": path, "projectId": string(meta.ProjectID)},
+		err,
+	)
 	if err != nil {
 		sendWorkspaceFileError(w, err)
 		return

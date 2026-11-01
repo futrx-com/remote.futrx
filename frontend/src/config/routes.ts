@@ -17,6 +17,12 @@ function backendSuffix(path: string): string {
 export const API_ROUTES = {
   authSession: "/auth/me",
   googleOAuth: "/api/admin/auth/google",
+  audit: {
+    collection: (query: string) =>
+      `/api/admin/audit${query ? `?${query}` : ""}`,
+    export: (query: string) =>
+      `/api/admin/audit/export${query ? `?${query}` : ""}`,
+  },
   email: {
     settings: "/api/admin/email",
     test: "/api/admin/email/test",

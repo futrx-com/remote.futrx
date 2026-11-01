@@ -76,6 +76,7 @@ func newAuth(
 	twoFactor serviceauth.TwoFactorStore,
 	sessionRegistry serviceauth.SessionRegistryStore,
 	options AuthOptions,
+	auditOptions ...serviceauth.Option,
 ) (*serviceauth.Service, error) {
 	if store == nil {
 		return nil, errors.New("authentication store is required")
@@ -111,5 +112,6 @@ func newAuth(
 			SessionHistoryLimit: options.SessionHistoryLimit,
 			SetupTokenTTL:       options.SetupTokenTTL,
 		},
+		auditOptions...,
 	)
 }

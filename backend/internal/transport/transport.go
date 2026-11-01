@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -31,6 +32,7 @@ type Dependencies struct {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
+	var auditLog serviceaudit.Recorder = deps.Services.Audit
 	agentAuthBindings := deps.Services.Agents.Bindings()
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
@@ -61,6 +63,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	uploads = uploads.WithAudit(auditLog)
 	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt)
 	workspaceSocket := wstransport.NewWorkspaceSocket(
 		deps.Services.Chats,
@@ -84,7 +87,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Auth,
 		deps.Files,
 		deps.GitHistory,
-	)
+	).WithAudit(auditLog)
 
 	applicationsHandler := httphandlers.NewApplicationsHandler(
 		deps.Services.Applications,
@@ -107,12 +110,13 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			agentAuthBindings,
 			deps.Services.Auth,
 			deps.Services.Agents,
-		),
+		).WithAudit(auditLog),
 		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
 			deps.Services.Auth,
 		),
+		Audit:    httphandlers.NewAuditHandler(deps.Services.Audit, deps.Services.Auth),
 		Security: httphandlers.NewSecurityHandler(deps.Services.Auth),
 		Push: httphandlers.NewPushHandler(
 			deps.Services.Push,
