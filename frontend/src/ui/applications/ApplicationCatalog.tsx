@@ -170,7 +170,7 @@ function InstallDialog({
           else void submit(event);
         }}
         onClick={(event) => event.stopPropagation()}
-        class={`${application.env?.some((variable) => variable.format === "json") ? "max-w-2xl" : "max-w-md"} w-full max-h-[calc(100dvh-2rem)] flex flex-col rounded-lg border border-white/10 bg-[#0f1217] shadow-xl`}
+        class={`${application.env?.some((variable) => variable.format === "json") ? "max-w-2xl" : "max-w-md"} w-full min-w-0 max-h-[calc(100dvh-2rem)] flex flex-col rounded-lg border border-white/10 bg-[#0f1217] shadow-xl`}
       >
         <div class="flex-none flex items-center gap-2 px-4 pt-4 pb-3">
           <Server class="w-4 h-4 text-ink-200" />
@@ -185,7 +185,7 @@ function InstallDialog({
           </button>
         </div>
 
-        <div class="flex-1 min-h-0 overflow-y-auto touch-scroll px-4 pb-3 space-y-3">
+        <div class="flex-1 min-h-0 min-w-0 overflow-y-auto touch-scroll px-4 pb-3 space-y-3">
           {!busy && !succeeded && <fieldset disabled={submitting} class="space-y-3">
           <label class="block space-y-1">
             <span class="text-[11.5px] text-ink-300">Display name</span>
@@ -281,7 +281,7 @@ function InstallDialog({
               ref={(node) => {
                 if (node) node.scrollTop = node.scrollHeight;
               }}
-              class="max-h-24 overflow-y-auto touch-scroll rounded border border-accent-red/25 bg-accent-red/[0.06] px-2 py-1.5 text-[11.5px] leading-relaxed font-mono text-accent-red whitespace-pre-wrap break-words"
+              class="max-h-24 overflow-y-auto touch-scroll rounded border border-accent-red/25 bg-accent-red/[0.06] px-2 py-1.5 text-[11.5px] leading-relaxed font-mono text-accent-red whitespace-pre-wrap break-all"
             >
               {err}
             </div>
