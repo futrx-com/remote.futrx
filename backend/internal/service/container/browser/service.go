@@ -109,12 +109,12 @@ func (s *Service) EnsureSkill(ctx context.Context, containerName string) error {
 }
 
 func (s *Service) EnsureScript(ctx context.Context, containerName string) error {
-	// Existing containers need the managed runtime before the new helper is
-	// published; the version check makes this cheap on current base images.
-	if err := s.provisioner.Provision(ctx, containerName); err != nil {
+	// Publish the fail-closed helper first: a failed runtime download must not
+	// leave an older helper able to launch a vulnerable workspace browser.
+	if err := s.tooling.EnsureScript(ctx, containerName); err != nil {
 		return err
 	}
-	return s.tooling.EnsureScript(ctx, containerName)
+	return s.provisioner.Provision(ctx, containerName)
 }
 
 func (s *Service) EnsureMCP(ctx context.Context, containerName string) error {

@@ -87,7 +87,7 @@ func TestEnsurePropagatesRuntimeFailure(t *testing.T) {
 	}
 }
 
-func TestEnsureScriptRepairsRuntimeBeforePublishingHelper(t *testing.T) {
+func TestEnsureScriptPublishesFailClosedHelperEvenWhenRepairFails(t *testing.T) {
 	for _, fail := range []bool{false, true} {
 		events := []string{}
 		var provisionErr error
@@ -102,10 +102,7 @@ func TestEnsureScriptRepairsRuntimeBeforePublishingHelper(t *testing.T) {
 		if !errors.Is(err, provisionErr) {
 			t.Fatalf("error=%v, want %v", err, provisionErr)
 		}
-		want := []string{"provision:existing-container"}
-		if !fail {
-			want = append(want, "script:existing-container")
-		}
+		want := []string{"script:existing-container", "provision:existing-container"}
 		if !reflect.DeepEqual(events, want) {
 			t.Fatalf("events=%v, want %v", events, want)
 		}
