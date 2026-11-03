@@ -22,9 +22,8 @@ SCREEN=1366x768x24
 EXPECTED_CHROME_VERSION=__PW_CFT_VERSION__
 export DISPLAY=":$DISPLAY_NUM"
 
-# Select only the managed, security-patched browser on either architecture.
-BROWSER_RUNTIME=__BROWSER_RUNTIME_DIR__
-CHROME="$BROWSER_RUNTIME/chrome/chrome"
+# Select only the security-patched browser on either architecture.
+CHROME=__BROWSER_DIR__/chrome
 if ! "$CHROME" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
     echo "pinned Chrome for Testing __PW_CFT_VERSION__ is not installed" >&2
     exit 1
@@ -230,15 +229,15 @@ stop_view() {
 close_browser_gracefully() {
   # Browser.close flushes the persistent profile. Sending SIGTERM to the
   # entire service first can lose recently saved login cookies on upgrade.
-  node - "$BROWSER_RUNTIME" "$CDP_PORT" <<'JS'
-const deadline = setTimeout(() => process.exit(1), 5000);
+  node - "$CDP_PORT" <<'JS'
+setTimeout(() => process.exit(1), 5000);
 (async () => {
-  const { chromium } = require(process.argv[2] + '/node_modules/playwright');
-  const browser = await chromium.connectOverCDP('http://127.0.0.1:' + process.argv[3], { timeout: 2000 });
-  const session = await browser.newBrowserCDPSession();
-  await session.send('Browser.close');
-  await browser.close();
-  clearTimeout(deadline);
+  const response = await fetch(`http://127.0.0.1:${process.argv[2]}/json/version`);
+  const { webSocketDebuggerUrl } = await response.json();
+  const socket = new WebSocket(webSocketDebuggerUrl);
+  socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+  socket.onclose = () => process.exit(0);
+  socket.onerror = () => process.exit(1);
 })().catch(() => process.exit(1));
 JS
 }

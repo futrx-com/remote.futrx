@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestBrowserHelperUsesManagedBrowser(t *testing.T) {
+func TestBrowserHelperUsesPatchedBrowser(t *testing.T) {
 	if _, err := exec.LookPath("node"); err != nil {
 		t.Skip("node is required")
 	}
@@ -34,8 +34,7 @@ func TestBrowserHelperUsesManagedBrowser(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			write(filepath.Join(runtime, ".ready"), "", 0o644)
-			write(filepath.Join(runtime, "chrome/chrome"), "#!/bin/sh\nprintf 'Google Chrome for Testing "+tc.version+"\\n'\n", 0o755)
+			write(filepath.Join(runtime, "chrome"), "#!/bin/sh\nprintf 'Google Chrome for Testing "+tc.version+"\\n'\n", 0o755)
 			// The driver records the executable actually selected. No browser or
 			// network is used; stale versions must fail before touching a page.
 			driver := `const fs = require('fs');
@@ -49,9 +48,9 @@ exports.chromium = {
     close: async () => fs.writeFileSync(process.env.TEST_CLOSED, 'closed'),
     contexts: () => { throw new Error('must reject stale browser before reading contexts'); } })
 };`
-			write(filepath.Join(runtime, "node_modules/playwright/index.js"), driver, 0o644)
+			write(filepath.Join(dir, "node_modules/playwright/index.js"), driver, 0o644)
 			renderer := newBrowserAssetRenderer()
-			script := strings.ReplaceAll(renderer.render(string(browserScriptTemplate)), renderer.runtimeDir(), runtime)
+			script := strings.ReplaceAll(renderer.render(string(browserScriptTemplate)), renderer.browserDir(), runtime)
 			helper := filepath.Join(dir, "browser.mjs")
 			write(helper, script, 0o644)
 			config := filepath.Join(dir, "auth.json")
@@ -71,7 +70,7 @@ exports.chromium = {
 				t.Fatalf("success=%v, want %v: %s", err == nil, tc.wantOK, out)
 			}
 			got, readErr := os.ReadFile(launch)
-			if tc.wantOK && (readErr != nil || string(got) != filepath.Join(runtime, "chrome/chrome")) {
+			if tc.wantOK && (readErr != nil || string(got) != filepath.Join(runtime, "chrome")) {
 				t.Fatalf("wrong executable: %q (%v)", got, readErr)
 			}
 			if !tc.wantOK && !os.IsNotExist(readErr) {

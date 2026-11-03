@@ -119,25 +119,65 @@ if (cmd === 'screenshot' || cmd === 'record') {
   }
 }
 
-// Use the managed driver and patched executable, independently of any
-// Playwright version or browser cache installed by a project.
-const BROWSER_RUNTIME = '__BROWSER_RUNTIME_DIR__';
-const EXPECTED_CHROME_VERSION = '__PW_CFT_VERSION__';
-const CHROME = `${BROWSER_RUNTIME}/chrome/chrome`;
-process.env.PLAYWRIGHT_BROWSERS_PATH = `${BROWSER_RUNTIME}/browsers`;
-let chromium;
-try {
-  if (!existsSync(`${BROWSER_RUNTIME}/.ready`)) throw new Error('runtime not verified');
-  const requireBrowser = createRequire(`${BROWSER_RUNTIME}/package.json`);
-  chromium = requireBrowser('playwright').chromium;
-} catch {
-  die(4, 'Managed browser runtime is missing. Open the Browser pane to provision it, then retry.');
+// --- Load Playwright -----------------------------------------------------
+// Playwright may live in any of:
+//   - /workspace/node_modules/playwright            (workspace-level install)
+//   - /workspace/<project>/node_modules/playwright  (project-level install,
+//     common when the project itself uses Playwright for E2E)
+//   - global node_modules                            (cli-installed)
+//
+// We try direct ESM import first (works when cwd's node_modules has it or
+// it's globally installed); on failure, walk /workspace/*/ and use
+// createRequire to leverage Node's full CJS resolution + package.json
+// "main"/"exports" handling (the package's ESM entry exposes `chromium`
+// directly; the CJS entry exposes it via `.default.chromium`).
+async function loadChromium() {
+  try {
+    return (await import('playwright')).chromium;
+  } catch {}
+  const { readdir } = await import('node:fs/promises');
+  let entries = [];
+  try {
+    entries = await readdir('/workspace', { withFileTypes: true });
+  } catch {}
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    const pkgJson = `/workspace/${e.name}/node_modules/playwright/package.json`;
+    if (!existsSync(pkgJson)) continue;
+    try {
+      const requireFrom = createRequire(`/workspace/${e.name}/package.json`);
+      const mod = requireFrom('playwright');
+      return mod.chromium || mod.default?.chromium;
+    } catch {}
+  }
+  return null;
 }
+
+const chromium = await loadChromium();
+if (!chromium) {
+  die(4, [
+    'playwright is not installed in this workspace.',
+    '',
+    'Either install at workspace level (recommended, available to every',
+    'project script):',
+    '  cd /workspace && npm init -y >/dev/null && npm install --save-dev playwright',
+    '  npx playwright install chromium',
+    '',
+    'Or install inside one of your project subdirs and re-run; this script',
+    'discovers /workspace/*/node_modules/playwright automatically.',
+    '',
+    'First install downloads ~200MB of Chromium; cached for subsequent runs.',
+  ].join('\n'));
+}
+
+// The project's Playwright driver must always launch the patched browser.
+const EXPECTED_CHROME_VERSION = '__PW_CFT_VERSION__';
+const CHROME = '__BROWSER_DIR__/chrome';
 if (cmd !== 'connect') {
   let version = '';
   try { version = execFileSync(CHROME, ['--version'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch {}
   if (![`Google Chrome for Testing ${EXPECTED_CHROME_VERSION}`, `Chromium ${EXPECTED_CHROME_VERSION}`].includes(version)) {
-    die(4, `Refusing to launch an unverified browser. Open the Browser pane to install Chrome ${EXPECTED_CHROME_VERSION}, then retry.`);
+    die(4, `Open the Browser pane to install Chrome ${EXPECTED_CHROME_VERSION}, then retry.`);
   }
 }
 
@@ -167,7 +207,7 @@ if (cmd === 'connect') {
   }
   if (browser.version() !== EXPECTED_CHROME_VERSION) {
     await browser.close();
-    die(4, `The live browser is outdated. Reopen the Browser pane to launch Chrome ${EXPECTED_CHROME_VERSION}.`);
+    die(4, 'The live browser is outdated. Reopen the Browser pane to update it.');
   }
   const context = browser.contexts()[0] || (await browser.newContext());
   let exitCode = 0;

@@ -109,12 +109,7 @@ func (s *Service) EnsureSkill(ctx context.Context, containerName string) error {
 }
 
 func (s *Service) EnsureScript(ctx context.Context, containerName string) error {
-	// Publish the fail-closed helper first: a failed runtime download must not
-	// leave an older helper able to launch a vulnerable workspace browser.
-	if err := s.tooling.EnsureScript(ctx, containerName); err != nil {
-		return err
-	}
-	return s.provisioner.Provision(ctx, containerName)
+	return s.tooling.EnsureScript(ctx, containerName)
 }
 
 func (s *Service) EnsureMCP(ctx context.Context, containerName string) error {

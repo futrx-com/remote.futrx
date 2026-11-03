@@ -1,8 +1,7 @@
 # Sanity check the GUI toolchain and select the browser pinned by versions.env.
 which Xvfb x11vnc websockify openbox xdotool setsid
-# Select only the managed, security-patched browser on either architecture.
-BROWSER_RUNTIME=__BROWSER_RUNTIME_DIR__
-CHROME="$BROWSER_RUNTIME/chrome/chrome"
+# Select only the security-patched browser on either architecture.
+CHROME=__BROWSER_DIR__/chrome
 if ! "$CHROME" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
     echo "pinned Chrome for Testing __PW_CFT_VERSION__ is not installed" >&2
     exit 1
@@ -101,5 +100,4 @@ fi
 
 smoke_cleanup
 trap - EXIT
-touch "$BROWSER_RUNTIME/.ready"
 echo "Agent Browser smoke test passed with Chrome for Testing $PW_CFT_VERSION"

@@ -1,7 +1,7 @@
 set -e
-# Agent preparation and the Browser pane can request repair concurrently.
-mkdir -p /opt/remote-browser
-exec 9>/opt/remote-browser/.install.lock
+# Serialize concurrent Browser pane installation requests.
+mkdir -p /root/.cache/ms-playwright
+exec 9>/root/.cache/ms-playwright/.remote-install.lock
 flock 9
 if __BROWSER_STACK_CHECK__; then exit 0; fi
 export DEBIAN_FRONTEND=noninteractive
@@ -35,13 +35,11 @@ if [ -f /etc/apparmor.d/chrome ] && command -v apparmor_parser >/dev/null 2>&1; 
     apparmor_parser -r /etc/apparmor.d/chrome 2>/dev/null || true
 fi
 
-# Keep the browser independent of Playwright's release cadence. Install a
-# versioned runtime atomically, leaving any running older binary intact until
-# the launcher restarts it. Never fall back to an old workspace browser cache.
-PLAYWRIGHT_VERSION=__PLAYWRIGHT_VERSION__
+# Install patched Chrome independently of Playwright's bundled Chromium.
+# Keep the existing browser cache and workspace-provided Playwright driver.
 PW_CFT_VERSION=__PW_CFT_VERSION__
 PW_FFMPEG_BUILD=__PW_FFMPEG_BUILD__
-BROWSER_RUNTIME=__BROWSER_RUNTIME_DIR__
+BROWSER_DIR=__BROWSER_DIR__
 VENDOR_URL="https://github.com/__PW_VENDOR_REPO__/releases/download/__PW_VENDOR_RELEASE_TAG__"
 
 case "$(uname -m)" in
@@ -62,8 +60,7 @@ case "$(uname -m)" in
     *) echo "unsupported browser architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
-mkdir -p /opt/remote-browser
-BROWSER_STAGE="$(mktemp -d /opt/remote-browser/.install.XXXXXX)"
+BROWSER_STAGE="$(mktemp -d /root/.cache/ms-playwright/.remote-install.XXXXXX)"
 trap 'rm -rf -- "$BROWSER_STAGE"' EXIT
 
 fetch_verified() {
@@ -82,15 +79,11 @@ fetch_verified "$FFMPEG_ARCHIVE.zip" "$FFMPEG_SHA" \
     "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/$PW_FFMPEG_BUILD/$FFMPEG_ARCHIVE.zip"
 
 unzip -q "$BROWSER_STAGE/$CHROME_ARCHIVE.zip" -d "$BROWSER_STAGE"
-mv "$BROWSER_STAGE/$CHROME_ARCHIVE" "$BROWSER_STAGE/chrome"
-mkdir -p "$BROWSER_STAGE/browsers/ffmpeg-$PW_FFMPEG_BUILD"
-unzip -q "$BROWSER_STAGE/$FFMPEG_ARCHIVE.zip" -d "$BROWSER_STAGE/browsers/ffmpeg-$PW_FFMPEG_BUILD"
-chmod 755 "$BROWSER_STAGE/chrome/chrome" "$BROWSER_STAGE/browsers/ffmpeg-$PW_FFMPEG_BUILD/ffmpeg-linux"
-"$BROWSER_STAGE/chrome/chrome" --version | grep -Eq '__CHROME_VERSION_PATTERN__'
-PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --prefix "$BROWSER_STAGE" \
-    --ignore-scripts --no-audit --no-fund --save-exact "playwright@$PLAYWRIGHT_VERSION"
-rm -f "$BROWSER_STAGE/$CHROME_ARCHIVE.zip" "$BROWSER_STAGE/$FFMPEG_ARCHIVE.zip"
-# A failed earlier install may have left this exact runtime incomplete.
-rm -rf -- "$BROWSER_RUNTIME"
-mv "$BROWSER_STAGE" "$BROWSER_RUNTIME"
+"$BROWSER_STAGE/$CHROME_ARCHIVE/chrome" --version | grep -Eq '__CHROME_VERSION_PATTERN__'
+mkdir -p /root/.cache/ms-playwright/ffmpeg-$PW_FFMPEG_BUILD
+unzip -oq "$BROWSER_STAGE/$FFMPEG_ARCHIVE.zip" -d /root/.cache/ms-playwright/ffmpeg-$PW_FFMPEG_BUILD
+chmod 755 /root/.cache/ms-playwright/ffmpeg-$PW_FFMPEG_BUILD/ffmpeg-linux
+rm -rf -- "$BROWSER_DIR"
+mv "$BROWSER_STAGE/$CHROME_ARCHIVE" "$BROWSER_DIR"
+rm -rf -- "$BROWSER_STAGE"
 trap - EXIT

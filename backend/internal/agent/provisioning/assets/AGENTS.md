@@ -381,13 +381,10 @@ delete them when you're done with the scenario. **Don't reach for a
 recipe for a single screenshot** — that's what the `screenshot` and
 `record` subcommands are for.
 
-### Managed browser runtime
+### Playwright install
 
-`scripts/browser.mjs` uses Remote's managed Playwright driver and patched
-Chrome executable. Project-installed Playwright packages and cached browsers
-do not select its executable. If the helper reports a missing or outdated
-runtime, open the Browser pane to provision the current version, then retry.
-Do not bypass its version check or point it at an older cached browser.
+If Playwright isn't installed yet, `scripts/browser.mjs` will print the
+one-time install command — run it, then retry.
 
 ## Project skills
 

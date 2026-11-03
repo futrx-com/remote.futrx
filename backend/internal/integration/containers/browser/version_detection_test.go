@@ -38,7 +38,7 @@ func TestBrowserVersionDetection(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
 					fixture := newBrowserDetectionFixture(t)
-					browserPath := fixture.browser(t, "", "chrome", tt.version, 0o755)
+					browserPath := fixture.browser(t, "", "", tt.version, 0o755)
 					fixture.check(t, script, tt.wantOK, browserPath)
 				})
 			}
@@ -48,10 +48,10 @@ func TestBrowserVersionDetection(t *testing.T) {
 			})
 			t.Run("browser is not executable", func(t *testing.T) {
 				fixture := newBrowserDetectionFixture(t)
-				fixture.browser(t, "", "chrome", "Google Chrome for Testing 156.0.8078.80", 0o644)
+				fixture.browser(t, "", "", "Google Chrome for Testing 156.0.8078.80", 0o644)
 				fixture.check(t, script, false, "")
 			})
-			t.Run("ignore cached browsers and require managed runtime", func(t *testing.T) {
+			t.Run("reject an older cached browser", func(t *testing.T) {
 				fixture := newBrowserDetectionFixture(t)
 				fixture.browser(t, "chromium-1000", "chrome-linux64", "Google Chrome for Testing 147.0.7778.96", 0o755)
 				fixture.check(t, script, false, "")
@@ -146,16 +146,7 @@ type browserDetectionFixture struct {
 func newBrowserDetectionFixture(t *testing.T) browserDetectionFixture {
 	t.Helper()
 	dir := t.TempDir()
-	fixture := browserDetectionFixture{cache: filepath.Join(dir, "runtime"), bin: filepath.Join(dir, "bin")}
-	for _, name := range []string{".ready", "node_modules/playwright/package.json", "browsers/ffmpeg-1013/ffmpeg-linux"} {
-		path := filepath.Join(fixture.cache, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(""), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	fixture := browserDetectionFixture{cache: filepath.Join(dir, "cache"), bin: filepath.Join(dir, "bin")}
 	if err := os.MkdirAll(fixture.bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +175,7 @@ func (f browserDetectionFixture) browser(t *testing.T, revision, layout, version
 
 func (f browserDetectionFixture) check(t *testing.T, script browserDetectionScript, wantOK bool, browserPath string) {
 	t.Helper()
-	shellScript := strings.ReplaceAll(script.text, "/opt/remote-browser/pw-1.64.1-chrome-156.0.8078.80", f.cache)
+	shellScript := strings.ReplaceAll(script.text, "/root/.cache/ms-playwright/remote-chrome-156.0.8078.80", f.cache)
 	if script.printsBrowser {
 		shellScript += "\nprintf 'selected=%s\\n' \"$CHROME\"\n"
 	}

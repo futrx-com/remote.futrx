@@ -56,7 +56,8 @@ fetch chrome-linux64.zip \
 fetch chrome-linux-arm64.zip \
     "https://storage.googleapis.com/chrome-for-testing-public/${PW_CFT_VERSION}/linux-arm64/chrome-linux-arm64.zip"
 fetch ffmpeg-linux.zip \
-    "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux.zip"
+    "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux.zip" \
+    "https://playwright.download.prss.microsoft.com/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux.zip"
 fetch ffmpeg-linux-arm64.zip \
     "https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/${PW_FFMPEG_BUILD}/ffmpeg-linux-arm64.zip"
 

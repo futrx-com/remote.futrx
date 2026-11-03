@@ -38,7 +38,6 @@ func (r browserAssetRenderer) installScript() string {
 	script := strings.TrimSuffix(embeddedAgentBrowserInstallScript, "\n") + "\n\n" +
 		strings.TrimSuffix(embeddedAgentBrowserSmokeTestScript, "\n")
 	for placeholder, key := range map[string]string{
-		"__PLAYWRIGHT_VERSION__":           "PLAYWRIGHT_VERSION",
 		"__PW_CFT_VERSION__":               "PW_CFT_VERSION",
 		"__PW_VENDOR_REPO__":               "PW_VENDOR_REPO",
 		"__PW_VENDOR_RELEASE_TAG__":        "PW_VENDOR_RELEASE_TAG",
@@ -53,13 +52,13 @@ func (r browserAssetRenderer) installScript() string {
 	return strings.ReplaceAll(r.render(script), "__BROWSER_STACK_CHECK__", r.stackCheck())
 }
 
-func (r browserAssetRenderer) runtimeDir() string {
-	return "/opt/remote-browser/pw-" + r.pin("PLAYWRIGHT_VERSION") + "-chrome-" + r.pin("PW_CFT_VERSION")
+func (r browserAssetRenderer) browserDir() string {
+	return "/root/.cache/ms-playwright/remote-chrome-" + r.pin("PW_CFT_VERSION")
 }
 
 func (r browserAssetRenderer) render(script string) string {
 	return strings.NewReplacer(
-		"__BROWSER_RUNTIME_DIR__", r.runtimeDir(),
+		"__BROWSER_DIR__", r.browserDir(),
 		"__PW_CFT_VERSION__", r.pin("PW_CFT_VERSION"),
 		"__CHROME_VERSION_PATTERN__", r.versionPattern(),
 	).Replace(script)
@@ -76,8 +75,7 @@ func (r browserAssetRenderer) versionPattern() string {
 }
 
 func (r browserAssetRenderer) stackCheck() string {
-	dir := r.runtimeDir()
-	return `command -v Xvfb >/dev/null 2>&1 && test -f ` + dir + `/.ready && test -f ` + dir + `/node_modules/playwright/package.json && test -x ` + dir + `/browsers/ffmpeg-` + r.pin("PW_FFMPEG_BUILD") + `/ffmpeg-linux && ` + dir + `/chrome/chrome --version 2>/dev/null | grep -Eq '` + r.versionPattern() + `'`
+	return `command -v Xvfb >/dev/null 2>&1 && ` + r.browserDir() + `/chrome --version 2>/dev/null | grep -Eq '` + r.versionPattern() + `'`
 }
 
 func renderedGUIUpScript() []byte {
