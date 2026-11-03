@@ -19,6 +19,7 @@ const repairTimeout = 30 * time.Minute
 
 type Projects interface {
 	List(context.Context) ([]serviceproject.Meta, error)
+	Get(context.Context, serviceproject.ID) (serviceproject.Meta, error)
 	HasAccess(context.Context, serviceproject.ID, string) (bool, error)
 	ClaimSetupRepair(context.Context, serviceproject.ID, string) (bool, error)
 	SetSetupRepair(context.Context, serviceproject.ID, *serviceproject.SetupRepair) error
@@ -75,6 +76,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var failures []error
 	for _, project := range projects {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -90,7 +92,7 @@ func (s *Service) Reconcile(ctx context.Context) error {
 				// A durable claim from an interrupted backend must not spend another
 				// agent run automatically. The existing chat remains usable.
 				if err := s.projects.SetSetupRepair(ctx, project.ID, &serviceproject.SetupRepair{ChatID: repair.ChatID, State: "failed", Message: "Automatic repair was interrupted. Continue in the repair chat."}); err != nil {
-					return err
+					failures = append(failures, fmt.Errorf("project %s: %w", project.ID, err))
 				}
 				continue
 			}
@@ -99,10 +101,10 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			}
 		}
 		if err := s.repair(ctx, project); err != nil {
-			return err
+			failures = append(failures, fmt.Errorf("project %s: %w", project.ID, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func (s *Service) repair(ctx context.Context, project serviceproject.Meta) error {
@@ -133,7 +135,7 @@ func (s *Service) repair(ctx context.Context, project serviceproject.Meta) error
 	defer cancel()
 	handle, startErr := s.prompts.Start(prompt.StartInput{
 		ChatID: chat.ID, Prompt: repairPrompt(project.ErrorMsg), Actor: actor,
-		ParentContext: runCtx, ExclusiveProject: true, VerifyProjectSetup: true,
+		ParentContext: runCtx,
 	}, nil)
 	if startErr != nil {
 		if errors.Is(startErr, prompt.ErrMaintenance) || errors.Is(startErr, serviceproject.ErrProjectBusy) || errors.Is(startErr, prompt.ErrSetupRepairRunning) {
@@ -165,7 +167,14 @@ func (s *Service) finish(ctx context.Context, projectID serviceproject.ID, chatI
 	if err := s.projects.SetSetupRepair(ctx, projectID, repair); err != nil {
 		return err
 	}
-	_, err := s.chats.AppendEvent(ctx, chatID, servicechat.Event{T: time.Now().UnixMilli(), Type: "system", Subtype: "setup_repair_" + repair.State, Message: repair.Message})
+	current, err := s.projects.Get(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if current.SetupRepair == nil || current.SetupRepair.ChatID != repair.ChatID || current.SetupRepair.State != repair.State {
+		return nil // a newer claim or manual recovery superseded this run
+	}
+	_, err = s.chats.AppendEvent(ctx, chatID, servicechat.Event{T: time.Now().UnixMilli(), Type: "system", Subtype: "setup_repair_" + repair.State, Message: repair.Message})
 	return err
 }
 

@@ -31,9 +31,8 @@ func (s *Service) admitProject(ctx context.Context, input StartInput) (func(), e
 	if err != nil {
 		return nil, err
 	}
-	input.ExclusiveProject = input.ExclusiveProject || meta.SetupRepair
 	if meta.ProjectID == "" {
-		if input.ExclusiveProject || input.VerifyProjectSetup {
+		if meta.SetupRepair {
 			return nil, errors.New("setup recovery requires a project")
 		}
 		return func() {}, nil
@@ -44,14 +43,14 @@ func (s *Service) admitProject(ctx context.Context, input StartInput) (func(), e
 	if active.exclusive {
 		return nil, ErrSetupRepairRunning
 	}
-	if input.ExclusiveProject && active.count > 0 {
+	if meta.SetupRepair && active.count > 0 {
 		return nil, serviceproject.ErrProjectBusy
 	}
 	if s.projectRuns.active == nil {
 		s.projectRuns.active = make(map[servicechat.ProjectID]projectAdmission)
 	}
 	active.count++
-	active.exclusive = input.ExclusiveProject
+	active.exclusive = meta.SetupRepair
 	s.projectRuns.active[meta.ProjectID] = active
 	return func() {
 		s.projectRuns.mu.Lock()

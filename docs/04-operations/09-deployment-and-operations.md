@@ -396,9 +396,10 @@ project error without replacing its container. Explicit Start or Restart remains
 available to retry a script repaired outside the automatic workflow.
 
 During a workspace upgrade, a failed project setup script is reported separately
-from infrastructure failures. If the replacement container is still running and
-application restoration succeeds, the update completes with a list of projects
-that reported setup failures. This historical update summary stays unchanged;
+from infrastructure failures. If the replacement container is still running,
+the update completes with a list of projects that reported setup failures.
+Their application restoration waits until setup is repaired, preserving which
+applications should run. This historical update summary stays unchanged;
 current recovery status appears in each project's settings and repair chat.
 Automatic recovery starts after workspace maintenance releases its lock. Other
 projects are not recycled by a repair. Container, transport,

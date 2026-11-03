@@ -2,6 +2,7 @@ package setuprepair_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
+	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 )
@@ -98,8 +100,14 @@ func (p *repairAgent) Run(ctx context.Context, req agent.RunRequest, emit func(a
 			return err
 		}
 	}
-	emit(agent.Event{Type: agent.EventRunCompleted, T: time.Now().UnixMilli()})
+	emit(agent.Event{Type: agent.EventRunCompleted, T: time.Now().UnixMilli(), Usage: json.RawMessage(`{"input_tokens":25,"output_tokens":10}`)})
 	return nil
+}
+
+type usageRecorder struct{ events []serviceusage.RunEvent }
+
+func (u *usageRecorder) RecordRun(_ context.Context, event serviceusage.RunEvent) {
+	u.events = append(u.events, event)
 }
 
 type fixture struct {
@@ -113,6 +121,7 @@ type fixture struct {
 	setup      *shellSetup
 	identities *identities
 	gate       *gate
+	usage      *usageRecorder
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -155,9 +164,10 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	gate := &gate{}
-	prompts := prompt.New(chats, nil, projects, runhub.New(chats), registry, prompt.WithStartGate(gate))
+	usage := &usageRecorder{}
+	prompts := prompt.New(chats, nil, projects, runhub.New(chats), registry, prompt.WithStartGate(gate), prompt.WithUsageRecorder(usage))
 	identities := &identities{registered: true, admin: true}
-	f := &fixture{projects: projects, chats: chats, prompts: prompts, project: project, source: source, provider: provider, setup: setup, identities: identities, gate: gate}
+	f := &fixture{projects: projects, chats: chats, prompts: prompts, project: project, source: source, provider: provider, setup: setup, identities: identities, gate: gate, usage: usage}
 	f.worker = setuprepair.New(projects, chats, identities, prompts, gate)
 	return f
 }
@@ -228,9 +238,12 @@ func TestFailedOrUnverifiedRepairsDoNotLoopAfterRestart(t *testing.T) {
 			}
 			events, _ := f.chats.ReadEvents(context.Background(), servicechat.ID(m.SetupRepair.ChatID))
 			for _, e := range events {
-				if e.Type == "complete" {
+				if e.Type == "complete" && e.Status != "failed" {
 					t.Fatal("reported success before setup verification")
 				}
+			}
+			if !agentFailure && (len(f.usage.events) != 1 || len(f.usage.events[0].Usage) == 0) {
+				t.Fatal("failed verification discarded the completed agent's usage")
 			}
 			worker := setuprepair.New(f.projects, f.chats, f.identities, f.prompts, f.gate)
 			if err := worker.Reconcile(context.Background()); err != nil {
@@ -339,4 +352,44 @@ func TestRecoveryDeadlineBoundsAnUnresponsiveAgent(t *testing.T) {
 			t.Fatal("timed-out recovery left running state")
 		}
 	})
+}
+
+type partiallyUnavailableProjects struct {
+	*serviceproject.Service
+	first serviceproject.Meta
+	err   error
+}
+
+func (p partiallyUnavailableProjects) List(ctx context.Context) ([]serviceproject.Meta, error) {
+	projects, err := p.Service.List(ctx)
+	return append([]serviceproject.Meta{p.first}, projects...), err
+}
+
+func (p partiallyUnavailableProjects) ClaimSetupRepair(ctx context.Context, id serviceproject.ID, chatID string) (bool, error) {
+	if id == p.first.ID {
+		return false, p.err
+	}
+	return p.Service.ClaimSetupRepair(ctx, id, chatID)
+}
+
+func TestOneUnavailableContainerDoesNotBlockFleetRecovery(t *testing.T) {
+	f := newFixture(t)
+	unavailable := f.project
+	unavailable.ID = "deadbeef"
+	source, err := f.chats.Create(context.Background(), servicechat.Meta{ProjectID: servicechat.ProjectID(unavailable.ID), Provider: agent.ProviderCodex})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.chats.AppendEvent(context.Background(), source.ID, servicechat.Event{Type: "user", UserEmail: "member@example.test"}); err != nil {
+		t.Fatal(err)
+	}
+	inspectionErr := errors.New("container inspection failed")
+	projects := partiallyUnavailableProjects{Service: f.projects, first: unavailable, err: inspectionErr}
+	worker := setuprepair.New(projects, f.chats, f.identities, f.prompts, f.gate)
+	if err := worker.Reconcile(context.Background()); !errors.Is(err, inspectionErr) {
+		t.Fatalf("inspection failure not reported: %v", err)
+	}
+	if f.meta(t).SetupRepair == nil || f.meta(t).SetupRepair.State != "succeeded" {
+		t.Fatal("first container failure blocked later project recovery")
+	}
 }

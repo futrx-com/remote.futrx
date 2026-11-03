@@ -482,11 +482,8 @@ func (s *Service) setupEnvironment(ctx context.Context, id ID) (map[string]strin
 // confirmed script failure after checking the container is running; failed
 // container preparation must still stop CLI provisioning.
 func (s *Service) setStartError(ctx context.Context, id ID, cause error) (Meta, error) {
-	m, statusErr := s.repo.SetStatus(ctx, id, StatusError, cause.Error())
-	if statusErr != nil {
-		return Meta{}, errors.Join(cause, statusErr)
-	}
-	m, statusErr = s.repo.Update(ctx, id, func(m *Meta) {
+	m, statusErr := s.repo.Update(ctx, id, func(m *Meta) {
+		m.Status, m.ErrorMsg = StatusError, cause.Error()
 		m.SetupFailed = errors.Is(cause, ErrSetupFailed)
 		if m.SetupFailed && m.SetupRepair != nil && m.SetupRepair.State == "succeeded" {
 			m.SetupRepair = nil

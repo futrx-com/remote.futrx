@@ -23,7 +23,7 @@ export function ProjectActions({
   const confirm = useConfirm();
   const repairing = project.setupRepair?.state === "running";
   const canStart = !repairing && (project.status === "stopped" || project.status === "missing" || project.status === "error");
-  const canStop = project.status === "running" || project.setupFailed;
+  const canStop = project.status === "running" || (project.status === "error" && project.setupFailed);
   const canRestart = !repairing && (project.status === "running" || project.status === "error");
 
   async function run(action: "start" | "stop" | "restart", operation: () => Promise<void>) {

@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 )
 
@@ -96,5 +97,72 @@ func TestFailedVerificationRetainsError(t *testing.T) {
 	got, err := service.VerifySetup(context.Background(), "abcd")
 	if !errors.Is(err, ErrSetupFailed) || !got.NeedsSetupRepair() {
 		t.Fatalf("failure hidden: %+v %v", got, err)
+	}
+}
+
+func TestCanceledVerificationPreservesFailure(t *testing.T) {
+	for _, phase := range []string{"before", "setup error", "setup success", "restore error", "restore success"} {
+		t.Run(phase, func(t *testing.T) {
+			original := Meta{ID: "abcd", ContainerName: "project", Status: StatusError, SetupFailed: true, ErrorMsg: "missing dependency", SetupRepair: &SetupRepair{ChatID: "cafe", State: "running"}}
+			repo := &startTestRepository{meta: original}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			service := New(repo, ContainerDependencies{Lifecycle: &startTestLifecycle{state: ContainerStateRunning}, Setup: verifyingSetup{func() error {
+				if phase == "before" {
+					t.Fatal("verification started after cancellation")
+				}
+				if phase == "setup error" || phase == "setup success" {
+					cancel()
+				}
+				if phase == "setup error" {
+					return ErrSetupFailed
+				}
+				return nil
+			}}}, nil, nil)
+			service.SetContainerRestorer(func(context.Context, string) error {
+				if phase != "restore error" && phase != "restore success" {
+					t.Fatal("restoration started after cancellation")
+				}
+				cancel()
+				if phase == "restore error" {
+					return context.Canceled
+				}
+				return nil
+			})
+			if phase == "before" {
+				cancel()
+			}
+			if _, err := service.VerifySetup(ctx, "abcd"); err == nil {
+				t.Fatal("canceled verification succeeded")
+			}
+			if !reflect.DeepEqual(repo.meta, original) {
+				t.Fatalf("cancellation replaced the setup failure: %+v", repo.meta)
+			}
+		})
+	}
+}
+
+func TestStaleRepairProgressPreservesCurrentState(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		current Meta
+		next    *SetupRepair
+	}{
+		{"blocked after recovery", Meta{Status: StatusRunning}, &SetupRepair{State: "blocked"}},
+		{"blocked after claim", Meta{Status: StatusError, SetupFailed: true, SetupRepair: &SetupRepair{ChatID: "cafe", State: "running"}}, &SetupRepair{State: "blocked"}},
+		{"old claim completed", Meta{Status: StatusError, SetupFailed: true, SetupRepair: &SetupRepair{ChatID: "beef", State: "running"}}, &SetupRepair{ChatID: "cafe", State: "failed"}},
+		{"failure after recovery", Meta{Status: StatusRunning, SetupRepair: &SetupRepair{ChatID: "cafe", State: "succeeded"}}, &SetupRepair{ChatID: "cafe", State: "failed"}},
+		{"released after recovery", Meta{Status: StatusRunning, SetupRepair: &SetupRepair{ChatID: "cafe", State: "succeeded"}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &startTestRepository{meta: tc.current}
+			service := New(repo, ContainerDependencies{}, nil, nil)
+			if err := service.SetSetupRepair(context.Background(), "abcd", tc.next); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(repo.meta, tc.current) {
+				t.Fatalf("stale progress replaced current state: %+v", repo.meta)
+			}
+		})
 	}
 }

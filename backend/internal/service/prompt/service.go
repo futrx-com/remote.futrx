@@ -54,10 +54,6 @@ type StartInput struct {
 	ApplicationRequestID  string
 	ApplicationContext    json.RawMessage
 	ParentContext         context.Context
-	// Internal recovery runs reserve the project until verification completes.
-	// Transports do not populate these fields from client input.
-	ExclusiveProject   bool
-	VerifyProjectSetup bool
 }
 
 type RunResult struct {
@@ -311,7 +307,6 @@ func (rnr *Service) runPromptAs(
 		emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
 		return err
 	}
-	input.VerifyProjectSetup = input.VerifyProjectSetup || meta.SetupRepair
 
 	// Auto-title from first user prompt if still default.
 	if meta.Title == "" || meta.Title == "New chat" {
@@ -456,13 +451,13 @@ func (rnr *Service) runPromptAs(
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
 		}, func(event agent.Event) {
-			if input.VerifyProjectSetup && event.Type == agent.EventRunCompleted {
+			if meta.SetupRepair && event.Type == agent.EventRunCompleted {
 				completion = &event
 				return
 			}
 			relay.forward(event)
 		})
-		if runErr == nil && input.VerifyProjectSetup {
+		if runErr == nil && meta.SetupRepair {
 			verifier, ok := rnr.projects.(interface {
 				VerifySetup(context.Context, serviceproject.ID) (serviceproject.Meta, error)
 			})
@@ -474,8 +469,16 @@ func (rnr *Service) runPromptAs(
 		}
 		if completion != nil {
 			if runErr != nil {
-				completion.Type = agent.EventRunFailed
-				completion.Message = "Setup repair did not pass verification: " + runErr.Error()
+				// The provider spent these tokens even when setup still fails.
+				// Keep its completion for accounting, with a failed turn status
+				// and a platform result instead of the agent's success summary.
+				completion.Status = "failed"
+				relay.emit = func(event ChatEvent) {
+					if event.Type == "complete" {
+						event.NotificationSummary = "Automatic setup repair did not pass verification. Open the repair chat for details."
+					}
+					emit(event)
+				}
 			}
 			relay.forward(*completion)
 		}

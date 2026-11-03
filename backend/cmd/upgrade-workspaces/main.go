@@ -172,12 +172,17 @@ func upgradeAll(
 			setupFailures = append(setupFailures, meta.Slug)
 			log.Printf("WARN %s: container upgraded; project setup needs repair: %v", meta.Slug, err)
 		}
-		if err := restoreProject(workspaceCtx, string(meta.ID)); err != nil {
-			cancel()
-			failed++
-			log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
-			continue
+		if upgradeErr == nil {
+			if err := restoreProject(workspaceCtx, string(meta.ID)); err != nil {
+				cancel()
+				failed++
+				log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
+				continue
+			}
 		}
+		// A setup failure may leave application dependencies unavailable. Keep
+		// their running intent intact; setup recovery restores them after the
+		// repaired script passes verification.
 		cancel()
 		upgraded++
 		if upgradeErr == nil {

@@ -86,7 +86,18 @@ func (s *Service) SetSetupRepair(ctx context.Context, id ID, repair *SetupRepair
 	defer unlock()
 	_, err := s.repo.Update(ctx, id, func(m *Meta) {
 		if repair == nil {
-			m.SetupRepair = nil
+			if m.SetupRepair != nil && m.SetupRepair.State == "running" {
+				m.SetupRepair = nil
+			}
+			return
+		}
+		// A fleet scan or completed run can outlive a manual recovery or a
+		// newer claim. Never replace that newer state with stale progress.
+		if repair.State == "blocked" {
+			if !m.NeedsSetupRepair() || (m.SetupRepair != nil && m.SetupRepair.State != "blocked") {
+				return
+			}
+		} else if m.SetupRepair == nil || m.SetupRepair.ChatID != repair.ChatID || m.SetupRepair.State != "running" {
 			return
 		}
 		copy := *repair
@@ -103,6 +114,9 @@ func (s *Service) VerifySetup(ctx context.Context, id ID) (Meta, error) {
 	}
 	unlock := s.runState.lock(id)
 	defer unlock()
+	if err := ctx.Err(); err != nil {
+		return Meta{}, err
+	}
 	m, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return Meta{}, err
@@ -131,17 +145,29 @@ func (s *Service) VerifySetup(ctx context.Context, id ID) (Meta, error) {
 		}
 		return s.setStartError(ctx, id, err)
 	}
+	if err := ctx.Err(); err != nil {
+		return m, err
+	}
 	state, err = s.containerLifecycle.State(ctx, m.ContainerName)
 	if err != nil {
 		return Meta{}, err
 	}
 	if state != ContainerStateRunning {
+		if err := ctx.Err(); err != nil {
+			return m, err
+		}
 		return s.setStartError(ctx, id, errors.New("container stopped during setup verification"))
 	}
 	if s.containerRestorer != nil {
 		if err := s.containerRestorer(ctx, string(id)); err != nil {
+			if ctx.Err() != nil {
+				return m, ctx.Err()
+			}
 			return s.setStartError(ctx, id, fmt.Errorf("restore applications: %w", err))
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return m, err
 	}
 	return s.setSetupComplete(ctx, id)
 }
