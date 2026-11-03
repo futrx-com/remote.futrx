@@ -58,3 +58,27 @@ function provider(
     },
   };
 }
+
+test("filtered accounts preserve a revoked explicit selection instead of falling back", () => {
+  const restricted = { ...accountsForProvider(providers, "claude")!, defaultAllowed: false };
+  assert.equal(resolveProviderAccountId(restricted, "revoked-account"), "revoked-account");
+  assert.equal(resolveProviderAccountId({ items: [], defaultAllowed: false }, ""), "");
+});
+
+for (const id of ["minimax", "kimi", "antigravity"] as const) {
+  test(`${id} honors its own filtered accounts and preserves revoked selections`, () => {
+    const entry = provider(id, "team", ["team"]);
+    entry.status.accounts!.defaultAllowed = false;
+    const entries = [...providers, entry];
+    assert.equal(accountsForProvider(entries, id), entry.status.accounts);
+    assert.equal(resolveRememberedAccountId(entries, id, ""), "team");
+    assert.equal(resolveRememberedAccountId(entries, id, "revoked"), "revoked");
+  });
+}
+
+test("an external provider with only default access has no saved account selection", () => {
+  const entry = provider("antigravity", "", []);
+  entry.authentication = { mode: "external", satisfiesAccessGate: false };
+  entry.status.accounts!.defaultAllowed = true;
+  assert.equal(resolveRememberedAccountId([entry], "antigravity", ""), "");
+});

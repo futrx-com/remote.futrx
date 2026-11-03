@@ -38,7 +38,7 @@ func (c *removalCleanup) CleanupRemovedUser(_ context.Context, email string) err
 
 func TestRemoveCleansIdentityResourcesBeforeDeletingTheUser(t *testing.T) {
 	repo := &removalRepository{users: map[string]User{
-		"member@example.com": {Email: "member@example.com", Role: RoleMember},
+		"member@example.com": {Email: "member@example.com", Role: ""},
 	}}
 	cleanup := &removalCleanup{}
 	service := New(repo, WithRemovalCleanup(cleanup))
@@ -56,7 +56,7 @@ func TestRemoveCleansIdentityResourcesBeforeDeletingTheUser(t *testing.T) {
 
 func TestRemoveKeepsTheUserActiveWhenRevocationFails(t *testing.T) {
 	repo := &removalRepository{users: map[string]User{
-		"member@example.com": {Email: "member@example.com", Role: RoleMember},
+		"member@example.com": {Email: "member@example.com", Role: ""},
 	}}
 	wantErr := errors.New("revoke failed")
 	service := New(repo, WithRemovalCleanup(&removalCleanup{err: wantErr}))

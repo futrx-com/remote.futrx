@@ -12,6 +12,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 func TestMiniMaxConfigUsesSelectedModelResponsesAndEnvironmentKey(t *testing.T) {
@@ -195,6 +196,10 @@ func (s miniMaxTestAPIKeys) APIKey() (string, bool) {
 	return s.key, s.key != ""
 }
 
+func (s miniMaxTestAPIKeys) APIKeyForRun(_ context.Context, id string) (agentauth.RunAPIKey, bool, error) {
+	return agentauth.RunAPIKey{AccountID: id, Key: s.key}, s.key != "", nil
+}
+
 type miniMaxTestPreparer struct {
 	project agent.PreparedProject
 	err     error
@@ -223,3 +228,5 @@ func (p *miniMaxTestRuntimeAssets) Ensure(
 	p.assets = append([]provisioning.RuntimeAsset(nil), assets...)
 	return p.err
 }
+
+func (miniMaxTestAPIKeys) RequireRunAccess(context.Context, string) error { return nil }

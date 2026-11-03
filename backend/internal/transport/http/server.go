@@ -40,10 +40,13 @@ type Handlers struct {
 	WorkspaceWS       WebSocketRegistrar
 	AgentAuthWS       WebSocketRegistrar
 	Auth              RouteRegistrar
+	Workspace         Middleware
 	Middleware        Middleware
 	Static            http.Handler
 	Usage             RouteRegistrar
 	AgentQuota        RouteRegistrar
+	Permissions       RouteRegistrar
+	Audit             RouteRegistrar
 }
 
 func NewHandler(handlers Handlers) http.Handler {
@@ -72,6 +75,8 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.AgentApplications)
 	register(handlers.Usage)
 	register(handlers.AgentQuota)
+	register(handlers.Permissions)
+	register(handlers.Audit)
 	register(handlers.Uploads)
 
 	upgrader := NewUpgrader()
@@ -92,6 +97,9 @@ func NewHandler(handlers Handlers) http.Handler {
 	}
 
 	var handler http.Handler = mux
+	if handlers.Workspace != nil {
+		handler = handlers.Workspace.Wrap(handler)
+	}
 	if handlers.Middleware != nil {
 		handler = handlers.Middleware.Wrap(handler)
 	}

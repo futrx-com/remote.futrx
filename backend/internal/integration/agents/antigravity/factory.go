@@ -30,6 +30,7 @@ func NewFactory() (agentmodule.Factory, error) {
 			Provider: newProvider(
 				deps.ProjectPreparer,
 				validatedProfile.CLI.Binary,
+				deps.AccountAuthorizer,
 			),
 			Auth: &binding,
 		}, nil

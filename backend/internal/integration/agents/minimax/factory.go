@@ -40,6 +40,7 @@ func NewFactory() (agentmodule.Factory, error) {
 			agent.ProviderMiniMax,
 			deps.APIKeys,
 			tokenPlans,
+			deps.AccountAuthorizer,
 		)
 		if err != nil {
 			return agentmodule.Components{}, err

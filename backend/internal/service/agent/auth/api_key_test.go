@@ -51,7 +51,7 @@ func (s *apiKeyTestStore) DeleteAgentAPIKey(_ context.Context, id agent.Provider
 
 func TestAPIKeyServiceLoadsMutatesAndPublishesOnlyStatus(t *testing.T) {
 	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "stored-key"}}
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil)
+	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +93,7 @@ func TestAPIKeyServiceDoesNotActivateAStoredUnsupportedCredentialClass(t *testin
 		agent.ProviderMiniMax,
 		store,
 		rejectingStoredKeyValidator{},
+		allowAccountUse{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -112,11 +113,11 @@ func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 	ctx := context.Background()
 	legacy := &apiKeyTestStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "legacy-key"}}
 	accounts := &fakeAccountStore{sets: map[agent.ProviderID]AccountSet{agent.ProviderMiniMax: {}}}
-	service, err := NewAPIKeyService(ctx, agent.ProviderMiniMax, legacy, nil)
+	service, err := NewAPIKeyService(ctx, agent.ProviderMiniMax, legacy, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := service.EnableAccounts(ctx, NewAccountVault(accounts), "MiniMax"); err != nil {
+	if err := service.EnableAccounts(ctx, NewAccountVault(accounts, allowAccountUse{}), "MiniMax"); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := service.AccountsSnapshot()
@@ -170,7 +171,7 @@ func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 }
 
 func TestAPIKeyServiceRejectsBlankAndUnavailableStorage(t *testing.T) {
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, nil, nil)
+	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, nil, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,6 +200,7 @@ func TestAPIKeyServiceValidatesBeforeReplacingStoredKey(t *testing.T) {
 			validatedKey = key
 			return validationErr
 		}),
+		allowAccountUse{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -242,7 +244,7 @@ func TestNewAPIKeyServiceReturnsStorageErrors(t *testing.T) {
 	_, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, &apiKeyTestStore{
 		keys: map[agent.ProviderID]string{},
 		err:  want,
-	}, nil)
+	}, nil, allowAccountUse{})
 	if !errors.Is(err, want) {
 		t.Fatalf("error = %v, want %v", err, want)
 	}

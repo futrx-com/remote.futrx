@@ -121,7 +121,7 @@ func TestExternalBindingDeclaresProviderOwnedAuthentication(t *testing.T) {
 
 func TestAPIKeyBindingExposesManagedStatusWithoutCredential(t *testing.T) {
 	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{}}
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil)
+	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}

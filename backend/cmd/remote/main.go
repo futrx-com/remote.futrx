@@ -31,13 +31,21 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/updatecli"
 	integrationversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/integration/versiontelemetry"
 	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
+	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
 	serviceserverinfo "github.com/futrx-com/remote.futrx.com/internal/service/serverinfo"
+	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	serviceversiontelemetry "github.com/futrx-com/remote.futrx.com/internal/service/versiontelemetry"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileversiontelemetry"
@@ -142,24 +150,40 @@ func main() {
 	defer unsubscribeApplicationCatalog()
 	unsubscribeApplicationInstances := applicationLifecycle.SubscribeInstances(applicationEventBridge)
 	defer unsubscribeApplicationInstances()
-	selfUpdateService := serviceselfupdate.New(
-		version.Version,
-		cfg.InstallDir,
-		cfg.DataDir,
-		updatecli.New(),
-		updateLifecycle,
-	)
 
 	tmuxClient := tmuxcli.New()
+
+	// Identity and policy are composed here, the one place that knows every
+	// concrete type. Auth reads users through a view without removal cleanup:
+	// cleanup needs the project service, which needs authorization, which
+	// needs auth. Only removal differs between the two views, and auth never
+	// removes users; the user service that service.New builds keeps cleanup.
+	authService, err := newAuthService(ctx, cfg, storeSet)
+	if err != nil {
+		log.Fatalf("init auth: %v", err)
+	}
+	permissionService, err := newPermissionService(
+		ctx,
+		storeSet.Permissions,
+		authService,
+		projectMembership{access: storeSet.ProjectAccess},
+	)
+	if err != nil {
+		log.Fatalf("init permissions: %v", err)
+	}
+
 	serviceSet, err := service.New(ctx, service.Dependencies{
 		Chats:             storeSet.Chats,
 		Projects:          storeSet.Projects,
 		ProjectSecrets:    storeSet.ProjectSecrets,
 		ProjectAccess:     storeSet.ProjectAccess,
 		ProjectShares:     storeSet.ProjectShares,
-		Auth:              storeSet.Auth,
+		Permissions:       permissionService,
+		Auth:              authService,
 		Users:             storeSet.Users,
 		UserSettings:      storeSet.UserSettings,
+		Audit:             storeSet.Audit,
+		AuditRetention:    cfg.Audit.RetentionMonths,
 		TwoFactor:         storeSet.TwoFactor,
 		SessionRegistry:   storeSet.SessionRegistry,
 		Push:              storeSet.Push,
@@ -178,13 +202,6 @@ func main() {
 			DegradedCapabilityCacheTTL: cfg.Agent.DegradedCapabilityCacheTTL,
 			CredentialSyncTimeout:      cfg.Agent.CredentialSyncTimeout,
 			BrowserIdleTTL:             cfg.Agent.BrowserIdleTTL,
-		},
-		AuthOptions: service.AuthOptions{
-			PendingLoginTTL:     cfg.Auth.PendingLoginTTL,
-			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
-			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
-			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
-			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
 		},
 		TmuxClient:           tmuxClient,
 		ValidTmuxName:        tmuxcli.ValidName,
@@ -209,6 +226,14 @@ func main() {
 	}
 	// Terminal self-update events are reconciled from disk so a backend
 	// replacement can deliver the completion started by its predecessor.
+	selfUpdateService := serviceselfupdate.New(
+		version.Version,
+		cfg.InstallDir,
+		cfg.DataDir,
+		updatecli.New(),
+		updateLifecycle,
+		serviceselfupdate.WithAudit(serviceSet.Audit),
+	)
 	if err := selfUpdateService.StartLifecycleReconciler(ctx); err != nil {
 		log.Printf("self-update: lifecycle reconcile warning: %v", err)
 	}
@@ -273,4 +298,73 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+// newAuthService composes the runtime auth service from the stores and the
+// deployment's account-security policy. It reads users through a view with no
+// removal cleanup; see the note where main calls it.
+func newAuthService(ctx context.Context, cfg config.Config, storeSet stores.Stores) (*serviceauth.Service, error) {
+	return service.NewAuth(
+		ctx,
+		storeSet.Auth,
+		serviceuser.New(storeSet.Users),
+		cfg.BaseURL,
+		storeSet.TwoFactor,
+		storeSet.SessionRegistry,
+		service.AuthOptions{
+			PendingLoginTTL:     cfg.Auth.PendingLoginTTL,
+			EnrollmentTTL:       cfg.Auth.EnrollmentTTL,
+			RecoveryCodeCount:   cfg.Auth.RecoveryCodeCount,
+			SessionHistoryLimit: cfg.Auth.SessionHistoryLimit,
+			SetupTokenTTL:       cfg.Auth.SetupTokenTTL,
+		},
+	)
+}
+
+// permissionDefinitions is the complete code-owned permission catalog. Each
+// owning service exports its definitions from a permissions.go file; add its
+// group here so the registry validates them together.
+func permissionDefinitions() [][]rbac.Definition {
+	return [][]rbac.Definition{
+		rbac.ManagementDefinitions(),
+		serviceproject.PermissionDefinitions(),
+		workspaceide.PermissionDefinitions(),
+		workspaceaccess.PermissionDefinitions(),
+		servicechat.PermissionDefinitions(),
+		agentauth.PermissionDefinitions(),
+	}
+}
+
+// newPermissionService builds the permission service from the code-owned
+// registry, the persisted policy, and the identity and membership ports. It
+// fails on a policy that is unreadable or names an unregistered permission.
+func newPermissionService(
+	ctx context.Context,
+	policy rbac.Repository,
+	identity rbac.IdentityDirectory,
+	members rbac.ProjectMembership,
+) (*rbac.Service, error) {
+	registry, err := rbac.NewRegistry(permissionDefinitions()...)
+	if err != nil {
+		return nil, err
+	}
+	return rbac.NewService(ctx, registry, policy, identity, members, rbac.WithBuiltinAdminRole())
+}
+
+// projectMembership adapts the project access repository to the permission
+// layer's membership port, so the evaluator does not import the project
+// service.
+type projectMembership struct {
+	access serviceproject.AccessRepository
+}
+
+func (m projectMembership) HasAccess(ctx context.Context, projectID string, email string) (bool, error) {
+	if m.access == nil {
+		return false, nil
+	}
+	email = rbac.NormalizeEmail(email)
+	if email == "" {
+		return false, nil
+	}
+	return m.access.Has(ctx, serviceproject.ID(projectID), email)
 }

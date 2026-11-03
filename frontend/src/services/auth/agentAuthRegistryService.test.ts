@@ -82,3 +82,90 @@ test("switching the active account invalidates provider capability state", () =>
   };
   assert.notEqual(agentAuthRegistryService.revision([switched]), before);
 });
+
+for (const [id, mode] of [
+  ["minimax", "managed-api-key"],
+  ["kimi", "managed-device"],
+  ["antigravity", "external"],
+] as const) {
+  test(`${id} account denial explains permission access before login state`, () => {
+    const entry = provider(id, mode, false);
+    entry.status.accounts = { defaultAllowed: false, items: [] };
+    assert.deepEqual(agentAuthRegistryService.unavailableReasons([entry], false), {});
+    assert.deepEqual(agentAuthRegistryService.unavailableReasons([entry], true), {
+      [id]: `Ask an administrator to grant access to a ${entry.label} account.`,
+    });
+
+    entry.status.accounts.defaultAllowed = true;
+    entry.status.authenticated = mode !== "external";
+    assert.deepEqual(agentAuthRegistryService.unavailableReasons([entry], true), {});
+  });
+
+  test(`${id} default and saved account grants invalidate capability state`, () => {
+    const entry = provider(id, mode, false);
+    entry.status.accounts = { defaultAllowed: false, items: [] };
+    const denied = agentAuthRegistryService.revision([entry]);
+    entry.status.accounts.defaultAllowed = true;
+    const allowed = agentAuthRegistryService.revision([entry]);
+    assert.notEqual(allowed, denied);
+    entry.status.accounts.items.push({ id: "team", label: "Team", active: false });
+    assert.notEqual(agentAuthRegistryService.revision([entry]), allowed);
+  });
+}
+
+test("a visible saved account remains selectable when the default account is denied", () => {
+  const entry = provider("minimax", "managed-api-key", true);
+  entry.status.accounts = {
+    defaultAllowed: false,
+    items: [{ id: "team", label: "Team", active: false }],
+  };
+  assert.deepEqual(agentAuthRegistryService.unavailableReasons([entry], true), {});
+});
+
+test("an Antigravity-only grant opens member access without claiming external login status", () => {
+  const entry = provider("antigravity", "external", false);
+  assert.equal(agentAuthRegistryService.gateReady([entry]), false);
+  entry.status.accounts = { defaultAllowed: false, items: [] };
+  assert.equal(agentAuthRegistryService.gateReady([entry]), false);
+  entry.status.accounts.defaultAllowed = true;
+  assert.equal(agentAuthRegistryService.gateReady([entry]), true);
+  assert.equal(entry.status.authenticated, false);
+  assert.equal(agentAuthRegistryService.statusKind(entry), "external");
+});
+
+test("a MiniMax-only member needs both account access and configured authentication", () => {
+  const entry = provider("minimax", "managed-api-key", true);
+  assert.equal(agentAuthRegistryService.gateReady([entry]), false);
+  entry.status.accounts = { defaultAllowed: false, items: [] };
+  assert.equal(agentAuthRegistryService.gateReady([entry]), false);
+  entry.status.accounts.items.push({ id: "team", label: "Team", active: false });
+  assert.equal(agentAuthRegistryService.gateReady([entry]), true);
+  entry.status.authenticated = false;
+  assert.equal(agentAuthRegistryService.gateReady([entry]), false);
+});
+
+test("Kimi default-only access retains device login and authenticated display", () => {
+  const entry = provider("kimi", "managed-device", true, true);
+  entry.status.accounts = { defaultAllowed: true, defaultOnly: true, items: [] };
+  assert.equal(agentAuthRegistryService.supportsSavedAccounts(entry), false);
+  assert.equal(agentAuthRegistryService.statusKind(entry), "authenticated");
+
+  entry.status.authenticated = false;
+  assert.equal(agentAuthRegistryService.supportsSavedAccounts(entry), false);
+  assert.equal(agentAuthRegistryService.statusKind(entry), "unconfigured");
+});
+
+test("saved-account management requires a managed provider's real account capability", () => {
+  for (const mode of ["managed-code", "managed-device", "managed-api-key"] as const) {
+    const entry = provider("managed-agent", mode, true);
+    assert.equal(agentAuthRegistryService.supportsSavedAccounts(entry), false);
+    entry.status.accounts = { items: [] };
+    assert.equal(agentAuthRegistryService.supportsSavedAccounts(entry), true);
+    entry.status.accounts.defaultAllowed = false;
+    assert.equal(agentAuthRegistryService.supportsSavedAccounts(entry), true);
+  }
+  const external = provider("antigravity", "external", false);
+  external.status.accounts = { defaultAllowed: true, defaultOnly: true, items: [] };
+  assert.equal(agentAuthRegistryService.supportsSavedAccounts(external), false);
+  assert.equal(agentAuthRegistryService.statusKind(external), "external");
+});

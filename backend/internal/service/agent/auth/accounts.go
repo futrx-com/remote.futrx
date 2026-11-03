@@ -109,6 +109,9 @@ type Account struct {
 }
 
 type AccountsSnapshot struct {
+	DefaultAllowed *bool `json:"defaultAllowed,omitempty"`
+	// DefaultOnly distinguishes access metadata from saved-account support.
+	DefaultOnly     bool      `json:"defaultOnly,omitempty"`
 	ActiveAccountID string    `json:"activeAccountId,omitempty"`
 	Items           []Account `json:"items"`
 }

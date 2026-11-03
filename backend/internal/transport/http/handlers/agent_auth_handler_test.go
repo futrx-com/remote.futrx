@@ -10,9 +10,14 @@ import (
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
+
+type allowAgentAccountPolicy struct{}
+
+func (allowAgentAccountPolicy) Require(context.Context, rbac.Check) error { return nil }
 
 const missingAgentCLI = "futrx-test-agent-cli-that-does-not-exist"
 
@@ -224,6 +229,7 @@ func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
 		agentauth.APIKeyValidatorFunc(func(context.Context, string) error {
 			return agentauth.ErrAPIKeyRejected
 		}),
+		allowAgentAccountPolicy{},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -243,6 +249,26 @@ func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
 	if rec.Code != http.StatusBadRequest ||
 		rec.Body.String() != `{"error":"API key is invalid or unauthorized"}`+"\n" {
 		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAgentAuthAPIKeyRoutesFailClosedWithoutPolicy(t *testing.T) {
+	store := &agentAuthMemoryKeyStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "existing-key"}}
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	NewAgentAuthHandler([]agentauth.Binding{agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys)}, nil).RegisterRoutes(mux)
+	for _, method := range []string{http.MethodPost, http.MethodDelete} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(method, "/api/minimax/login/api-key", strings.NewReader(`{"apiKey":"replacement-key"}`)))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s: %d %s", method, rec.Code, rec.Body)
+		}
+		if store.keys[agent.ProviderMiniMax] != "existing-key" {
+			t.Fatalf("%s changed denied credential", method)
+		}
 	}
 }
 
@@ -356,7 +382,7 @@ func newTestAgentAuthHandler() *AgentAuthHandler {
 
 	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, &agentAuthMemoryKeyStore{
 		keys: map[agent.ProviderID]string{},
-	}, nil)
+	}, nil, allowAgentAccountPolicy{})
 	if err != nil {
 		panic(err)
 	}

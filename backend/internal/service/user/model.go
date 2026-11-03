@@ -4,28 +4,26 @@ import "strings"
 
 type Role string
 
-const (
-	RoleAdmin  Role = "admin"
-	RoleMember Role = "member"
-)
+// RoleAdmin is the only base role. A registered user without it holds the
+// zero Role and gets their access from custom permission roles.
+const RoleAdmin Role = "admin"
 
+// NormalizeRole maps input to a Role. Unknown values are returned as-is so
+// ValidRole rejects them; the legacy "member" value maps to the zero Role.
 func NormalizeRole(r string) Role {
-	switch strings.ToLower(strings.TrimSpace(r)) {
+	s := strings.ToLower(strings.TrimSpace(r))
+	switch s {
 	case string(RoleAdmin):
 		return RoleAdmin
-	case string(RoleMember), "":
-		return RoleMember
-	default:
+	case "", "member":
 		return ""
+	default:
+		return Role(s)
 	}
 }
 
 func ValidRole(r Role) bool {
-	switch r {
-	case RoleAdmin, RoleMember:
-		return true
-	}
-	return false
+	return r == RoleAdmin || r == ""
 }
 
 // NormalizeEmail lowercases + trims. Used everywhere to compare emails

@@ -140,7 +140,7 @@ func newSocketTestBindings() ([]agentauth.Binding, *agentauth.CodeService) {
 			NotFound: errors.New("not found"),
 		})
 	}
-	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, socketAPIKeyStore{}, nil)
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, socketAPIKeyStore{}, nil, nil)
 	if err != nil {
 		panic(err)
 	}
