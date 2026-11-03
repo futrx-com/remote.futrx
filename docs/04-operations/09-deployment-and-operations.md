@@ -367,6 +367,22 @@ then use Start or Restart to retry. Failed attempts never record success.
 Setup output capture retains at most 64 KiB; displayed failures retain at most
 4 KiB of output and redact supplied secret values.
 
+Full infrastructure updates replace project containers. APT packages and other
+tools installed outside the durable mounts must therefore be reinstalled by
+`setup.sh`, even after a successful update. Application-only updates do not
+replace containers. Setup instructions must include the project's own required
+packages and referenced installer files; the platform does not infer dependencies
+or generate missing scripts.
+
+During a workspace upgrade, a failed project setup script is reported separately
+from infrastructure failures. If the replacement container is still running and
+application restoration succeeds, the update completes with a list of projects
+needing setup repair. Those projects keep their error details in project settings,
+including across a backend restart. Fix the affected project's setup and select
+**Start project** to retry it in the existing container and restore its installed
+applications. Other projects are not recycled by this retry. Container, transport,
+state-storage, and application-restoration failures still fail the update.
+
 ## Container creation reliability
 
 Fresh installs and full infrastructure updates enable lingering for root's

@@ -33,6 +33,7 @@ export interface SelfUpdateProgress {
   total?: number;
   currentItem?: string;
   updatedAt: number;
+  setupFailures?: string[];
 }
 
 export interface SelfUpdateStatus {

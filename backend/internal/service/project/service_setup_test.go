@@ -127,3 +127,66 @@ func TestSetupDoesNotRunWhenSecretLoadingFails(t *testing.T) {
 		t.Fatalf("missing secret error = %+v, %v", got, err)
 	}
 }
+
+func TestStartRepairsFailedUpgradeWithoutReplacingContainer(t *testing.T) {
+	repo := &startTestRepository{meta: Meta{ID: "abcd", ContainerName: "project", Status: StatusRunning}}
+	transitions := make(chan string, 4)
+	lifecycle := &startTestLifecycle{state: ContainerStateRunning, transitionCalls: transitions}
+	attempts := 0
+	setup := setupFunc(func(context.Context, string, map[string]string) error {
+		attempts++
+		if attempts == 1 {
+			return ErrSetupFailed
+		}
+		return nil
+	})
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Setup: setup}, nil, nil)
+	if _, err := service.Upgrade(context.Background(), "abcd", false); !errors.Is(err, ErrSetupFailed) {
+		t.Fatalf("upgrade error = %v", err)
+	}
+	if transition := <-transitions; transition != "delete" {
+		t.Fatalf("upgrade transition = %s", transition)
+	}
+	// Backend restart reconciliation must not erase the project failure merely
+	// because the replacement container is running.
+	if err := service.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if repo.meta.Status != StatusError || repo.meta.ErrorMsg == "" {
+		t.Fatal("reconcile hid setup failure")
+	}
+	restored := 0
+	service.SetContainerRestorer(func(_ context.Context, id string) error {
+		if id != "abcd" || attempts < 2 {
+			t.Fatal("applications restored before project setup")
+		}
+		restored++
+		return nil
+	})
+	for range 2 {
+		got, err := service.Start(context.Background(), "abcd")
+		if err != nil || got.Status != StatusRunning || got.ErrorMsg != "" {
+			t.Fatalf("Start = %+v, %v", got, err)
+		}
+	}
+	if restored != 1 {
+		t.Fatalf("restoration calls = %d", restored)
+	}
+	select {
+	case transition := <-transitions:
+		t.Fatalf("retry changed existing container: %s", transition)
+	default:
+	}
+}
+
+func TestStartReportsApplicationRecoveryFailure(t *testing.T) {
+	repo := &startTestRepository{meta: Meta{ID: "abcd", ContainerName: "project", Status: StatusError}}
+	lifecycle := &startTestLifecycle{state: ContainerStateRunning}
+	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
+	want := errors.New("restore failed")
+	service.SetContainerRestorer(func(context.Context, string) error { return want })
+	got, err := service.Start(context.Background(), "abcd")
+	if !errors.Is(err, want) || got.Status != StatusError {
+		t.Fatalf("Start = %+v, %v", got, err)
+	}
+}
