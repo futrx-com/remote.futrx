@@ -231,6 +231,7 @@ func main() {
 	if err := serviceSet.Reconcile(ctx); err != nil {
 		log.Printf("services: reconcile warning: %v", err)
 	}
+	go serviceSet.SetupRepair.Run(ctx)
 
 	////////////////////////////////////////
 	// HTTP transport

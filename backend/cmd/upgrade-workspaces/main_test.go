@@ -138,6 +138,23 @@ func (r *upgradeTestRepository) Get(_ context.Context, id serviceproject.ID) (se
 	return serviceproject.Meta{}, serviceproject.ErrNotFound
 }
 
+func (r *upgradeTestRepository) Update(ctx context.Context, id serviceproject.ID, update func(*serviceproject.Meta)) (serviceproject.Meta, error) {
+	if r.statusErr != nil {
+		return serviceproject.Meta{}, r.statusErr
+	}
+	meta, err := r.Get(ctx, id)
+	if err != nil {
+		return meta, err
+	}
+	update(&meta)
+	for i := range r.metas {
+		if r.metas[i].ID == id {
+			r.metas[i] = meta
+		}
+	}
+	return meta, nil
+}
+
 func (r *upgradeTestRepository) SetStatus(ctx context.Context, id serviceproject.ID, status serviceproject.Status, message string) (serviceproject.Meta, error) {
 	if r.statusErr != nil {
 		return serviceproject.Meta{}, r.statusErr
@@ -158,6 +175,10 @@ func (f upgradeTestSetup) Ensure(ctx context.Context, name string, env map[strin
 	return f(ctx, name, env)
 }
 
+func (f upgradeTestSetup) Verify(ctx context.Context, name string, env map[string]string) error {
+	return f(ctx, name, env)
+}
+
 func TestUpgradeAllSeparatesSetupRepairFromInfrastructureFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name                                      string
@@ -166,11 +187,12 @@ func TestUpgradeAllSeparatesSetupRepairFromInfrastructureFailure(t *testing.T) {
 		wantUpgraded, wantSetupFailed, wantFailed int
 		wantRestored                              []string
 	}{
-		{"project script failed", serviceproject.ErrSetupFailed, false, false, false, 2, 1, 0, []string{"0000", "0001"}},
+		{"project script failed", serviceproject.ErrSetupFailed, false, false, false, 2, 1, 0, []string{"0001"}},
 		{"setup transport failed", errors.New("LXD connection lost"), false, false, false, 1, 0, 1, []string{"0001"}},
 		{"setup context expired", context.DeadlineExceeded, false, false, false, 1, 0, 1, []string{"0001"}},
 		{"script stopped container", serviceproject.ErrSetupFailed, true, false, false, 1, 0, 1, []string{"0001"}},
-		{"application restoration failed", serviceproject.ErrSetupFailed, false, true, false, 1, 1, 1, []string{"0000", "0001"}},
+		{"application restoration deferred until setup repair", serviceproject.ErrSetupFailed, false, true, false, 2, 1, 0, []string{"0001"}},
+		{"application restoration failed after successful setup", nil, false, true, false, 1, 0, 1, []string{"0000", "0001"}},
 		{"could not save project failure", serviceproject.ErrSetupFailed, false, false, true, 0, 0, 2, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,5 +244,37 @@ func TestUpgradeAllSeparatesSetupRepairFromInfrastructureFailure(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestUpgradeDefersApplicationsUntilSetupRepairIsVerified(t *testing.T) {
+	ctx := context.Background()
+	repo := newUpgradeTestRepository(2)
+	lifecycle := &upgradeTestLifecycle{ensure: func(context.Context, serviceproject.Meta) error { return nil }}
+	repaired := false
+	setup := upgradeTestSetup(func(_ context.Context, name string, _ map[string]string) error {
+		if name == "0000" && !repaired {
+			return serviceproject.ErrSetupFailed
+		}
+		return nil
+	})
+	projects := serviceproject.New(repo, serviceproject.ContainerDependencies{Lifecycle: lifecycle, Setup: setup}, nil, nil)
+	var restored []string
+	restore := func(_ context.Context, id string) error {
+		if id == "0000" && !repaired {
+			t.Fatal("restored applications before their setup dependencies were repaired")
+		}
+		restored = append(restored, id)
+		return nil
+	}
+	projects.SetContainerRestorer(restore)
+	upgraded, skipped, setupFailed, failed, err := upgradeAll(ctx, projects, lifecycle, false, false, newProgressWriter(""), restore)
+	if err != nil || upgraded != 2 || skipped != 0 || setupFailed != 1 || failed != 0 || !slices.Equal(restored, []string{"0001"}) {
+		t.Fatalf("upgrade result: upgraded=%d skipped=%d setup=%d failed=%d restored=%v err=%v", upgraded, skipped, setupFailed, failed, restored, err)
+	}
+	repaired = true
+	meta, err := projects.VerifySetup(ctx, "0000")
+	if err != nil || meta.Status != serviceproject.StatusRunning || meta.SetupFailed || !slices.Equal(restored, []string{"0001", "0000"}) {
+		t.Fatalf("setup recovery did not restore deferred applications: project=%+v restored=%v err=%v", meta, restored, err)
 	}
 }

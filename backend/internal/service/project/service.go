@@ -201,7 +201,7 @@ func (s *Service) Create(ctx context.Context, in CreateInput, callerEmail string
 			return s.repo.SetStatus(ctx, m.ID, StatusError, err.Error())
 		}
 	}
-	return s.repo.SetStatus(ctx, m.ID, StatusRunning, "")
+	return s.setSetupComplete(ctx, m.ID)
 }
 
 func (s *Service) Update(ctx context.Context, id ID, in UpdateInput) (Meta, error) {
@@ -394,7 +394,7 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 			}
 		}
 	}
-	return s.repo.SetStatus(ctx, id, StatusRunning, "")
+	return s.setSetupComplete(ctx, id)
 }
 
 var ErrProjectBusy = errors.New("project has an active agent process")
@@ -439,6 +439,9 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 			return s.setStartError(ctx, id, err)
 		}
 	}
+	if _, err := s.repo.Update(ctx, id, func(m *Meta) { m.SetupRepair = nil }); err != nil {
+		return Meta{}, err
+	}
 	if err := s.containerLifecycle.Ensure(ctx, m); err != nil {
 		return s.setStartError(ctx, id, err)
 	}
@@ -448,30 +451,44 @@ func (s *Service) Upgrade(ctx context.Context, id ID, includeBusy bool) (Meta, e
 	if err := s.ensureUserSetup(ctx, m); err != nil {
 		return s.setStartError(ctx, id, err)
 	}
-	return s.repo.SetStatus(ctx, id, StatusRunning, "")
+	return s.setSetupComplete(ctx, id)
 }
 
 func (s *Service) ensureUserSetup(ctx context.Context, m Meta) error {
 	if s.containerSetup == nil {
 		return nil
 	}
-	secrets, err := s.secrets.list(ctx, m.ID)
+	environment, err := s.setupEnvironment(ctx, m.ID)
 	if err != nil {
-		return fmt.Errorf("load project setup environment: %w", err)
+		return err
+	}
+	return s.containerSetup.Ensure(ctx, m.ContainerName, environment)
+}
+
+func (s *Service) setupEnvironment(ctx context.Context, id ID) (map[string]string, error) {
+	secrets, err := s.secrets.list(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load project setup environment: %w", err)
 	}
 	environment := make(map[string]string, len(secrets))
 	for _, secret := range secrets {
 		environment[secret.Key] = secret.Value
 	}
-	return s.containerSetup.Ensure(ctx, m.ContainerName, environment)
+	return environment, nil
 }
 
 // setStartError keeps the persisted project status useful for the UI while
-// returning the operational failure to callers. Agent providers must stop here
-// instead of attempting CLI provisioning against a container that never
-// started and masking the real cause with a later "instance not found" error.
+// returning the operational failure to callers. StartForAgent only bypasses a
+// confirmed script failure after checking the container is running; failed
+// container preparation must still stop CLI provisioning.
 func (s *Service) setStartError(ctx context.Context, id ID, cause error) (Meta, error) {
-	m, statusErr := s.repo.SetStatus(ctx, id, StatusError, cause.Error())
+	m, statusErr := s.repo.Update(ctx, id, func(m *Meta) {
+		m.Status, m.ErrorMsg = StatusError, cause.Error()
+		m.SetupFailed = errors.Is(cause, ErrSetupFailed)
+		if m.SetupFailed && m.SetupRepair != nil && m.SetupRepair.State == "succeeded" {
+			m.SetupRepair = nil
+		}
+	})
 	if statusErr != nil {
 		return Meta{}, errors.Join(cause, statusErr)
 	}
@@ -526,7 +543,7 @@ func (s *Service) Restart(ctx context.Context, id ID) (Meta, error) {
 			return s.setStartError(ctx, id, err)
 		}
 	}
-	return s.repo.SetStatus(ctx, id, StatusRunning, "")
+	return s.setSetupComplete(ctx, id)
 }
 
 func (s *Service) InspectContainer(ctx context.Context, id ID) (ContainerInspect, error) {

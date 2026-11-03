@@ -55,8 +55,8 @@ export function UpdateRunCard({
         )}
         {setupFailures.length > 0 && (
           <div class="mt-2 text-[12px] text-accent-yellow" role="status">
-            {setupFailures.length} {setupFailures.length === 1 ? "project needs" : "projects need"} setup repair: {setupFailures.join(", ")}.
-            {" "}Repair setup in each affected project, then select Start project in its settings to retry.
+            {setupFailures.length} {setupFailures.length === 1 ? "project reported a setup failure" : "projects reported setup failures"}: {setupFailures.join(", ")}.
+            {" "}Automatic repair is attempted after the update. Check each project's settings or Automatic setup repair chat for its current result.
           </div>
         )}
         {run.state === "failed" && onRetry && (

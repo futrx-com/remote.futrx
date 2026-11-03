@@ -11,6 +11,7 @@ type metaRecord struct {
 	ID                   string            `json:"id"`
 	Title                string            `json:"title"`
 	Provider             string            `json:"provider,omitempty"`
+	AccountID            string            `json:"accountId,omitempty"`
 	Sessions             map[string]string `json:"sessions,omitempty"`
 	ClaudeSessionID      string            `json:"claudeSessionId,omitempty"`
 	CodexSessionID       string            `json:"codexSessionId,omitempty"`
@@ -30,6 +31,7 @@ type metaRecord struct {
 	ProjectID            string            `json:"projectId,omitempty"`
 	ForkPending          bool              `json:"forkPending,omitempty"`
 	SelectedSkills       []skillRefRecord  `json:"selectedSkills,omitempty"`
+	SetupRepair          bool              `json:"setupRepair,omitempty"`
 }
 
 type skillRefRecord struct {
@@ -45,6 +47,7 @@ func metaRecordFromDomain(m servicechat.Meta) metaRecord {
 		ID:                   string(m.ID),
 		Title:                m.Title,
 		Provider:             string(m.Provider),
+		AccountID:            m.AccountID,
 		Sessions:             sessionRecordsFromDomain(m.Sessions),
 		ClaudeSessionID:      m.ClaudeSessionID,
 		CodexSessionID:       m.CodexSessionID,
@@ -64,6 +67,7 @@ func metaRecordFromDomain(m servicechat.Meta) metaRecord {
 		ProjectID:            string(m.ProjectID),
 		ForkPending:          m.ForkPending,
 		SelectedSkills:       skillRefRecordsFromDomain(m.SelectedSkills),
+		SetupRepair:          m.SetupRepair,
 	}
 }
 
@@ -77,6 +81,7 @@ func (r metaRecord) toDomain() servicechat.Meta {
 		ID:                   servicechat.ID(r.ID),
 		Title:                r.Title,
 		Provider:             provider,
+		AccountID:            r.AccountID,
 		Sessions:             sessionRecordsToDomain(r.Sessions),
 		ClaudeSessionID:      r.ClaudeSessionID,
 		CodexSessionID:       r.CodexSessionID,
@@ -96,6 +101,7 @@ func (r metaRecord) toDomain() servicechat.Meta {
 		ProjectID:            servicechat.ProjectID(r.ProjectID),
 		ForkPending:          r.ForkPending,
 		SelectedSkills:       servicechat.NormalizeSelectedSkills(skillRefRecordsToDomain(r.SelectedSkills), provider),
+		SetupRepair:          r.SetupRepair,
 	}
 	meta.NormalizeSessions()
 	return meta

@@ -57,6 +57,12 @@ type ContainerSetup interface {
 	Ensure(ctx context.Context, containerName string, environment map[string]string) error
 }
 
+// ContainerSetupVerifier reruns the real script after an agent repair, even if
+// a success marker exists. Removing or disabling setup is not verification.
+type ContainerSetupVerifier interface {
+	Verify(ctx context.Context, containerName string, environment map[string]string) error
+}
+
 // ContainerInspector returns a best-effort diagnostic snapshot.
 type ContainerInspector interface {
 	Inspect(ctx context.Context, containerName string) (ContainerInspect, error)

@@ -22,6 +22,8 @@ export interface ProjectMeta {
   status: ProjectStatus;
   order?: number;
   errorMsg?: string;
+  setupFailed?: boolean;
+  setupRepair?: { chatId?: string; state: "blocked" | "running" | "failed" | "succeeded"; message?: string };
   resourceLimits?: ContainerLimits;
   createdAt: number;
   updatedAt: number;

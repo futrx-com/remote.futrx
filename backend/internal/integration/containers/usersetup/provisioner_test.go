@@ -57,8 +57,8 @@ func (r *localRunner) Run(ctx context.Context, args ...string) (string, error) {
 	if !slices.Equal(guest[:3], []string{"timeout", "--kill-after=5s", "15m"}) {
 		r.t.Fatal("missing guest timeout")
 	}
-	guest[len(guest)-2] = filepath.Join(r.workspace, "setup.sh")
-	guest[len(guest)-1] = filepath.Join(r.rootfs, "state", "user-setup.sha256")
+	guest[7] = filepath.Join(r.workspace, "setup.sh")
+	guest[8] = filepath.Join(r.rootfs, "state", "user-setup.sha256")
 	cmd := exec.CommandContext(ctx, guest[0], guest[1:]...)
 	cmd.Dir, cmd.Env = r.workspace, env
 	return command.CaptureOutput(ctx, cmd)
@@ -91,6 +91,29 @@ func TestSetupSkipsAbsentAndNonExecutableScripts(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(runner.rootfs, "state")); !os.IsNotExist(err) {
 		t.Fatal("skipped setup created state")
+	}
+}
+
+func TestVerificationRejectsMissingOrDisabledScriptAndBypassesCache(t *testing.T) {
+	runner := newLocalRunner(t)
+	setup := NewProvisioner(runner)
+	if err := setup.Verify(context.Background(), "project-1", nil); !errors.Is(err, project.ErrSetupFailed) {
+		t.Fatalf("missing script verification=%v", err)
+	}
+	runner.script("echo run >> runs\n", 0700)
+	if err := setup.Ensure(context.Background(), "project-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := setup.Verify(context.Background(), "project-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	runs, _ := os.ReadFile(filepath.Join(runner.workspace, "runs"))
+	if string(runs) != "run\nrun\n" {
+		t.Fatalf("verification trusted old success marker: %q", runs)
+	}
+	runner.script("echo run >> runs\n", 0600)
+	if err := setup.Verify(context.Background(), "project-1", nil); !errors.Is(err, project.ErrSetupFailed) {
+		t.Fatalf("disabled script verification=%v", err)
 	}
 }
 

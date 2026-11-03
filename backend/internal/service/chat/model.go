@@ -46,6 +46,7 @@ type Meta struct {
 	ProjectID            ProjectID  `json:"projectId,omitempty"`
 	ForkPending          bool       `json:"forkPending,omitempty"`
 	SelectedSkills       []SkillRef `json:"selectedSkills,omitempty"`
+	SetupRepair          bool       `json:"setupRepair,omitempty"`
 }
 
 type SkillRef struct {
