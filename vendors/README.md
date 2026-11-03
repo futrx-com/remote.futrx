@@ -1,63 +1,44 @@
-# vendors/ — pinned fallback copies of fragile upstream downloads
+# Browser download fallback
 
-Some upstreams this project installs from are not reliably reachable from
-every server. The concrete case that created this folder: **Google's
-Chrome-for-Testing CDN geo-blocks some datacenter IP ranges** (`403 —
-"We're sorry, but this service is not available in your location"`, observed
-on Hetzner and reported on Scaleway). On an affected server,
-`npx playwright install chromium` can never succeed, which used to kill the
-base-image build with a misleading `exit status 2`.
+The browser pins and SHA-256 hashes live in
+[`versions.env`](../backend/internal/agent/provisioning/versions.env).
+Chrome for Testing is pinned **independently** of Playwright's bundled Chromium,
+so browser security fixes do not have to wait for a Playwright release.
+Both Linux x64 and ARM64 use the exact same Chrome version.
 
-The fix is self-contained in the repo, costs nothing to operate, and needs no
-configuration from self-hosters:
+The installer downloads Chrome and FFmpeg from their official upstreams and
+checks the committed SHA-256 hashes before extraction. When an upstream is
+unreachable or geo-blocks a server, it uses the identical archives from the
+`PW_VENDOR_RELEASE_TAG` release in `PW_VENDOR_REPO`. A checksum mismatch fails
+the installation; it never selects an older browser from a project cache.
 
-1. **Every pin lives in [`versions.env`](../backend/internal/agent/provisioning/versions.env)**
-   (symlinked at `infra/versions.env`) — agent CLIs, Node, Go,
-   and the Playwright/CfT set including sha256 pins for the vendored assets.
-2. **A GitHub Action republishes the pinned archives** as release assets on
-   this repo (tag `PW_VENDOR_RELEASE_TAG`, e.g. `vendors-playwright-1.60.0`).
-   GitHub release bandwidth is free and its CDN is not geo-blocked from the
-   affected hosts. The workflow
-   ([`.github/workflows/vendor-playwright.yml`](../.github/workflows/vendor-playwright.yml))
-   downloads from Playwright's CDN on a GitHub runner, verifies the sha256
-   pins, uploads, and round-trips the published URLs.
-3. **The installer falls back automatically.**
-   [`agent-browser-install.sh`](../backend/internal/integration/containers/browser/assets/agent-browser-install.sh)
-   tries the normal direct download first; on failure it fetches the vendored
-   assets, **verifies them against the sha256 pins baked in from
-   `versions.env`**, and serves them to Playwright from a loopback HTTP
-   server (`PLAYWRIGHT_DOWNLOAD_HOST=http://127.0.0.1:8377`), so Playwright's
-   own installer logic — cache paths, revision directories, completion
-   markers — runs unmodified. Playwright's URL layout under a custom download
-   host has changed across releases; serving by basename sidesteps that.
+The managed runtime lives in `/opt/remote-browser/pw-<driver>-chrome-<browser>`.
+It includes the pinned Playwright driver, full Chrome (used for both headed
+and headless browsing), and the driver's FFmpeg build for video recording.
+Workspace Playwright installations do not select Remote's browser executable.
+The existing live profile remains in `/workspace/.browser-gui/profile`.
+An existing browser core with a different version is restarted on next start.
 
-The binaries are byte-identical to the upstream ones (the release notes and
-workflow logs are the provenance chain), so the fallback adds no third-party
-trust — unlike pointing installs at public third-party mirrors.
+## Updating the browser
 
-## Bumping the Playwright pin
+1. Select a patched stable version from Google's
+   [Chrome for Testing metadata](https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json).
+   Update `PW_CFT_VERSION`, both Chrome archive hashes, and use a new
+   `PW_VENDOR_RELEASE_TAG`. Existing release tags must never move.
+2. When updating `PLAYWRIGHT_VERSION`, also check the FFmpeg build with
+   `npx playwright@<version> install ffmpeg --dry-run` and update both FFmpeg
+   archive hashes. Chrome does not need to match the driver's browser manifest.
+3. Run `bash vendors/publish-playwright-assets.sh` from clean egress, or run
+   the **Vendor Playwright assets** workflow against the candidate branch.
+   The publisher verifies all four archives and their published downloads.
+4. Test fresh browser provisioning and `infra/qa/update.sh <ref>` against an
+   existing QA installation. Exercise both the live Browser pane and headless
+   screenshots/recording. Browser/driver compatibility needs a real smoke test.
 
-1. Edit `versions.env`: set `PLAYWRIGHT_VERSION`, then update `PW_CFT_VERSION`
-   and `PW_FFMPEG_BUILD` to what
-   `npx playwright@<new-version> install chromium --dry-run` reports, and
-   `PW_VENDOR_RELEASE_TAG` (new tag — existing tags are never moved; the
-   updater's `git fetch --tags` cannot tolerate moved tags).
-2. Run `bash vendors/publish-playwright-assets.sh` from a machine with clean
-   egress — on a sha mismatch it prints the new hashes to paste into
-   `versions.env`. Or merge the pin bump and let the workflow run; it fails
-   with the same instructions if the sha pins are stale.
-3. Merged to `main`, the workflow re-verifies and publishes the new release.
+The main-branch workflow publishes assets automatically after pin changes.
+For forks, change `PW_VENDOR_REPO` to the fork's repository and publish there.
+The fallback release must exist before a geo-blocked server can install the
+new runtime.
 
-## If both download paths fail on your server
-
-Your server's IP is likely geo-blocked by Google *and* unable to reach GitHub
-releases (or the release for the pinned version has not been published on
-your fork — run the workflow once). Escape hatches:
-
-- `HTTPS_PROXY` is honored natively by Playwright's downloader if you have a
-  proxy with clean egress.
-- Hetzner asks affected customers to report the IP + blocked endpoint via
-  [console.hetzner.cloud/support](https://console.hetzner.cloud/support);
-  they escalate misclassified ranges to Google.
-- Forks: set `PW_VENDOR_REPO` in `versions.env` to your fork's slug so the
-  fallback pulls from your own releases.
+This update does not enable Chromium's sandbox or isolate the browser from
+project credentials. Those require a dedicated user and LXC/AppArmor testing.

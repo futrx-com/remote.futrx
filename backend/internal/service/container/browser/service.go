@@ -109,6 +109,11 @@ func (s *Service) EnsureSkill(ctx context.Context, containerName string) error {
 }
 
 func (s *Service) EnsureScript(ctx context.Context, containerName string) error {
+	// Existing containers need the managed runtime before the new helper is
+	// published; the version check makes this cheap on current base images.
+	if err := s.provisioner.Provision(ctx, containerName); err != nil {
+		return err
+	}
 	return s.tooling.EnsureScript(ctx, containerName)
 }
 

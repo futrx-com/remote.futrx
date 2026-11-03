@@ -1,20 +1,10 @@
 # Sanity check the GUI toolchain and select the browser pinned by versions.env.
 which Xvfb x11vnc websockify openbox xdotool setsid
-# Playwright's per-arch Chromium layout: the binary lives under
-# chrome-linux64/ on x86_64 hosts and chrome-linux/ on aarch64. Probe both so
-# aarch64 installs (which succeed via Playwright's arm64 build) are found
-# instead of reported as "not installed".
-CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
-                   /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
-    [ -x "$browser_bin" ] || continue
-    if "$browser_bin" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
-        CHROME="$browser_bin"
-        break
-    fi
-done
-if [ -z "$CHROME" ]; then
-    echo "pinned Chrome for Testing $PW_CFT_VERSION was not installed" >&2
+# Select only the managed, security-patched browser on either architecture.
+BROWSER_RUNTIME=__BROWSER_RUNTIME_DIR__
+CHROME="$BROWSER_RUNTIME/chrome/chrome"
+if ! "$CHROME" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
+    echo "pinned Chrome for Testing __PW_CFT_VERSION__ is not installed" >&2
     exit 1
 fi
 
@@ -111,4 +101,5 @@ fi
 
 smoke_cleanup
 trap - EXIT
+touch "$BROWSER_RUNTIME/.ready"
 echo "Agent Browser smoke test passed with Chrome for Testing $PW_CFT_VERSION"

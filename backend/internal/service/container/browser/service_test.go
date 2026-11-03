@@ -87,6 +87,41 @@ func TestEnsurePropagatesRuntimeFailure(t *testing.T) {
 	}
 }
 
+func TestEnsureScriptRepairsRuntimeBeforePublishingHelper(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		events := []string{}
+		var provisionErr error
+		if fail {
+			provisionErr = errors.New("browser download failed")
+		}
+		service := NewService(Dependencies{
+			Provisioner: &recordingProvisioner{events: &events, err: provisionErr},
+			Tooling:     recordingTooling{events: &events},
+		}, 6080)
+		err := service.EnsureScript(context.Background(), "existing-container")
+		if !errors.Is(err, provisionErr) {
+			t.Fatalf("error=%v, want %v", err, provisionErr)
+		}
+		want := []string{"provision:existing-container"}
+		if !fail {
+			want = append(want, "script:existing-container")
+		}
+		if !reflect.DeepEqual(events, want) {
+			t.Fatalf("events=%v, want %v", events, want)
+		}
+	}
+}
+
+type recordingTooling struct {
+	stubTooling
+	events *[]string
+}
+
+func (r recordingTooling) EnsureScript(_ context.Context, name string) error {
+	*r.events = append(*r.events, "script:"+name)
+	return nil
+}
+
 type recordingProvisioner struct {
 	events *[]string
 	err    error

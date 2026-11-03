@@ -17,48 +17,78 @@ func TestBrowserVersionDetection(t *testing.T) {
 		version string
 		wantOK  bool
 	}{
-		{name: "pinned Chrome for Testing", version: "Google Chrome for Testing 148.0.7778.96", wantOK: true},
-		{name: "Chrome for Testing trailing whitespace", version: "Google Chrome for Testing 148.0.7778.96 \t", wantOK: true},
-		{name: "Chromium ARM patch", version: "Chromium 148.0.7778.0", wantOK: true},
-		{name: "Chromium alternate patch and trailing whitespace", version: "Chromium 148.0.7778.123 \t", wantOK: true},
-		{name: "Chrome for Testing stale patch", version: "Google Chrome for Testing 148.0.7778.95"},
-		{name: "Chrome for Testing stale build", version: "Google Chrome for Testing 148.0.7777.96"},
-		{name: "Chromium stale build", version: "Chromium 148.0.7777.0"},
-		{name: "Chromium stale major", version: "Chromium 147.0.7778.0"},
-		{name: "Chrome for Testing malformed separators", version: "Google Chrome for Testing 148x0x7778x96"},
-		{name: "Chromium malformed separators", version: "Chromium 148x0x7778.0"},
-		{name: "Chromium nonnumeric patch", version: "Chromium 148.0.7778.dev"},
-		{name: "unsupported brand", version: "Google Chrome 148.0.7778.96"},
-		{name: "extra version suffix", version: "Chromium 148.0.7778.0 unexpected"},
+		{name: "pinned Chrome for Testing", version: "Google Chrome for Testing 156.0.8078.80", wantOK: true},
+		{name: "Chrome for Testing trailing whitespace", version: "Google Chrome for Testing 156.0.8078.80 \t", wantOK: true},
+		{name: "Chromium ARM exact patch", version: "Chromium 156.0.8078.80", wantOK: true},
+		{name: "Chromium ARM unpatched build", version: "Chromium 156.0.8078.0"},
+		{name: "Chromium alternate patch and trailing whitespace", version: "Chromium 156.0.8078.79 \t"},
+		{name: "Chrome for Testing stale patch", version: "Google Chrome for Testing 156.0.8078.73"},
+		{name: "Chrome for Testing stale build", version: "Google Chrome for Testing 156.0.8077.80"},
+		{name: "Chromium stale build", version: "Chromium 156.0.8077.0"},
+		{name: "Chromium stale major", version: "Chromium 155.0.8078.0"},
+		{name: "Chrome for Testing malformed separators", version: "Google Chrome for Testing 156x0x8078x80"},
+		{name: "Chromium malformed separators", version: "Chromium 156x0x8078.0"},
+		{name: "Chromium nonnumeric patch", version: "Chromium 156.0.8078.dev"},
+		{name: "unsupported brand", version: "Google Chrome 156.0.8078.80"},
+		{name: "extra version suffix", version: "Chromium 156.0.8078.0 unexpected"},
 	}
 
 	for _, script := range browserDetectionScripts(t) {
 		t.Run(script.name, func(t *testing.T) {
-			for _, layout := range []string{"chrome-linux64", "chrome-linux"} {
-				t.Run(layout, func(t *testing.T) {
-					for _, tt := range tests {
-						t.Run(tt.name, func(t *testing.T) {
-							fixture := newBrowserDetectionFixture(t)
-							browserPath := fixture.browser(t, "chromium-1223", layout, tt.version, 0o755)
-							fixture.check(t, script, tt.wantOK, browserPath)
-						})
-					}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					fixture := newBrowserDetectionFixture(t)
+					browserPath := fixture.browser(t, "", "chrome", tt.version, 0o755)
+					fixture.check(t, script, tt.wantOK, browserPath)
 				})
 			}
+
 			t.Run("missing browser", func(t *testing.T) {
 				newBrowserDetectionFixture(t).check(t, script, false, "")
 			})
 			t.Run("browser is not executable", func(t *testing.T) {
 				fixture := newBrowserDetectionFixture(t)
-				fixture.browser(t, "chromium-1223", "chrome-linux64", "Google Chrome for Testing 148.0.7778.96", 0o644)
+				fixture.browser(t, "", "chrome", "Google Chrome for Testing 156.0.8078.80", 0o644)
 				fixture.check(t, script, false, "")
 			})
-			t.Run("skip stale cache and select compatible browser", func(t *testing.T) {
+			t.Run("ignore cached browsers and require managed runtime", func(t *testing.T) {
 				fixture := newBrowserDetectionFixture(t)
 				fixture.browser(t, "chromium-1000", "chrome-linux64", "Google Chrome for Testing 147.0.7778.96", 0o755)
-				browserPath := fixture.browser(t, "chromium-1223", "chrome-linux", "Chromium 148.0.7778.0 ", 0o755)
-				fixture.check(t, script, true, browserPath)
+				fixture.check(t, script, false, "")
 			})
+		})
+	}
+}
+
+func TestBrowserCoreReadinessRequiresPatchedVersion(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node is required")
+	}
+	script := string(renderedGUIUpScript())
+	start := strings.Index(script, "core_ready() {")
+	end := strings.Index(script[start:], "\nview_ready()") + start
+	for _, tc := range []struct {
+		name, response string
+		ready          bool
+	}{
+		{"patched", `{"Browser":"Chrome/156.0.8078.80"}`, true},
+		{"stale", `{"Browser":"Chrome/156.0.8078.4"}`, false},
+		{"other service", `{}`, false},
+		{"invalid response", `not json`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			curl := "#!/bin/sh\nprintf '%s' '" + tc.response + "'\n"
+			if err := os.WriteFile(filepath.Join(dir, "curl"), []byte(curl), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "sh", "-c", "CDP_PORT=9222\nEXPECTED_CHROME_VERSION=156.0.8078.80\n"+script[start:end]+"\ncore_ready")
+			cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"))
+			if out, err := cmd.CombinedOutput(); (err == nil) != tc.ready {
+				t.Fatalf("ready=%v, want %v: %s", err == nil, tc.ready, out)
+			}
 		})
 	}
 }
@@ -72,10 +102,16 @@ type browserDetectionScript struct {
 func browserDetectionScripts(t *testing.T) []browserDetectionScript {
 	t.Helper()
 	renderer := browserAssetRenderer{pin: func(key string) string {
-		if key == "PW_CFT_VERSION" {
-			return "148.0.7778.96"
+		switch key {
+		case "PW_CFT_VERSION":
+			return "156.0.8078.80"
+		case "PLAYWRIGHT_VERSION":
+			return "1.64.1"
+		case "PW_FFMPEG_BUILD":
+			return "1013"
+		default:
+			return "unused-test-pin"
 		}
-		return "unused-test-pin"
 	}}
 
 	// Execute the selection steps emitted by the real renderer without running
@@ -94,7 +130,7 @@ func browserDetectionScripts(t *testing.T) []browserDetectionScript {
 	return []browserDetectionScript{
 		{
 			name:          "installation smoke test",
-			text:          "set -e\nPW_CFT_VERSION=148.0.7778.96\n" + install[smokeStart:smokeEnd],
+			text:          "set -e\nPW_CFT_VERSION=156.0.8078.80\n" + install[smokeStart:smokeEnd],
 			printsBrowser: true,
 		},
 		{name: "GUI launcher", text: launcher[:launcherEnd], printsBrowser: true},
@@ -110,7 +146,16 @@ type browserDetectionFixture struct {
 func newBrowserDetectionFixture(t *testing.T) browserDetectionFixture {
 	t.Helper()
 	dir := t.TempDir()
-	fixture := browserDetectionFixture{cache: filepath.Join(dir, "cache"), bin: filepath.Join(dir, "bin")}
+	fixture := browserDetectionFixture{cache: filepath.Join(dir, "runtime"), bin: filepath.Join(dir, "bin")}
+	for _, name := range []string{".ready", "node_modules/playwright/package.json", "browsers/ffmpeg-1013/ffmpeg-linux"} {
+		path := filepath.Join(fixture.cache, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(""), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.MkdirAll(fixture.bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +184,7 @@ func (f browserDetectionFixture) browser(t *testing.T, revision, layout, version
 
 func (f browserDetectionFixture) check(t *testing.T, script browserDetectionScript, wantOK bool, browserPath string) {
 	t.Helper()
-	shellScript := strings.ReplaceAll(script.text, "/root/.cache/ms-playwright", f.cache)
+	shellScript := strings.ReplaceAll(script.text, "/opt/remote-browser/pw-1.64.1-chrome-156.0.8078.80", f.cache)
 	if script.printsBrowser {
 		shellScript += "\nprintf 'selected=%s\\n' \"$CHROME\"\n"
 	}

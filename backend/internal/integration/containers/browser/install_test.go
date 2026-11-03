@@ -13,7 +13,7 @@ func TestInstallScriptSubstitutesEveryPin(t *testing.T) {
 		t.Fatalf("install script still contains unsubstituted placeholders:\n%s", script)
 	}
 	for _, want := range []string{
-		"npx --yes \"playwright@${PLAYWRIGHT_VERSION}\"",
+		"PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install",
 		"PW_CFT_VERSION=" + provisioning.MustPin("PW_CFT_VERSION"),
 		"releases/download/",
 		"sha256sum -c",

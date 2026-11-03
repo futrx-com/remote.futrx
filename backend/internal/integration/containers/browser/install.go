@@ -38,45 +38,46 @@ func (r browserAssetRenderer) installScript() string {
 	script := strings.TrimSuffix(embeddedAgentBrowserInstallScript, "\n") + "\n\n" +
 		strings.TrimSuffix(embeddedAgentBrowserSmokeTestScript, "\n")
 	for placeholder, key := range map[string]string{
-		"__PLAYWRIGHT_VERSION__":               "PLAYWRIGHT_VERSION",
-		"__PW_CFT_VERSION__":                   "PW_CFT_VERSION",
-		"__PW_VENDOR_REPO__":                   "PW_VENDOR_REPO",
-		"__PW_VENDOR_RELEASE_TAG__":            "PW_VENDOR_RELEASE_TAG",
-		"__PW_CHROME_LINUX64_SHA256__":         "PW_CHROME_LINUX64_SHA256",
-		"__PW_HEADLESS_SHELL_LINUX64_SHA256__": "PW_HEADLESS_SHELL_LINUX64_SHA256",
-		"__PW_FFMPEG_LINUX_SHA256__":           "PW_FFMPEG_LINUX_SHA256",
+		"__PLAYWRIGHT_VERSION__":           "PLAYWRIGHT_VERSION",
+		"__PW_CFT_VERSION__":               "PW_CFT_VERSION",
+		"__PW_VENDOR_REPO__":               "PW_VENDOR_REPO",
+		"__PW_VENDOR_RELEASE_TAG__":        "PW_VENDOR_RELEASE_TAG",
+		"__PW_CHROME_LINUX64_SHA256__":     "PW_CHROME_LINUX64_SHA256",
+		"__PW_CHROME_LINUX_ARM64_SHA256__": "PW_CHROME_LINUX_ARM64_SHA256",
+		"__PW_FFMPEG_LINUX_ARM64_SHA256__": "PW_FFMPEG_LINUX_ARM64_SHA256",
+		"__PW_FFMPEG_BUILD__":              "PW_FFMPEG_BUILD",
+		"__PW_FFMPEG_LINUX_SHA256__":       "PW_FFMPEG_LINUX_SHA256",
 	} {
 		script = strings.ReplaceAll(script, placeholder, r.pin(key))
 	}
-	return strings.ReplaceAll(script, "__CHROME_VERSION_PATTERN__", r.versionPattern())
+	return strings.ReplaceAll(r.render(script), "__BROWSER_STACK_CHECK__", r.stackCheck())
+}
+
+func (r browserAssetRenderer) runtimeDir() string {
+	return "/opt/remote-browser/pw-" + r.pin("PLAYWRIGHT_VERSION") + "-chrome-" + r.pin("PW_CFT_VERSION")
+}
+
+func (r browserAssetRenderer) render(script string) string {
+	return strings.NewReplacer(
+		"__BROWSER_RUNTIME_DIR__", r.runtimeDir(),
+		"__PW_CFT_VERSION__", r.pin("PW_CFT_VERSION"),
+		"__CHROME_VERSION_PATTERN__", r.versionPattern(),
+	).Replace(script)
 }
 
 func (r browserAssetRenderer) launcherScript() []byte {
-	return []byte(strings.NewReplacer(
-		"__PW_CFT_VERSION__", r.pin("PW_CFT_VERSION"),
-		"__CHROME_VERSION_PATTERN__", r.versionPattern(),
-	).Replace(embeddedGUIUpScript))
+	return []byte(r.render(embeddedGUIUpScript))
 }
 
 func (r browserAssetRenderer) versionPattern() string {
-	// x86_64 uses Chrome for Testing and must match the full pinned version.
-	// Playwright 1.60 installs its own Chromium on aarch64, whose patch
-	// component differs from the Chrome for Testing pin (for
-	// example 148.0.7778.0 against a pinned 148.0.7778.96). Match the
-	// major.minor.build prefix for that brand. Both can emit trailing spaces.
-	// Share this pattern across install, launch, and runtime checks.
-	v := r.pin("PW_CFT_VERSION")
-	prefix := v
-	if i := strings.LastIndex(v, "."); i >= 0 {
-		prefix = v[:i]
-	}
-	return `^(Google Chrome for Testing ` + regexp.QuoteMeta(v) + `|Chromium ` + regexp.QuoteMeta(prefix) + `\.[0-9]+)[[:space:]]*$`
+	// Both architectures use the same fully patched CfT version. Accepting
+	// an arbitrary ARM patch would also accept builds predating security fixes.
+	return `^(Google Chrome for Testing|Chromium) ` + regexp.QuoteMeta(r.pin("PW_CFT_VERSION")) + `[[:space:]]*$`
 }
 
 func (r browserAssetRenderer) stackCheck() string {
-	// Playwright's Chromium lives under chrome-linux64/ on x86_64 and
-	// chrome-linux/ on aarch64; probe both so arm64 installs resolve.
-	return `command -v Xvfb >/dev/null 2>&1 && for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do [ -x "$browser_bin" ] || continue; "$browser_bin" --version 2>/dev/null | grep -Eq '` + r.versionPattern() + `' && exit 0; done; exit 1`
+	dir := r.runtimeDir()
+	return `command -v Xvfb >/dev/null 2>&1 && test -f ` + dir + `/.ready && test -f ` + dir + `/node_modules/playwright/package.json && test -x ` + dir + `/browsers/ffmpeg-` + r.pin("PW_FFMPEG_BUILD") + `/ffmpeg-linux && ` + dir + `/chrome/chrome --version 2>/dev/null | grep -Eq '` + r.versionPattern() + `'`
 }
 
 func renderedGUIUpScript() []byte {
