@@ -79,7 +79,7 @@ func (s *Client) ApplyDiff(
 		if err != nil {
 			// `lxc config unset` on a missing key still exits non-zero;
 			// treat that as success.
-			if strings.Contains(out, "not set") || strings.Contains(out, "doesn't exist") {
+			if strings.Contains(out, "not set") || strings.Contains(out, "not currently set") || strings.Contains(out, "doesn't exist") {
 				continue
 			}
 			return fmt.Errorf("unset environment.%s on %s: %w; output: %s", k, container, err, out)

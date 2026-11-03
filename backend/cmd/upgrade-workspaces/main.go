@@ -17,7 +17,6 @@ import (
 	containerapps "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
 	serviceapps "github.com/futrx-com/remote.futrx.com/internal/service/applications"
-	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
 )
@@ -59,12 +58,9 @@ func main() {
 	)
 	apps := serviceapps.New(registry, storeSet.Applications, containerStack.AppInstaller, nil, containerStack.AppPorts)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
 	progress := newProgressWriter(*progressFile)
 	upgraded, skipped, failed, err := upgradeAll(
-		ctx,
+		context.Background(),
 		projects,
 		containerStack.Lifecycle,
 		*dryRun,
@@ -73,7 +69,7 @@ func main() {
 		apps.RestoreProject,
 	)
 	if err != nil {
-		log.Fatalf("list projects: %v", err)
+		log.Fatalf("upgrade workspaces: %v", err)
 	}
 
 	fmt.Printf("workspace upgrade: %d upgraded, %d busy skipped, %d failed\n", upgraded, skipped, failed)
@@ -89,7 +85,7 @@ func main() {
 func upgradeAll(
 	ctx context.Context,
 	projects *serviceproject.Service,
-	lifecycle *servicelifecycle.Service,
+	lifecycle serviceproject.ContainerLifecycle,
 	dryRun, includeBusy bool,
 	progress progressWriter,
 	restoreProject func(context.Context, string) error,
@@ -104,31 +100,41 @@ func upgradeAll(
 	}
 
 	for index, meta := range metas {
+		if err := ctx.Err(); err != nil {
+			return upgraded, skipped, failed, err
+		}
+		// Budget each workspace independently: setup and app restoration for
+		// earlier projects must not consume the next project's migration time.
+		workspaceCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		message := fmt.Sprintf("Recycling workspace %d of %d", index+1, total)
 		if err := progress.write(index, total, meta.Slug, message); err != nil {
 			log.Printf("progress: %v", err)
 		}
-		state, stateErr := lifecycle.State(ctx, meta.ContainerName)
+		state, stateErr := lifecycle.State(workspaceCtx, meta.ContainerName)
 		if stateErr != nil {
+			cancel()
 			failed++
 			log.Printf("FAIL %s: inspect container: %v", meta.Slug, stateErr)
 			continue
 		}
 		busy := false
 		if state != serviceproject.ContainerStateMissing {
-			busy, err = lifecycle.Busy(ctx, meta.ContainerName)
+			busy, err = lifecycle.Busy(workspaceCtx, meta.ContainerName)
 			if err != nil {
+				cancel()
 				failed++
 				log.Printf("FAIL %s: inspect activity: %v", meta.Slug, err)
 				continue
 			}
 		}
 		if busy && !includeBusy {
+			cancel()
 			skipped++
 			log.Printf("SKIP %s: active agent process", meta.Slug)
 			continue
 		}
 		if dryRun {
+			cancel()
 			upgraded++
 			action := "replace"
 			if state == serviceproject.ContainerStateMissing {
@@ -138,7 +144,8 @@ func upgradeAll(
 			continue
 		}
 
-		if _, err := projects.Upgrade(ctx, meta.ID, includeBusy); err != nil {
+		if _, err := projects.Upgrade(workspaceCtx, meta.ID, includeBusy); err != nil {
+			cancel()
 			if errors.Is(err, serviceproject.ErrProjectBusy) {
 				skipped++
 				log.Printf("SKIP %s: active agent process", meta.Slug)
@@ -148,11 +155,13 @@ func upgradeAll(
 			log.Printf("FAIL %s: %v", meta.Slug, err)
 			continue
 		}
-		if err := restoreProject(ctx, string(meta.ID)); err != nil {
+		if err := restoreProject(workspaceCtx, string(meta.ID)); err != nil {
+			cancel()
 			failed++
 			log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
 			continue
 		}
+		cancel()
 		upgraded++
 		log.Printf("OK %s: persistent agent state migrated; container replaced and validated", meta.Slug)
 		if err := progress.write(index+1, total, "", message); err != nil {

@@ -62,9 +62,11 @@ func TestApplyDiffDoesNotIncludeSecretInSetError(t *testing.T) {
 }
 
 type environmentTestRunner struct {
-	calls  [][]string
-	setOut string
-	setErr error
+	calls    [][]string
+	setOut   string
+	setErr   error
+	unsetOut string
+	unsetErr error
 }
 
 func (r *environmentTestRunner) Available() bool { return true }
@@ -74,9 +76,35 @@ func (r *environmentTestRunner) Run(_ context.Context, args ...string) (string, 
 	if len(args) >= 2 && args[0] == "config" && args[1] == "set" {
 		return r.setOut, r.setErr
 	}
+	if len(args) >= 2 && args[0] == "config" && args[1] == "unset" {
+		return r.unsetOut, r.unsetErr
+	}
 	return "", nil
 }
 
 func (r *environmentTestRunner) RunStdin(ctx context.Context, _ io.Reader, args ...string) (string, error) {
 	return r.Run(ctx, args...)
+}
+
+func TestApplyDiffIgnoresOnlyMissingEnvironmentKeys(t *testing.T) {
+	for _, tc := range []struct {
+		output  string
+		wantErr bool
+	}{
+		{`Error: Cannot unset key "environment.SSH_KEY", it's not currently set`, false},
+		{"Error: key is not set", false},
+		{"Error: key doesn't exist", false},
+		{"Error: permission denied", true},
+	} {
+		t.Run(tc.output, func(t *testing.T) {
+			runner := &environmentTestRunner{unsetOut: tc.output, unsetErr: errors.New("exit status 1")}
+			err := NewClient(runner).ApplyDiff(context.Background(), "project", nil, []string{"SSH_KEY", "OTHER_KEY"})
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("ApplyDiff error = %v, want error = %v", err, tc.wantErr)
+			}
+			if !tc.wantErr && len(runner.calls) != 2 {
+				t.Fatal("missing key prevented remaining environment cleanup")
+			}
+		})
+	}
 }
