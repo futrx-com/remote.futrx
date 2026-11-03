@@ -143,9 +143,11 @@ start_core() {
     log "restarting browser core to use Chrome $EXPECTED_CHROME_VERSION"
     stop_core
     i=0
-    while chrome_running && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-    if chrome_running; then
-      log "old browser core did not stop"
+    while { chrome_running || pgrep -f "Xvfb :$DISPLAY_NUM" >/dev/null 2>&1; } && [ "$i" -lt 50 ]; do
+      sleep 0.1; i=$((i + 1))
+    done
+    if chrome_running || pgrep -f "Xvfb :$DISPLAY_NUM" >/dev/null 2>&1; then
+      log "old browser core or display did not stop"
       return 1
     fi
   fi
