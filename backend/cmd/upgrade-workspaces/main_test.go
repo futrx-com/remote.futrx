@@ -138,6 +138,23 @@ func (r *upgradeTestRepository) Get(_ context.Context, id serviceproject.ID) (se
 	return serviceproject.Meta{}, serviceproject.ErrNotFound
 }
 
+func (r *upgradeTestRepository) Update(ctx context.Context, id serviceproject.ID, update func(*serviceproject.Meta)) (serviceproject.Meta, error) {
+	if r.statusErr != nil {
+		return serviceproject.Meta{}, r.statusErr
+	}
+	meta, err := r.Get(ctx, id)
+	if err != nil {
+		return meta, err
+	}
+	update(&meta)
+	for i := range r.metas {
+		if r.metas[i].ID == id {
+			r.metas[i] = meta
+		}
+	}
+	return meta, nil
+}
+
 func (r *upgradeTestRepository) SetStatus(ctx context.Context, id serviceproject.ID, status serviceproject.Status, message string) (serviceproject.Meta, error) {
 	if r.statusErr != nil {
 		return serviceproject.Meta{}, r.statusErr

@@ -7,6 +7,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
+
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/smtp"
@@ -132,6 +134,7 @@ type AuthOptions struct {
 }
 
 type Services struct {
+	SetupRepair       *setuprepair.Service
 	Chats             *servicechat.Service
 	ChatAccess        *servicechat.AccessService
 	Projects          *serviceproject.Service
@@ -357,6 +360,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	mailer := serviceemail.NewMailer(emailService, emailDirectory{users: userService})
 
 	return Services{
+		SetupRepair:       setuprepair.New(projectService, chats, authService, promptService, deps.PromptStartGate),
 		Chats:             chatService,
 		ChatAccess:        chatAccessService,
 		Projects:          projectService,

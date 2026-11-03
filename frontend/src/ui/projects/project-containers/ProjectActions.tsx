@@ -21,9 +21,10 @@ export function ProjectActions({
   const [err, setErr] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const confirm = useConfirm();
-  const canStart = project.status === "stopped" || project.status === "missing" || project.status === "error";
-  const canStop = project.status === "running";
-  const canRestart = project.status === "running" || project.status === "error";
+  const repairing = project.setupRepair?.state === "running";
+  const canStart = !repairing && (project.status === "stopped" || project.status === "missing" || project.status === "error");
+  const canStop = project.status === "running" || project.setupFailed;
+  const canRestart = !repairing && (project.status === "running" || project.status === "error");
 
   async function run(action: "start" | "stop" | "restart", operation: () => Promise<void>) {
     if (action === "restart") {
@@ -54,6 +55,18 @@ export function ProjectActions({
         onClose={() => setDeleteOpen(false)}
         onDelete={onDelete}
       />
+      {(project.setupFailed || project.setupRepair) && (
+        <div class="rounded-lg border border-accent-yellow/30 bg-accent-yellow/[0.08] px-3 py-2.5 text-[13px]" role="status">
+          {project.setupRepair?.state === "running"
+            ? "An agent is automatically repairing this project's setup."
+            : project.setupRepair?.message || "Automatic setup repair is waiting for the update and active chats to finish."}
+          {project.setupRepair?.chatId && (
+            <a class="mt-1 block text-accent-blue underline" href={`/chats/${encodeURIComponent(project.setupRepair.chatId)}`}>
+              Open repair chat
+            </a>
+          )}
+        </div>
+      )}
       {project.errorMsg && (
         <div class="max-h-48 overflow-auto rounded-lg border border-accent-red/30 bg-accent-red/[0.08] px-3 py-2.5 text-[13px] text-accent-red whitespace-pre-wrap break-words">
           {project.errorMsg}

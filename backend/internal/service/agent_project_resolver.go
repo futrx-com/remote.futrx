@@ -19,7 +19,7 @@ func (r agentProjectResolver) Get(ctx context.Context, id agent.ProjectID) (agen
 }
 
 func (r agentProjectResolver) Start(ctx context.Context, id agent.ProjectID) (agent.Project, error) {
-	project, err := r.projects.Start(ctx, serviceproject.ID(id))
+	project, err := r.projects.StartForAgent(ctx, serviceproject.ID(id))
 	return projectForAgent(project), err
 }
 
