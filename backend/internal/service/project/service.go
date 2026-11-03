@@ -382,14 +382,16 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, error) {
 			if syncErr := s.secrets.syncContainer(ctx, id, m.ContainerName); syncErr != nil {
 				log.Printf("projects: sync env to %s after ensure: %v", m.ContainerName, syncErr)
 			}
-			if s.containerRestorer != nil {
-				if restoreErr := s.containerRestorer(ctx, string(id)); restoreErr != nil {
-					log.Printf("projects: restore applications in %s: %v", m.ContainerName, restoreErr)
-				}
-			}
 		}
 		if err := s.ensureUserSetup(ctx, m); err != nil {
 			return s.setStartError(ctx, id, err)
+		}
+		// Start also recovers projects left in error by an earlier upgrade. It
+		// retries setup in the existing container, then restores installed apps.
+		if (state == ContainerStateMissing || m.Status == StatusError) && s.containerRestorer != nil {
+			if err := s.containerRestorer(ctx, string(id)); err != nil {
+				return s.setStartError(ctx, id, fmt.Errorf("restore applications: %w", err))
+			}
 		}
 	}
 	return s.repo.SetStatus(ctx, id, StatusRunning, "")
@@ -672,7 +674,9 @@ func (s *Service) Reconcile(ctx context.Context) error {
 			continue
 		}
 		want := statusForContainerState(state)
-		if want != m.Status {
+		// A running container does not prove that project setup succeeded.
+		// Keep its actionable failure until a successful Start/Restart clears it.
+		if want != m.Status && !(want == StatusRunning && m.Status == StatusError) {
 			if _, err := s.repo.SetStatus(ctx, m.ID, want, ""); err != nil {
 				log.Printf("projects: reconcile %s: %v", m.ID, err)
 			}

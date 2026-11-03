@@ -53,6 +53,8 @@ type Progress struct {
 	Total       int    `json:"total,omitempty"`
 	CurrentItem string `json:"currentItem,omitempty"`
 	UpdatedAt   int64  `json:"updatedAt"`
+	// SetupFailures lists projects needing repair without failing infrastructure.
+	SetupFailures []string `json:"setupFailures,omitempty"`
 }
 
 type Status struct {

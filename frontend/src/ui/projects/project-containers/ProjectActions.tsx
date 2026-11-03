@@ -54,6 +54,11 @@ export function ProjectActions({
         onClose={() => setDeleteOpen(false)}
         onDelete={onDelete}
       />
+      {project.errorMsg && (
+        <div class="max-h-48 overflow-auto rounded-lg border border-accent-red/30 bg-accent-red/[0.08] px-3 py-2.5 text-[13px] text-accent-red whitespace-pre-wrap break-words">
+          {project.errorMsg}
+        </div>
+      )}
       {err && (
         <div class="flex items-start gap-2.5 rounded-lg border border-accent-red/30 bg-accent-red/[0.08] px-3 py-2.5 text-[13px]">
           <AlertCircle class="w-4 h-4 mt-0.5 flex-none text-accent-red" />

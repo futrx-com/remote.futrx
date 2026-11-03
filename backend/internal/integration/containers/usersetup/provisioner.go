@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/shared/output"
 )
 
@@ -36,7 +39,9 @@ exec 9>"$marker.lock"
 flock --exclusive 9
 checksum=$(sha256sum "$script")
 if [ -f "$marker" ] && [ "$(cat "$marker")" = "$checksum" ]; then exit 0; fi
-bash -e "$script" 9>&-
+# Reserve an exit code for the project script so LXD/marker failures remain
+# infrastructure errors. The outer timeout reports 124 for overlong setup.
+bash -e "$script" 9>&- || exit 78
 printf '%s\n' "$checksum" > "$marker.tmp"
 mv "$marker.tmp" "$marker"
 `
@@ -65,10 +70,17 @@ func (p *Provisioner) Ensure(ctx context.Context, containerName string, environm
 	ctx = command.WithCaptureLimit(command.WithOutput(ctx, io.Discard), setupOutputLimit)
 	out, err := command.RunWithTimeout(ctx, p.runner, setupRunTimeout, args...)
 	if err != nil {
+		var exitErr *exec.ExitError
+		scriptFailed := errors.As(err, &exitErr) && (exitErr.ExitCode() == 78 || exitErr.ExitCode() == 124)
 		if ctx.Err() != nil {
 			err = ctx.Err()
+			scriptFailed = false
 		}
-		return fmt.Errorf("run %s: %w; %s; fix the script and Start the project to retry", setupScriptPath, err, failureOutput(out, environment))
+		failure := fmt.Errorf("run %s: %w; %s; fix the script and Start the project to retry", setupScriptPath, err, failureOutput(out, environment))
+		if scriptFailed {
+			return fmt.Errorf("%w: %w", project.ErrSetupFailed, failure)
+		}
+		return failure
 	}
 	return nil
 }

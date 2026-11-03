@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
 // localRunner checks the LXD execution contract and runs the actual guest
@@ -186,7 +187,7 @@ func TestSetupReportsTransportFailuresAndCancellation(t *testing.T) {
 	for _, cause := range []error{context.DeadlineExceeded, context.Canceled, errors.New("LXD unavailable")} {
 		runner := newLocalRunner(t)
 		runner.err = cause
-		if err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil); !errors.Is(err, cause) {
+		if err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil); !errors.Is(err, cause) || errors.Is(err, project.ErrSetupFailed) {
 			t.Fatalf("error = %v, want %v", err, cause)
 		}
 	}
@@ -195,6 +196,36 @@ func TestSetupReportsTransportFailuresAndCancellation(t *testing.T) {
 	if err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil); !errors.Is(err, command.ErrUnavailable) {
 		t.Fatalf("unavailable error = %v", err)
 	}
+}
+
+func TestSetupClassifiesOnlyGuestScriptFailures(t *testing.T) {
+	t.Run("script failure", func(t *testing.T) {
+		runner := newLocalRunner(t)
+		runner.script("echo missing-project-dependency\nexit 1\n", 0700)
+		err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil)
+		if !errors.Is(err, project.ErrSetupFailed) || !strings.Contains(err.Error(), "missing-project-dependency") {
+			t.Fatalf("script error = %v", err)
+		}
+	})
+	t.Run("LXD exit status", func(t *testing.T) {
+		runner := newLocalRunner(t)
+		runner.err = exec.Command("bash", "-c", "exit 1").Run()
+		err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil)
+		if err == nil || errors.Is(err, project.ErrSetupFailed) {
+			t.Fatalf("runtime error became a setup warning: %v", err)
+		}
+	})
+	t.Run("marker failure", func(t *testing.T) {
+		runner := newLocalRunner(t)
+		runner.script("true\n", 0700)
+		if err := os.WriteFile(filepath.Join(runner.rootfs, "state"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		err := NewProvisioner(runner).Ensure(context.Background(), "project-1", nil)
+		if err == nil || errors.Is(err, project.ErrSetupFailed) {
+			t.Fatalf("marker error became a setup warning: %v", err)
+		}
+	})
 }
 
 func TestSetupFailureOutputIsBoundedAndSecretsAreRedacted(t *testing.T) {

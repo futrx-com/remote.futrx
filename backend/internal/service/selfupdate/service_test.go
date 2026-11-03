@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -447,6 +448,7 @@ func TestRunStatusReportsCleanLogAndStructuredProgress(t *testing.T) {
 	wantProgress := Progress{
 		Phase: "workspace-migration", Message: "Recycling workspace 3 of 8",
 		Completed: 2, Total: 8, CurrentItem: "astrology", UpdatedAt: 123,
+		SetupFailures: []string{"project-needing-repair"},
 	}
 	if err := writeJSONFile(svc.runs.progressPath(), wantProgress); err != nil {
 		t.Fatal(err)
@@ -462,8 +464,17 @@ func TestRunStatusReportsCleanLogAndStructuredProgress(t *testing.T) {
 	if run.LogUpdatedAt == 0 {
 		t.Fatal("log update timestamp is missing")
 	}
-	if run.Progress == nil || *run.Progress != wantProgress {
+	if run.Progress == nil || !reflect.DeepEqual(*run.Progress, wantProgress) {
 		t.Fatalf("progress = %+v, want %+v", run.Progress, wantProgress)
+	}
+	if err := writeJSONFile(svc.runs.donePath(), doneRecord{ExitCode: 0, FinishedAt: 456}); err != nil {
+		t.Fatal(err)
+	}
+	// The completed update still exposes project warnings after a server restart.
+	restarted := newTestService("0.2", "/opt/x", filepath.Dir(svc.runs.dir), host)
+	run = restarted.Status(context.Background()).Run
+	if run == nil || run.State != RunStateSucceeded || run.Progress == nil || !reflect.DeepEqual(*run.Progress, wantProgress) {
+		t.Fatalf("completed update lost setup warnings: %+v", run)
 	}
 }
 
