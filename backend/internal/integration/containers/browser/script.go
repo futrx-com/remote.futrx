@@ -52,5 +52,5 @@ fi`)
 		return fmt.Errorf("seed browser dirs: %w", err)
 	}
 
-	return a.publisher.Push(ctx, containerName, browserScriptTemplate, containerBrowserScriptHash, "755", containerBrowserScript)
+	return a.publisher.Push(ctx, containerName, []byte(newBrowserAssetRenderer().render(string(browserScriptTemplate))), containerBrowserScriptHash, "755", containerBrowserScript)
 }

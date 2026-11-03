@@ -22,27 +22,11 @@ SCREEN=1366x768x24
 EXPECTED_CHROME_VERSION=__PW_CFT_VERSION__
 export DISPLAY=":$DISPLAY_NUM"
 
-# Prefer Playwright's Chromium (Chrome for Testing) — the baked-in default,
-# and its path matches no Ubuntu AppArmor browser profile so it networks in
-# any container. The google-chrome fallback needs the /etc/apparmor.d/local/
-# chrome "network," rule (baked by AgentBrowserInstallScript since 2026-07-08;
-# Ubuntu's stock chrome profile otherwise denies all its sockets inside
-# nested LXD AppArmor namespaces — CreatePlatformSocket EPERM).
-# Playwright's per-arch Chromium layout: the binary lives under
-# chrome-linux64/ on x86_64 hosts and chrome-linux/ on aarch64. Probe both so
-# aarch64 installs (which succeed via Playwright's arm64 build) are found.
-CHROME=""
-for browser_bin in /root/.cache/ms-playwright/chromium-*/chrome-linux64/chrome \
-                   /root/.cache/ms-playwright/chromium-*/chrome-linux/chrome; do
-  [ -x "$browser_bin" ] || continue
-  if "$browser_bin" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
-    CHROME="$browser_bin"
-    break
-  fi
-done
-if [ -z "$CHROME" ]; then
-  echo "[gui-up] pinned Chrome for Testing $EXPECTED_CHROME_VERSION is not installed" >&2
-  exit 1
+# Select only the security-patched browser on either architecture.
+CHROME=__BROWSER_DIR__/chrome
+if ! "$CHROME" --version 2>/dev/null | grep -Eq '__CHROME_VERSION_PATTERN__'; then
+    echo "pinned Chrome for Testing __PW_CFT_VERSION__ is not installed" >&2
+    exit 1
 fi
 
 log() { echo "[gui-up] $*"; }
@@ -50,7 +34,11 @@ log() { echo "[gui-up] $*"; }
 now_sec() { date +%s; }
 
 core_ready() {
-  curl -sf --max-time 2 "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1
+  curl -sf --max-time 2 "http://127.0.0.1:$CDP_PORT/json/version" 2>/dev/null |
+    node -e 'let s=""; process.stdin.on("data", d => s+=d); process.stdin.on("end", () => {
+      try { process.exit(JSON.parse(s).Browser === "Chrome/" + process.argv[1] ? 0 : 1); }
+      catch { process.exit(1); }
+    });' "$EXPECTED_CHROME_VERSION"
 }
 
 view_ready() {
@@ -150,6 +138,19 @@ launch_chrome_service() {
 start_core() {
   mkdir -p "$PROFILE"
   touch "$LOG"
+  # An open CDP port alone is not proof the running browser has been patched.
+  if chrome_running && ! core_ready; then
+    log "restarting browser core to use Chrome $EXPECTED_CHROME_VERSION"
+    stop_core
+    i=0
+    while { chrome_running || pgrep -f "Xvfb :$DISPLAY_NUM" >/dev/null 2>&1; } && [ "$i" -lt 50 ]; do
+      sleep 0.1; i=$((i + 1))
+    done
+    if chrome_running || pgrep -f "Xvfb :$DISPLAY_NUM" >/dev/null 2>&1; then
+      log "old browser core or display did not stop"
+      return 1
+    fi
+  fi
   start_x_stack
 
   # Headed Chromium, persistent profile, loopback CDP port. --no-sandbox
@@ -227,7 +228,30 @@ stop_view() {
   log "view stopped"
 }
 
+close_browser_gracefully() {
+  # Browser.close flushes the persistent profile. Sending SIGTERM to the
+  # entire service first can lose recently saved login cookies on upgrade.
+  node - "$CDP_PORT" <<'JS'
+setTimeout(() => process.exit(1), 5000);
+(async () => {
+  const response = await fetch(`http://127.0.0.1:${process.argv[2]}/json/version`);
+  const { webSocketDebuggerUrl } = await response.json();
+  const socket = new WebSocket(webSocketDebuggerUrl);
+  socket.onopen = () => socket.send(JSON.stringify({ id: 1, method: 'Browser.close' }));
+  socket.onclose = () => process.exit(0);
+  socket.onerror = () => process.exit(1);
+})().catch(() => process.exit(1));
+JS
+}
+
 stop_core() {
+  if chrome_running; then
+    close_browser_gracefully || log "graceful browser close unavailable; stopping the process"
+    for _ in 1 2 3 4 5; do
+      chrome_running || break
+      sleep 1
+    done
+  fi
   stop_view
   systemctl stop agent-browser.service >/dev/null 2>&1 || true
   pkill -f "user-data-dir=$PROFILE" 2>/dev/null

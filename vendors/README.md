@@ -19,17 +19,15 @@ configuration from self-hosters:
    GitHub release bandwidth is free and its CDN is not geo-blocked from the
    affected hosts. The workflow
    ([`.github/workflows/vendor-playwright.yml`](../.github/workflows/vendor-playwright.yml))
-   downloads from Playwright's CDN on a GitHub runner, verifies the sha256
+   downloads Chrome and FFmpeg from their official upstreams on a GitHub runner, verifies the sha256
    pins, uploads, and round-trips the published URLs.
 3. **The installer falls back automatically.**
    [`agent-browser-install.sh`](../backend/internal/integration/containers/browser/assets/agent-browser-install.sh)
    tries the normal direct download first; on failure it fetches the vendored
-   assets, **verifies them against the sha256 pins baked in from
-   `versions.env`**, and serves them to Playwright from a loopback HTTP
-   server (`PLAYWRIGHT_DOWNLOAD_HOST=http://127.0.0.1:8377`), so Playwright's
-   own installer logic — cache paths, revision directories, completion
-   markers — runs unmodified. Playwright's URL layout under a custom download
-   host has changed across releases; serving by basename sidesteps that.
+   assets and **verifies them against the sha256 pins in `versions.env`**.
+   Chrome is pinned independently of Playwright and used by both the live
+   browser and headless helper. Archives for Linux x64 and ARM64 are included.
+
 
 The binaries are byte-identical to the upstream ones (the release notes and
 workflow logs are the provenance chain), so the fallback adds no third-party
@@ -37,9 +35,9 @@ trust — unlike pointing installs at public third-party mirrors.
 
 ## Bumping the Playwright pin
 
-1. Edit `versions.env`: set `PLAYWRIGHT_VERSION`, then update `PW_CFT_VERSION`
-   and `PW_FFMPEG_BUILD` to what
-   `npx playwright@<new-version> install chromium --dry-run` reports, and
+1. Edit `versions.env`: select a patched `PW_CFT_VERSION`. Keep
+   `PW_FFMPEG_BUILD` aligned with
+   `npx playwright@<version> install ffmpeg --dry-run`, and update
    `PW_VENDOR_RELEASE_TAG` (new tag — existing tags are never moved; the
    updater's `git fetch --tags` cannot tolerate moved tags).
 2. Run `bash vendors/publish-playwright-assets.sh` from a machine with clean
@@ -54,7 +52,7 @@ Your server's IP is likely geo-blocked by Google *and* unable to reach GitHub
 releases (or the release for the pinned version has not been published on
 your fork — run the workflow once). Escape hatches:
 
-- `HTTPS_PROXY` is honored natively by Playwright's downloader if you have a
+- `https_proxy` is honored by curl if you have a
   proxy with clean egress.
 - Hetzner asks affected customers to report the IP + blocked endpoint via
   [console.hetzner.cloud/support](https://console.hetzner.cloud/support);

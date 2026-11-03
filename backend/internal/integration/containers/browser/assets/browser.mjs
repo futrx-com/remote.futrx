@@ -67,6 +67,7 @@
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -169,6 +170,17 @@ if (!chromium) {
   ].join('\n'));
 }
 
+// The project's Playwright driver must always launch the patched browser.
+const EXPECTED_CHROME_VERSION = '__PW_CFT_VERSION__';
+const CHROME = '__BROWSER_DIR__/chrome';
+if (cmd !== 'connect') {
+  let version = '';
+  try { version = execFileSync(CHROME, ['--version'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch {}
+  if (![`Google Chrome for Testing ${EXPECTED_CHROME_VERSION}`, `Chromium ${EXPECTED_CHROME_VERSION}`].includes(version)) {
+    die(4, `Open the Browser pane to install Chrome ${EXPECTED_CHROME_VERSION}, then retry.`);
+  }
+}
+
 // --- connect: drive the live GUI browser the user logged into ------------
 // Attaches to the persistent headed Chrome over CDP (the same session the
 // user logged into through the noVNC view) and runs an agent recipe against
@@ -192,6 +204,10 @@ if (cmd === 'connect') {
       'Ask the user to open the Browser pane (that starts the session) and,',
       'for authenticated sites, log in first; then retry.',
     ].join('\n'));
+  }
+  if (browser.version() !== EXPECTED_CHROME_VERSION) {
+    await browser.close();
+    die(4, 'The live browser is outdated. Reopen the Browser pane to update it.');
   }
   const context = browser.contexts()[0] || (await browser.newContext());
   let exitCode = 0;
@@ -343,7 +359,7 @@ await mkdir(OUT_DIR, { recursive: true });
 
 const recordingEnabled = cmd === 'record' || (cmd === 'run' && hasFlag(rest, 'record'));
 
-const launchOpts = { headless: true };
+const launchOpts = { headless: true, executablePath: CHROME };
 const contextOpts = { viewport: VIEWPORT };
 if (recordingEnabled) {
   contextOpts.recordVideo = { dir: OUT_DIR, size: VIEWPORT };
