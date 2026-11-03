@@ -20,6 +20,7 @@ import type {
 import { chatEventStateProjector } from "./chatEventStateProjector";
 import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
 import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
+import { stopRunningChat } from "./stopRunningChat";
 
 interface UseChatResult {
   meta: ChatMeta | null;
@@ -36,10 +37,11 @@ interface UseChatResult {
   sendPrompt: (text: string, clientId?: string) => boolean;
   promptOutcome: PromptOutcome | null;
   cancel: () => void;
+  stopActiveRun: () => Promise<void>;
   respondInteraction: ChatInteractionResponder;
   rewind: (beforeT: number) => Promise<ChatEventPage>;
   loadOlder: () => Promise<void>;
-  refreshMeta: () => Promise<void>;
+  refreshMeta: (throwOnError?: boolean) => Promise<void>;
 }
 
 /**
@@ -259,14 +261,21 @@ export function useChat(chatId: string): UseChatResult {
     if (stream?.isOpen) stream.cancel();
   }, []);
 
+  // WebSocket cancellation is only a request: the backend keeps its run lock
+  // until the provider exits. Rewind must wait for that authoritative state.
+  const stopActiveRun = useCallback(() => stopRunningChat({
+    isRunning: async () => (await chatApi.fetch(chatId)).running === true,
+    sendCancel: () => streamRef.current?.cancel() ?? false,
+  }), [chatId]);
+
   const respondInteraction = useCallback<ChatInteractionResponder>((interactionId, method, intent) => {
     const stream = streamRef.current;
     if (!wsReady || !synced || !stream?.isOpen || status !== "streaming") return false;
     return stream.respondInteraction(interactionId, method, intent);
   }, [status, wsReady, synced]);
 
-  const rewind = useCallback(async (beforeT: number) => {
-    const res = await chatApi.rewind(chatId, beforeT);
+  const rewind = useCallback(async (rewindBeforeTimestamp: number) => {
+    const res = await chatApi.rewind(chatId, rewindBeforeTimestamp);
     clearPendingEvents();
     hydratedTextPartRef.current = null;
     lastSeqRef.current = Math.max(
@@ -293,12 +302,15 @@ export function useChat(chatId: string): UseChatResult {
     }
   }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
 
-  const refreshMeta = useCallback(async () => {
+  const refreshMeta = useCallback(async (throwOnError = false) => {
     if (!chatId) return;
     try {
       const m = await chatApi.fetch(chatId);
       setMeta(m);
-    } catch {}
+    } catch (error) {
+      // Rewind reports refresh failures separately after the destructive action.
+      if (throwOnError) throw error;
+    }
   }, [chatId]);
 
   return {
@@ -318,6 +330,7 @@ export function useChat(chatId: string): UseChatResult {
     sendPrompt,
     promptOutcome,
     cancel,
+    stopActiveRun,
     respondInteraction,
     rewind,
     loadOlder,
