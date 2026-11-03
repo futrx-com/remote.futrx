@@ -102,16 +102,10 @@ type browserDetectionScript struct {
 func browserDetectionScripts(t *testing.T) []browserDetectionScript {
 	t.Helper()
 	renderer := browserAssetRenderer{pin: func(key string) string {
-		switch key {
-		case "PW_CFT_VERSION":
+		if key == "PW_CFT_VERSION" {
 			return "156.0.8078.80"
-		case "PLAYWRIGHT_VERSION":
-			return "1.64.1"
-		case "PW_FFMPEG_BUILD":
-			return "1013"
-		default:
-			return "unused-test-pin"
 		}
+		return "unused-test-pin"
 	}}
 
 	// Execute the selection steps emitted by the real renderer without running
