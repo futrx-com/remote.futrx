@@ -227,7 +227,30 @@ stop_view() {
   log "view stopped"
 }
 
+close_browser_gracefully() {
+  # Browser.close flushes the persistent profile. Sending SIGTERM to the
+  # entire service first can lose recently saved login cookies on upgrade.
+  node - "$BROWSER_RUNTIME" "$CDP_PORT" <<'JS'
+const deadline = setTimeout(() => process.exit(1), 5000);
+(async () => {
+  const { chromium } = require(process.argv[2] + '/node_modules/playwright');
+  const browser = await chromium.connectOverCDP('http://127.0.0.1:' + process.argv[3], { timeout: 2000 });
+  const session = await browser.newBrowserCDPSession();
+  await session.send('Browser.close');
+  await browser.close();
+  clearTimeout(deadline);
+})().catch(() => process.exit(1));
+JS
+}
+
 stop_core() {
+  if chrome_running; then
+    close_browser_gracefully || log "graceful browser close unavailable; stopping the process"
+    for _ in 1 2 3 4 5; do
+      chrome_running || break
+      sleep 1
+    done
+  fi
   stop_view
   systemctl stop agent-browser.service >/dev/null 2>&1 || true
   pkill -f "user-data-dir=$PROFILE" 2>/dev/null
