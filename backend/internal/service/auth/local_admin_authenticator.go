@@ -183,6 +183,34 @@ func (a *LocalAdminAuthenticator) configured() bool {
 	return a.credential != nil
 }
 
+// verifyPassword snapshots and verifies the password credential. The caller
+// holds claimMu across verification and replacement to serialize changes.
+func (a *LocalAdminAuthenticator) verifyPassword(email, password string) (LocalAdminCredential, error) {
+	a.mu.RLock()
+	if a.credential == nil || a.credential.Email != normalizeEmail(email) {
+		a.mu.RUnlock()
+		return LocalAdminCredential{}, ErrPasswordSignInUnavailable
+	}
+	credential := *a.credential
+	a.mu.RUnlock()
+	ok, err := VerifyPassword(credential.PasswordHash, password)
+	if err != nil || !ok {
+		return LocalAdminCredential{}, ErrCurrentPasswordIncorrect
+	}
+	return credential, nil
+}
+
+// replacePassword requires claimMu held by the workflow; durable replacement
+// must succeed before the in-memory credential changes.
+func (a *LocalAdminAuthenticator) replacePassword(ctx context.Context, expected LocalAdminCredential, hash string) error {
+	next := LocalAdminCredential{Email: expected.Email, PasswordHash: hash}
+	if err := a.store.ReplaceLocalAdmin(ctx, expected, next); err != nil {
+		return err
+	}
+	a.setCredential(&next)
+	return nil
+}
+
 func (a *LocalAdminAuthenticator) isLocalAdmin(email string) bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

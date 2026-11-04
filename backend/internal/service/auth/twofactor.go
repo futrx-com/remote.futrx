@@ -83,7 +83,14 @@ func (a *twoFactorAuthenticator) load(ctx context.Context, email string) (*TwoFa
 	if err != nil {
 		return nil, err
 	}
-	a.setCache(email, record)
+	// A concurrent enrollment may have published newer state while Get was
+	// in flight. Preserve that state instead of caching a stale absence.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if current, ok := a.cache[email]; ok {
+		return current, nil
+	}
+	a.cache[email] = record
 	return record, nil
 }
 

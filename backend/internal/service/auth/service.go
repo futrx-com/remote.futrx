@@ -365,11 +365,10 @@ func (s *Service) CurrentSession(ctx context.Context, cookieValue string) (*Sess
 	if s.IsLocalAdmin(session.Email) && session.Sub != "local-admin" {
 		return nil, ErrLocalAdminPasswordOnly
 	}
-	// Single active session is one more account-scoped rule here, consulted
-	// only when the account has independently turned SingleSessionEnabled on
-	// (sessionRegistry.IsActive treats every session as active otherwise).
-	if !s.registry.IsActive(ctx, session.Email, session.SID) {
-		return nil, ErrSessionSuperseded
+	// The registry owns password-change revocation and the optional
+	// single-session rule for every authenticated entry point.
+	if err := s.registry.IsActive(ctx, *session); err != nil {
+		return nil, err
 	}
 	return session, nil
 }
