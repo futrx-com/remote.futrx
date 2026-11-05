@@ -59,6 +59,7 @@ export interface AgentProviderCapabilities {
   models: AgentModelCapability[];
   modes: AgentCapabilityOption[];
   defaultMode?: string;
+  approvalPolicies?: AgentCapabilityOption[];
 }
 
 export interface AgentCapabilitiesCatalog {
@@ -130,6 +131,7 @@ export interface ComposerCapabilityState {
   serviceTierOptions: AgentCapabilityOption[];
   modeOptions: AgentCapabilityOption[];
   supportsExecutionPolicies: boolean;
+  approvalPolicyOptions: AgentCapabilityOption[];
 }
 
 export interface CapabilityPreferenceSelection {

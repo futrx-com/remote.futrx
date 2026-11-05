@@ -103,7 +103,10 @@ type NativeEnvelope struct {
 // RunRequest is provider-neutral. Provider adapters translate it into the
 // concrete CLI flags and runtime setup required by Claude Code, Codex, etc.
 type RunRequest struct {
-	Provider ProviderID
+	// UserPrompt is the current user input before skill/history enrichment.
+	// Native commands must use this value so prior context cannot execute commands.
+	UserPrompt string
+	Provider   ProviderID
 	// AccountID selects a saved provider account for this run. An empty value
 	// keeps the provider's current active account for backwards compatibility.
 	AccountID      string

@@ -1,32 +1,21 @@
 package kimi
 
 import (
-	"slices"
-	"testing"
-
+	"context"
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"strings"
+	"testing"
 )
 
-func TestArgsUseNativePlanModeWhenSelected(t *testing.T) {
-	provider := &Provider{}
-	plan := provider.args(agent.RunRequest{Prompt: "inspect", Mode: agent.RunModePlan})
-	if !slices.Contains(plan, "--plan") {
-		t.Fatalf("native Plan mode missing: %#v", plan)
+func TestCommandKeepsPromptAndModelOutOfProcessArguments(t *testing.T) {
+	p := &Provider{}
+	req := agent.RunRequest{Cwd: t.TempDir(), Prompt: "private user prompt", Model: "moonshot/kimi-k2[1m]", Mode: agent.RunModePlan}
+	cmd, _, err := p.buildCmd(context.Background(), req, bridgeArgs(), nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	defaults := provider.args(agent.RunRequest{Prompt: "implement", Mode: agent.RunModeDefault})
-	if slices.Contains(defaults, "--plan") {
-		t.Fatalf("default mode unexpectedly enabled Plan: %#v", defaults)
+	args := strings.Join(cmd.Args, " ")
+	if strings.Contains(args, req.Prompt) || strings.Contains(args, req.Model) || !strings.Contains(args, "--input-type=module") {
+		t.Fatal("command did not use private stdio bridge")
 	}
-}
-
-func TestArgsPreserveExactConfiguredModelAlias(t *testing.T) {
-	provider := &Provider{}
-	args := provider.args(agent.RunRequest{Prompt: "inspect", Model: "moonshot/kimi-k2[1m]"})
-	for index := 0; index+1 < len(args); index++ {
-		if args[index] == "--model" && args[index+1] == "moonshot/kimi-k2[1m]" {
-			return
-		}
-	}
-	t.Fatalf("exact model alias missing: %#v", args)
 }

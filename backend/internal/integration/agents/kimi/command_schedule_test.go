@@ -26,7 +26,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	hostCmd, containerName, err := hostProvider.buildCmd(
 		context.Background(),
 		hostRequest,
-		hostProvider.args(hostRequest),
+		bridgeArgs(),
 		func(agent.Event) {},
 	)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	containerCmd, containerName, err := containerProvider.buildCmd(
 		context.Background(),
 		containerRequest,
-		containerProvider.args(containerRequest),
+		bridgeArgs(),
 		func(agent.Event) {},
 	)
 	if err != nil {
