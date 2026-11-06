@@ -1,22 +1,20 @@
-package applications
+package tests
 
 import (
+	"bytes"
 	"slices"
 	"strings"
 	"testing"
 
-	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	applicationapi "github.com/futrx-com/remote.futrx.com/pkg/applications"
+	"github.com/futrx-com/remote.futrx.com/pkg/applicationtest"
 )
 
 // Hello Remote is the catalog's reference application. It exercises broad
 // application capabilities, but every user-facing input must drive real
 // behavior rather than exist only to demonstrate a schema option.
 func TestHelloRemoteDemonstratesApplicationCapabilities(t *testing.T) {
-	registry, err := NewRegistry(EmbeddedCatalog(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	registry := applicationtest.Registry(t)
 	application, ok := registry.Get("hello-remote")
 	if !ok {
 		t.Fatal("hello-remote is missing from the built-in catalog")
@@ -24,10 +22,10 @@ func TestHelloRemoteDemonstratesApplicationCapabilities(t *testing.T) {
 
 	if application.ID == "" || application.Name == "" || application.Description == "" ||
 		application.Category == "" || application.Version == "" || application.Icon == "" ||
-		application.Base == "" || application.Source != svc.SourceBuiltin {
+		application.Base == "" || application.Source != "builtin" {
 		t.Fatalf("identity and presentation fields are incomplete: %+v", application)
 	}
-	if !application.SupportsScope(svc.ScopeGlobal) || !application.SupportsScope(svc.ScopeProject) {
+	if !application.SupportsScope("global") || !application.SupportsScope("project") {
 		t.Fatalf("scopes = %v, want global and project", application.Scopes)
 	}
 	if !application.NeedsContainer() || !application.NeedsPort() || application.Service == nil ||
@@ -98,5 +96,26 @@ func TestHelloRemoteDemonstratesApplicationCapabilities(t *testing.T) {
 	}
 	if script, ok := registry.Script(application.ID); !ok || !strings.Contains(string(script), "APP_BUILD_VERSION=") {
 		t.Fatal("hello-remote generated container build is not available")
+	}
+}
+
+func TestHelloRemoteCombinesContainerBuildWithCustomProvisioning(t *testing.T) {
+	registry := applicationtest.Registry(t)
+	application, ok := registry.Get("hello-remote")
+	if !ok {
+		t.Fatal("hello-remote is missing from the embedded catalog")
+	}
+	if application.Install != "infra/install.sh" {
+		t.Fatalf("install path = %q, want %q", application.Install, "infra/install.sh")
+	}
+	script, ok := registry.Script(application.ID)
+	if !ok {
+		t.Fatal("hello-remote install program is missing")
+	}
+	generatedAt := bytes.Index(script, []byte("APP_BUILD_VERSION="))
+	customAt := bytes.Index(script, []byte("provisioned-version"))
+	serviceAt := bytes.Index(script, []byte("systemctl"))
+	if generatedAt < 0 || customAt < 0 || generatedAt >= customAt || serviceAt >= 0 {
+		t.Fatalf("container build must precede custom provisioning without owning systemd")
 	}
 }

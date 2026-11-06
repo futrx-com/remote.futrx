@@ -1,23 +1,20 @@
-package applications
+package tests
 
 import (
 	"slices"
 	"strings"
 	"testing"
 
-	svc "github.com/futrx-com/remote.futrx.com/internal/service/applications"
+	"github.com/futrx-com/remote.futrx.com/pkg/applicationtest"
 )
 
 func TestTerminalKeepsShellsInTheContainerWithoutAPort(t *testing.T) {
-	registry, err := NewRegistry(EmbeddedCatalog(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	registry := applicationtest.Registry(t)
 	app, ok := registry.Get("terminal")
 	if !ok {
 		t.Fatal("missing Terminal catalog entry")
 	}
-	if !app.SupportsScope(svc.ScopeProject) || !app.SupportsScope(svc.ScopeGlobal) || !app.GloballyInstalledInsideContainers {
+	if !app.SupportsScope("project") || !app.SupportsScope("global") || !app.GloballyInstalledInsideContainers {
 		t.Fatalf("Terminal must install into each project container: scopes=%v", app.Scopes)
 	}
 	if app.Container == nil || !slices.Equal(app.Container.Commands, []string{"remote-terminal"}) {
@@ -36,9 +33,9 @@ func TestTerminalKeepsShellsInTheContainerWithoutAPort(t *testing.T) {
 	if app.Backend == nil || app.Backend.Timeout() < 25000 {
 		t.Fatalf("expected a host backend with room for waiting reads: %+v", app.Backend)
 	}
-	_, script, err := loadApplication(EmbeddedCatalog(), "terminal")
-	if err != nil {
-		t.Fatal(err)
+	script, found := registry.Script("terminal")
+	if !found {
+		t.Fatal("missing generated install script")
 	}
 	if !strings.Contains(string(script), `-o "$APP_BUILD_DIR"/'remote-terminal' './cmd/remote-terminal'`) {
 		t.Fatal("installer must build the terminal command")
@@ -47,4 +44,8 @@ func TestTerminalKeepsShellsInTheContainerWithoutAPort(t *testing.T) {
 		!slices.Equal(app.UI.Styles, []string{"style/xterm.css", "style/terminal.css"}) {
 		t.Fatalf("expected drawer UI with xterm's stylesheet first: %+v", app.UI)
 	}
+}
+
+func TestBackendBuildsAndDescribesRoutes(t *testing.T) {
+	applicationtest.BackendRoutes(t, "terminal", []string{"GET output", "POST input", "POST resize", "POST sessions"})
 }
