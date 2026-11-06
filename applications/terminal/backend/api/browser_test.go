@@ -50,6 +50,7 @@ func TestTerminalBrowser(t *testing.T) {
 	var bridge *containerio.Bridge
 	b := New(func(string) Relay {
 		bridge = containerio.NewBridge(func() *exec.Cmd { return exec.Command(binary, "bridge", "--socket", socket) })
+		go bridge.Warm()
 		return bridge
 	})
 	if err := b.Init(applications.Instance{Scope: "project", ContainerName: "project-demo"}); err != nil {

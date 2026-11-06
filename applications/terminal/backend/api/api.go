@@ -52,9 +52,6 @@ func (b *API) Init(instance applications.Instance) error {
 	defer b.mu.Unlock()
 	if instance.ContainerName != "" {
 		b.bridge = b.newBridge(instance.ContainerName)
-		if warm, ok := b.bridge.(interface{ Warm() }); ok {
-			go warm.Warm()
-		}
 	}
 	return nil
 }

@@ -14,6 +14,8 @@ import (
 
 func main() {
 	rpc.Serve(appAPI.New(func(container string) appAPI.Relay {
-		return containerio.NewBridge(containerio.BridgeCommand(container))
+		bridge := containerio.NewBridge(containerio.BridgeCommand(container))
+		go bridge.Warm()
+		return bridge
 	}))
 }

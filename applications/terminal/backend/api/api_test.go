@@ -79,6 +79,7 @@ func newBackend(t *testing.T, binary, socket string) (*API, *containerio.Bridge)
 			t.Fatalf("bridge opened into %q", container)
 		}
 		bridge = containerio.NewBridge(func() *exec.Cmd { return exec.Command(binary, "bridge", "--socket", socket) })
+		go bridge.Warm()
 		return bridge
 	})
 	if err := b.Init(applications.Instance{Scope: "project", ContainerName: "project-demo"}); err != nil {
