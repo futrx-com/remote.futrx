@@ -17,24 +17,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"futrx.local/catalog/applications/terminal/backend/container/internal/bridge"
+	"futrx.local/catalog/applications/terminal/backend/container/internal/config"
 	"futrx.local/catalog/applications/terminal/backend/container/internal/server"
 	"futrx.local/catalog/applications/terminal/backend/container/internal/sessions"
 	"futrx.local/catalog/applications/terminal/backend/container/internal/shell"
-)
-
-const (
-	defaultSocket      = "/run/remote-terminal/terminal.sock"
-	workspaceDirectory = "/workspace"
-
-	// A shell nobody has read for this long is ended.
-	detachedTTL  = 10 * time.Minute
-	maxSessions  = 64
-	replayBytes  = 256 << 10
-	pollWait     = 20 * time.Second
-	reapInterval = 30 * time.Second
 )
 
 const usage = "usage: remote-terminal serve|bridge [--socket <path>]"
@@ -52,8 +40,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	socket := flags.String("socket", defaultSocket, "service socket")
-	workspace := flags.String("workspace", workspaceDirectory, "directory shells start in and stay under")
+	socket := flags.String("socket", config.DefaultSocket, "service socket")
+	workspace := flags.String("workspace", config.WorkspaceDirectory, "directory shells start in and stay under")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New(usage)
 	}
@@ -63,16 +51,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		manager := sessions.NewManager(sessions.Config{
+		registry := sessions.NewRegistry(sessions.Config{
 			Command:      shell.Command(*workspace, os.Getenv),
-			DetachedTTL:  detachedTTL,
-			MaxSessions:  maxSessions,
-			ReplayBytes:  replayBytes,
-			PollWait:     pollWait,
-			ReapInterval: reapInterval,
+			DetachedTTL:  config.DetachedTTL,
+			MaxSessions:  config.MaxSessions,
+			ReplayBytes:  config.ReplayBytes,
+			PollWait:     config.PollWait,
+			ReapInterval: config.ReapInterval,
 		})
-		defer manager.Close()
-		return server.Serve(listener, manager)
+		defer registry.Close()
+		return server.Serve(listener, registry)
 	case "bridge":
 		return bridge.Run(stdin, stdout, *socket)
 	}

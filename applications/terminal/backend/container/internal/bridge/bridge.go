@@ -18,14 +18,8 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-)
 
-const (
-	// MaxFrameBytes bounds one line in either direction: a 1 MiB body
-	// base64-encodes to under 1.4 MiB.
-	MaxFrameBytes = 4 << 20
-	// maxResponseBytes bounds a service answer before encoding.
-	maxResponseBytes = 2 << 20
+	"futrx.local/catalog/applications/terminal/backend/container/internal/config"
 )
 
 // Request is one host call. Body is base64 in JSON.
@@ -55,7 +49,7 @@ func Run(in io.Reader, out io.Writer, socket string) error {
 			return dialer.DialContext(ctx, "unix", socket)
 		},
 		// Every waiting output read holds one connection.
-		MaxIdleConnsPerHost: 16,
+		MaxIdleConnsPerHost: config.BridgeIdleConnections,
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -70,7 +64,7 @@ func Run(in io.Reader, out io.Writer, socket string) error {
 
 	var running sync.WaitGroup
 	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 64<<10), MaxFrameBytes)
+	scanner.Buffer(make([]byte, 64<<10), config.MaxBridgeFrameBytes)
 	for scanner.Scan() {
 		var request Request
 		if err := json.Unmarshal(scanner.Bytes(), &request); err != nil {
@@ -105,8 +99,8 @@ func forward(ctx context.Context, client *http.Client, request Request) Response
 		return failure(request.ID, http.StatusBadGateway, "The terminal service in the project container is not running.")
 	}
 	defer response.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
-	if err != nil || len(body) > maxResponseBytes {
+	body, err := io.ReadAll(io.LimitReader(response.Body, config.MaxBridgeResponseBytes+1))
+	if err != nil || len(body) > config.MaxBridgeResponseBytes {
 		return failure(request.ID, http.StatusBadGateway, "Unreadable answer from the terminal service.")
 	}
 	return Response{ID: request.ID, Status: response.StatusCode, Body: body}

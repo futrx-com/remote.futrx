@@ -21,7 +21,7 @@ import (
 func newTestServer(t *testing.T) (http.Handler, *[]string) {
 	t.Helper()
 	var cwds []string
-	manager := sessions.NewManager(sessions.Config{
+	registry := sessions.NewRegistry(sessions.Config{
 		Command: func(cwd string) *exec.Cmd {
 			cwds = append(cwds, cwd)
 			cmd := exec.Command("/bin/sh")
@@ -34,8 +34,8 @@ func newTestServer(t *testing.T) (http.Handler, *[]string) {
 		PollWait:     200 * time.Millisecond,
 		ReapInterval: time.Hour,
 	})
-	t.Cleanup(manager.Close)
-	return NewHandler(manager), &cwds
+	t.Cleanup(registry.Close)
+	return NewHandler(registry), &cwds
 }
 
 func call(t *testing.T, handler http.Handler, method, path string, query url.Values, body string) *httptest.ResponseRecorder {

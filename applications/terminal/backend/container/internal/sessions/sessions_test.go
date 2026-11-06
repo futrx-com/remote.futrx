@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func testManager(t *testing.T, config Config) *Manager {
+func testRegistry(t *testing.T, config Config) *Registry {
 	t.Helper()
 	if config.Command == nil {
 		config.Command = func(string) *exec.Cmd {
@@ -35,14 +35,14 @@ func testManager(t *testing.T, config Config) *Manager {
 	if config.ReapInterval == 0 {
 		config.ReapInterval = time.Hour
 	}
-	manager := NewManager(config)
-	t.Cleanup(manager.Close)
-	return manager
+	registry := NewRegistry(config)
+	t.Cleanup(registry.Close)
+	return registry
 }
 
-func attach(t *testing.T, manager *Manager, id string) *Session {
+func attach(t *testing.T, registry *Registry, id string) *Session {
 	t.Helper()
-	current, err := manager.Attach(id, "", Size{Cols: 80, Rows: 24})
+	current, err := registry.Attach(id, "", Size{Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,18 +92,18 @@ func (v *viewer) input(text string) {
 }
 
 func TestShellOutputReachesTheViewer(t *testing.T) {
-	client := watch(t, attach(t, testManager(t, Config{}), "chat-1"))
+	client := watch(t, attach(t, testRegistry(t, Config{}), "chat-1"))
 	client.input("echo he''llo\n")
 	client.until("hello")
 }
 
 func TestReattachingReturnsToTheSameShellWithItsOutput(t *testing.T) {
-	manager := testManager(t, Config{})
-	first := watch(t, attach(t, manager, "chat-1"))
+	registry := testRegistry(t, Config{})
+	first := watch(t, attach(t, registry, "chat-1"))
 	first.input("MARKER=kept; echo fi''rst\n")
 	first.until("first")
 
-	again := attach(t, manager, "chat-1")
+	again := attach(t, registry, "chat-1")
 	if again != first.session {
 		t.Fatal("attaching again started another shell")
 	}
@@ -117,19 +117,19 @@ func TestReattachingReturnsToTheSameShellWithItsOutput(t *testing.T) {
 }
 
 func TestSessionsAreSeparateShells(t *testing.T) {
-	manager := testManager(t, Config{})
-	first := watch(t, attach(t, manager, "chat-1"))
+	registry := testRegistry(t, Config{})
+	first := watch(t, attach(t, registry, "chat-1"))
 	first.input("MARKER=one; echo re''ady\n")
 	first.until("ready")
 
-	second := watch(t, attach(t, manager, "chat-2"))
+	second := watch(t, attach(t, registry, "chat-2"))
 	second.input("echo va''lue=[$MARKER]\n")
 	second.until("value=[]")
 }
 
 func TestAnExitedShellIsReportedAndThenReplaced(t *testing.T) {
-	manager := testManager(t, Config{})
-	ended := attach(t, manager, "chat-1")
+	registry := testRegistry(t, Config{})
+	ended := attach(t, registry, "chat-1")
 	client := watch(t, ended)
 	client.input("echo by''e; exit\n")
 	client.until("bye")
@@ -142,27 +142,27 @@ func TestAnExitedShellIsReportedAndThenReplaced(t *testing.T) {
 	}
 	// A viewer of the ended shell can still find it to learn that it ended,
 	// but cannot type into whatever replaces it.
-	if _, ok := manager.Lookup("chat-1", ended.Generation); !ok {
+	if _, ok := registry.Lookup("chat-1", ended.Generation); !ok {
 		t.Fatal("the ended session was forgotten before its viewers saw it")
 	}
 	if err := ended.Write([]byte("echo lost\n")); err == nil {
 		t.Fatal("wrote into an ended shell")
 	}
-	replacement := attach(t, manager, "chat-1")
+	replacement := attach(t, registry, "chat-1")
 	if replacement == ended || replacement.Generation == ended.Generation {
 		t.Fatal("attaching after the exit did not start a new shell")
 	}
-	if _, ok := manager.Lookup("chat-1", ended.Generation); ok {
+	if _, ok := registry.Lookup("chat-1", ended.Generation); ok {
 		t.Fatal("the old generation still resolves after replacement")
 	}
 }
 
 func TestUnreadSessionIsEndedAfterTheGracePeriod(t *testing.T) {
-	manager := testManager(t, Config{DetachedTTL: 50 * time.Millisecond, ReapInterval: 10 * time.Millisecond})
-	current := attach(t, manager, "chat-1")
+	registry := testRegistry(t, Config{DetachedTTL: 50 * time.Millisecond, ReapInterval: 10 * time.Millisecond})
+	current := attach(t, registry, "chat-1")
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, ok := manager.Lookup("chat-1", current.Generation); !ok {
+		if _, ok := registry.Lookup("chat-1", current.Generation); !ok {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -173,10 +173,10 @@ func TestUnreadSessionIsEndedAfterTheGracePeriod(t *testing.T) {
 }
 
 func TestAWaitingReadKeepsTheSessionWatched(t *testing.T) {
-	manager := testManager(t, Config{
+	registry := testRegistry(t, Config{
 		DetachedTTL: 50 * time.Millisecond, ReapInterval: 10 * time.Millisecond, PollWait: 400 * time.Millisecond,
 	})
-	client := watch(t, attach(t, manager, "chat-1"))
+	client := watch(t, attach(t, registry, "chat-1"))
 	client.input("MARKER=kept; echo re''ady\n")
 	client.until("ready")
 	// Each read waits longer than the grace period for output that never
@@ -189,18 +189,18 @@ func TestAWaitingReadKeepsTheSessionWatched(t *testing.T) {
 }
 
 func TestSessionLimitRefusesNewShellsButNotReattachment(t *testing.T) {
-	manager := testManager(t, Config{MaxSessions: 1})
-	first := attach(t, manager, "chat-1")
-	if _, err := manager.Attach("chat-2", "", Size{}); !errors.Is(err, ErrTooManySessions) {
+	registry := testRegistry(t, Config{MaxSessions: 1})
+	first := attach(t, registry, "chat-1")
+	if _, err := registry.Attach("chat-2", "", Size{}); !errors.Is(err, ErrTooManySessions) {
 		t.Fatalf("second shell: %v", err)
 	}
-	if again := attach(t, manager, "chat-1"); again != first {
+	if again := attach(t, registry, "chat-1"); again != first {
 		t.Fatal("reattaching was refused or started another shell")
 	}
 }
 
 func TestResizeChangesTheTerminalSize(t *testing.T) {
-	current := attach(t, testManager(t, Config{}), "chat-1")
+	current := attach(t, testRegistry(t, Config{}), "chat-1")
 	for _, size := range []Size{{0, 24}, {80, -4}, {100000, 40}} {
 		if err := current.Resize(size); !errors.Is(err, ErrInvalidSize) {
 			t.Fatalf("Resize(%+v) = %v", size, err)
@@ -216,15 +216,15 @@ func TestResizeChangesTheTerminalSize(t *testing.T) {
 
 func TestNewShellsStartAtTheirInitialSizeAndDirectory(t *testing.T) {
 	var requested []string
-	manager := testManager(t, Config{Command: func(cwd string) *exec.Cmd {
+	registry := testRegistry(t, Config{Command: func(cwd string) *exec.Cmd {
 		requested = append(requested, cwd)
 		return exec.Command("/bin/sh")
 	}})
-	current, err := manager.Attach("chat-1", "/workspace/api", Size{Cols: 101, Rows: 33})
+	current, err := registry.Attach("chat-1", "/workspace/api", Size{Cols: 101, Rows: 33})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Attach("chat-1", "/workspace/other", Size{Cols: 10, Rows: 10}); err != nil {
+	if _, err := registry.Attach("chat-1", "/workspace/other", Size{Cols: 10, Rows: 10}); err != nil {
 		t.Fatal(err)
 	}
 	if len(requested) != 1 || requested[0] != "/workspace/api" {
@@ -236,7 +236,7 @@ func TestNewShellsStartAtTheirInitialSizeAndDirectory(t *testing.T) {
 }
 
 func TestAViewerThatFellBehindIsResetToTheReplay(t *testing.T) {
-	current := attach(t, testManager(t, Config{ReplayBytes: 64}), "chat-1")
+	current := attach(t, testRegistry(t, Config{ReplayBytes: 64}), "chat-1")
 	client := watch(t, current)
 	client.input("printf 'line-%s\\n' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; echo do''ne\n")
 	client.until("done")

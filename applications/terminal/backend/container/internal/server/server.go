@@ -11,22 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"futrx.local/catalog/applications/terminal/backend/container/internal/config"
 	"futrx.local/catalog/applications/terminal/backend/container/internal/sessions"
-)
-
-const (
-	// MaxBodyBytes matches what Remote forwards to a backend.
-	MaxBodyBytes = 1 << 20
-	// maxWorkingDirectoryBytes bounds the starting directory a browser names.
-	maxWorkingDirectoryBytes = 4096
 )
 
 type attachRequest struct {
@@ -48,37 +39,8 @@ type resizeRequest struct {
 	Rows       int    `json:"rows"`
 }
 
-// Listen opens the service socket, replacing a stale one from an earlier run.
-// Its directory and the socket itself are root-only.
-func Listen(path string) (net.Listener, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	listener, err := net.Listen("unix", path)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		listener.Close()
-		return nil, err
-	}
-	return listener, nil
-}
-
-// Serve answers requests on listener until it fails.
-func Serve(listener net.Listener, manager *sessions.Manager) error {
-	server := &http.Server{Handler: NewHandler(manager), ReadHeaderTimeout: 5 * time.Second}
-	return server.Serve(listener)
-}
-
-func NewHandler(manager *sessions.Manager) http.Handler {
-	h := handler{manager: manager}
+func NewHandler(registry *sessions.Registry) http.Handler {
+	h := handler{registry: registry}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -92,16 +54,16 @@ func NewHandler(manager *sessions.Manager) http.Handler {
 }
 
 type handler struct {
-	manager *sessions.Manager
+	registry *sessions.Registry
 }
 
 func (h handler) attach(w http.ResponseWriter, r *http.Request) {
 	var input attachRequest
-	if json.NewDecoder(io.LimitReader(r.Body, MaxBodyBytes)).Decode(&input) != nil || !sessions.IDPattern.MatchString(input.Session) {
+	if json.NewDecoder(io.LimitReader(r.Body, config.MaxBodyBytes)).Decode(&input) != nil || !sessions.IDPattern.MatchString(input.Session) {
 		sendError(w, http.StatusBadRequest, "Name a valid terminal session.")
 		return
 	}
-	current, err := h.manager.Attach(input.Session, workingDirectory(input.Cwd), sessions.Size{Cols: input.Cols, Rows: input.Rows})
+	current, err := h.registry.Attach(input.Session, workingDirectory(input.Cwd), sessions.Size{Cols: input.Cols, Rows: input.Rows})
 	if errors.Is(err, sessions.ErrTooManySessions) {
 		sendError(w, http.StatusTooManyRequests, "Too many terminal sessions are running in this project.")
 		return
@@ -135,7 +97,7 @@ func (h handler) input(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	data, err := io.ReadAll(io.LimitReader(r.Body, MaxBodyBytes))
+	data, err := io.ReadAll(io.LimitReader(r.Body, config.MaxBodyBytes))
 	if err != nil {
 		sendError(w, http.StatusBadRequest, "Unreadable input.")
 		return
@@ -149,7 +111,7 @@ func (h handler) input(w http.ResponseWriter, r *http.Request) {
 
 func (h handler) resize(w http.ResponseWriter, r *http.Request) {
 	var input resizeRequest
-	if json.NewDecoder(io.LimitReader(r.Body, MaxBodyBytes)).Decode(&input) != nil {
+	if json.NewDecoder(io.LimitReader(r.Body, config.MaxBodyBytes)).Decode(&input) != nil {
 		sendError(w, http.StatusBadRequest, "Send a terminal size.")
 		return
 	}
@@ -175,7 +137,7 @@ func (h handler) lookup(w http.ResponseWriter, id, generation string) (*sessions
 		sendError(w, http.StatusBadRequest, "Name a valid terminal session.")
 		return nil, false
 	}
-	current, ok := h.manager.Lookup(id, number)
+	current, ok := h.registry.Lookup(id, number)
 	if !ok {
 		sendEnded(w)
 		return nil, false
@@ -186,7 +148,7 @@ func (h handler) lookup(w http.ResponseWriter, id, generation string) (*sessions
 // workingDirectory passes on an absolute directory for the shell package to
 // resolve inside the workspace; anything else starts in the workspace.
 func workingDirectory(cwd string) string {
-	if !filepath.IsAbs(cwd) || len(cwd) > maxWorkingDirectoryBytes || strings.ContainsRune(cwd, 0) {
+	if !filepath.IsAbs(cwd) || len(cwd) > config.MaxWorkingDirectoryBytes || strings.ContainsRune(cwd, 0) {
 		return ""
 	}
 	return cwd
