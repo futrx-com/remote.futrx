@@ -29,22 +29,26 @@ application backend.
 backend/
   main.go          composition: one bridge per installation
   api/             routes, relayed to the container unchanged
-  containerio/     the fixed `lxc exec … remote-terminal bridge` process
+  containerio/     bridge lifecycle; process.go owns JSON lines and pending calls
   config/          the container command path and call timeout
   container/
     cmd/remote-terminal/  `serve` and `bridge`
-    internal/sessions/    shells, pseudo-terminals, replay, waiting reads
-    internal/server/      the service's routes on the Unix socket
+    internal/config/      container defaults and resource limits
+    internal/sessions/    registry and reaping; session.go owns each shell and replay
+    internal/server/      request handlers; socket.go owns Unix socket setup
     internal/bridge/      stdin/stdout to the socket
     internal/shell/       bash -l, its environment and starting directory
 ui/
-  scripts/main.js         drawer registration and composition
-  scripts/terminalView.js xterm.js, find bar, visibility
-  scripts/connection.js   attach, read loop, input batching, reconnect
-  scripts/shellApi.js     backend routes
-  scripts/reconnect.js    retry policy
-  style/                  xterm.css and the drawer's scoped styles
-  vendor/                 xterm.js and its add-ons
+  scripts/main.js                 drawer registration and dependency composition
+  scripts/controllers/           drawer lifecycle, header and connection bindings
+  scripts/terminalView.js         xterm.js, deferred creation, sizing and visibility
+  scripts/terminalFind.js         find controls and search-addon bindings
+  scripts/config/                drawer labels, theme and search options
+  scripts/connection.js           attach, read loop, input batching, reconnect
+  scripts/shellApi.js             backend routes
+  scripts/reconnect.js            retry policy
+  style/                         xterm.css and the drawer's scoped styles
+  vendor/                        xterm.js and its add-ons
 ```
 
 ## How the shell is reached

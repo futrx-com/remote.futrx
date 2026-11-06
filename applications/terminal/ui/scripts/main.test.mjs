@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import activate, { mountTerminal } from "./main.js";
+import activate from "./main.js";
+import { mountTerminal } from "./controllers/terminalDrawerController.js";
 import { workspaceLocation } from "./workspacePath.js";
 
 const PROJECT_CWD = "/var/lib/remote/projects/example/workspace";
