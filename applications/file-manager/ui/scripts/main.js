@@ -13,6 +13,7 @@ import { whenPaneSettled } from "./presentation/paneSettle.js";
 import { createFileBrowser } from "./services/fileBrowserService.js";
 import { createFileOpeningService } from "./services/fileOpeningService.js";
 import { createRootPrefetch, withPrefetchedRoot } from "./services/rootPrefetchService.js";
+import { createFileBrowserState } from "./state/fileBrowserState.js";
 import { browserNavigation } from "./transport/browserNavigation.js";
 
 export default function activate(remote) {
@@ -49,7 +50,7 @@ export default function activate(remote) {
         ? withPrefetchedRoot(createFilesApi(remote, context), prefetched, context.projectId)
         : null,
       createLayout: createFilesLayout,
-      createBrowser: createFileBrowser,
+      createBrowser: (api, changed) => createFileBrowser(api, createFileBrowserState(changed)),
       createView: createFileBrowserView,
       createFileOpener: (target, onBlocked) =>
         createFileOpeningService(dependencies, target, onBlocked),

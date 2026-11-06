@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createFileBrowser } from "../scripts/services/fileBrowserService.js";
 
+import { createFileBrowserState } from "../scripts/state/fileBrowserState.js";
 
-const browserWith = createFileBrowser;
+const browserWith = (api, changed) => createFileBrowser(api, createFileBrowserState(changed));
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 

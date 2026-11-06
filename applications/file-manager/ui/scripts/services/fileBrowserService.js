@@ -1,83 +1,39 @@
 import { SEARCH_DEBOUNCE_MS } from "../config/files.js";
 
-export function createFileBrowser(api, changed) {
-  const state = {
-    query: "",
-    rootLoading: false,
-    rootEntries: [],
-    rootError: "",
-    expanded: new Set(),
-    loadingDirs: new Set(),
-    childrenByDir: new Map(),
-    errorByDir: new Map(),
-    truncatedDirs: new Set(),
-    blocked: null,
-    searchResults: null,
-    searchTruncated: false,
-    searching: false,
-    searchError: "",
-  };
+/** Coordinates requests and cancellation without owning presentation data. */
+export function createFileBrowser(api, store) {
+  const { state } = store;
   let revision = 0;
   let controller = new AbortController();
   let searchTimer;
   let searchController;
 
-  function subtitle() {
-    if (state.searchResults) {
-      const count = state.searchResults.length;
-      return `${count} result${count === 1 ? "" : "s"}${state.searchTruncated ? "+" : ""}`;
-    }
-    return state.rootLoading ? "Loading..." : "workspace";
-  }
-
   async function loadDirectory(path, token) {
-    state.loadingDirs.add(path);
-    if (path === "") state.rootLoading = true;
-    changed();
+    store.directoryLoading(path);
     try {
       const result = await api.list(path, controller.signal);
       if (token !== revision) return;
-      const list = result.entries || [];
-      if (path === "") state.rootEntries = list;
-      state.childrenByDir.set(path, list);
-      state.errorByDir.delete(path);
-      if (path === "") state.rootError = "";
-      if (result.truncated) state.truncatedDirs.add(path);
-      else state.truncatedDirs.delete(path);
+      store.directoryLoaded(path, result);
     } catch (error) {
       if (error.name === "AbortError" || token !== revision) return;
-      state.errorByDir.set(path, error.message);
-      if (path === "") state.rootError = error.message;
+      store.directoryFailed(path, error);
     } finally {
-      if (token === revision) {
-        state.loadingDirs.delete(path);
-        if (path === "") state.rootLoading = false;
-        changed();
-      }
+      if (token === revision) store.directoryFinished(path);
     }
   }
 
   function toggle(path) {
-    const opening = !state.expanded.has(path);
-    if (opening) state.expanded.add(path);
-    else state.expanded.delete(path);
+    const opening = store.toggleDirectory(path);
     if (opening && !state.childrenByDir.has(path) && !state.loadingDirs.has(path))
       void loadDirectory(path, revision);
-    else changed();
+    else store.notify();
   }
 
   function reset() {
     controller.abort();
     controller = new AbortController();
     const token = ++revision;
-    state.rootEntries = [];
-    state.rootError = "";
-    state.expanded.clear();
-    state.loadingDirs.clear();
-    state.childrenByDir.clear();
-    state.errorByDir.clear();
-    state.truncatedDirs.clear();
-    state.query = "";
+    store.resetTree();
     runSearch();
     void loadDirectory("", token);
   }
@@ -87,55 +43,36 @@ export function createFileBrowser(api, changed) {
     searchController?.abort();
     const query = state.query.trim();
     if (query.length < 2) {
-      state.searchResults = null;
-      state.searchError = "";
-      state.searching = false;
-      changed();
+      store.searchCleared();
       return;
     }
-    state.searching = true;
-    changed();
+    store.searchStarted();
     searchController = new AbortController();
     const { signal } = searchController;
     searchTimer = setTimeout(async () => {
       try {
         const result = await api.search(query, signal);
-        state.searchResults = result.entries || [];
-        state.searchTruncated = Boolean(result.truncated);
-        state.searchError = "";
+        store.searchLoaded(result);
       } catch (error) {
         if (error.name === "AbortError") return;
-        state.searchResults = [];
-        state.searchError = error.message;
+        store.searchFailed(error);
       }
-      state.searching = false;
-      changed();
+      store.searchFinished();
     }, SEARCH_DEBOUNCE_MS);
   }
 
   return {
     state,
-    subtitle,
+    subtitle: store.subtitle,
     reset,
     toggle,
     search(query) {
-      state.query = query;
+      store.searchQuery(query);
       runSearch();
     },
-    showBlocked(path, url) {
-      state.blocked = { path, url };
-      changed();
-    },
-    clearBlocked() {
-      if (!state.blocked) return;
-      state.blocked = null;
-      changed();
-    },
-    dismissBlocked() {
-      state.blocked = null;
-      // Let the link's default navigation finish before removing its node.
-      queueMicrotask(changed);
-    },
+    showBlocked: store.showBlocked,
+    clearBlocked: store.clearBlocked,
+    dismissBlocked: store.dismissBlocked,
     dispose() {
       revision++;
       controller.abort();
