@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"futrx.local/catalog/applications/file-manager/backend/config"
 	"futrx.local/catalog/applications/file-manager/backend/containerio"
+	"futrx.local/catalog/applications/file-manager/backend/service/archives"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
@@ -17,6 +19,10 @@ type call struct {
 	container, command string
 	request            containerio.Request
 	limit              int64
+}
+
+func testAPI(run containerio.Runner) *API {
+	return New(run, archives.NewDownloads(config.MaxConcurrentArchives, config.ArchiveTimeout))
 }
 
 type fakeContainer struct {
@@ -38,7 +44,7 @@ func (f *fakeContainer) run(_ context.Context, container, command string, reques
 
 func newTestAPI(t *testing.T, container *fakeContainer) *API {
 	t.Helper()
-	b := New(container.run)
+	b := testAPI(container.run)
 	if err := b.Init(applications.Instance{Scope: "project", ContainerName: "project-demo"}); err != nil {
 		t.Fatal(err)
 	}
@@ -113,6 +119,7 @@ func TestContainerFailuresMapToHTTPStatuses(t *testing.T) {
 		{containerio.ErrTooLarge, 413},
 		{context.DeadlineExceeded, 504},
 		{context.Canceled, 502},
+		{archives.ErrBusy, 503},
 	} {
 		b := newTestAPI(t, &fakeContainer{err: test.err})
 		if response := get(t, b, "archive", map[string][]string{"path": {"src"}}); response.Status != test.status {
@@ -127,7 +134,7 @@ func TestContainerFailuresMapToHTTPStatuses(t *testing.T) {
 
 func TestRequestsNeedAContainerAndBoundedInput(t *testing.T) {
 	container := &fakeContainer{}
-	b := New(container.run)
+	b := testAPI(container.run)
 	if response := get(t, b, "list", nil); response.Status != 409 {
 		t.Fatalf("without a container = %d", response.Status)
 	}
@@ -143,7 +150,7 @@ func TestRequestsNeedAContainerAndBoundedInput(t *testing.T) {
 func TestArchivesAreBoundedPerInstallation(t *testing.T) {
 	release := make(chan struct{})
 	started := make(chan struct{}, 3)
-	b := New(func(context.Context, string, string, containerio.Request, int64) ([]byte, error) {
+	b := testAPI(func(context.Context, string, string, containerio.Request, int64) ([]byte, error) {
 		started <- struct{}{}
 		<-release
 		return []byte("zip"), nil

@@ -36,14 +36,16 @@ are built by the backend.
 ```text
 backend/
   main.go           composition: the container runner into the API
-  api/              routes, input bounds, archive admission, status mapping
+  api/              routes, input bounds, response and status mapping
+  service/archives/ archive admission and the shared waiting/build time budget
   containerio/      the fixed `lxc exec` command, exit statuses, output limits
   config/           timeouts and limits
 ```
 
 The API re-encodes listings through typed values rather than passing the
-container's output through, names ZIP downloads itself, and admits two
-archives at a time per installation. `containerio` maps the container
+container's output through and names ZIP downloads itself. The archive service
+admits two builds at a time per installation; waiting for admission and building
+share one time budget. `containerio` maps the container
 command's exit statuses (3 invalid path, 4 not found, 5 too large) to errors
 and refuses output past each route's limit.
 
@@ -82,7 +84,8 @@ ui/
     controllers/
       filesDrawerController.js      drawer lifecycle, header, search input, opens
     services/
-      fileBrowserService.js         tree/search state and request cancellation
+      fileBrowserService.js         tree/search requests and cancellation
+      rootPrefetchService.js        throttled, one-use workspace root prefetch
       fileOpeningService.js         core/fallback workflow and cached availability
       fileAction.js                 extension-based media/editor/download policy
     api/
@@ -95,6 +98,9 @@ ui/
       browserNavigation.js          link dispatch, new tabs and browser downloads
     presentation/
       fileBrowserView.js            drawer layout and DOM rendering
+      paneSettle.js                 delay first render until opening has settled
+    state/
+      fileBrowserState.js           tree/search data, transitions and notifications
     config/
       drawer.js                     header icons
       files.js                      icons, file categories, search timing
@@ -103,8 +109,9 @@ ui/
 ```
 
 `main.js` constructs the concrete dependencies and supplies them to the
-controller. The browser service receives its API and has no DOM dependency; the
-view has no network access. The file-opening service depends only on injected
+controller. The browser service receives its API and state owner and has no DOM
+dependency; the view has no network access. Prefetch reuse is composed around
+the backend API, which handles only requests and download URLs. The file-opening service depends only on injected
 capabilities and the file-type policy; it retains the original synchronous
 opening sequence, cached availability, and status refresh after each click.
 The drawer renders in Remote's page, so it inherits Remote's theme tokens

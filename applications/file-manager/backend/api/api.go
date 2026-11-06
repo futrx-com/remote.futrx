@@ -15,6 +15,7 @@ import (
 
 	"futrx.local/catalog/applications/file-manager/backend/config"
 	"futrx.local/catalog/applications/file-manager/backend/containerio"
+	"futrx.local/catalog/applications/file-manager/backend/service/archives"
 
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
 )
@@ -41,7 +42,7 @@ type searchResult struct {
 type API struct {
 	router   *applications.Router
 	run      containerio.Runner
-	archives chan struct{}
+	archives *archives.Downloads
 
 	mu        sync.Mutex
 	container string
@@ -49,11 +50,11 @@ type API struct {
 
 var _ applications.Backend = (*API)(nil)
 
-func New(run containerio.Runner) *API {
+func New(run containerio.Runner, downloads *archives.Downloads) *API {
 	b := &API{
 		router:   applications.NewRouter(),
 		run:      run,
-		archives: make(chan struct{}, config.MaxConcurrentArchives),
+		archives: downloads,
 	}
 	b.router.GET("list", "List one workspace folder", b.list)
 	b.router.GET("search", "Search workspace file names", b.search)
@@ -124,15 +125,9 @@ func (b *API) archive(request applications.Request) applications.Response {
 	if !ok {
 		return response
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), config.ArchiveTimeout)
-	defer cancel()
-	select {
-	case b.archives <- struct{}{}:
-		defer func() { <-b.archives }()
-	case <-ctx.Done():
-		return applications.Errorf(http.StatusServiceUnavailable, "Other downloads are still being prepared. Try again shortly.")
-	}
-	content, err := b.run(ctx, container, "archive", containerio.Request{Path: relative}, config.MaxArchiveBytes)
+	content, err := b.archives.Build(func(ctx context.Context) ([]byte, error) {
+		return b.run(ctx, container, "archive", containerio.Request{Path: relative}, config.MaxArchiveBytes)
+	})
 	if err != nil {
 		return failure(err)
 	}
@@ -161,6 +156,8 @@ func (b *API) target(input containerio.Request) (string, applications.Response, 
 
 func failure(err error) applications.Response {
 	switch {
+	case errors.Is(err, archives.ErrBusy):
+		return applications.Errorf(http.StatusServiceUnavailable, "Other downloads are still being prepared. Try again shortly.")
 	case errors.Is(err, containerio.ErrInvalidPath):
 		return applications.Errorf(http.StatusBadRequest, "Invalid path.")
 	case errors.Is(err, containerio.ErrNotFound):
