@@ -66,8 +66,10 @@ in the project to add its Files drawer, or install it globally from
 **Settings → Applications** to add a copy to every existing project. Repeat the
 global install to include projects created later. The drawer appears only while
 that project's copy is installed and running.
-Its service runs in the project container and is reached through Remote's
-authenticated application web gateway.
+Its drawer calls the installation's backend routes, which Remote admits only
+for project members; each route runs the application's command in the project
+container through `lxc exec`. Single files download through Remote's chat
+download route.
 
 ```mermaid
 flowchart LR
@@ -80,7 +82,7 @@ flowchart LR
     Expand --> Editor["Open in installed application"]
 ```
 
-The application service resolves paths inside the project's `/workspace` and
+The container command resolves paths inside the project's `/workspace` and
 uses rooted filesystem operations to prevent symlink escapes. Listings and search results can report truncation rather
 than returning unbounded data.
 
@@ -98,25 +100,34 @@ restrictive content security policy.
 ## Terminal
 
 The terminal is the installable [Terminal application](../../applications/terminal/README.md),
-not a core route. Its shell runs in a service inside the project container, and
-the browser reaches that service through the project
-[application web route](../dev/installable-applications/19-project-application-web-routes.md).
+not a core route. Its shells run in the `remote-terminal` service inside the
+project container, which answers only on a root-only Unix socket. The drawer
+reaches it through ordinary
+[application backend routes](../dev/installable-applications/15-application-backends.md);
+the backend relays them through one `lxc exec … remote-terminal bridge` process.
 
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as Terminal drawer (iframe)
-    participant Gateway as terminal--<slug>.<host>
+    participant UI as Terminal drawer
+    participant Remote as Remote project backend route
+    participant Backend as Terminal backend (host)
+    participant Bridge as remote-terminal bridge (lxc exec)
     participant Service as remote-terminal service
     participant Bash as Login shell
 
     User->>UI: Open the drawer
-    UI->>Gateway: Load page, then WebSocket /ws?session=<chat>&cwd=<path>
-    Gateway->>Gateway: Check session, project membership, running install
-    Gateway->>Service: Proxy to <slug>.lxd:8843
+    UI->>Remote: POST sessions {session: <chat>, cwd}
+    Remote->>Remote: Check session, project membership, running install
+    Remote->>Backend: Forward the call
+    Backend->>Bridge: JSON line on stdin
+    Bridge->>Service: HTTP over /run/remote-terminal/terminal.sock
     Service->>Bash: Start bash -l, or reattach to the chat's shell
-    UI->>Bash: Input and resize messages
-    Bash-->>UI: Replayed and live PTY output
+    loop While the drawer is mounted
+        UI->>Service: GET output?offset (waits up to 20 s)
+        Bash-->>UI: Replayed, then new PTY output
+    end
+    UI->>Service: POST input / POST resize
 ```
 
 The drawer exists only for chats attached to a project in which the application
@@ -125,11 +136,12 @@ the chat's directory under `/workspace`. On desktop the drawer is a resizable
 pane beside the chat; its width is retained in browser `localStorage`. The
 drawer and the Files, History, and Browser panes are mutually exclusive.
 
-The shell belongs to the service, not to the WebSocket. A dropped connection,
-a reload, or a restart of Remote leaves it running; the page reconnects while
-the drawer is open and the service replays the most recent 256 KiB of output.
-A shell with no viewer is ended after 10 minutes, and every shell ends when the
-service stops. The gateway does not start a stopped project or installation.
+The shell belongs to the service, not to any request, bridge, or backend
+process. A dropped connection, a reload, or a restart of Remote leaves it
+running; the drawer reconnects while it is open and the most recent 256 KiB of
+output is replayed. A shell nobody reads for 10 minutes is ended, and every
+shell ends when the service stops. Remote does not start a stopped project or
+installation for it.
 
 Chats can still carry a `tmuxSession` and resolve their working directory from it; the backend no longer exposes routes to create, attach to, or send input to host tmux sessions.
 

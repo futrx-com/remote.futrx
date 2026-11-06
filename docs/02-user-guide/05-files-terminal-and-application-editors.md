@@ -76,14 +76,15 @@ Search matches path names by substring. It does not search file contents.
 | Returned search matches | 300 |
 | Entries visited by one search | 200,000 |
 | Folder ZIP source data | 1 GiB |
-| Folder ZIP compressed spool | 1 GiB |
+| Folder ZIP compressed size | 256 MiB |
 | Entries in one folder ZIP | 200,000 |
-| Folder ZIP jobs | 2 concurrently per project File Manager service |
+| Folder ZIP build time | 5 minutes |
+| Folder ZIP jobs | 2 concurrently per project File Manager installation |
 
 A directory can therefore show a truncated warning even when its contents
 exist. Search can stop at its visit cap before finding every possible match.
-A ZIP fails when either its source-byte, compressed-spool, or entry limit is
-reached.
+A ZIP fails when its source-byte, compressed-size, entry, or time limit is
+reached. Single-file downloads have no File Manager size limit.
 
 Folder archives omit broken symlinks, symlinks that escape the workspace, and
 special files such as sockets or devices. They include regular files and safe

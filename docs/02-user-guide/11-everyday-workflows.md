@@ -158,7 +158,7 @@ Force restart is driven by the host, so it can recover a container that cannot r
 4. Hover the file and choose download.
 5. For a directory, choose the folder download action to receive a ZIP.
 
-Folder archives are limited to 1 GiB and two concurrent downloads server-wide. For larger artifacts, use the terminal, Git, or an external object store.
+Folder archives are limited to 1 GiB of source files, a 256 MiB ZIP, and two concurrent downloads per project. For larger artifacts, use the terminal, Git, or an external object store.
 
 ## Keep the laptop lightweight
 

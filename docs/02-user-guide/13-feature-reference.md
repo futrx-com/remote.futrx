@@ -118,7 +118,7 @@ separately from `/root/.codex`. Its key remains in the project secret store.
 | Open file | Select a file or search result | Supported media opens in-app; an installed application can open source files, otherwise they download; unsupported media/archives download |
 | Search filenames | Type at least two characters | 300 results; 200,000 visited-entry cap |
 | Download file | Hover a file and choose download | Direct file response |
-| Download folder | Hover a folder and choose download | ZIP up to 1 GiB; two concurrent |
+| Download folder | Hover a folder and choose download | ZIP up to 256 MiB from 1 GiB of files; two concurrent |
 | Inline media link | Open a supported workspace link from chat | Images, audio, video, PDF allowlist and full-screen viewer |
 | IDE file link | Open a validated workspace path from chat or Files | Path-contained redirect with optional exact `:line[:column]` |
 

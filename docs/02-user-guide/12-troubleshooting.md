@@ -182,7 +182,7 @@ type.
 
 ### Folder download fails
 
-Folder ZIP downloads are limited to 1 GiB and two simultaneous archives across the server. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
+Folder ZIP downloads are limited to 1 GiB of source files, a 256 MiB ZIP, five minutes to build, and two simultaneous archives per project. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
 
 ### The chat header has no terminal button
 
@@ -196,7 +196,7 @@ every project gets it. If it is installed but stopped, start it there.
 The Terminal pane reconnects by itself while it is open and returns to the same
 shell with its recent output. If it stays on **Reconnecting**, check that the
 project and its Terminal application are running, and that your browser can
-reach `terminal--<project-slug>.<host>`.
+still reach Remote.
 
 ### Terminal came back with a new shell
 

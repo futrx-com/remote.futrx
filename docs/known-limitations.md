@@ -163,7 +163,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 ## Workspace tools and files
 
 - **Directory and search limits are fixed constants.** Listings truncate at 10,000 entries per directory; search is filename-substring only (no content search), returns at most 300 results, and gives up after visiting 200,000 entries. In-browser preview is limited to an image/audio/video/PDF allowlist; other types can't be opened inline.
-- **Archive downloads are capped.** Folder-ZIP downloads are limited to 1 GiB each with at most 2 concurrent downloads box-wide; a larger workspace simply fails.
+- **Archive downloads are capped.** Folder-ZIP downloads are limited to 1 GiB of source files and a 256 MiB ZIP each, with at most 2 concurrent downloads per project; a larger folder simply fails.
 - **Escaping symlinks are silently omitted** from listings and downloads (a safety measure, but it can hide files).
 - **Git history detection is bounded.** Repository discovery skips a fixed directory blocklist at depth ≤ 6, so deeper or oddly-placed repos are invisible to the history UI. Commit lists cap at 200, diffs truncate at 768 KiB.
 - **The dirty-tree safety-checkpoint UI is incomplete.** The backend checkout route can stage all changes, create a `remote.futrx` checkpoint commit, and switch to a detached commit, but the current History drawer does not render the form that submits the checkpoint message. Clean the tree through Terminal or IDE before using **Switch**.

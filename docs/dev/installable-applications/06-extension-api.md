@@ -248,10 +248,13 @@ the method exists if your application needs to support them, as with
 if (!remote.ui.registerDrawer) return;
 ```
 
-The host backend API does not support WebSocket connections. If your drawer
-needs one, load a page from the application's
-[web route](19-project-application-web-routes.md) in an iframe. The page and
-WebSocket then share an origin. See `applications/terminal` for an example.
+The host backend API does not support WebSocket connections. A stream can
+often be carried by ordinary backend calls instead: `applications/terminal`
+reads shell output by offset with requests that wait for new output, and sends
+input and resizes as separate calls. If your drawer really needs a WebSocket,
+load a page from the application's
+[web route](19-project-application-web-routes.md) in an iframe, so the page and
+WebSocket share an origin.
 
 ## `remote.views.load(name)`
 
