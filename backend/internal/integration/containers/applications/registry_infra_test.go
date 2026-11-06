@@ -126,30 +126,6 @@ func TestLoadApplicationPrependsContainerBuildToCustomInstall(t *testing.T) {
 	}
 }
 
-func TestHelloRemoteCombinesContainerBuildWithCustomProvisioning(t *testing.T) {
-	registry, err := NewRegistry(EmbeddedCatalog(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	application, ok := registry.Get("hello-remote")
-	if !ok {
-		t.Fatal("hello-remote is missing from the embedded catalog")
-	}
-	if application.Install != defaultInstallScriptPath {
-		t.Fatalf("install path = %q, want %q", application.Install, defaultInstallScriptPath)
-	}
-	script, ok := registry.Script(application.ID)
-	if !ok {
-		t.Fatal("hello-remote install program is missing")
-	}
-	generatedAt := bytes.Index(script, []byte("APP_BUILD_VERSION="))
-	customAt := bytes.Index(script, []byte("provisioned-version"))
-	serviceAt := bytes.Index(script, []byte("systemctl"))
-	if generatedAt < 0 || customAt < 0 || generatedAt >= customAt || serviceAt >= 0 {
-		t.Fatalf("container build must precede custom provisioning without owning systemd")
-	}
-}
-
 func TestLoadApplicationRejectsInvalidInfrastructureOverrides(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

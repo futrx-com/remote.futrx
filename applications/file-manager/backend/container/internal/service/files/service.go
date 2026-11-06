@@ -41,22 +41,6 @@ func (s *Service) List(relativePath string) (model.Listing, error) {
 	return model.Listing{Path: rel, Entries: entries, Truncated: truncated}, nil
 }
 
-func (s *Service) OpenFile(relativePath string) (*model.File, error) {
-	root := s.root
-	if root == "" {
-		return nil, model.ErrInvalidPath
-	}
-	rel := cleanRelative(relativePath)
-	if rel == "" {
-		return nil, model.ErrInvalidPath
-	}
-	content, _, modTime, err := s.store.OpenFile(root, rel)
-	if err != nil {
-		return nil, model.ErrFileNotFound
-	}
-	return model.NewFile(path.Base(rel), modTime, content), nil
-}
-
 func (s *Service) prepareArchive(relativePath string) (model.Archive, error) {
 	root := s.root
 	if root == "" {

@@ -5,6 +5,7 @@ go 1.25.13
 require github.com/futrx-com/remote.futrx.com v0.0.0
 
 require (
+	github.com/creack/pty v1.1.24 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect

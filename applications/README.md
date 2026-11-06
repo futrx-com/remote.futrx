@@ -12,10 +12,12 @@ Applications in this directory ship in the server binary. The
 [`hello-remote/`](hello-remote/) example composes infrastructure, a backend,
 events, UI, and skills. [`scheduled-tasks/`](scheduled-tasks/) demonstrates
 application-owned workflows using the shared agent runtime.
-[`terminal/`](terminal/) is the project shell: a service inside the project
-container, reached through its web route and shown in a drawer beside the chat.
+[`terminal/`](terminal/) is the project shell, shown in a drawer beside the
+chat: a service inside the project container owns the shells on a Unix socket,
+and its backend relays the drawer's routes to it through `lxc exec`.
 [`file-manager/`](file-manager/) provides optional project workspace browsing,
-search, and downloads through its container service and chat drawer.
+search, and downloads through backend routes that run its container command,
+and a chat drawer.
 Real apps — MySQL, PostgreSQL, Redis, s3disk — live in their own
 repositories and reach a server as uploaded packages, so the catalog format can
 change here without a database application riding along in the same review.

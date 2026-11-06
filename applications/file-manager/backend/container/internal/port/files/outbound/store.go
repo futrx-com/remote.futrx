@@ -3,7 +3,6 @@ package outbound
 import (
 	"context"
 	"io"
-	"time"
 
 	model "futrx.local/catalog/applications/file-manager/backend/container/internal/model/files/application"
 )
@@ -13,7 +12,6 @@ import (
 type Store interface {
 	DirectoryExists(root, relative string) bool
 	ListDir(root, relative string, maxEntries int) ([]*model.Node, bool, error)
-	OpenFile(root, relative string) (io.ReadSeekCloser, string, time.Time, error)
 	WriteArchive(ctx context.Context, root, relative string, destination io.Writer) error
 	Search(root, query string, limit int) ([]*model.Node, bool, error)
 }

@@ -1,0 +1,121 @@
+/* The terminal renders inside Remote's drawer, whose surface shows through.
+   Every rule is scoped to it, since this sheet is injected into Remote's page. */
+.remote-terminal {
+  position: relative;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 8px;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (min-width: 768px) {
+  .remote-terminal { padding: 12px; }
+}
+
+/* Not `.terminal`: xterm puts that class on its own element, which would then
+   take this frame a second time, nested inside the first. */
+.remote-terminal .terminal-host {
+  box-sizing: border-box;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* Tighter on the right, where xterm's own scrollbar sits against the edge. */
+  padding: 10px 4px 10px 12px;
+  border: 1px solid rgb(128 128 128 / 0.22);
+  border-radius: 8px;
+  /* The terminal theme's own background, so the padding matches the canvas.
+     It is Remote's dark pane surface, so the terminal does not read as a
+     separate, darker box inside the drawer. */
+  background: #141519;
+}
+
+/* xterm scrolls with its own slim slider, which appears only while there is
+   scrollback to move through. The native bar under it is permanent and, on
+   systems without overlay scrollbars, draws a full track with arrows. */
+.remote-terminal .xterm .xterm-viewport {
+  scrollbar-width: none;
+}
+
+.remote-terminal .xterm .xterm-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.remote-terminal .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  border-radius: 4px;
+}
+
+.remote-terminal .find {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 40px);
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 10px;
+  background: #1c1d23;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.remote-terminal .find[hidden] { display: none; }
+
+.remote-terminal .find input {
+  min-width: 0;
+  flex: 1;
+  width: 180px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e4e4e7;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.remote-terminal .find input::placeholder { color: #8b8b94; }
+
+.remote-terminal .find-status {
+  flex: none;
+  color: #8b8b94;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.remote-terminal .find-status[data-empty="true"] { color: #ff7b72; }
+
+.remote-terminal .find button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #b4b4bd;
+  cursor: pointer;
+}
+
+.remote-terminal .find button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.1);
+  color: #f4f4f5;
+}
+
+.remote-terminal .find button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.remote-terminal .find svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
