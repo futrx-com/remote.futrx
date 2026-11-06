@@ -1,24 +1,20 @@
-/* The page is framed inside Remote's drawer, whose surface shows through. */
-html, body {
-  height: 100%;
-  margin: 0;
-  background: transparent;
-}
-
-body {
+/* The terminal renders inside Remote's drawer, whose surface shows through.
+   Every rule is scoped to it, since this sheet is injected into Remote's page. */
+.remote-terminal {
   position: relative;
   box-sizing: border-box;
+  height: 100%;
   padding: 8px;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @media (min-width: 768px) {
-  body { padding: 12px; }
+  .remote-terminal { padding: 12px; }
 }
 
 /* Not `.terminal`: xterm puts that class on its own element, which would then
    take this frame a second time, nested inside the first. */
-.terminal-host {
+.remote-terminal .terminal-host {
   box-sizing: border-box;
   height: 100%;
   width: 100%;
@@ -36,19 +32,19 @@ body {
 /* xterm scrolls with its own slim slider, which appears only while there is
    scrollback to move through. The native bar under it is permanent and, on
    systems without overlay scrollbars, draws a full track with arrows. */
-.xterm .xterm-viewport {
+.remote-terminal .xterm .xterm-viewport {
   scrollbar-width: none;
 }
 
-.xterm .xterm-viewport::-webkit-scrollbar {
+.remote-terminal .xterm .xterm-viewport::-webkit-scrollbar {
   display: none;
 }
 
-.xterm .xterm-scrollable-element > .scrollbar > .slider {
+.remote-terminal .xterm .xterm-scrollable-element > .scrollbar > .slider {
   border-radius: 4px;
 }
 
-.find {
+.remote-terminal .find {
   position: absolute;
   top: 20px;
   right: 20px;
@@ -65,9 +61,9 @@ body {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
 }
 
-.find[hidden] { display: none; }
+.remote-terminal .find[hidden] { display: none; }
 
-.find input {
+.remote-terminal .find input {
   min-width: 0;
   flex: 1;
   width: 180px;
@@ -79,18 +75,18 @@ body {
   font-size: 12.5px;
 }
 
-.find input::placeholder { color: #8b8b94; }
+.remote-terminal .find input::placeholder { color: #8b8b94; }
 
-.find-status {
+.remote-terminal .find-status {
   flex: none;
   color: #8b8b94;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.find-status[data-empty="true"] { color: #ff7b72; }
+.remote-terminal .find-status[data-empty="true"] { color: #ff7b72; }
 
-.find button {
+.remote-terminal .find button {
   display: grid;
   flex: none;
   place-items: center;
@@ -104,17 +100,17 @@ body {
   cursor: pointer;
 }
 
-.find button:hover:not(:disabled) {
+.remote-terminal .find button:hover:not(:disabled) {
   background: rgb(255 255 255 / 0.1);
   color: #f4f4f5;
 }
 
-.find button:disabled {
+.remote-terminal .find button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 
-.find svg {
+.remote-terminal .find svg {
   width: 14px;
   height: 14px;
   fill: none;
