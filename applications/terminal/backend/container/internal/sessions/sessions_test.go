@@ -236,10 +236,13 @@ func TestNewShellsStartAtTheirInitialSizeAndDirectory(t *testing.T) {
 }
 
 func TestAViewerThatFellBehindIsResetToTheReplay(t *testing.T) {
-	current := attach(t, testRegistry(t, Config{ReplayBytes: 64}), "chat-1")
-	client := watch(t, current)
-	client.input("printf 'line-%s\\n' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; echo do''ne\n")
-	client.until("done")
+	// Control output directly: an interactive shell may write its next prompt
+	// after the command marker, so it cannot guarantee an idle stream here.
+	current := &Session{
+		now: time.Now, pollWait: time.Millisecond, replayBytes: 64,
+		changed: make(chan struct{}),
+	}
+	current.append([]byte(strings.Repeat("line\n", 40)))
 	behind := current.Read(context.Background(), 0)
 	if !behind.Reset || len(behind.Data) > 64 || behind.Offset <= 64 {
 		t.Fatalf("stale read = reset %v, %d bytes, offset %d", behind.Reset, len(behind.Data), behind.Offset)
