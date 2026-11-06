@@ -61,3 +61,5 @@ export const CATEGORY_BY_EXTENSION = {
 };
 
 export const SEARCH_DEBOUNCE_MS = 250;
+
+export const ROOT_PREFETCH_MAX_AGE_MS = 15000;

@@ -13,14 +13,9 @@ export async function listFiles(remote, projectId, path, signal) {
   return response.json();
 }
 
-export function createFilesApi(remote, { projectId, chatId }, prefetched = null) {
+export function createFilesApi(remote, { projectId, chatId }) {
   return {
-    list(path, signal) {
-      // The first root listing may already have been fetched while the chat
-      // was showing; later ones, such as Refresh, always go to the backend.
-      const ready = path ? null : prefetched?.take(projectId);
-      return ready ?? listFiles(remote, projectId, path, signal);
-    },
+    list: (path, signal) => listFiles(remote, projectId, path, signal),
     async search(query, signal) {
       const response = await remote.backend.fetch("search", {
         method: "GET",

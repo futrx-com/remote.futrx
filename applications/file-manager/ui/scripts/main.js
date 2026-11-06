@@ -1,7 +1,6 @@
 import { workspaceLocation } from "./api/applicationUrls.js";
 import { createFilesApi, listFiles } from "./api/filesApi.js";
 import { codeServerRunning } from "./api/projectApplicationsApi.js";
-import { createRootPrefetch } from "./api/rootPrefetch.js";
 import { createRemoteFilesApi } from "./api/remoteFilesApi.js";
 import { createFileUrls } from "./api/fileUrls.js";
 import { ICON } from "./config/drawer.js";
@@ -13,6 +12,7 @@ import {
 import { whenPaneSettled } from "./presentation/paneSettle.js";
 import { createFileBrowser } from "./services/fileBrowserService.js";
 import { createFileOpeningService } from "./services/fileOpeningService.js";
+import { createRootPrefetch, withPrefetchedRoot } from "./services/rootPrefetchService.js";
 import { browserNavigation } from "./transport/browserNavigation.js";
 
 export default function activate(remote) {
@@ -45,7 +45,9 @@ export default function activate(remote) {
       return true;
     },
     mount: (body, context) => mountFilesDrawer(body, context, {
-      api: reachable(context) ? createFilesApi(remote, context, prefetched) : null,
+      api: reachable(context)
+        ? withPrefetchedRoot(createFilesApi(remote, context), prefetched, context.projectId)
+        : null,
       createLayout: createFilesLayout,
       createBrowser: createFileBrowser,
       createView: createFileBrowserView,
