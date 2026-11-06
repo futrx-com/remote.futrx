@@ -70,16 +70,7 @@ provider-home mounts.
 
 ## Schedule a monitor and walk away
 
-1. Install and start **Scheduled Tasks** in the project’s Applications page.
-2. Open the chat that should own future work.
-3. Ask the agent to schedule a check with an explicit timezone, completion
-   condition and maximum run count.
-4. Wait for the active task’s ID and timing, then close the browser if desired.
-5. Return to the same chat to read its ordinary agent turns.
-
-Use the application clock action to pause, resume or delete tasks. Let the agent
-complete its current schedule after the goal is terminal. See
-[Scheduled tasks](09-scheduled-tasks.md).
+See the [Scheduled Tasks workflows](../../applications/scheduled-tasks/docs/usage.md).
 
 ## Give an agent a signed-in website
 
@@ -152,13 +143,7 @@ Force restart is driven by the host, so it can recover a container that cannot r
 
 ## Download a deliverable
 
-1. Ask the agent to put the final artifact in `/workspace`.
-2. Choose **Files**.
-3. Expand folders or use filename search.
-4. Hover the file and choose download.
-5. For a directory, choose the folder download action to receive a ZIP.
-
-Folder archives are limited to 1 GiB of source files, a 256 MiB ZIP, and two concurrent downloads per project. For larger artifacts, use the terminal, Git, or an external object store.
+See the [File Manager usage](../../applications/file-manager/docs/usage.md).
 
 ## Keep the laptop lightweight
 

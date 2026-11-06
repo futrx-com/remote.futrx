@@ -158,3 +158,10 @@ needs a live Remote/LXD installation.
 license (`ui/vendor/LICENSE`), with xterm's stylesheet at `ui/style/xterm.css`.
 To update them, copy `lib/*.mjs` and `css/xterm.css` from the npm packages and
 bump `version` in `application.json`.
+
+## Guides
+
+- [Architecture](docs/architecture.md)
+- [Limitations](docs/limitations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Usage](docs/usage.md)

@@ -249,9 +249,9 @@ if (!remote.ui.registerDrawer) return;
 ```
 
 The host backend API does not support WebSocket connections. A stream can
-often be carried by ordinary backend calls instead: `applications/terminal`
-reads shell output by offset with requests that wait for new output, and sends
-input and resizes as separate calls. If your drawer really needs a WebSocket,
+often be carried by ordinary backend calls instead; see the
+[Terminal architecture](../../../applications/terminal/docs/architecture.md)
+for an example. If your drawer really needs a WebSocket,
 load a page from the application's
 [web route](19-project-application-web-routes.md) in an iframe, so the page and
 WebSocket share an origin.
@@ -573,9 +573,8 @@ its opener automatically; the returned disposer lets the extension remove it
 earlier. Do not rely on returning the disposer from `activate`: the current
 host awaits activation but does not consume its return value as a destructor.
 
-The optional File Manager application calls `remote.files.open(request)` to
-use the same media viewer, project-scoped editor resolution, and download
-fallback as chat file links. The request includes `chatId`, `projectId`, `cwd`,
+Extensions call `remote.files.open(request)` to use the shared media viewer,
+project-scoped editor resolution, and download fallback. The request includes `chatId`, `projectId`, `cwd`,
 and an absolute `/workspace/...` path, plus optional `line` and `column`.
 It rejects paths outside `/workspace` and explicit traversal segments. Media
 opens in the shared viewer; source/text files use a matching project opener;
@@ -588,8 +587,7 @@ Tab, opens the file as it does for chat links. If nothing claims the click,
 Remote opens the URL in a new tab, as for Code Server.
 
 Browsers only let a page open a new tab while it is handling the user's click.
-A surface that forwards the click from a cross-origin iframe, as File Manager
-does, can reach `open` after that moment. `open` then returns `"blocked"`, and
+A surface that forwards a click asynchronously can reach `open` after that moment. `open` then returns `"blocked"`, and
 the surface can show `remote.files.editorUrl(request)` as a link for the user to
 click. `editorUrl` returns the URL `open` would use, or `null` when the file
 would be viewed or downloaded instead.

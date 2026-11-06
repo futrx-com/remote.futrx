@@ -61,89 +61,11 @@ Important behavior:
 
 ## File manager
 
-Install the [File Manager application](../../applications/file-manager/README.md)
-in the project to add its Files drawer, or install it globally from
-**Settings → Applications** to add a copy to every existing project. Repeat the
-global install to include projects created later. The drawer appears only while
-that project's copy is installed and running.
-Its drawer calls the installation's backend routes, which Remote admits only
-for project members; each route runs the application's command in the project
-container through `lxc exec`. Single files download through Remote's chat
-download route.
-
-```mermaid
-flowchart LR
-    Open["Open Files drawer"] --> Root["List workspace root"]
-    Root --> Expand["Lazy-load directories"]
-    Root --> Search["Recursive filename search"]
-    Expand --> Download["Download file"]
-    Expand --> Zip["Download folder as ZIP"]
-    Expand --> Media["Open supported media inline"]
-    Expand --> Editor["Open in installed application"]
-```
-
-The container command resolves paths inside the project's `/workspace` and
-uses rooted filesystem operations to prevent symlink escapes. Listings and search results can report truncation rather
-than returning unbounded data.
-
-Selecting a file routes by type:
-
-- supported image/audio/video/PDF opens in the full-screen media overlay;
-- a running project application may register a file opener for text and code;
-- when no opener is registered, those files download;
-- archives and unsupported media download.
-
-The same routing applies to validated absolute workspace links in chat. File
-openers receive optional `:line[:column]` suffixes. Inline media receives a
-restrictive content security policy.
+See the [File Manager architecture](../../applications/file-manager/docs/architecture.md).
 
 ## Terminal
 
-The terminal is the installable [Terminal application](../../applications/terminal/README.md),
-not a core route. Its shells run in the `remote-terminal` service inside the
-project container, which answers only on a root-only Unix socket. The drawer
-reaches it through ordinary
-[application backend routes](../dev/installable-applications/15-application-backends.md);
-the backend relays them through one `lxc exec … remote-terminal bridge` process.
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Terminal drawer
-    participant Remote as Remote project backend route
-    participant Backend as Terminal backend (host)
-    participant Bridge as remote-terminal bridge (lxc exec)
-    participant Service as remote-terminal service
-    participant Bash as Login shell
-
-    User->>UI: Open the drawer
-    UI->>Remote: POST sessions {session: <chat>, cwd}
-    Remote->>Remote: Check session, project membership, running install
-    Remote->>Backend: Forward the call
-    Backend->>Bridge: JSON line on stdin
-    Bridge->>Service: HTTP over /run/remote-terminal/terminal.sock
-    Service->>Bash: Start bash -l, or reattach to the chat's shell
-    loop While the drawer is mounted
-        UI->>Service: GET output?offset (waits up to 20 s)
-        Bash-->>UI: Replayed, then new PTY output
-    end
-    UI->>Service: POST input / POST resize
-```
-
-The drawer exists only for chats attached to a project in which the application
-is installed and running. Each chat has one interactive `bash -l`, started in
-the chat's directory under `/workspace`. On desktop the drawer is a resizable
-pane beside the chat; its width is retained in browser `localStorage`. The
-drawer and the Files, History, and Browser panes are mutually exclusive.
-
-The shell belongs to the service, not to any request, bridge, or backend
-process. A dropped connection, a reload, or a restart of Remote leaves it
-running; the drawer reconnects while it is open and the most recent 256 KiB of
-output is replayed. A shell nobody reads for 10 minutes is ended, and every
-shell ends when the service stops. Remote does not start a stopped project or
-installation for it.
-
-Chats can still carry a `tmuxSession` and resolve their working directory from it; the backend no longer exposes routes to create, attach to, or send input to host tmux sessions.
+See the [Terminal architecture](../../applications/terminal/docs/architecture.md).
 
 ## Git history
 
@@ -174,11 +96,7 @@ The checkout API supports the checkpoint message, but the current History drawer
 
 ## Scheduled tasks
 
-Install the Scheduled Tasks project application to add its clock action to the
-chat header. Ask the agent for future work; tasks are active immediately. The
-application UI lists the current chat’s tasks and supports pause, resume, run now,
-delete and refresh. Its host backend owns the clock and wakes normal agent turns.
-See [Scheduled tasks](06-scheduled-tasks.md).
+See the [Scheduled Tasks workspace integration](../../applications/scheduled-tasks/docs/architecture.md).
 
 ## Application web routes and workspace links
 

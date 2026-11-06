@@ -194,3 +194,10 @@ Inside the target container, `/usr/local/bin/file-manager list </dev/null`
 prints the workspace root as JSON, and nothing listens on port 8844. Container
 provisioning and `lxc exec` from the backend need a live Remote/LXD
 installation; unit and browser tests do not prove those paths.
+
+## Guides
+
+- [Architecture](docs/architecture.md)
+- [Limitations](docs/limitations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Usage](docs/usage.md)

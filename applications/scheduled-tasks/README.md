@@ -153,3 +153,10 @@ go test ./applications/scheduled-tasks/backend/...
 The core integration test builds and runs the packaged backend through the generated-module builder. It creates an active task using a scoped grant, restarts the backend, checks that the correct chat receives the scheduled turn, and verifies completion.
 
 For a manual delivery check, install the application in a disposable project, ask for a reminder one minute ahead without selecting a skill, and close the browser. Confirm that the reminder appears in the same chat. Also check stop/start behavior and that uninstall removes the Scheduled Tasks calendar icon and scheduling access.
+
+## Guides
+
+- [Architecture](docs/architecture.md)
+- [Limitations](docs/limitations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Usage](docs/usage.md)

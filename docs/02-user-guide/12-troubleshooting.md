@@ -170,39 +170,11 @@ Confirm project access, free disk space, and the configured upload limit. The de
 
 ### File search finds nothing
 
-Search is filename substring search, not content search. Use at least two characters. Results cap at 300 after visiting at most 200,000 entries. Very large individual directory listings cap at 10,000 entries.
-
-### Selecting a file downloads it instead of opening it
-
-Archives and unsupported image, audio, or video formats deliberately fall back
-to download. Supported image/audio/video/PDF files open in Remote's media
-viewer; code, data, text, logs, and other non-media files open in the project
-IDE. Use the explicit download icon when you want the local file regardless of
-type.
-
-### Folder download fails
-
-Folder ZIP downloads are limited to 1 GiB of source files, a 256 MiB ZIP, five minutes to build, and two simultaneous archives per project. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
+See the [File Manager troubleshooting](../../applications/file-manager/docs/troubleshooting.md).
 
 ### The chat header has no terminal button
 
-The terminal is the **Terminal** application. It appears only in a project chat
-whose project has the application installed and running. Install it from the
-project's Applications page, or ask an administrator to install it globally so
-every project gets it. If it is installed but stopped, start it there.
-
-### Terminal shows Reconnecting
-
-The Terminal pane reconnects by itself while it is open and returns to the same
-shell with its recent output. If it stays on **Reconnecting**, check that the
-project and its Terminal application are running, and that your browser can
-still reach Remote.
-
-### Terminal came back with a new shell
-
-A shell nobody is viewing is ended after 10 minutes, and stopping, restarting,
-or upgrading the Terminal application ends every shell in the project. Run
-durable processes under a service manager inside the project.
+See the [Terminal troubleshooting](../../applications/terminal/docs/troubleshooting.md).
 
 ### An application file opener opens the wrong place
 
@@ -266,19 +238,7 @@ The backend supports creating a safety checkpoint before checkout, but the curre
 
 ## Scheduled tasks
 
-### Scheduling access is unavailable
-
-Install and start **Scheduled Tasks** in this project’s Applications page. New
-project turns receive the application skill and runtime access automatically;
-no project secret or manual skill selection is needed.
-
-### A task has not fired
-
-Confirm the application is running and the task is enabled. Check its stored
-time and timezone using the clock action. A busy chat waits for its current turn
-to finish; stopped applications deliver one overdue occurrence after starting.
-Refresh the application popup for the last error. Legacy built-in task
-definitions must be recreated through the application.
+See the [Scheduled Tasks troubleshooting](../../applications/scheduled-tasks/docs/troubleshooting.md).
 
 ## Secrets and sharing
 
