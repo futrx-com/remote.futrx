@@ -136,5 +136,11 @@ export function createFileBrowser(api, changed) {
       // Let the link's default navigation finish before removing its node.
       queueMicrotask(changed);
     },
+    dispose() {
+      revision++;
+      controller.abort();
+      clearTimeout(searchTimer);
+      searchController?.abort();
+    },
   };
 }

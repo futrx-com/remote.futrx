@@ -40,14 +40,19 @@ func TestFileManagerSupportsProjectAndGlobalContainerInstalls(t *testing.T) {
 	if !strings.Contains(string(script), `-o "$APP_BUILD_DIR"/'file-manager' './cmd/file-manager'`) {
 		t.Fatal("installer does not build the file-manager command")
 	}
-	if app.Service == nil || app.Service.Name != "remote-file-manager" || !slices.Equal(app.Service.Command, []string{"/usr/local/bin/file-manager", "--port", "8844"}) {
-		t.Fatalf("unexpected service: %+v", app.Service)
+	// The drawer reaches the workspace through backend routes; no container
+	// web server, port, or application hostname remains.
+	if app.Service != nil || app.Web != nil || app.NeedsPort() {
+		t.Fatalf("unexpected container web surface: service=%+v web=%+v", app.Service, app.Web)
 	}
-	if app.Web == nil || app.Web.Port != 8844 || app.Web.Subdomain != "files" {
-		t.Fatalf("unexpected web route: %+v", app.Web)
+	if app.Backend == nil || app.Backend.Timeout() != 300000 {
+		t.Fatalf("expected a host backend with room for archives: %+v", app.Backend)
 	}
-	if app.UI == nil || app.UI.Entry != "scripts/main.js" || app.Backend != nil {
-		t.Fatal("expected drawer UI and no host backend")
+	if !strings.Contains(string(script), "systemctl disable --now \"$legacy\"") {
+		t.Fatal("installer does not retire the legacy container web service")
+	}
+	if app.UI == nil || app.UI.Entry != "scripts/main.js" || !slices.Equal(app.UI.Styles, []string{"style/files.css"}) {
+		t.Fatalf("expected drawer UI with its stylesheet: %+v", app.UI)
 	}
 	if app.Uninstall != "infra/uninstall.sh" {
 		t.Fatal("missing binary cleanup")

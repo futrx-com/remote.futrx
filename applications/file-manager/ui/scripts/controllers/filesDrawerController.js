@@ -1,71 +1,81 @@
 import { REFRESH_ICON } from "../config/drawer.js";
 
-export function mountFilesDrawer(body, context, { url, syncTheme, createFileOpener }) {
-  if (!url) {
+// Paths come from the project container's listings, so a click is checked
+// before it reaches an opener.
+function workspaceRelative(path) {
+  return (
+    typeof path === "string" &&
+    Boolean(path) &&
+    !path.startsWith("/") &&
+    !path.split("/").some((part) => part === ".." || part === ".")
+  );
+}
+
+export function mountFilesDrawer(
+  body,
+  context,
+  { api, createLayout, createBrowser, createView, createFileOpener, whenSettled },
+) {
+  if (!api) {
     context.setStatus({
       label: "Unavailable for this chat",
       active: false,
     });
     return;
   }
-  const origin = new URL(url).origin;
-  const frame = document.createElement("iframe");
-  frame.title = "Workspace files";
-  frame.src = url;
-  frame.style.cssText =
-    "display:block;width:100%;height:100%;border:0;background:transparent";
-  const send = (message) =>
-    frame.contentWindow?.postMessage(
-      { source: "remote-file-manager-host", ...message },
-      origin,
-    );
-  const showState = ({ subtitle, loading }) => {
-    context.setStatus({ label: subtitle });
+  const layout = createLayout(body);
+  const { search, clear } = layout;
+  const browser = createBrowser(api, render);
+  const openPath = createFileOpener(context, (path, url) => {
+    if (/^https?:\/\//i.test(url)) browser.showBlocked(path, url);
+  });
+  const view = createView(layout, {
+    toggle: browser.toggle,
+    openFile(node) {
+      if (!workspaceRelative(node.path)) return;
+      browser.clearBlocked();
+      openPath(node.path);
+    },
+    dismissBlocked: browser.dismissBlocked,
+    downloadUrl: api.downloadUrl,
+  });
+
+  // The header follows every change at once; the tree is drawn only once the
+  // opening pane has stopped growing.
+  let settled = false;
+  function render() {
+    if (settled) view.render(browser.state);
+    context.setStatus({ label: browser.subtitle() });
     context.setActions?.([
       {
         id: "refresh",
         label: "Refresh files",
         icon: REFRESH_ICON,
-        busy: loading,
-        onClick: () => send({ type: "refresh" }),
+        busy: browser.state.rootLoading,
+        onClick: () => browser.reset(),
       },
     ]);
+  }
+
+  const onInput = () => browser.search(search.value);
+  const onClear = () => {
+    search.value = "";
+    browser.search(search.value);
+    search.focus();
   };
-  showState({ subtitle: "Loading...", loading: true });
-  const stopTheme = syncTheme(frame, send);
-  const openFile = createFileOpener(context, (path, url) =>
-    send({ type: "blocked", path, url }),
-  );
-  const onMessage = (event) => {
-    if (
-      event.source !== frame.contentWindow ||
-      event.origin !== origin ||
-      event.data?.source !== "remote-file-manager"
-    )
-      return;
-    if (event.data.type === "state") {
-      showState({
-        subtitle: String(event.data.subtitle ?? ""),
-        loading: Boolean(event.data.loading),
-      });
-      return;
-    }
-    if (event.data.type !== "open") return;
-    const path = event.data.path;
-    if (
-      typeof path !== "string" ||
-      !path ||
-      path.startsWith("/") ||
-      path.split("/").some((part) => part === ".." || part === ".")
-    )
-      return;
-    openFile(path);
-  };
-  window.addEventListener("message", onMessage);
-  body.append(frame);
+  search.addEventListener("input", onInput);
+  clear.addEventListener("click", onClear);
+  const stopWaiting = whenSettled(layout.root, () => {
+    settled = true;
+    render();
+  });
+  browser.reset();
+
   return () => {
-    stopTheme();
-    window.removeEventListener("message", onMessage);
-    frame.remove();
+    stopWaiting();
+    browser.dispose();
+    search.removeEventListener("input", onInput);
+    clear.removeEventListener("click", onClear);
+    layout.root.remove();
   };
 }

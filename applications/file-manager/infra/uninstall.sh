@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Remote stops the service and owns its unit; the workspace belongs to the project.
+# The workspace belongs to the project. A copy installed before version 5 may
+# still carry the retired container web service, so remove that too.
+legacy=remote-file-manager
+if [ -e "/etc/systemd/system/$legacy.service" ]; then
+  systemctl disable --now "$legacy" || true
+  rm -f "/etc/systemd/system/$legacy.service" "/etc/remote/workspace-idle.d/$legacy"
+  rm -rf "/etc/remote/applications/$legacy"
+  systemctl daemon-reload
+fi
 rm -f /usr/local/bin/file-manager /usr/local/lib/remote/file-manager.build

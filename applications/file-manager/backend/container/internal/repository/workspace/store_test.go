@@ -40,6 +40,22 @@ func setupWorkspace(t *testing.T) (root, secret string) {
 	return root, secret
 }
 
+// openRooted is the containment sequence every file read goes through:
+// resolve inside the workspace, then open a regular file through os.Root.
+func openRooted(root, relative string) (*os.File, error) {
+	workspace, err := newSecureWorkspace(root)
+	if err != nil {
+		return nil, err
+	}
+	defer workspace.close()
+	resolved, err := workspace.resolve(relative)
+	if err != nil {
+		return nil, err
+	}
+	file, _, err := workspace.openRegular(resolved)
+	return file, err
+}
+
 func TestListDirShowsDotfiles(t *testing.T) {
 	root, _ := setupWorkspace(t)
 	store := New()
@@ -92,13 +108,12 @@ func TestListDirPreservesGlobalOrderAcrossReadBatches(t *testing.T) {
 	}
 }
 
-func TestOpenFileRejectsTraversal(t *testing.T) {
+func TestRootedOpenRejectsTraversal(t *testing.T) {
 	root, _ := setupWorkspace(t)
-	store := New()
 
 	for _, rel := range []string{"../outside-secret.txt", "src/../../outside-secret.txt", "/etc/hosts"} {
-		if _, _, _, err := store.OpenFile(root, rel); err == nil {
-			t.Fatalf("OpenFile(%q) succeeded, want error", rel)
+		if _, err := openRooted(root, rel); err == nil {
+			t.Fatalf("openRooted(%q) succeeded, want error", rel)
 		}
 	}
 }
@@ -114,8 +129,8 @@ func TestSymlinkEscapeIsBlocked(t *testing.T) {
 	}
 
 	// Downloading the escaping symlink must fail.
-	if _, _, _, err := store.OpenFile(root, "escape"); err == nil {
-		t.Fatal("OpenFile via escaping symlink succeeded, want error")
+	if _, err := openRooted(root, "escape"); err == nil {
+		t.Fatal("openRooted via escaping symlink succeeded, want error")
 	}
 
 	// And it must not appear as a usable entry in the listing.
@@ -132,16 +147,15 @@ func TestSymlinkEscapeIsBlocked(t *testing.T) {
 
 func TestSymlinkInsideWorkspaceIsAllowed(t *testing.T) {
 	root, _ := setupWorkspace(t)
-	store := New()
 
 	link := filepath.Join(root, "alias.go")
 	if err := os.Symlink(filepath.Join(root, "src", "app.go"), link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
 
-	rc, _, _, err := store.OpenFile(root, "alias.go")
+	rc, err := openRooted(root, "alias.go")
 	if err != nil {
-		t.Fatalf("OpenFile via in-workspace symlink: %v", err)
+		t.Fatalf("openRooted via in-workspace symlink: %v", err)
 	}
 	defer rc.Close()
 	data, _ := io.ReadAll(rc)
@@ -293,23 +307,22 @@ func TestWriteArchiveIncludesAbsoluteSymlinkWithinWorkspace(t *testing.T) {
 	t.Fatal("archive omitted in-workspace absolute symlink")
 }
 
-func TestOpenFileRejectsNamedPipeWithoutBlocking(t *testing.T) {
+func TestRootedOpenRejectsNamedPipeWithoutBlocking(t *testing.T) {
 	root, _ := setupWorkspace(t)
 	pipePath := filepath.Join(root, "events.pipe")
 	if err := syscall.Mkfifo(pipePath, 0o600); err != nil {
 		t.Fatalf("mkfifo: %v", err)
 	}
-	store := New()
 
 	err := awaitPipeOperation(t, pipePath, func() error {
-		file, _, _, err := store.OpenFile(root, "events.pipe")
+		file, err := openRooted(root, "events.pipe")
 		if file != nil {
 			_ = file.Close()
 		}
 		return err
 	})
 	if err == nil {
-		t.Fatal("OpenFile accepted a named pipe")
+		t.Fatal("openRooted accepted a named pipe")
 	}
 }
 

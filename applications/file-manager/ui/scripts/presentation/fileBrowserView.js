@@ -1,11 +1,37 @@
 import { ICONS, CATEGORY_META, CATEGORY_BY_EXTENSION, VIEWABLE } from "../config/files.js";
 
+const SEARCH_ICON = '<circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />';
+
+/** Builds the drawer's search bar and list inside body. */
+export function createFilesLayout(body) {
+  const doc = body.ownerDocument;
+  const root = doc.createElement("div");
+  root.className = "remote-files";
+  root.innerHTML = `
+    <div class="search-bar">
+      <div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">${SEARCH_ICON}</svg>
+        <input class="search-input" type="text" placeholder="Search all files..."
+          aria-label="Search all files" autocomplete="off" />
+        <button class="search-clear" type="button" aria-label="Clear search" hidden></button>
+      </div>
+    </div>
+    <div class="entries scrollbar-thin" aria-live="polite"></div>`;
+  body.append(root);
+  return {
+    root,
+    search: root.querySelector(".search-input"),
+    clear: root.querySelector(".search-clear"),
+    entries: root.querySelector(".entries"),
+  };
+}
+
 export function createFileBrowserView(
   { search, clear, entries },
   { toggle, openFile, dismissBlocked, downloadUrl },
 ) {
   function svg(name, className) {
-    const element = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const element = entries.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
     element.setAttribute("viewBox", "0 0 24 24");
     element.setAttribute("aria-hidden", "true");
     element.setAttribute("class", className);
@@ -14,7 +40,7 @@ export function createFileBrowserView(
   }
 
   function element(tag, className, text) {
-    const node = document.createElement(tag);
+    const node = entries.ownerDocument.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
@@ -174,7 +200,10 @@ export function createFileBrowserView(
 
   function render(state) {
     // Rebuilding the list loses focus; put it back on the same row.
-    const focused = document.activeElement?.closest?.("li")?.dataset.path;
+    const active = entries.ownerDocument.activeElement;
+    const focused = entries.contains(active)
+      ? active.closest("li")?.dataset.path
+      : undefined;
     const scroll = entries.scrollTop;
     const view = [];
     if (state.blocked) view.push(blockedNotice(state.blocked));
@@ -218,12 +247,5 @@ export function createFileBrowserView(
     clear.replaceChildren(svg(state.searching ? "loader" : "x", state.searching ? "spinner" : ""));
   }
 
-  function applyTheme(message) {
-    for (const [name, value] of Object.entries(message.tokens || {}))
-      if (/^--[a-z-]+$/.test(name) && typeof value === "string" && value)
-        document.documentElement.style.setProperty(name, value);
-    document.documentElement.classList.toggle("compact", Boolean(message.compact));
-  }
-
-  return { render, applyTheme };
+  return { render };
 }
