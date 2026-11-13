@@ -15,7 +15,7 @@ func TestWorkspacePreviewEnforcesCurrentPolicyAndRevocation(t *testing.T) {
 	for _, tc := range []struct {
 		port int
 		key  rbac.Key
-	}{{8842, workspaceide.PermissionProjectOpen}, {8843, "workspace.terminal.use"}, {6080, "workspace.browser.use"}, {9222, "workspace.browser.use"}} {
+	}{{8842, workspaceide.PermissionProjectOpen}, {8843, "workspace.terminal.use"}, {8844, "workspace.files.use"}, {6080, "workspace.browser.use"}, {9222, "workspace.browser.use"}} {
 		t.Run(fmt.Sprint(tc.port), func(t *testing.T) {
 			f := newMembershipRoutesFixture(t)
 			project, err := f.projects.Get(context.Background(), serviceproject.ID(f.projectID))

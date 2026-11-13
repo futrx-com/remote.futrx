@@ -22,7 +22,7 @@ func (s *Service) RequireWebAccess(ctx context.Context, instanceID string) (resu
 	if !ok {
 		return ErrNotFound
 	}
-	if s.audit != nil && (instance.ApplicationID == "code-server" || instance.ApplicationID == "terminal") {
+	if s.audit != nil && (instance.ApplicationID == "code-server" || instance.ApplicationID == "terminal" || instance.ApplicationID == "file-manager") {
 		defer func() {
 			entry := audit.Success("workspace.application.open", audit.Target{Type: audit.TargetProject, ID: instance.ProjectID}, audit.Meta{"applicationId": instance.ApplicationID, "instanceId": instance.ID})
 			entry.OK = resultErr == nil
@@ -46,6 +46,10 @@ func (s *Service) RequireWebAccess(ctx context.Context, instanceID string) (resu
 			return rbac.ErrDenied
 		}
 		return workspaceaccess.Require(ctx, s.workspaceAuthorizer, "terminal", instance.ProjectID)
+	case "file-manager":
+		// A project copy needs the project's files permission; an instance
+		// outside any project falls back to the host files permission.
+		return workspaceaccess.Require(ctx, s.workspaceAuthorizer, "files", instance.ProjectID)
 	}
 	return nil
 }

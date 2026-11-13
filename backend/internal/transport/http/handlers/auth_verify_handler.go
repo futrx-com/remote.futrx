@@ -105,6 +105,8 @@ func previewCapability(port int) string {
 		return "ide"
 	case 8843:
 		return "terminal"
+	case 8844:
+		return "files"
 	case 6080, 9222:
 		return "browser"
 	}
