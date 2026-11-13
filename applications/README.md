@@ -137,6 +137,31 @@ and nothing else. Start with
 No other code changes are required — the app appears in the catalog
 automatically for both scopes.
 
+## Application catalog checks
+
+Keep package checks in each application's `tests/catalog_test.go`, using
+[`backend/pkg/applicationtest`](../backend/pkg/applicationtest/catalog.go):
+
+- `Registry` loads and validates the embedded catalog through Remote's loader.
+- `BackendRoutes` builds and starts the generated host module, then compares its
+  advertised routes with the application's expected contract. Every application
+  with a host backend should include this check.
+- `BuildContainer` extracts the generated install payload and builds a container
+  command with Remote's pinned container Go toolchain. Call it for every command
+  supplied by `backend/container/`. It does not run provisioning scripts.
+
+Run all application-owned catalog checks from the repository root:
+
+```bash
+go test ./applications/*/tests
+```
+
+Use application-specific assertions for scopes, capabilities, assets and install
+ordering. Keep the shared helpers independent of individual application IDs.
+These checks verify package loading and builds; testing installation, services,
+and browser interactions requires the corresponding integration checks.
+Application documentation describes the current behavior and architecture.
+
 ## Adding an app without a release
 
 An administrator can upload the same directory as a `.zip` from **Settings →

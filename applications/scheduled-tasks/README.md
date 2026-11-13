@@ -90,8 +90,6 @@ Delivery is **at least once**: work interrupted by a host restart may be retried
 | **Upgrade** | Retains the application's saved data. |
 | **Uninstall** | Removes the installed CLI, published skill, and application instance data, including saved tasks. |
 
-The retired built-in scheduler's data file is left untouched. Its tasks are not imported automatically. Recreate any reminders you want to keep through the installed Scheduled Tasks application.
-
 ## Limits and access
 
 - Each project installation can store up to **100 task definitions**, including archived tasks. Delete old tasks to free space.
@@ -150,7 +148,7 @@ go test ./applications/scheduled-tasks/backend/...
 (cd backend && go test ./internal/service/applications ./internal/service/prompt ./internal/integration/containers/applications)
 ```
 
-The core integration test builds and runs the packaged backend through the generated-module builder. It creates an active task using a scoped grant, restarts the backend, checks that the correct chat receives the scheduled turn, and verifies completion.
+The shared catalog helper builds and starts the packaged backend to check its routes. The core integration test runs the packaged backend through the generated-module builder. It creates an active task using a scoped grant, restarts the backend, checks that the correct chat receives the scheduled turn, and verifies completion.
 
 For a manual delivery check, install the application in a disposable project, ask for a reminder one minute ahead without selecting a skill, and close the browser. Confirm that the reminder appears in the same chat. Also check stop/start behavior and that uninstall removes the Scheduled Tasks calendar icon and scheduling access.
 

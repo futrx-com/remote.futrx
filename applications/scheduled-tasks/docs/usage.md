@@ -27,8 +27,7 @@ completion command.
 
 Stop the application to stop automatic delivery across its project. Start keeps
 its saved tasks and delivers one overdue occurrence. Uninstall deletes its
-tasks and tools. Reinstall starts empty. Old built-in definitions are retained
-on disk but must be recreated through the application.
+tasks and tools. Reinstall starts empty.
 
 A busy chat waits for its current turn to finish. Missed cron occurrences are
 coalesced. `maxRuns` limits total runs; a finished one-time reminder or exhausted

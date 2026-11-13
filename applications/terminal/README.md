@@ -1,7 +1,6 @@
 # Terminal
 
-Terminal opens a shell in your project container, beside the chat. It replaces
-the terminal that used to be built into Remote.
+Terminal opens a shell in your project container, beside the chat.
 
 Install Terminal from a project's Applications page, or install it globally
 to add it to every existing project. Run the global install again to add it
@@ -108,7 +107,7 @@ fail, the drawer retries, and the backend starts another bridge.
 
 ## Security
 
-- The shell runs as root in the project container, as the built-in terminal did.
+- The shell runs as root in the project container.
   Anyone who can use the project can use it.
 - Remote's project backend routes admit only project members. The backend runs
   one fixed command, and browser input travels only inside the bridge's JSON
@@ -117,13 +116,6 @@ fail, the drawer retries, and the backend starts another bridge.
 - The service listens only on a Unix socket in a root-only directory, so no
   port is reachable on the container network.
 
-## Upgrading from version 3
-
-Versions up to 3 ran the same `remote-terminal.service` listening on port 8843
-and served the page from `terminal--<project-slug>.<host>`. Upgrading rewrites
-the unit to `remote-terminal serve`, which listens on the Unix socket instead;
-as with every upgrade, the restart ends running shells.
-
 ## Verify an installation
 
 1. Install Terminal in a project and wait for **running**.
@@ -131,8 +123,7 @@ as with every upgrade, the restart ends running shells.
    should read `Connected - /workspace`.
 3. Run `MARKER=1`, reload the page, reopen the drawer, and run `echo $MARKER`.
    It should print `1`, confirming that you returned to the same shell.
-4. In the container, `systemctl status remote-terminal` shows the service,
-   `ss -ltnp` shows nothing on port 8843, and
+4. In the container, `systemctl status remote-terminal` shows the service, and
    `/run/remote-terminal/terminal.sock` exists with mode `0600`.
 5. Restart Remote, reopen the drawer, and run `echo $MARKER` again. It still
    prints `1`.

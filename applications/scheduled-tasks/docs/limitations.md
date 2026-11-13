@@ -10,6 +10,4 @@
   interrupted work may repeat; delivery is at least once across restarts.
 - Definitions are created through the agent. The application popup manages
   existing tasks but has no definition editor.
-- Legacy built-in task definitions remain on disk and must be recreated through
-  the application.
 

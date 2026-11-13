@@ -13,6 +13,5 @@ no project secret or manual skill selection is needed.
 Confirm the application is running and the task is enabled. Check its stored
 time and timezone using the clock action. A busy chat waits for its current turn
 to finish; stopped applications deliver one overdue occurrence after starting.
-Refresh the application popup for the last error. Legacy built-in task
-definitions must be recreated through the application.
+Refresh the application popup for the last error.
 

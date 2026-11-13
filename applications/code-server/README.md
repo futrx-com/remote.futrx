@@ -115,10 +115,7 @@ Remote's authenticated application web proxy
 reaches project port 8842 on the LXD bridge; no public host port is allocated.
 
 This application is project scoped because the current IDE runs in the project
-container and edits `/workspace`. Global installation would run in a separate
-container without that workspace. On older project containers, Code Server may
-already be installed by the old base image; the application takes over its
-service when installed and removes the legacy socket/proxy units.
+container and edits `/workspace`.
 
 ## Security boundary
 

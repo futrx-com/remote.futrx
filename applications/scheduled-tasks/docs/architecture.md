@@ -55,11 +55,6 @@ with `backend.background`, including after child crashes, on a 15-second sweep.
 Stopped installations remain stopped. The application owns what its restored
 worker does.
 
-The retired scheduler's shared data file is left intact for reference. Existing
-definitions are not imported automatically; recreate wanted reminders through
-the application. The former core scheduler, schedule bridge, task store, user
-schedule routes and built-in drawer are removed.
-
 ## Permissions and limits
 
 Interactive calls can manage only the owner's tasks in the stamped chat.
