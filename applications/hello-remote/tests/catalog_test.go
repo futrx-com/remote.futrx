@@ -119,3 +119,22 @@ func TestHelloRemoteCombinesContainerBuildWithCustomProvisioning(t *testing.T) {
 		t.Fatalf("container build must precede custom provisioning without owning systemd")
 	}
 }
+
+func TestBackendBuildsAndDescribesRoutes(t *testing.T) {
+	applicationtest.BackendRoutes(t, "hello-remote", []string{
+		"GET container", "GET hello", "GET service", "GET visits", "POST echo", "POST visits",
+	})
+}
+
+func TestHelloRemoteContainerCommandsBuildIndependently(t *testing.T) {
+	registry := applicationtest.Registry(t)
+	script, ok := registry.Script("hello-remote")
+	if !ok {
+		t.Fatal("missing generated install script")
+	}
+	for _, command := range []string{"hello-remote-info", "hello-remote-service"} {
+		t.Run(command, func(t *testing.T) {
+			applicationtest.BuildContainer(t, script, command)
+		})
+	}
+}

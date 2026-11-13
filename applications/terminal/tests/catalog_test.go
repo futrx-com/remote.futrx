@@ -20,7 +20,7 @@ func TestTerminalKeepsShellsInTheContainerWithoutAPort(t *testing.T) {
 	if app.Container == nil || !slices.Equal(app.Container.Commands, []string{"remote-terminal"}) {
 		t.Fatalf("missing container build: %+v", app.Container)
 	}
-	// The container service owns the shells, as before, but answers only on a
+	// The container service owns the shells and answers only on a
 	// Unix socket: no port, web route, or application hostname is declared.
 	if app.Service == nil || app.Service.Name != "remote-terminal" ||
 		!slices.Equal(app.Service.Command, []string{"/usr/local/bin/remote-terminal", "serve"}) {
@@ -48,4 +48,13 @@ func TestTerminalKeepsShellsInTheContainerWithoutAPort(t *testing.T) {
 
 func TestBackendBuildsAndDescribesRoutes(t *testing.T) {
 	applicationtest.BackendRoutes(t, "terminal", []string{"GET output", "POST input", "POST resize", "POST sessions"})
+}
+
+func TestTerminalContainerBuildsIndependently(t *testing.T) {
+	registry := applicationtest.Registry(t)
+	script, ok := registry.Script("terminal")
+	if !ok {
+		t.Fatal("missing generated install script")
+	}
+	applicationtest.BuildContainer(t, script, "remote-terminal")
 }
