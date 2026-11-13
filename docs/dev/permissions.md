@@ -175,10 +175,12 @@ The removed core host shell and core scheduler are not restored.
 
 ## Provider account grant provisioning and rollback
 
-`agents.account.use` has **no member baseline**. Administrators retain recovery
-access; members must receive explicit assignments or role bindings for exact
-`provider-account` scopes such as `claude:work`, `codex:team`,
-`minimax:team`, `kimi:default`, or `antigravity:default`. Every registered
+`agents.account.use` has **no code baseline**. Members receive it from the
+built-in `member` role (below); users with another platform role, and every
+user once that rule is removed, need explicit assignments or role bindings for
+exact `provider-account` scopes such as `claude:work`, `codex:team`,
+`minimax:team`, `kimi:default`, or `antigravity:default`. Administrators retain
+recovery access. Every registered
 provider follows the same account policy, independently of its harness.
 Claude, Codex, and MiniMax support saved accounts; Kimi and Antigravity use
 their default login. `default` means the provider's existing login when no
@@ -196,9 +198,26 @@ the active saved account under the credential lock before releasing its key.
 Raw login status requires account-management permission; normalized HTTP and
 WebSocket snapshots and quota responses expose only authorized accounts.
 
-Before deploying, provision grants for each intended user/account pairing.
-Inventory direct assignments and role bindings, including scheduled-task owners.
-Do not mass-grant all members access to all accounts. Current Scheduled Tasks
+### Built-in member role
+
+Startup seeds a `member` role once per installation, like the `admin` role. It
+allows every permission whose baseline admits members plus `agents.account.use`.
+It is never bound: the evaluator applies it to every registered non-admin who
+holds no other platform-scope role, at whatever scope a check names. Project
+allows still require project membership, and provider-account allows cover every
+account, including ones connected later. It is evaluated after the user's own
+assignments and bindings and before the code baseline, so:
+
+- a user's own allow or deny overrides it (per-user exceptions);
+- setting a rule to Deny removes that permission from all members;
+- removing a rule (Inherit) falls back to the code baseline;
+- deleting the role is permanent and returns members to the baselines alone.
+
+Binding the member role is rejected. Choosing "member" in Settings → Users
+unbinds the user's custom platform roles. To restrict account access, set
+`agents.account.use` to Deny on the member role and grant accounts per user.
+Inventory scheduled-task owners who hold custom platform roles: they need
+explicit account grants. Current Scheduled Tasks
 remain an application: the platform revalidates its captured owner and membership
 at execution, and prompt/credential admission checks that owner's account grant.
 Audit entries correlate application instance/request, run, project and account.

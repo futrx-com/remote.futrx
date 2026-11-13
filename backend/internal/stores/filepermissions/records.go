@@ -54,7 +54,8 @@ type fileRecord struct {
 	Roles       []roleRecord       `json:"roles"`
 	Bindings    []bindingRecord    `json:"bindings"`
 
-	AdminRoleSeeded bool `json:"adminRoleSeeded,omitempty"`
+	AdminRoleSeeded  bool `json:"adminRoleSeeded,omitempty"`
+	MemberRoleSeeded bool `json:"memberRoleSeeded,omitempty"`
 }
 
 // auditRecord is one line of permission-audit.jsonl.
@@ -86,7 +87,8 @@ func recordFromState(state permission.State) fileRecord {
 		Roles:       make([]roleRecord, 0, len(state.Roles)),
 		Bindings:    make([]bindingRecord, 0, len(state.Bindings)),
 
-		AdminRoleSeeded: state.AdminRoleSeeded,
+		AdminRoleSeeded:  state.AdminRoleSeeded,
+		MemberRoleSeeded: state.MemberRoleSeeded,
 	}
 	for _, a := range state.Assignments {
 		out.Assignments = append(out.Assignments, assignmentRecord{
@@ -116,7 +118,7 @@ func recordFromState(state permission.State) fileRecord {
 // stateFromRecord converts a parsed file to domain state, normalizing stored
 // emails so a hand-edited file cannot disagree with lookups on case.
 func stateFromRecord(record fileRecord) permission.State {
-	state := permission.State{AdminRoleSeeded: record.AdminRoleSeeded}
+	state := permission.State{AdminRoleSeeded: record.AdminRoleSeeded, MemberRoleSeeded: record.MemberRoleSeeded}
 	for _, a := range record.Assignments {
 		state.Assignments = append(state.Assignments, permission.Assignment{
 			ID: a.ID, UserEmail: permission.NormalizeEmail(a.UserEmail),

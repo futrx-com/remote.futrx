@@ -1,5 +1,6 @@
 import type { RbacBinding, RbacRole } from "../../models/rbac";
-import type { UserRole } from "../../models/user";
+import type { User, UserRole } from "../../models/user";
+import { MEMBER_ROLE_ID } from "../../config/constants/user-roles.ts";
 
 // A selectable role: either a base role or a custom permission role.
 export type RoleChoice =
@@ -34,4 +35,18 @@ export function boundCustomRoles(
     if (role) found.push(role);
   }
   return found;
+}
+
+// Whether the built-in member role applies to the user: it still exists and
+// the user is neither an admin nor bound to another platform role.
+export function appliesMemberRole(
+  user: User,
+  boundRoles: RbacRole[],
+  roles: RbacRole[]
+): boolean {
+  return (
+    user.role !== "admin" &&
+    boundRoles.length === 0 &&
+    roles.some((role) => role.id === MEMBER_ROLE_ID)
+  );
 }

@@ -348,7 +348,11 @@ func newPermissionService(
 	if err != nil {
 		return nil, err
 	}
-	return rbac.NewService(ctx, registry, policy, identity, members, rbac.WithBuiltinAdminRole())
+	return rbac.NewService(
+		ctx, registry, policy, identity, members,
+		rbac.WithBuiltinAdminRole(),
+		rbac.WithBuiltinMemberRole(agentauth.PermissionAccountUse),
+	)
 }
 
 // projectMembership adapts the project access repository to the permission

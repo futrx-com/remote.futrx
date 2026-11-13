@@ -143,6 +143,9 @@ func (s *Service) BindRole(ctx context.Context, in BindingInput) (RoleBinding, e
 		if !ok {
 			return ErrRoleNotFound
 		}
+		if role.ID == MemberRoleID {
+			return fmt.Errorf("%w: the member role applies automatically to users without another platform role and cannot be bound", ErrInvalidRole)
+		}
 		if err := m.registry.requireRulesSupportScope(role.Rules, in.Scope.Kind); err != nil {
 			return err
 		}

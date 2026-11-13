@@ -20,6 +20,9 @@ type Service struct {
 	now       func() time.Time
 	newID     func() (string, error)
 	seedAdmin bool
+
+	seedMember  bool
+	memberExtra []Key
 }
 
 // Option customizes a Service, chiefly for deterministic tests.
@@ -80,6 +83,11 @@ func NewService(
 	}
 	if service.seedAdmin {
 		if err := seedAdminRole(ctx, registry, repo, state, service.now); err != nil {
+			return nil, err
+		}
+	}
+	if service.seedMember && !state.MemberRoleSeeded {
+		if err := seedMemberRole(ctx, registry, repo, service.memberExtra, service.now); err != nil {
 			return nil, err
 		}
 	}

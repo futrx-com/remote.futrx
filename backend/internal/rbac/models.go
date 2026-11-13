@@ -58,6 +58,7 @@ const (
 	ReasonAdministrator   = evaluator.ReasonAdministrator
 	ReasonExplicitDeny    = evaluator.ReasonExplicitDeny
 	ReasonExplicitAllow   = evaluator.ReasonExplicitAllow
+	ReasonMemberRole      = evaluator.ReasonMemberRole
 	ReasonBaseline        = evaluator.ReasonBaseline
 	ReasonDefaultDeny     = evaluator.ReasonDefaultDeny
 	ReasonUnknownActor    = evaluator.ReasonUnknownActor

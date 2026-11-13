@@ -26,6 +26,7 @@ const (
 	ReasonAdministrator   Reason = "administrator"
 	ReasonExplicitDeny    Reason = "explicit-deny"
 	ReasonExplicitAllow   Reason = "explicit-allow"
+	ReasonMemberRole      Reason = "member-role"
 	ReasonBaseline        Reason = "baseline"
 	ReasonDefaultDeny     Reason = "default-deny"
 	ReasonUnknownActor    Reason = "unknown-actor"
@@ -61,8 +62,9 @@ type Facts struct {
 
 // Decide applies the policy in fixed order: fail closed on anything
 // unresolved, administrator root, explicit deny, explicit allow (direct
-// assignments and role rules through bindings), the code-owned baseline, and
-// finally default deny. A non-nil error means no decision could be made and
+// assignments and role rules through bindings), the built-in member role for
+// users without another platform role, the code-owned baseline, and finally
+// default deny. A non-nil error means no decision could be made and
 // must be treated as a denial.
 func Decide(definition models.Definition, policy models.State, facts Facts, check models.Check) (Decision, error) {
 	if !facts.ActorPresent {
@@ -84,6 +86,12 @@ func Decide(definition models.Definition, policy models.State, facts Facts, chec
 	}
 	if allow {
 		return Decision{Allowed: true, Reason: ReasonExplicitAllow}, nil
+	}
+	if role, ok := policy.DefaultRole(facts.Email); ok {
+		decision, settled, err := memberRole(role, facts, check)
+		if settled || err != nil {
+			return decision, err
+		}
 	}
 
 	baseline, err := baseline(definition.Baseline, facts, check)
@@ -128,6 +136,39 @@ func matchingEffects(state models.State, email string, check models.Check) (deny
 		}
 	}
 	return deny, allow
+}
+
+// memberRole applies the built-in member role's rule for check, if any. It is
+// a default, so a user's own assignments and bindings were already decided.
+// An allow at project scope still requires membership of that project, and
+// an unsettled outcome falls through to the code-owned baseline.
+func memberRole(role models.Role, facts Facts, check models.Check) (Decision, bool, error) {
+	deny, allow := false, false
+	for _, rule := range role.Rules {
+		if rule.Permission != check.Permission {
+			continue
+		}
+		deny = deny || rule.Effect == models.Deny
+		allow = allow || rule.Effect == models.Allow
+	}
+	if deny {
+		return Decision{Reason: ReasonMemberRole}, true, nil
+	}
+	if !allow {
+		return Decision{}, false, nil
+	}
+	if check.Scope.Kind == models.ScopeProject {
+		if !facts.MembershipResolved {
+			return Decision{Reason: ReasonDefaultDeny}, false, ErrMembershipUnresolved
+		}
+		if facts.MembershipErr != nil {
+			return Decision{Reason: ReasonDefaultDeny}, false, facts.MembershipErr
+		}
+		if !facts.ProjectMember {
+			return Decision{}, false, nil
+		}
+	}
+	return Decision{Allowed: true, Reason: ReasonMemberRole}, true, nil
 }
 
 // baseline evaluates the code-owned compatibility policy for a non-admin

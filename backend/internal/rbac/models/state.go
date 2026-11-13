@@ -56,6 +56,24 @@ type State struct {
 	// AdminRoleSeeded records that the built-in admin role was offered once, so
 	// deleting it is permanent and a restart does not recreate it.
 	AdminRoleSeeded bool
+	// MemberRoleSeeded is the same one-time record for the built-in member role.
+	MemberRoleSeeded bool
+}
+
+// MemberRoleID is the stable ID of the built-in member role. It is never
+// bound: it applies to every registered non-administrator who holds no other
+// platform role, at whichever scope a check names.
+const MemberRoleID = "member"
+
+// DefaultRole returns the member role when it applies to email: the role
+// exists and the user holds no other role at platform scope.
+func (s State) DefaultRole(email string) (Role, bool) {
+	for _, b := range s.Bindings {
+		if b.UserEmail == email && b.Scope.Kind == ScopePlatform && b.RoleID != MemberRoleID {
+			return Role{}, false
+		}
+	}
+	return s.Role(MemberRoleID)
 }
 
 // NormalizeEmail is the one canonical form of a user reference.
@@ -70,7 +88,8 @@ func (s State) Clone() State {
 		Roles:       make([]Role, len(s.Roles)),
 		Bindings:    slices.Clone(s.Bindings),
 
-		AdminRoleSeeded: s.AdminRoleSeeded,
+		AdminRoleSeeded:  s.AdminRoleSeeded,
+		MemberRoleSeeded: s.MemberRoleSeeded,
 	}
 	for i, role := range s.Roles {
 		role.Rules = slices.Clone(role.Rules)

@@ -5,7 +5,7 @@ import { DEFAULT_USER_ROLE } from "../../config/constants/user-roles";
 import { useConfirm } from "../../state/context/ConfirmContext";
 import { AlertCircle, Check, Loader, X } from "../primitives/icons";
 import { RoleSelect } from "./RoleSelect";
-import { boundCustomRoles, type RoleChoice } from "./roleChoice";
+import { appliesMemberRole, boundCustomRoles, type RoleChoice } from "./roleChoice";
 
 interface UsersPanelProps {
   currentEmail: string;
@@ -276,11 +276,22 @@ function UserRow({
     }
   };
 
+  const isMember = appliesMemberRole(user, boundRoles, customRoles);
+
   const changeRole = (next: RoleChoice) => {
     if (next.kind === "custom") {
+      // Bind before demoting so a failed bind never strips administrator.
+      return run(async () => {
+        await onBindRole(next.roleId);
+        if (user.role === "admin") await onSetRole("");
+      });
+    }
+    if (next.role === "") {
+      // Member is the default: it applies once no other platform role does.
+      if (user.role !== "admin" && boundRoles.length === 0) return;
       return run(async () => {
         if (user.role === "admin") await onSetRole("");
-        await onBindRole(next.roleId);
+        for (const role of boundRoles) await onUnbindRole(role.id);
       });
     }
     if (next.role === user.role) return;
@@ -296,6 +307,14 @@ function UserRow({
         {user.role === "admin" && (
           <span class="inline-flex items-center h-5 px-1.5 rounded text-[11px] font-medium text-accent-blue bg-accent-blue/[0.14]">
             admin
+          </span>
+        )}
+        {isMember && (
+          <span
+            class="inline-flex items-center h-5 px-1.5 rounded text-[11px] font-medium text-ink-100 bg-tint-strong"
+            title="Default role for users without another role"
+          >
+            member
           </span>
         )}
         {boundRoles.map((role) => (
@@ -324,7 +343,11 @@ function UserRow({
         )}
         <div class="ml-auto flex items-center gap-1">
           <RoleSelect
-            value={{ kind: "base", role: user.role }}
+            value={
+              user.role !== "admin" && boundRoles.length > 0
+                ? { kind: "custom", roleId: boundRoles[0].id }
+                : { kind: "base", role: user.role }
+            }
             customRoles={customRoles}
             boundRoleIds={new Set(boundRoles.map((role) => role.id))}
             disabled={busy}
