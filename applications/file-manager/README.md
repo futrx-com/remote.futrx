@@ -17,11 +17,10 @@ install again to add missing copies without replacing existing installations.
 | Host backend | `backend/` registers the `list`, `search` and `archive` routes |
 | Container command | `backend/container/cmd/file-manager/` builds `/usr/local/bin/file-manager`, run once per request |
 | Browser surface | `ui/scripts/main.js` registers the Files drawer and renders it in Remote's page |
-| Upgrade | `infra/preinstall.sh` retires the container web service from versions before 5, before the new program is built |
-| Cleanup | `infra/uninstall.sh` removes the binary, waiting ZIPs and any retired service |
+| Installation preparation | `infra/preinstall.sh` prepares the container before the application program is built |
+| Cleanup | `infra/uninstall.sh` removes application-owned resources, including the binary and waiting ZIPs |
 
-There is no container web service, port, application hostname, database,
-configuration input, or agent skill. The drawer calls its project
+The drawer calls its project
 installation's backend through `remote.backend`, at
 `/api/projects/<project>/applications/<instance>/backend/<route>`, where Remote
 checks the session and project membership on every request. Each route runs
@@ -57,7 +56,7 @@ and refuses output past each route's limit.
 
 `backend/container/` is an independent Go application. Its generated module
 contains only container source; it does not import the host backend or Remote's
-internal packages. The binary name remains `file-manager`.
+internal packages. The binary name is `file-manager`.
 
 ```text
 backend/container/
@@ -118,7 +117,7 @@ ui/
 controller. The browser service receives its API and state owner and has no DOM
 dependency; the view has no network access. Prefetch reuse is composed around
 the backend API, which handles only requests and download URLs. The file-opening service depends only on injected
-capabilities and the file-type policy; it retains the original synchronous
+capabilities and the file-type policy; it uses a synchronous
 opening sequence, cached availability, and status refresh after each click.
 The drawer renders in Remote's page, so it inherits Remote's theme tokens
 directly and every style rule is scoped under `.remote-files`.
@@ -138,12 +137,11 @@ new tab), and other files download. Both editors are optional. If the browser
 blocks the editor tab, the drawer shows a link to open it.
 
 Remote versions without `remote.files.open` give applications no access to
-other applications' openers. There, the file-opening service reproduces the
-former built-in drawer from Remote's page: it offers the file as a link click
+other applications' openers. There, the file-opening service offers the file as a link click
 that Scratch Tab can claim, opens Code Server in a new tab when Remote's
 `/api/projects/{id}/applications` reports it running, opens media in a new tab,
 and downloads everything else. It mirrors Code Server's and Scratch Tab's link
-formats, so it is a stopgap until Remote ships `remote.files.open`.
+formats to support those integrations.
 Project and chat context come from the drawer. A listed path that is absolute
 or contains `.` or `..` segments never reaches an opener.
 
@@ -154,8 +152,7 @@ Remote's pane has finished opening, so the opening animation does not stall.
 `backend.background` restores the backend after Remote restarts, so the first
 open does not wait for it to start.
 
-The drawer keeps the look of Remote's former built-in Files pane. Remote draws
-the header; the drawer sets its subtitle (`workspace`, `Loading...`, or the
+Remote draws the header; the drawer sets its subtitle (`workspace`, `Loading...`, or the
 result count) and its Refresh button.
 
 All file operations stay inside `/workspace`, including symlink resolution and
@@ -167,26 +164,13 @@ source bytes (1 GiB), entry count (200,000), the finished ZIP on disk
 A finished ZIP waits in the workspace for up to an hour, until the next build
 removes it. A ZIP must finish within the backend's five-minute call limit.
 
-## Upgrading from version 4
-
-Versions up to 4 ran `remote-file-manager.service` in the container and served
-the page from `files--<project-slug>.<host>`, running the same
-`/usr/local/bin/file-manager` path the new program is built to. Since version 6,
-`infra/preinstall.sh` runs before that build: it disables and removes the unit,
-so the old service is never restarted against the new binary. It also deletes
-ZIPs that version 5, which streamed archives through stdout, could leave in
-`/tmp`.
-`infra/uninstall.sh` removes the unit from copies that were never upgraded.
-
-Remote reinstalls an outdated running copy when Remote starts (if its project
-container is up) or when its project container next starts, so the host
-backend and the container program move to a new build together.
-
 ## Lifecycle and verification
 
 Stop removes the drawer and stops the backend; start restores both. Uninstall
 removes the application binary, preserving all workspace files. Reinstall builds from the current package. When changing the
-application, bump its manifest version so installed copies reconverge.
+application, bump its manifest version so installed copies reconverge. Remote
+reinstalls outdated running copies at startup when their project container is
+running, or when their project container next starts.
 
 Run from the repository root (the optional browser check needs Node, Playwright,
 and its Chromium installation):
@@ -205,7 +189,7 @@ project gets its own copy and browses only its own workspace. Create another
 project and repeat the global install to add its copy, preserving existing ones.
 Check stop/start/uninstall per project and container recovery.
 Inside the target container, `/usr/local/bin/file-manager list </dev/null`
-prints the workspace root as JSON, and nothing listens on port 8844. Container
+prints the workspace root as JSON. Container
 provisioning and `lxc exec` from the backend need a live Remote/LXD
 installation; unit and browser tests do not prove those paths.
 

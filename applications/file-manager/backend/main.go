@@ -1,5 +1,5 @@
-// File Manager's host backend. Its routes reach the project container through
-// one fixed container program instead of a web server in the container.
+// File Manager's host backend exposes file routes through a fixed program
+// executed in the project container.
 package main
 
 import (
