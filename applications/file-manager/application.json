@@ -3,10 +3,10 @@
   "name": "File Manager",
   "description": "Browse, search, and download files from a project workspace.",
   "category": "development",
-  "version": "5",
+  "version": "6",
   "icon": "folder",
   "scopes": ["project", "global"],
-  "install": "infra/install.sh",
+  "preinstall": "infra/preinstall.sh",
   "uninstall": "infra/uninstall.sh",
   "backend": {
     "timeoutMs": 300000,

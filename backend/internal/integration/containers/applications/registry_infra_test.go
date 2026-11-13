@@ -2,6 +2,7 @@ package applications
 
 import (
 	"bytes"
+	"os/exec"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -146,6 +147,83 @@ func TestLoadApplicationRejectsInvalidInfrastructureOverrides(t *testing.T) {
 			_, _, err := loadApplication(catalog, "example")
 			if err == nil || !strings.Contains(err.Error(), tc.wantText) {
 				t.Fatalf("load error = %v, want text %q", err, tc.wantText)
+			}
+		})
+	}
+}
+
+func TestLoadApplicationRunsPreinstallBeforeTheContainerBuild(t *testing.T) {
+	catalog := minimalCatalog(`{
+		"name": "Example",
+		"version": "1.0.0",
+		"scopes": ["project"],
+		"preinstall": "infra/preinstall.sh"
+	}`)
+	catalog["applications/example/backend/container/main.go"] = &fstest.MapFile{Data: []byte("package main\nfunc main() {}\n")}
+	catalog["applications/example/infra/install.sh"] = &fstest.MapFile{Data: []byte("echo custom-install\n")}
+	catalog["applications/example/infra/preinstall.sh"] = &fstest.MapFile{Data: []byte("echo retire-previous\n")}
+
+	application, script, err := loadApplication(catalog, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if application.Preinstall != "infra/preinstall.sh" {
+		t.Fatalf("preinstall path = %q", application.Preinstall)
+	}
+	preinstallAt := bytes.Index(script, []byte("echo retire-previous"))
+	generatedAt := bytes.Index(script, []byte("APP_BUILD_VERSION="))
+	customAt := bytes.Index(script, []byte("echo custom-install"))
+	if preinstallAt < 0 || generatedAt < 0 || customAt < 0 || preinstallAt >= generatedAt || generatedAt >= customAt {
+		t.Fatalf("want preinstall, then container build, then custom install:\n%s", script)
+	}
+}
+
+// A preinstall script is its own program: ending it early must not end the
+// install, but failing it must stop the install before anything is replaced.
+func TestPreinstallRunsInItsOwnShell(t *testing.T) {
+	for _, tc := range []struct {
+		name, preinstall, want string
+		fails                  bool
+	}{
+		{"exit ends only the preinstall", "echo retired\nexit 0\necho unreachable", "retired\ninstalled\n", false},
+		{"shell state does not leak", "set +e\ncd /\nFOO=1", "installed\n", false},
+		{"failure stops the install", "echo retiring\nfalse", "retiring\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			script := withPreinstall([]byte(tc.preinstall), []byte("test -z \"${FOO:-}\"\necho installed\n"))
+			output, err := exec.Command("bash", "-c", string(script)).Output()
+			if (err != nil) != tc.fails || string(output) != tc.want {
+				t.Fatalf("output %q, err %v; want %q, fails=%v", output, err, tc.want, tc.fails)
+			}
+		})
+	}
+	if script := withPreinstall(nil, []byte("echo installed\n")); string(script) != "echo installed\n" {
+		t.Fatalf("no preinstall changed the script: %q", script)
+	}
+}
+
+func TestLoadApplicationRejectsInvalidPreinstallScripts(t *testing.T) {
+	for _, tc := range []struct {
+		name, preinstall, wantText string
+		provisioned                bool
+	}{
+		{"outside infra", "preinstall.sh", "preinstall script must be inside infra/", true},
+		{"missing", "infra/missing.sh", `read preinstall script "infra/missing.sh"`, true},
+		{"nothing to provision", "infra/preinstall.sh", "preinstall script requires a provisioned application", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			catalog := minimalCatalog(`{
+				"name": "Example",
+				"version": "1.0.0",
+				"scopes": ["project"],
+				"preinstall": "` + tc.preinstall + `"
+			}`)
+			catalog["applications/example/infra/preinstall.sh"] = &fstest.MapFile{Data: []byte("true\n")}
+			if tc.provisioned {
+				catalog["applications/example/infra/install.sh"] = &fstest.MapFile{Data: []byte("true\n")}
+			}
+			if _, _, err := loadApplication(catalog, "example"); err == nil || !strings.Contains(err.Error(), tc.wantText) {
+				t.Fatalf("error = %v, want %q", err, tc.wantText)
 			}
 		})
 	}

@@ -247,6 +247,10 @@ type Application struct {
 	// the target container.
 	Service *ApplicationService `json:"service,omitempty"`
 	Web     *ApplicationWeb     `json:"web,omitempty"`
+	// Preinstall optionally runs before everything else an install does,
+	// including the build of backend/container/, so it can retire what an
+	// earlier version left in the container before the new version lands.
+	Preinstall string `json:"preinstall,omitempty"`
 	// Install is the install-script filename relative to the application directory.
 	Install string `json:"install"`
 	// Uninstall optionally removes application-owned files from a project container.

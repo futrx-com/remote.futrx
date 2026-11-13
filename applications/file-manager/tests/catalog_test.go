@@ -40,8 +40,12 @@ func TestFileManagerSupportsProjectAndGlobalContainerInstalls(t *testing.T) {
 	if app.Backend == nil || app.Backend.Timeout() != 300000 {
 		t.Fatalf("expected a host backend with room for archives: %+v", app.Backend)
 	}
-	if !strings.Contains(string(script), "systemctl disable --now \"$legacy\"") {
-		t.Fatal("installer does not retire the legacy container web service")
+	// The legacy web service runs the binary the build replaces, so it is
+	// retired before the build rather than after it.
+	retireAt := strings.Index(string(script), "systemctl disable --now \"$legacy\"")
+	buildAt := strings.Index(string(script), "APP_BUILD_VERSION=")
+	if app.Preinstall != "infra/preinstall.sh" || retireAt < 0 || buildAt < 0 || retireAt > buildAt {
+		t.Fatal("installer does not retire the legacy container web service before the build")
 	}
 	if app.UI == nil || app.UI.Entry != "scripts/main.js" || !slices.Equal(app.UI.Styles, []string{"style/files.css"}) {
 		t.Fatalf("expected drawer UI with its stylesheet: %+v", app.UI)
