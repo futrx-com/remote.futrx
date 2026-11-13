@@ -1,5 +1,6 @@
 import { requestJson } from "./apiRequest";
 import type {
+  PasswordChangeInput,
   SecurityPreferencesInput,
   SecuritySettings,
   TwoFactorEnrollment,
@@ -8,6 +9,8 @@ import { API_ROUTES } from "../config/routes";
 
 export const securityApi = {
   fetchSettings: () => requestJson<SecuritySettings>("GET", API_ROUTES.security.summary),
+  changePassword: (input: PasswordChangeInput) =>
+    requestJson<void>("POST", API_ROUTES.security.password, input),
   beginTwoFactorEnrollment: () =>
     requestJson<TwoFactorEnrollment>("POST", API_ROUTES.security.enroll),
   confirmTwoFactorEnrollment: (enrollmentToken: string, code: string) =>

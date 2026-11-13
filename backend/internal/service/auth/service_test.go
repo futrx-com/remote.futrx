@@ -78,6 +78,23 @@ func (s *authTestStore) SetupToken(context.Context) (*SetupTokenRecord, error) {
 	return s.setupToken, nil
 }
 
+func (s *authTestStore) ReplaceLocalAdmin(ctx context.Context, expected, next LocalAdminCredential) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	expected.Email = normalizeEmail(expected.Email)
+	next.Email = normalizeEmail(next.Email)
+	if expected.Email == "" || expected.PasswordHash == "" || next.Email == "" || next.PasswordHash == "" {
+		return errors.New("local admin credential is incomplete")
+	}
+	if s.local == nil || *s.local != expected {
+		return ErrLocalAdminCredentialChanged
+	}
+	copy := next
+	s.local = &copy
+	return nil
+}
+
 func (s *authTestStore) SaveSetupToken(_ context.Context, record SetupTokenRecord) error {
 	s.setupToken = &record
 	return nil

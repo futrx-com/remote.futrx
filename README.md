@@ -218,7 +218,7 @@ lets you pause, resume, run and delete tasks.
       <img src="docs/assets/readme/feature-security.webp" alt="Remote two-factor authentication and session security settings">
       <br>
       <strong>Account security</strong><br>
-      Manage two-factor authentication, recovery codes, active-session policy, and sign-in history.
+      Change your password and manage two-factor authentication, recovery codes, active-session policy, and sign-in history.
     </td>
   </tr>
 </table>
@@ -350,6 +350,8 @@ Remote is designed to reduce the blast radius of agent work, not to promise an a
 - The host administrator can access project data and controls.
 - Secrets given to a project are readable by agents working in that project.
 - Durable storage survives routine container replacement, but it is not a backup.
+
+To change a password, open **Settings → Security → Password**. Enter your current password, a different new password and its confirmation, plus an authenticator or recovery code if two-factor authentication is enabled. Other sessions are signed out and this browser stays signed in. Google-only accounts do not show this card.
 
 Before using Remote with valuable code or credentials, read the [threat model](docs/threat-model.md), [known limitations](docs/known-limitations.md), and [security policy](SECURITY.md).
 
