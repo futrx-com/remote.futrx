@@ -184,11 +184,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 
 	// The audit recorder is built first so every other service can take it.
-	auditRetention := deps.AuditRetention
-	if auditRetention == 0 {
-		auditRetention = serviceaudit.DefaultRetentionMonths
-	}
-	auditLog := serviceaudit.New(deps.Audit, serviceaudit.WithRetentionMonths(auditRetention))
+	// The configured retention already defaults to 12 months; a value below 1
+	// is the documented way to keep every audit file.
+	auditLog := serviceaudit.New(deps.Audit, serviceaudit.WithRetentionMonths(deps.AuditRetention))
 	auditLog.StartJanitor(ctx, 24*time.Hour)
 
 	workspace := workspacehub.New()
