@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -143,7 +144,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	setup := &shellSetup{workspace: project.Cwd}
 	projects := serviceproject.New(repo, serviceproject.ContainerDependencies{Lifecycle: lifecycle{}, Setup: setup}, nil, nil)
-	project, err = projects.Start(ctx, project.ID)
+	project, err = projects.Start(rbac.ContextWithSystemActor(ctx), project.ID)
 	if !errors.Is(err, serviceproject.ErrSetupFailed) {
 		t.Fatal(err)
 	}

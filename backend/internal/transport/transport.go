@@ -2,10 +2,14 @@ package transport
 
 import (
 	"context"
+	"errors"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	"io/fs"
 	"net/http"
 
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
+	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
@@ -31,6 +35,7 @@ type Dependencies struct {
 }
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
+	var auditLog serviceaudit.Recorder = deps.Services.Audit
 	agentAuthBindings := deps.Services.Agents.Bindings()
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
@@ -56,11 +61,15 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	}
 
 	gate := newAccessGate(deps.Services.Auth, deps.Services.Projects, deps.Services.Chats)
+	if gate != nil {
+		gate.authorizer = deps.Services.Permissions
+	}
 
 	uploads, err := httptransport.NewUploadHandlerWithGate(deps.Services.Chats, deps.DataDir, gate)
 	if err != nil {
 		return nil, err
 	}
+	uploads = uploads.WithAudit(auditLog)
 	chatSocket := wstransport.NewChatSocket(deps.Services.Chats, deps.Services.Runs, deps.Services.Prompt)
 	workspaceSocket := wstransport.NewWorkspaceSocket(
 		deps.Services.Chats,
@@ -77,14 +86,14 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	}
 	agentApplicationsHandler := httphandlers.NewAgentApplicationsHandler(agentApplications)
 	usageHandler := httphandlers.NewUsageHandler(deps.Services.Usage, deps.Services.Auth)
-	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth)
+	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth).WithAccountAccess(deps.Services.AccountAccess)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,
 		deps.Services.ChatAccess,
 		deps.Services.Auth,
 		deps.Files,
 		deps.GitHistory,
-	)
+	).WithAudit(auditLog)
 
 	applicationsHandler := httphandlers.NewApplicationsHandler(
 		deps.Services.Applications,
@@ -107,12 +116,13 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 			agentAuthBindings,
 			deps.Services.Auth,
 			deps.Services.Agents,
-		),
+		).WithAccountAccess(deps.Services.AccountAccess).WithAudit(auditLog),
 		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
 			deps.Services.Auth,
 		),
+		Audit:    httphandlers.NewAuditHandler(deps.Services.Audit, deps.Services.Auth),
 		Security: httphandlers.NewSecurityHandler(deps.Services.Auth),
 		Push: httphandlers.NewPushHandler(
 			deps.Services.Push,
@@ -125,13 +135,15 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		Skills:            httphandlers.NewSkillHandler(deps.Services.Skills),
 		BrowserInspector:  httphandlers.NewBrowserInspectorHandler(),
 		AgentApplications: agentApplicationsHandler,
+		Permissions:       httphandlers.NewPermissionsHandler(deps.Services.Permissions).WithAccounts(deps.Services.AccountAccess),
 		Usage:             usageHandler,
 		AgentQuota:        agentQuotaHandler,
 		Uploads:           uploads,
 		ChatWS:            chatSocket,
 		WorkspaceWS:       workspaceSocket,
-		AgentAuthWS:       wstransport.NewAgentAuthSocket(agentAuthBindings),
+		AgentAuthWS:       wstransport.NewAgentAuthSocket(agentAuthBindings).WithAccountAccess(deps.Services.AccountAccess),
 		Auth:              auth,
+		Workspace:         httpmiddleware.Workspace{Authorizer: deps.Services.Permissions, Chats: deps.Services.Chats},
 		Middleware:        middleware,
 		Static:            httptransport.NewStaticHandler(deps.Static),
 	})
@@ -151,10 +163,11 @@ func NewHTTPServer(addr string, handler http.Handler) *http.Server {
 // reach this project?" lookups so each socket / upload site doesn't have
 // to wire up the auth + project + chat services itself.
 type accessGate struct {
-	auth      *serviceauth.Service
-	principal *httptransport.PrincipalResolver
-	projects  *serviceproject.Service
-	chats     chatProjectFinder
+	authorizer workspaceaccess.Authorizer
+	auth       *serviceauth.Service
+	principal  *httptransport.PrincipalResolver
+	projects   *serviceproject.Service
+	chats      chatProjectFinder
 }
 
 type chatProjectFinder interface {
@@ -198,9 +211,6 @@ func (g *accessGate) CanUploadToChat(ctx context.Context, r *http.Request, chatI
 	if err != nil || email == "" {
 		return false, err
 	}
-	if isAdmin {
-		return true, nil
-	}
 	if g.chats == nil {
 		return false, nil
 	}
@@ -208,8 +218,15 @@ func (g *accessGate) CanUploadToChat(ctx context.Context, r *http.Request, chatI
 	if err != nil {
 		return false, err
 	}
-	if meta.ProjectID == "" {
-		return true, nil
+	if !isAdmin && meta.ProjectID != "" {
+		allowed, err := g.HasAccess(ctx, serviceproject.ID(meta.ProjectID), email)
+		if err != nil || !allowed {
+			return false, err
+		}
 	}
-	return g.HasAccess(ctx, serviceproject.ID(meta.ProjectID), email)
+	err = workspaceaccess.Require(ctx, g.authorizer, "files", string(meta.ProjectID))
+	if errors.Is(err, rbac.ErrDenied) || errors.Is(err, rbac.ErrActorRequired) {
+		return false, nil
+	}
+	return err == nil, err
 }

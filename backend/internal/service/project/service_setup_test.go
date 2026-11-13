@@ -5,6 +5,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 )
 
 type setupFunc func(context.Context, string, map[string]string) error
@@ -64,11 +66,11 @@ func TestProjectSetupReceivesSecretsAfterContainerPreparation(t *testing.T) {
 			var err error
 			switch operation {
 			case "create":
-				result, err = service.Create(context.Background(), CreateInput{Name: "project"}, "")
+				result, err = service.Create(rbac.ContextWithSystemActor(context.Background()), CreateInput{Name: "project"}, "")
 			case "start":
-				result, err = service.Start(context.Background(), "abcd")
+				result, err = service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 			case "upgrade":
-				result, err = service.Upgrade(context.Background(), "abcd", false)
+				result, err = service.Upgrade(rbac.ContextWithSystemActor(context.Background()), "abcd", false)
 			}
 			if err != nil || result.Status != StatusRunning {
 				t.Fatalf("%s = %+v, %v", operation, result, err)
@@ -95,7 +97,7 @@ func TestSetupFailurePersistsAndStartOrRestartRetries(t *testing.T) {
 				return nil
 			})
 			service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Setup: setup}, nil, nil)
-			got, err := service.Start(context.Background(), "abcd")
+			got, err := service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 			if !errors.Is(err, want) || got.Status != StatusError || repo.meta.ErrorMsg != want.Error() {
 				t.Fatalf("failure was not persisted: %+v, %v", got, err)
 			}
@@ -103,9 +105,9 @@ func TestSetupFailurePersistsAndStartOrRestartRetries(t *testing.T) {
 				t.Fatal("failed setup destroyed the repairable container")
 			}
 			if retry == "start" {
-				got, err = service.Start(context.Background(), "abcd")
+				got, err = service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 			} else {
-				got, err = service.Restart(context.Background(), "abcd")
+				got, err = service.Restart(rbac.ContextWithSystemActor(context.Background()), "abcd")
 			}
 			if err != nil || got.Status != StatusRunning || got.ErrorMsg != "" || attempts != 2 {
 				t.Fatalf("retry = %+v, %v, attempts=%d", got, err, attempts)
@@ -122,7 +124,7 @@ func TestSetupDoesNotRunWhenSecretLoadingFails(t *testing.T) {
 		return nil
 	})
 	service := New(repo, ContainerDependencies{Lifecycle: &startTestLifecycle{state: ContainerStateRunning}, Setup: setup}, setupSecrets{err: want}, nil)
-	got, err := service.Start(context.Background(), "abcd")
+	got, err := service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 	if !errors.Is(err, want) || got.Status != StatusError {
 		t.Fatalf("missing secret error = %+v, %v", got, err)
 	}
@@ -141,7 +143,7 @@ func TestStartRepairsFailedUpgradeWithoutReplacingContainer(t *testing.T) {
 		return nil
 	})
 	service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Setup: setup}, nil, nil)
-	if _, err := service.Upgrade(context.Background(), "abcd", false); !errors.Is(err, ErrSetupFailed) {
+	if _, err := service.Upgrade(rbac.ContextWithSystemActor(context.Background()), "abcd", false); !errors.Is(err, ErrSetupFailed) {
 		t.Fatalf("upgrade error = %v", err)
 	}
 	if transition := <-transitions; transition != "delete" {
@@ -164,7 +166,7 @@ func TestStartRepairsFailedUpgradeWithoutReplacingContainer(t *testing.T) {
 		return nil
 	})
 	for range 2 {
-		got, err := service.Start(context.Background(), "abcd")
+		got, err := service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 		if err != nil || got.Status != StatusRunning || got.ErrorMsg != "" {
 			t.Fatalf("Start = %+v, %v", got, err)
 		}
@@ -185,7 +187,7 @@ func TestStartReportsApplicationRecoveryFailure(t *testing.T) {
 	service := New(repo, ContainerDependencies{Lifecycle: lifecycle}, nil, nil)
 	want := errors.New("restore failed")
 	service.SetContainerRestorer(func(context.Context, string) error { return want })
-	got, err := service.Start(context.Background(), "abcd")
+	got, err := service.Start(rbac.ContextWithSystemActor(context.Background()), "abcd")
 	if !errors.Is(err, want) || got.Status != StatusError {
 		t.Fatalf("Start = %+v, %v", got, err)
 	}

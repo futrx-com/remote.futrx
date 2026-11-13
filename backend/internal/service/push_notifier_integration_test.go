@@ -328,7 +328,7 @@ func TestProjectAudienceExcludesAccessEntriesForRemovedUsers(t *testing.T) {
 			access,
 		),
 		users: serviceuser.New(userRepoStub{users: []serviceuser.User{
-			{Email: "active@example.com", Role: serviceuser.RoleMember},
+			{Email: "active@example.com", Role: ""},
 			{Email: "admin@example.com", Role: serviceuser.RoleAdmin},
 		}}),
 	}

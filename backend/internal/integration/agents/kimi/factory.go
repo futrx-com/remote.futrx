@@ -32,6 +32,7 @@ func NewFactory() (agentmodule.Factory, error) {
 				deps.CredentialCollector,
 				*validatedProfile,
 				deps.CredentialSyncTimeout,
+				deps.AccountAuthorizer,
 			),
 			Auth: &binding,
 		}, nil

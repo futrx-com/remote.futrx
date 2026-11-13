@@ -56,7 +56,7 @@ export function ServerInfoSettings({
 
   const location = typeof window === "undefined" ? null : window.location;
   const account = currentEmail || "Signed-in user";
-  const access = isAdmin ? "Administrator" : "Member";
+  const access = isAdmin ? "Administrator" : "User";
 
   return (
     <div class="space-y-4">

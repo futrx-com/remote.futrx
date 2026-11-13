@@ -24,6 +24,10 @@ func (s planKeySource) APIKeyFor(id string) (string, bool) {
 	key, ok := s.keys[id]
 	return key, ok
 }
+func (s planKeySource) APIKeyForRun(_ context.Context, id string) (agentauth.RunAPIKey, bool, error) {
+	key, ok := s.APIKeyFor(id)
+	return agentauth.RunAPIKey{AccountID: id, Key: key}, ok, nil
+}
 func (s planKeySource) AccountsEnabled() bool { return s.accounts != nil }
 func (s planKeySource) AccountsSnapshot() agentauth.AccountsSnapshot {
 	return agentauth.AccountsSnapshot{Items: s.accounts}
@@ -109,3 +113,5 @@ func TestMiniMaxLegacyKeyAndAPIError(t *testing.T) {
 		t.Fatal("provider response leaked into quota output")
 	}
 }
+
+func (planKeySource) RequireRunAccess(context.Context, string) error { return nil }

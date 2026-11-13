@@ -49,12 +49,12 @@ function AgentAuthSettings({ entry }: { entry: AgentAuthProvider }) {
   const managedDevice = entry.authentication.mode === "managed-device";
   const managedAPIKey = entry.authentication.mode === "managed-api-key";
   const managed = managedCode || managedDevice || managedAPIKey;
-  const accountSwitching = !!entry.status.accounts;
+  const accountSwitching = agentAuthRegistryService.supportsSavedAccounts(entry);
   const accounts = entry.status.accounts?.items;
   const activeAccountCount = accounts?.filter((account) => account.active).length;
   const apiKeyCredentialLabel = entry.authentication.apiKey?.credentialLabel || `${entry.label} API key`;
   const loginInteractionActive = loginActive || (managedAPIKey && apiKeyFormOpen);
-  const statusKind = accounts?.length === 0
+  const statusKind = accountSwitching && accounts?.length === 0
     ? "unconfigured"
     : agentAuthRegistryService.statusKind(entry);
   const error = agentAuth.actionErrors[entry.provider]
@@ -167,7 +167,7 @@ function AgentAuthSettings({ entry }: { entry: AgentAuthProvider }) {
         </div>
       )}
 
-      {entry.status.accounts && (
+      {accountSwitching && entry.status.accounts && (
         <AgentAccounts
           provider={entry.provider}
           providerLabel={entry.label}

@@ -1,3 +1,4 @@
+import { useEffectivePermissions } from "../../state/hooks/permissions/useEffectivePermissions";
 import { ExtensionSlot } from "../primitives/ExtensionSlot";
 import { EXTENSION_SLOTS } from "../../config/extensions";
 import type { ComponentChildren, ComponentType } from "preact";
@@ -150,6 +151,10 @@ export function ProjectContainersPage({
   onDeleteProject: () => Promise<void>;
 }) {
   const confirm = useConfirm();
+  const permissions = useEffectivePermissions(project?.id);
+  const canSecrets = permissions["projects.secrets.manage"] === true;
+  const canControls = permissions["projects.controls.manage"] === true;
+  const canManageAccess = permissions["projects.access.manage"] === true;
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   // Draft state for the "Add new secret" form — owned here so it survives tab
@@ -272,7 +277,7 @@ export function ProjectContainersPage({
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
                       loading={infoRecord.loading}
-                      isAdmin={isAdmin}
+                      isAdmin={isAdmin && canControls}
                       serverMemoryTotalBytes={serverMemoryTotalBytes}
                       serverMemoryLoading={serverMemoryLoading}
                       onSave={onSetResourceLimits}
@@ -293,7 +298,8 @@ export function ProjectContainersPage({
                   </div>
                 )}
 
-                {activeTab === "secrets" && (
+                {activeTab === "secrets" && !canSecrets && <Empty text="You do not have permission to manage project secrets." />}
+                {activeTab === "secrets" && canSecrets && (
                   <ProjectSettingsPanel
                     title="Project secrets"
                     description={secretsDescription(secretsRecord)}
@@ -323,17 +329,19 @@ export function ProjectContainersPage({
 
                 {activeTab === "sharing" && (
                   <div class="space-y-4">
-                    <ProjectSettingsPanel
-                      title="Project access"
-                      description={accessDescription(accessRecord)}
-                      Icon={Users}
-                    >
-                      <ProjectSharingSection
-                        record={accessRecord}
-                        onAdd={onAddMember}
-                        onRemove={onRemoveMember}
-                      />
-                    </ProjectSettingsPanel>
+                    {canManageAccess && (
+                      <ProjectSettingsPanel
+                        title="Project access"
+                        description={accessDescription(accessRecord)}
+                        Icon={Users}
+                      >
+                        <ProjectSharingSection
+                          record={accessRecord}
+                          onAdd={onAddMember}
+                          onRemove={onRemoveMember}
+                        />
+                      </ProjectSettingsPanel>
+                    )}
                     <ProjectSettingsPanel
                       title="Public preview links"
                       description={sharesDescription(sharesRecord)}

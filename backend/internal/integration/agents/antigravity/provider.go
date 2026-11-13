@@ -8,17 +8,19 @@ import (
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 const signInHint = "antigravity is not signed in — open this chat's Terminal application, run `agy`, and complete the sign-in URL + code flow, then retry"
 
 type Provider struct {
-	projectPreparer agent.ProjectPreparer
-	binary          string
+	accountAuthorizer agentauth.AccountAuthorizer
+	projectPreparer   agent.ProjectPreparer
+	binary            string
 }
 
-func newProvider(projectPreparer agent.ProjectPreparer, binary string) *Provider {
-	return &Provider{projectPreparer: projectPreparer, binary: binary}
+func newProvider(projectPreparer agent.ProjectPreparer, binary string, accountAuthorizer agentauth.AccountAuthorizer) *Provider {
+	return &Provider{projectPreparer: projectPreparer, binary: binary, accountAuthorizer: accountAuthorizer}
 }
 
 func (p *Provider) ID() agent.ProviderID {
@@ -30,6 +32,12 @@ func (p *Provider) Parser(req agent.RunRequest) agent.LineParser {
 }
 
 func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderAntigravity, ""); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.AccountID) != "" {
+		return agentauth.ErrAccountNotFound
+	}
 	if emit == nil {
 		emit = func(agent.Event) {}
 	}
@@ -46,6 +54,9 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 		return err
 	}
 
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderAntigravity, ""); err != nil {
+		return err
+	}
 	store := conversationStore{containerName: containerName}
 	var before map[string]struct{}
 	if req.ResumeID == "" {

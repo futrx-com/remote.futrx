@@ -2,6 +2,7 @@ package httphandlers
 
 import (
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"net"
 	"net/http"
 	"net/url"
@@ -57,6 +58,10 @@ func (h *ApplicationsHandler) serveWeb(w http.ResponseWriter, r *http.Request) {
 		if !available || host == "" {
 			break
 		}
+		if err := h.apps.RequireWebAccess(r.Context(), target.InstanceID); err != nil {
+			sendPermissionsError(w, err)
+			return
+		}
 		// Preserve escaped slashes in the app path, without allowing the input
 		// to replace the destination authority (including paths beginning //).
 		escaped := strings.SplitN(strings.TrimPrefix(r.URL.EscapedPath(), "/apps/"), "/", 3)
@@ -100,6 +105,10 @@ func (h *ApplicationsHandler) serveWebHost(w http.ResponseWriter, r *http.Reques
 		}
 		if !available || target.ProjectID != string(project.ID) || !httptransport.MatchesApplicationHost(r.Host, project.Slug, target.Subdomain, h.webHost) {
 			continue
+		}
+		if err := h.apps.RequireWebAccess(r.Context(), target.InstanceID); err != nil {
+			sendPermissionsError(w, err)
+			return
 		}
 		upstream := &url.URL{Scheme: "http", Host: net.JoinHostPort(project.Slug+".lxd", fmt.Sprint(target.Port))}
 		proxy := newWebProxy(upstream, h.webScheme())
@@ -146,6 +155,7 @@ func (h *ApplicationsHandler) webProjects(w http.ResponseWriter, r *http.Request
 		http.Error(w, "project access unavailable", http.StatusInternalServerError)
 		return nil, false
 	}
+	*r = *r.WithContext(rbac.ContextWithActor(r.Context(), rbac.UserActor(email)))
 	return projects, true
 }
 

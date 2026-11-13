@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 // StartForAgent keeps a failed project script from blocking the agent needed
@@ -31,7 +33,10 @@ func (s *Service) StartForAgent(ctx context.Context, id ID) (Meta, error) {
 			return m, nil
 		}
 	}
-	m, err = s.startLocked(ctx, id)
+	m, converged, err := s.startLocked(ctx, id)
+	if converged || err != nil {
+		s.record(ctx, audit.ActionProjectContainerStart, auditProjectTarget(id, m), nil, err)
+	}
 	if errors.Is(err, ErrSetupFailed) && m.NeedsSetupRepair() && ctx.Err() == nil && s.containerLifecycle != nil {
 		state, stateErr := s.containerLifecycle.State(ctx, m.ContainerName)
 		if stateErr == nil && state == ContainerStateRunning {

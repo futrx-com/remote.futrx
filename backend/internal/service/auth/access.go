@@ -3,6 +3,9 @@ package auth
 import (
 	"context"
 	"errors"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
+	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
 
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
@@ -20,8 +23,9 @@ type ProjectAccess interface {
 }
 
 type AccessVerifier struct {
-	auth     *Service
-	projects ProjectAccess
+	workspaceAuthorizer workspaceaccess.Authorizer
+	auth                *Service
+	projects            ProjectAccess
 }
 
 func NewAccessVerifier(auth *Service, projects ProjectAccess) *AccessVerifier {
@@ -58,4 +62,40 @@ func (v *AccessVerifier) Verify(ctx context.Context, sessionCookie, projectSlug 
 		return ErrAccountNotAuthorized
 	}
 	return nil
+}
+
+func (v *AccessVerifier) WithWorkspaceAuthorizer(a workspaceaccess.Authorizer) *AccessVerifier {
+	v.workspaceAuthorizer = a
+	return v
+}
+
+// VerifyWorkspace repeats authentication and membership at the preview proxy
+// boundary, then evaluates the current policy with the validated session actor.
+func (v *AccessVerifier) VerifyWorkspace(ctx context.Context, cookie, slug, capability string) error {
+	if err := v.Verify(ctx, cookie, slug); err != nil {
+		return err
+	}
+	session, err := v.auth.CurrentSession(ctx, cookie)
+	if err != nil || session == nil {
+		return ErrAuthenticationRequired
+	}
+	registered, err := v.auth.IsRegistered(ctx, session.Email)
+	if err != nil {
+		return err
+	}
+	if !registered {
+		return ErrAccountNotAuthorized
+	}
+	if v.projects == nil || slug == "" {
+		return ErrProjectNotFound
+	}
+	project, err := v.projects.GetBySlug(ctx, slug)
+	if err != nil {
+		return ErrProjectNotFound
+	}
+	ctx = rbac.ContextWithActor(ctx, rbac.UserActor(session.Email))
+	if capability == "ide" {
+		return workspaceide.RequireAccess(ctx, v.workspaceAuthorizer, string(project.ID))
+	}
+	return workspaceaccess.Require(ctx, v.workspaceAuthorizer, capability, string(project.ID))
 }

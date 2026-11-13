@@ -17,15 +17,15 @@ export function ApplicationInstallRunCard({ run }: { run: AppInstallRun }) {
           {run.state === "succeeded" && <><Check class="w-4 h-4 text-accent-green" /><span class="text-accent-green">Application installed</span></>}
           {run.state === "failed" && <><AlertCircle class="w-4 h-4 text-accent-red" /><span class="text-accent-red">Installation stopped</span></>}
         </div>
-        <div class="mt-1.5 text-[12px] text-ink-200">{run.progress.message}</div>
+        <div class="mt-1.5 text-[12px] text-ink-200 break-words">{run.progress.message}</div>
         {run.progress.total != null && run.progress.total > 0 && (
           <div class="mt-1 text-[11.5px] text-ink-300">
             Projects: {run.progress.completed ?? 0}/{run.progress.total}
-            {run.progress.currentItem && <span class="block font-mono">Current project: {run.progress.currentItem}</span>}
+            {run.progress.currentItem && <span class="block font-mono break-all">Current project: {run.progress.currentItem}</span>}
           </div>
         )}
         {run.state === "failed" && run.error && (
-          <div role="alert" class="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words text-[11.5px] text-accent-red">
+          <div role="alert" class="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-all text-[11.5px] text-accent-red">
             {run.error}
           </div>
         )}
@@ -41,7 +41,7 @@ export function ApplicationInstallRunCard({ run }: { run: AppInstallRun }) {
               const node = event.currentTarget;
               following.current = node.scrollHeight - node.scrollTop - node.clientHeight < 8;
             }}
-            class="m-0 px-3 pb-3 pt-1.5 text-[11px] leading-snug font-mono text-ink-200 max-h-64 overflow-auto whitespace-pre-wrap break-words"
+            class="m-0 px-3 pb-3 pt-1.5 text-[11px] leading-snug font-mono text-ink-200 max-h-64 overflow-auto whitespace-pre-wrap break-all"
           >
             {run.log}
           </pre>

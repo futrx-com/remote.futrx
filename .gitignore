@@ -41,3 +41,7 @@ lcov.info
 /frontend/.ds-dts/
 
 .claude
+
+# Local implementation plans and execution reports
+/docs/plans/
+/docs/reports/

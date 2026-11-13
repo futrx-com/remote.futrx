@@ -11,6 +11,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -152,6 +153,7 @@ func WithAgentPolicy(policy AgentPolicy) Option {
 }
 
 type Service struct {
+	accountAccess    AccountAccess
 	store            servicechat.Repository
 	tmux             TmuxClient
 	projects         ProjectResolver
@@ -164,6 +166,7 @@ type Service struct {
 	startGate        StartGate
 	interactions     interactionResponseRouter
 	projectRuns      projectAdmissions
+	audit            audit.Recorder
 }
 
 func New(
@@ -184,6 +187,7 @@ func New(
 		hub:          hub,
 		agents:       agents,
 		interactions: newInteractionResponseRouter(),
+		audit:        audit.Nop{},
 	}
 	for _, option := range options {
 		if option != nil {
@@ -211,6 +215,19 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
+	if rnr.accountAccess != nil {
+		parentCtx = accountActorContext(parentCtx, input)
+		meta, err := rnr.store.Get(parentCtx, input.ChatID)
+		if err == nil {
+			_, err = rnr.accountAccess.Resolve(parentCtx, agent.ProviderID(meta.Provider), meta.AccountID)
+		}
+		if err != nil {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
+			return RunHandle{}, err
+		}
+	}
+	// Account authorization has no side effects, so it runs before admission
+	// reserves the project.
 	release, err := rnr.admitProject(parentCtx, input)
 	if err != nil {
 		emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
@@ -221,6 +238,7 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	if !ok {
 		release()
 		cancel()
+		rnr.recordRun(parentCtx, audit.ActionAgentRunStart, input, ErrPromptAlreadyRunning)
 		emitTransient(ChatEvent{
 			T: time.Now().UnixMilli(), Type: "error",
 			Message: "a previous prompt is still running — cancel first",
@@ -259,8 +277,10 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	return RunHandle{ID: runID, TurnID: ledgerRunID, Done: done}, nil
 }
 
-func (rnr *Service) CancelPrompt(id servicechat.ID) bool {
-	return rnr.hub.CancelRun(id)
+func (rnr *Service) CancelPrompt(ctx context.Context, id servicechat.ID) bool {
+	canceled := rnr.hub.CancelRun(id)
+	rnr.recordRunCancellation(ctx, id, canceled)
+	return canceled
 }
 
 func (rnr *Service) RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error {
@@ -291,7 +311,7 @@ func (rnr *Service) runPromptAs(
 	interactionResponses <-chan agent.InteractionResponse,
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
-) error {
+) (resultErr error) {
 	emit = withTurnID(ledgerRunID, emit)
 	emitUnattributed := emit
 	emit = func(event ChatEvent) {
@@ -306,6 +326,23 @@ func (rnr *Service) runPromptAs(
 	if err != nil {
 		emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
 		return err
+	}
+
+	if rnr.accountAccess != nil {
+		ctx = accountActorContext(ctx, input)
+		selected, err := rnr.accountAccess.Resolve(ctx, agent.ProviderID(meta.Provider), meta.AccountID)
+		if err != nil {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
+			return err
+		}
+		meta.AccountID = selected
+		ctx = audit.WithProject(ctx, string(meta.ProjectID))
+	}
+
+	ctx = audit.WithProject(audit.EnsureCaller(ctx, audit.Caller{Actor: audit.Actor{Email: input.Actor.Email, IsAdmin: input.Actor.IsAdmin}}), string(meta.ProjectID))
+	if rnr.audit != nil {
+		entry := rnr.recordStartedRun(ctx, input, meta, ledgerRunID)
+		defer func() { rnr.recordCompletedRun(ctx, entry, resultErr) }()
 	}
 
 	// Auto-title from first user prompt if still default.
@@ -425,6 +462,12 @@ func (rnr *Service) runPromptAs(
 	}
 
 	run := func(runPrompt, runResumeID string) error {
+		if rnr.accountAccess != nil {
+			if _, err := rnr.accountAccess.Resolve(ctx, providerID, meta.AccountID); err != nil {
+				return err
+			}
+		}
+		rnr.recordAccountUse(ctx, input, meta, providerID, ledgerRunID)
 		relay := runEventRelay{
 			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
 			ledger: ledger, emit: emit,

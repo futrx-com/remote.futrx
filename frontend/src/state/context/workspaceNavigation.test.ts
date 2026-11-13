@@ -9,6 +9,9 @@ test("chat and settings URLs restore the intended view", () => {
   assert.deepEqual(parseWorkspaceRoute("/settings/notifications"), {
     view: "settings", chatId: null, tab: "notifications",
   });
+  assert.deepEqual(parseWorkspaceRoute("/settings/audit"), {
+    view: "settings", chatId: null, tab: "audit",
+  });
   assert.deepEqual(parseWorkspaceRoute("/settings/unknown"), {
     view: "settings", chatId: null, tab: "appearance",
   });
