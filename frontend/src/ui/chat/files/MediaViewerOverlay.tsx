@@ -2,9 +2,12 @@ import type { MediaViewerItem } from "../../../models/files";
 import { useMediaViewer } from "../../../state/hooks/chat/useMediaViewer";
 import { useDismissShortcut } from "../../../state/hooks/shared/useDismissShortcut.ts";
 import { Download, ExternalLink, X } from "../../primitives/icons";
+import { SafeArea } from "../../primitives/SafeArea";
 
 // Full-screen host for the in-app media viewer. Mounted once per chat view;
-// renders whatever mediaViewerStore currently holds.
+// renders whatever mediaViewerStore currently holds. The SafeArea root keeps
+// the header — including the close button — clear of the device notch and
+// status bar in the PWA, where the fixed overlay sits on the raw viewport.
 export function MediaViewerOverlay() {
   const { item, close } = useMediaViewer();
 
@@ -13,7 +16,7 @@ export function MediaViewerOverlay() {
   if (!item) return null;
 
   return (
-    <div
+    <SafeArea
       class="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex flex-col"
       role="dialog"
       aria-modal="true"
@@ -60,7 +63,7 @@ export function MediaViewerOverlay() {
       <div class="flex-1 min-h-0 grid place-items-center p-4">
         <MediaContent item={item} />
       </div>
-    </div>
+    </SafeArea>
   );
 }
 
