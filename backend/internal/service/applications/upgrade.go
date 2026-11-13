@@ -2,6 +2,7 @@ package applications
 
 import (
 	"context"
+	"log"
 )
 
 // Upgrading an installed app to a new version of its application.
@@ -22,25 +23,6 @@ import (
 // container. Their new code is picked up by reloading the catalog and
 // restarting the backend, which happens on every package replacement regardless
 // of version.
-
-// UpgradeOutcome is what happened to one instance when its application's version
-// moved. It is reported rather than logged: an upgrade re-runs an install
-// script inside a container someone is using, so its result is something the
-// administrator who triggered it has to be able to read.
-type UpgradeOutcome struct {
-	InstanceID string `json:"instanceId"`
-	Name       string `json:"name"`
-	Scope      Scope  `json:"scope"`
-	ProjectID  string `json:"projectId,omitempty"`
-	// From is the version the instance had recorded; empty for an instance
-	// installed before versions were tracked.
-	From string `json:"fromVersion,omitempty"`
-	To   string `json:"toVersion"`
-	// Error is set when the re-install failed. The instance is left in the
-	// error state with its old version recorded, so the next upload — or a
-	// manual start — tries again rather than skipping it as already current.
-	Error string `json:"error,omitempty"`
-}
 
 // upgradeInstances re-runs the install script for every instance whose recorded
 // application version or container build identity differs from the catalog's.
@@ -145,15 +127,73 @@ func (s *Service) reinstall(ctx context.Context, application Application, inst *
 	return s.saveStatus(ctx, inst, StatusRunning, "")
 }
 
-// reconcileInstanceEnv projects persisted inputs onto the current manifest.
-// It preserves values that still exist, applies defaults/generators for new
-// declarations, and drops removed keys so an upgrade cannot retain obsolete
-// credentials or expose them after their secret declaration disappears.
-func reconcileInstanceEnv(application Application, inst *Instance) error {
-	env, err := resolveEnv(application, inst.Env)
+// UpgradeOutdated reinstalls running copies whose container side is older than
+// the catalog. A Remote release can change an application's container program
+// without anyone starting it; without this, a backend compiled from the new
+// source would keep talking to the old program until that copy happened to be
+// restarted. Copies in project containers that are not running are left to
+// UpgradeProject, which runs when their container next starts.
+func (s *Service) UpgradeOutdated(ctx context.Context) []UpgradeOutcome {
+	instances, err := s.store.ListAll(ctx)
 	if err != nil {
-		return err
+		log.Printf("applications: list instances to upgrade: %v", err)
+		return nil
 	}
-	inst.Env = env
-	return nil
+	running, _ := s.projects.(RunningProjects)
+	var outcomes []UpgradeOutcome
+	for _, snapshot := range instances {
+		if ctx.Err() != nil {
+			break
+		}
+		if snapshot.Status == StatusStopped {
+			continue
+		}
+		if snapshot.Scope == ScopeProject {
+			if running == nil {
+				continue
+			}
+			if up, err := running.Running(ctx, snapshot.ProjectID); err != nil || !up {
+				continue
+			}
+		}
+		if outcome, upgraded := s.upgradeInstance(ctx, snapshot.ApplicationID, snapshot.ID); upgraded {
+			logUpgrade(outcome)
+			outcomes = append(outcomes, outcome)
+		}
+	}
+	return outcomes
+}
+
+// UpgradeProject reinstalls the outdated running copies in one project. The
+// project service calls it after starting a project container that was down,
+// which is where a copy skipped by UpgradeOutdated catches up.
+func (s *Service) UpgradeProject(ctx context.Context, projectID string) []UpgradeOutcome {
+	instances, err := s.store.ListProject(ctx, projectID)
+	if err != nil {
+		log.Printf("applications: list project %s instances to upgrade: %v", projectID, err)
+		return nil
+	}
+	var outcomes []UpgradeOutcome
+	for _, snapshot := range instances {
+		if ctx.Err() != nil {
+			break
+		}
+		if outcome, upgraded := s.upgradeInstance(ctx, snapshot.ApplicationID, snapshot.ID); upgraded {
+			logUpgrade(outcome)
+			outcomes = append(outcomes, outcome)
+		}
+	}
+	return outcomes
+}
+
+// logUpgrade records an upgrade nobody asked for. An upload reports its
+// outcomes to the administrator; these happen on their own, so the log is
+// where they are read.
+func logUpgrade(outcome UpgradeOutcome) {
+	if outcome.Error != "" {
+		log.Printf("applications: upgrade %s (%s) from %q to %q failed: %s",
+			outcome.Name, outcome.InstanceID, outcome.From, outcome.To, outcome.Error)
+		return
+	}
+	log.Printf("applications: upgraded %s (%s) from %q to %q", outcome.Name, outcome.InstanceID, outcome.From, outcome.To)
 }
