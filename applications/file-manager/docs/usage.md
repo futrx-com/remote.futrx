@@ -48,19 +48,23 @@ Search matches path names by substring. It does not search file contents.
 | Returned search matches | 300 |
 | Entries visited by one search | 200,000 |
 | Folder ZIP source data | 1 GiB |
-| Folder ZIP compressed size | 256 MiB |
+| Folder ZIP size on disk | 1 GiB plus 64 MiB |
 | Entries in one folder ZIP | 200,000 |
 | Folder ZIP build time | 5 minutes |
 | Folder ZIP jobs | 2 concurrently per project File Manager installation |
 
 A directory can therefore show a truncated warning even when its contents
 exist. Search can stop at its visit cap before finding every possible match.
-A ZIP fails when its source-byte, compressed-size, entry, or time limit is
+A ZIP fails when its source-byte, ZIP-size, entry, or time limit is
 reached. Single-file downloads have no File Manager size limit.
 
-Folder archives omit broken symlinks, symlinks that escape the workspace, and
-special files such as sockets or devices. They include regular files and safe
-directories.
+Folder archives follow symlinks that stay inside the workspace, to files and to
+directories, and name their contents by the link's path: downloading `.claude`
+includes `skills/…` even when `.claude/skills` links to `../.agents/skills`. A
+directory reached through several links is included once. They omit broken
+symlinks, symlinks that escape the workspace, links to the downloaded folder
+itself or to a folder above it (which would put the folder inside its own ZIP),
+and special files such as sockets or devices.
 
 ### What happens when you select a file
 
@@ -82,7 +86,7 @@ Press Escape or select outside the content to close it.
 4. Hover the file and choose download.
 5. For a directory, choose the folder download action to receive a ZIP.
 
-Folder archives are limited to 1 GiB of source files, a 256 MiB ZIP, and two concurrent downloads per project. For larger artifacts, use the terminal, Git, or an external object store.
+Folder archives are limited to 1 GiB of source files and two concurrent builds per project. For larger artifacts, use the terminal, Git, or an external object store.
 
 
 ## Feature reference
@@ -95,4 +99,4 @@ Folder archives are limited to 1 GiB of source files, a 256 MiB ZIP, and two con
 | Open file | Select a file or search result | Supported media opens in-app; an installed application can open source files, otherwise they download; unsupported media/archives download |
 | Search filenames | Type at least two characters | 300 results; 200,000 visited-entry cap |
 | Download file | Hover a file and choose download | Direct file response |
-| Download folder | Hover a folder and choose download | ZIP up to 256 MiB from 1 GiB of files; two concurrent |
+| Download folder | Hover a folder and choose download | Builds a ZIP from up to 1 GiB of files, then the browser downloads it; two concurrent |

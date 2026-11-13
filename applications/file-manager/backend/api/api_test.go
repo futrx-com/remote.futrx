@@ -53,7 +53,17 @@ func newTestAPI(t *testing.T, container *fakeContainer) *API {
 
 func get(t *testing.T, b *API, path string, query map[string][]string) applications.Response {
 	t.Helper()
-	response, err := b.Handle(applications.Request{Method: "GET", Path: path, Query: query})
+	return handle(t, b, "GET", path, query)
+}
+
+func post(t *testing.T, b *API, path string, query map[string][]string) applications.Response {
+	t.Helper()
+	return handle(t, b, "POST", path, query)
+}
+
+func handle(t *testing.T, b *API, method, path string, query map[string][]string) applications.Response {
+	t.Helper()
+	response, err := b.Handle(applications.Request{Method: method, Path: path, Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +74,7 @@ func TestRoutesRunTheContainerProgramWithStdinRequests(t *testing.T) {
 	container := &fakeContainer{output: map[string]string{
 		"list":    `{"path":"src","entries":[{"name":"app.go","path":"src/app.go","isDir":false,"size":12,"extra":"<script>"}],"truncated":true}`,
 		"search":  `{"entries":null,"truncated":false}`,
-		"archive": "PK zip bytes",
+		"archive": `{"path":".file-manager-downloads/0a1b/src.zip","extra":"<script>"}`,
 	}}
 	b := newTestAPI(t, container)
 
@@ -83,21 +93,17 @@ func TestRoutesRunTheContainerProgramWithStdinRequests(t *testing.T) {
 		t.Fatalf("search = %d %s", response.Status, response.Body)
 	}
 
-	response = get(t, b, "archive", map[string][]string{"path": {"/src/../src/"}})
-	if response.Status != 200 || string(response.Body) != "PK zip bytes" ||
-		response.Headers["Content-Type"][0] != "application/zip" ||
-		response.Headers["Content-Disposition"][0] != `attachment; filename=src.zip` {
-		t.Fatalf("archive = %d %v %s", response.Status, response.Headers, response.Body)
+	response = post(t, b, "archive", map[string][]string{"path": {"/src/../src/"}})
+	if response.Status != 200 || string(response.Body) != `{"path":".file-manager-downloads/0a1b/src.zip"}` {
+		t.Fatalf("archive = %d %s", response.Status, response.Body)
 	}
-	if response := get(t, b, "archive", nil); response.Headers["Content-Disposition"][0] != `attachment; filename=workspace.zip` {
-		t.Fatalf("workspace archive = %v", response.Headers)
-	}
+	post(t, b, "archive", nil)
 
 	want := []call{
 		{"project-demo", "list", containerio.Request{Path: "src"}, 32 << 20},
 		{"project-demo", "search", containerio.Request{Query: "app"}, 32 << 20},
-		{"project-demo", "archive", containerio.Request{Path: "src"}, 256 << 20},
-		{"project-demo", "archive", containerio.Request{}, 256 << 20},
+		{"project-demo", "archive", containerio.Request{Path: "src"}, 64 << 10},
+		{"project-demo", "archive", containerio.Request{}, 64 << 10},
 	}
 	if len(container.calls) != len(want) {
 		t.Fatalf("calls = %+v", container.calls)
@@ -122,13 +128,36 @@ func TestContainerFailuresMapToHTTPStatuses(t *testing.T) {
 		{archives.ErrBusy, 503},
 	} {
 		b := newTestAPI(t, &fakeContainer{err: test.err})
-		if response := get(t, b, "archive", map[string][]string{"path": {"src"}}); response.Status != test.status {
+		if response := post(t, b, "archive", map[string][]string{"path": {"src"}}); response.Status != test.status {
 			t.Errorf("%v: status %d, want %d", test.err, response.Status, test.status)
 		}
 	}
 	b := newTestAPI(t, &fakeContainer{output: map[string]string{"list": "not json"}})
 	if response := get(t, b, "list", nil); response.Status != 502 {
 		t.Fatalf("unreadable listing = %d", response.Status)
+	}
+}
+
+func TestAContainerProgramThatStreamsTheZipIsReportedAsOutOfDate(t *testing.T) {
+	b := newTestAPI(t, &fakeContainer{output: map[string]string{"archive": "PK\x03\x04 zip bytes"}})
+	response := post(t, b, "archive", nil)
+	if response.Status != 409 || !strings.Contains(string(response.Body), "out of date") {
+		t.Fatalf("stale container = %d %s", response.Status, response.Body)
+	}
+}
+
+func TestArchiveResultMustNameAPublishedZip(t *testing.T) {
+	for _, output := range []string{
+		"PK zip bytes",
+		`{"path":".env"}`,
+		`{"path":".file-manager-downloads/0a1b/../../.env.zip"}`,
+		`{"path":".file-manager-downloads/0a1b/notes.txt"}`,
+		`{"path":"/workspace/.file-manager-downloads/0a1b/src.zip"}`,
+	} {
+		b := newTestAPI(t, &fakeContainer{output: map[string]string{"archive": output}})
+		if response := post(t, b, "archive", nil); response.Status != 502 {
+			t.Errorf("%s: status %d, want 502", output, response.Status)
+		}
 	}
 }
 
@@ -153,7 +182,7 @@ func TestArchivesAreBoundedPerInstallation(t *testing.T) {
 	b := testAPI(func(context.Context, string, string, containerio.Request, int64) ([]byte, error) {
 		started <- struct{}{}
 		<-release
-		return []byte("zip"), nil
+		return []byte(`{"path":".file-manager-downloads/0a1b/workspace.zip"}`), nil
 	})
 	_ = b.Init(applications.Instance{ContainerName: "project-demo"})
 	var done sync.WaitGroup
@@ -161,7 +190,7 @@ func TestArchivesAreBoundedPerInstallation(t *testing.T) {
 		done.Add(1)
 		go func() {
 			defer done.Done()
-			get(t, b, "archive", nil)
+			post(t, b, "archive", nil)
 		}()
 	}
 	for range 2 {

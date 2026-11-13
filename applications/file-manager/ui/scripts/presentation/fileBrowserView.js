@@ -28,7 +28,7 @@ export function createFilesLayout(body) {
 
 export function createFileBrowserView(
   { search, clear, entries },
-  { toggle, openFile, dismissBlocked, downloadUrl },
+  { toggle, openFile, dismissBlocked, downloadUrl, downloadFolder },
 ) {
   function svg(name, className) {
     const element = entries.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -90,18 +90,37 @@ export function createFileBrowserView(
     });
   }
 
-  function downloadLink(node) {
+  function downloadLink(node, state) {
+    if (node.isDir) return folderDownload(node, state);
     const link = element("a", "download");
-    link.href = downloadUrl(node);
-    if (!node.isDir) link.download = node.name;
-    const label = node.isDir
-      ? `Download ${node.name} as zip`
-      : `Download ${node.name}`;
+    link.href = downloadUrl(node.path);
+    link.download = node.name;
+    const label = `Download ${node.name}`;
     link.title = label;
     link.setAttribute("aria-label", label);
     link.addEventListener("click", (event) => event.stopPropagation());
     link.append(svg("download"));
     return link;
+  }
+
+  // A folder has no URL until its ZIP is built, so it is a button that asks
+  // for one and spins until the browser takes over the download.
+  function folderDownload(node, state) {
+    const button = element("button", "download");
+    button.type = "button";
+    const busy = state.archiving.has(node.path);
+    const label = busy
+      ? `Preparing ${node.name} zip`
+      : `Download ${node.name} as zip`;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-busy", String(busy));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (!busy) downloadFolder(node);
+    });
+    button.append(busy ? svg("loader", "spinner") : svg("download"));
+    return button;
   }
 
   function fileIcon(node) {
@@ -129,7 +148,7 @@ export function createFileBrowserView(
       element("span", "name", node.name),
     );
     if (children) row.append(element("span", "meta", String(children.length)));
-    row.append(downloadLink(node));
+    row.append(downloadLink(node, state));
     li.append(row);
     if (isOpen && error) li.append(element("div", "inline-note error", error));
     if (isOpen && children && children.length === 0 && !error)
@@ -139,7 +158,7 @@ export function createFileBrowserView(
     return li;
   }
 
-  function fileRow(node) {
+  function fileRow(node, state) {
     const li = item(node);
     const row = element("div", "row");
     row.title = openTitle(node.name);
@@ -151,12 +170,12 @@ export function createFileBrowserView(
     );
     if (node.size != null)
       row.append(element("span", "meta", formatBytes(node.size)));
-    row.append(downloadLink(node));
+    row.append(downloadLink(node, state));
     li.append(row);
     return li;
   }
 
-  function resultRow(node) {
+  function resultRow(node, state) {
     const li = item(node);
     const row = element("div", "row");
     if (!node.isDir) {
@@ -170,14 +189,14 @@ export function createFileBrowserView(
     row.append(node.isDir ? svg("folder", "icon tone-blue") : fileIcon(node), detail);
     if (!node.isDir && node.size != null)
       row.append(element("span", "meta", formatBytes(node.size)));
-    row.append(downloadLink(node));
+    row.append(downloadLink(node, state));
     li.append(row);
     return li;
   }
 
   function treeList(nodes, nested, state) {
     const ul = element("ul", nested ? "nested" : "");
-    for (const node of nodes) ul.append(node.isDir ? folderRow(node, state) : fileRow(node));
+    for (const node of nodes) ul.append(node.isDir ? folderRow(node, state) : fileRow(node, state));
     return ul;
   }
 
@@ -207,6 +226,7 @@ export function createFileBrowserView(
     const scroll = entries.scrollTop;
     const view = [];
     if (state.blocked) view.push(blockedNotice(state.blocked));
+    if (state.archiveError) view.push(banner("error", state.archiveError));
     if (state.searchResults !== null) {
       if (state.searchError) view.push(banner("error", state.searchError));
       if (state.searchTruncated)
@@ -220,7 +240,7 @@ export function createFileBrowserView(
         view.push(element("div", "empty", "No matches."));
       else {
         const ul = element("ul");
-        for (const node of state.searchResults) ul.append(resultRow(node));
+        for (const node of state.searchResults) ul.append(resultRow(node, state));
         view.push(ul);
       }
     } else {

@@ -13,12 +13,12 @@ import (
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/transport/cli"
 )
 
-// Each invocation serves one host request, so one archive slot is enough here;
-// the host backend bounds how many run at once.
+// Each invocation serves one host request; the host backend bounds how many
+// archives build at once.
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
-	spool := archives.New(1, config.MaxArchiveSpoolBytes)
-	service := files.New(config.WorkspaceDirectory, workspace.New(), spool)
+	downloads := archives.New(config.WorkspaceDirectory, config.MaxArchiveBytes, config.DownloadRetention)
+	service := files.New(config.WorkspaceDirectory, workspace.New(), downloads)
 	status := cli.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, service)
 	stop()
 	os.Exit(status)

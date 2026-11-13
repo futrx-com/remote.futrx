@@ -39,8 +39,8 @@ function harness({ remoteFiles = true, scratch = false } = {}) {
     backend: {
       instances: [{ instanceId: 'i1', scope: 'project', projectId: 'p1' }],
       url,
-      fetch: (path, { query, signal } = {}) =>
-        fetch(url(path) + (query ? '?' + new URLSearchParams(query) : ''), { signal }),
+      fetch: (path, { method, query, signal } = {}) =>
+        fetch(url(path) + (query ? '?' + new URLSearchParams(query) : ''), { method, signal }),
     },
     ${remoteFiles ? `files: {
       open: request => { window.opened.push(request); return window.blockTabs ? 'blocked' : 'editor'; },
@@ -81,17 +81,16 @@ async function serve(page, options = {}, { listings = LISTINGS, onSearch } = {})
         truncated: false,
       } });
     } else if (pathname === `${BACKEND}archive`) {
+      assert.equal(route.request().method(), "POST");
       assert.equal(searchParams.get("path"), "src");
-      await route.fulfill({
-        contentType: "application/zip",
-        headers: { "Content-Disposition": "attachment; filename=src.zip" },
-        body: "PK",
-      });
+      await route.fulfill({ json: { path: ".file-manager-downloads/0a1b/src.zip" } });
     } else if (pathname === "/api/chats/c1/files/download") {
-      assert.equal(searchParams.get("path"), "src/app.go");
+      // The built ZIP downloads through the same route as any file.
+      const file = searchParams.get("path");
+      assert.ok(["src/app.go", ".file-manager-downloads/0a1b/src.zip"].includes(file));
       await route.fulfill({
-        headers: { "Content-Disposition": 'attachment; filename="app.go"' },
-        body: "package main",
+        headers: { "Content-Disposition": `attachment; filename="${file.slice(file.lastIndexOf("/") + 1)}"` },
+        body: file.endsWith(".zip") ? "PK" : "package main",
       });
     } else if (pathname === "/api/projects/p1/applications") {
       await route.fulfill({ json: options.code ? [{ applicationId: "code-server", status: "running" }] : [] });
@@ -138,7 +137,7 @@ test("browse, search, download and mobile layout", { skip }, async () => {
     await page.getByRole("button", { name: "app.go", exact: true }).waitFor();
     const [archive] = await Promise.all([
       page.waitForEvent("download"),
-      page.getByRole("link", { name: "Download src as zip", exact: true }).click(),
+      page.getByRole("button", { name: "Download src as zip", exact: true }).click(),
     ]);
     assert.equal(archive.suggestedFilename(), "src.zip");
     assert.equal(

@@ -17,8 +17,8 @@ install again to add missing copies without replacing existing installations.
 | Host backend | `backend/` registers the `list`, `search` and `archive` routes |
 | Container command | `backend/container/cmd/file-manager/` builds `/usr/local/bin/file-manager`, run once per request |
 | Browser surface | `ui/scripts/main.js` registers the Files drawer and renders it in Remote's page |
-| Upgrade | `infra/install.sh` retires the container web service from versions before 5 |
-| Cleanup | `infra/uninstall.sh` removes the binary and any retired service |
+| Upgrade | `infra/preinstall.sh` retires the container web service from versions before 5, before the new program is built |
+| Cleanup | `infra/uninstall.sh` removes the binary, waiting ZIPs and any retired service |
 
 There is no container web service, port, application hostname, database,
 configuration input, or agent skill. The drawer calls its project
@@ -27,9 +27,12 @@ installation's backend through `remote.backend`, at
 checks the session and project membership on every request. Each route runs
 `lxc exec <container> -- /usr/local/bin/file-manager <command>` with the
 request as JSON on stdin, so browser input never becomes a program argument.
-Single files download through Remote's own
-`/api/chats/<chat>/files/download` route, which streams them; only folder ZIPs
-are built by the backend.
+Every download streams from disk through Remote's own
+`/api/chats/<chat>/files/download` route. For a folder, the `archive` route
+(POST) has the container build the ZIP into
+`/workspace/.file-manager-downloads/<random>/<folder>.zip` and answers with that
+path; the drawer then sends the browser to the download route for it. ZIP bytes
+never pass through the backend or the `lxc exec` pipe.
 
 ## Host backend layers
 
@@ -43,7 +46,8 @@ backend/
 ```
 
 The API re-encodes listings through typed values rather than passing the
-container's output through and names ZIP downloads itself. The archive service
+container's output through, and accepts an archive result only if it names a
+ZIP inside `.file-manager-downloads/`. The archive service
 admits two builds at a time per installation; waiting for admission and building
 share one time budget. `containerio` maps the container
 command's exit statuses (3 invalid path, 4 not found, 5 too large) to errors
@@ -62,18 +66,20 @@ backend/container/
     config/                       workspace and resource limits
     model/files/application/      application results and errors
     port/files/inbound/           file operations exposed to the CLI
-    port/files/outbound/          filesystem and archive-spool contracts
+    port/files/outbound/          filesystem and archive-download contracts
     service/files/                listing/search policy and archive workflow
     repository/workspace/         rooted filesystem, listing, search, ZIP I/O
-    repository/archives/          bounded temporary files
+    repository/archives/          bounded ZIPs waiting in the workspace
     transport/cli/                stdin request, stdout result, exit statuses
 ```
 
 The command injects concrete repositories into the file service, then hands
 that service to the CLI transport. Services do not depend on the transport or
-concrete filesystem repositories. An archive is completed in a bounded spool
-before anything is written to stdout, so a failed build never looks like the
-start of a ZIP.
+concrete filesystem repositories. An archive is written as `.partial` and takes
+its final name only once complete; a failed build removes its folder, so the
+browser is never sent to a broken ZIP. Each build also deletes ZIPs older than
+an hour. The downloads folder carries a `.gitignore` of `*` and is left out of
+listings, searches and archives.
 
 ## Remote extension layers
 
@@ -153,20 +159,28 @@ the header; the drawer sets its subtitle (`workspace`, `Loading...`, or the
 result count) and its Refresh button.
 
 All file operations stay inside `/workspace`, including symlink resolution and
-rooted final opens. ZIPs skip special files and escaping symlinks and bound
-source bytes (1 GiB), entry count (200,000), compressed size (256 MiB) and
-concurrency (two archives per installation). The backend holds a finished ZIP
-in memory to answer its call, which is why the compressed limit is lower than
-the source limit. The container's temporary archive is deleted once it has
-been written out. A ZIP must finish within the backend's five-minute call
-limit.
+rooted final opens. ZIPs follow file and directory symlinks that resolve inside
+the workspace, each linked directory once; they skip special files, escaping
+symlinks and links to the archived folder or its ancestors, and bound
+source bytes (1 GiB), entry count (200,000), the finished ZIP on disk
+(1 GiB plus 64 MiB of headroom) and concurrency (two archives per installation).
+A finished ZIP waits in the workspace for up to an hour, until the next build
+removes it. A ZIP must finish within the backend's five-minute call limit.
 
 ## Upgrading from version 4
 
 Versions up to 4 ran `remote-file-manager.service` in the container and served
-the page from `files--<project-slug>.<host>`. Version 5's `infra/install.sh`
-disables and removes that unit during the upgrade, and `infra/uninstall.sh`
-removes it from copies that were never upgraded.
+the page from `files--<project-slug>.<host>`, running the same
+`/usr/local/bin/file-manager` path the new program is built to. Since version 6,
+`infra/preinstall.sh` runs before that build: it disables and removes the unit,
+so the old service is never restarted against the new binary. It also deletes
+ZIPs that version 5, which streamed archives through stdout, could leave in
+`/tmp`.
+`infra/uninstall.sh` removes the unit from copies that were never upgraded.
+
+Remote reinstalls an outdated running copy when Remote starts (if its project
+container is up) or when its project container next starts, so the host
+backend and the container program move to a new build together.
 
 ## Lifecycle and verification
 

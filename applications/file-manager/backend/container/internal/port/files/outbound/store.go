@@ -16,8 +16,8 @@ type Store interface {
 	Search(root, query string, limit int) ([]*model.Node, bool, error)
 }
 
-// ArchiveSpool bounds temporary storage and concurrent archive downloads.
-// Closing the returned content releases both the file and its admission slot.
-type ArchiveSpool interface {
-	Prepare(context.Context, func(io.Writer) error) (io.ReadSeekCloser, error)
+// ArchiveDownloads stores a finished archive where the browser can fetch it
+// and returns its workspace-relative path. A failed build stores nothing.
+type ArchiveDownloads interface {
+	Publish(ctx context.Context, name string, write func(io.Writer) error) (string, error)
 }

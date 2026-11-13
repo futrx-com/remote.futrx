@@ -32,7 +32,7 @@ func run(t *testing.T, service *files.Service, command, request string) result {
 
 func TestCommands(t *testing.T) {
 	root := setupWorkspace(t)
-	service := newService(root, config.MaxArchiveSpoolBytes)
+	service := newService(root, config.MaxArchiveBytes)
 
 	t.Run("listing", func(t *testing.T) {
 		got := run(t, service, "list", `{}`)
@@ -62,12 +62,29 @@ func TestCommands(t *testing.T) {
 		if got.status != cli.ExitOK {
 			t.Fatalf("archive: %d %s", got.status, got.stderr)
 		}
-		archive, err := zip.NewReader(bytes.NewReader(got.stdout), int64(len(got.stdout)))
-		if err != nil {
-			t.Fatal(err)
+		published := publishedPath(t, got.stdout)
+		if !strings.HasPrefix(published, config.DownloadsDirectory+"/") || filepath.Base(published) != "src.zip" {
+			t.Fatalf("archive published at %q", published)
 		}
-		if len(archive.File) != 1 || archive.File[0].Name != "app.go" {
-			t.Fatalf("archive entries: %+v", archive.File)
+		if names := zipEntries(t, filepath.Join(root, published)); len(names) != 1 || names[0] != "app.go" {
+			t.Fatalf("archive entries: %v", names)
+		}
+	})
+	t.Run("published archives stay out of the workspace views", func(t *testing.T) {
+		got := run(t, service, "archive", `{}`)
+		if got.status != cli.ExitOK {
+			t.Fatalf("archive: %d %s", got.status, got.stderr)
+		}
+		for _, name := range zipEntries(t, filepath.Join(root, publishedPath(t, got.stdout))) {
+			if strings.HasPrefix(name, config.DownloadsDirectory) {
+				t.Fatalf("workspace archive includes %s", name)
+			}
+		}
+		if listed := run(t, service, "list", `{}`); strings.Contains(string(listed.stdout), config.DownloadsDirectory) {
+			t.Fatalf("listing shows downloads: %s", listed.stdout)
+		}
+		if found := run(t, service, "search", `{"query":"zip"}`); strings.Contains(string(found.stdout), config.DownloadsDirectory) {
+			t.Fatalf("search shows downloads: %s", found.stdout)
 		}
 	})
 	for _, test := range []struct {
@@ -102,8 +119,33 @@ func TestArchiveFailureWritesNoOutput(t *testing.T) {
 	}
 }
 
-func newService(root string, spoolBytes int64) *files.Service {
-	return files.New(root, workspace.New(), archives.New(1, spoolBytes))
+func newService(root string, maxArchiveBytes int64) *files.Service {
+	return files.New(root, workspace.New(), archives.New(root, maxArchiveBytes, config.DownloadRetention))
+}
+
+func publishedPath(t *testing.T, stdout []byte) string {
+	t.Helper()
+	var published struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(stdout, &published); err != nil {
+		t.Fatalf("archive output %q: %v", stdout, err)
+	}
+	return published.Path
+}
+
+func zipEntries(t *testing.T, file string) []string {
+	t.Helper()
+	archive, err := zip.OpenReader(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	names := make([]string, 0, len(archive.File))
+	for _, entry := range archive.File {
+		names = append(names, entry.Name)
+	}
+	return names
 }
 
 func setupWorkspace(t *testing.T) string {

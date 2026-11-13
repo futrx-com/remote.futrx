@@ -1,8 +1,9 @@
 import { SEARCH_DEBOUNCE_MS } from "../config/files.js";
 
 /** Coordinates requests and cancellation without owning presentation data. */
-export function createFileBrowser(api, store) {
+export function createFileBrowser(api, store, download) {
   const { state } = store;
+  let disposed = false;
   let revision = 0;
   let controller = new AbortController();
   let searchTimer;
@@ -27,6 +28,21 @@ export function createFileBrowser(api, store) {
     if (opening && !state.childrenByDir.has(path) && !state.loadingDirs.has(path))
       void loadDirectory(path, revision);
     else store.notify();
+  }
+
+  // The ZIP is built before the browser is sent to it, so a refused folder
+  // shows its reason here instead of a failed download. A ZIP that finishes
+  // after the drawer closed still downloads: the user asked for it.
+  async function downloadFolder(path) {
+    if (state.archiving.has(path)) return;
+    store.archiveStarted(path);
+    try {
+      download(await api.archive(path));
+    } catch (error) {
+      if (!disposed) store.archiveFailed(error);
+    } finally {
+      if (!disposed) store.archiveFinished(path);
+    }
   }
 
   function reset() {
@@ -66,6 +82,7 @@ export function createFileBrowser(api, store) {
     subtitle: store.subtitle,
     reset,
     toggle,
+    downloadFolder,
     search(query) {
       store.searchQuery(query);
       runSearch();
@@ -74,6 +91,7 @@ export function createFileBrowser(api, store) {
     clearBlocked: store.clearBlocked,
     dismissBlocked: store.dismissBlocked,
     dispose() {
+      disposed = true;
       revision++;
       controller.abort();
       clearTimeout(searchTimer);

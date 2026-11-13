@@ -14,5 +14,11 @@ type.
 
 ### Folder download fails
 
-Folder ZIP downloads are limited to 1 GiB of source files, a 256 MiB ZIP, five minutes to build, and two simultaneous archives per project. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
+Folder ZIP downloads are limited to 1 GiB of source files, five minutes to build, and two simultaneous archives per project. The reason appears in a banner above the file list. Symlinks that escape the project path are omitted. Use Git, Terminal, or external storage for a larger export.
+
+If the banner says File Manager is out of date, the project's container still
+has the program from an earlier build. Remote reinstalls outdated copies when it
+starts and when a project container starts, so this lasts only until that
+reinstall finishes; if it persists, check the server log for a failed upgrade,
+then stop and start File Manager for that project and download again.
 

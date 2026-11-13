@@ -6,7 +6,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/config"
 	model "futrx.local/catalog/applications/file-manager/backend/container/internal/model/files/application"
@@ -16,10 +15,10 @@ import (
 type Service struct {
 	root     string
 	store    outbound.Store
-	archives outbound.ArchiveSpool
+	archives outbound.ArchiveDownloads
 }
 
-func New(root string, store outbound.Store, archives outbound.ArchiveSpool) *Service {
+func New(root string, store outbound.Store, archives outbound.ArchiveDownloads) *Service {
 	return &Service{root: root, store: store, archives: archives}
 }
 
@@ -57,20 +56,21 @@ func (s *Service) prepareArchive(relativePath string) (model.Archive, error) {
 	return model.Archive{Name: name + ".zip", Root: root, Relative: rel}, nil
 }
 
-// DownloadArchive completes the bounded archive before presentation writes
-// download headers, so build failures never look like successful ZIP responses.
-func (s *Service) DownloadArchive(ctx context.Context, relativePath string) (*model.File, error) {
+// PublishArchive builds the bounded archive into the workspace and returns
+// where it landed. The browser downloads it from there, so the archive's bytes
+// never pass through this program's output or the host backend.
+func (s *Service) PublishArchive(ctx context.Context, relativePath string) (model.PublishedArchive, error) {
 	archive, err := s.prepareArchive(relativePath)
 	if err != nil {
-		return nil, err
+		return model.PublishedArchive{}, err
 	}
-	content, err := s.archives.Prepare(ctx, func(destination io.Writer) error {
+	published, err := s.archives.Publish(ctx, archive.Name, func(destination io.Writer) error {
 		return s.store.WriteArchive(ctx, archive.Root, archive.Relative, destination)
 	})
 	if err != nil {
-		return nil, err
+		return model.PublishedArchive{}, err
 	}
-	return model.NewFile(archive.Name, time.Time{}, content), nil
+	return model.PublishedArchive{Path: published}, nil
 }
 
 func (s *Service) Search(query string) (model.SearchResult, error) {

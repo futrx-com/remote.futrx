@@ -11,6 +11,8 @@ export function createFileBrowserState(changed) {
     errorByDir: new Map(),
     truncatedDirs: new Set(),
     blocked: null,
+    archiving: new Set(),
+    archiveError: "",
     searchResults: null,
     searchTruncated: false,
     searching: false,
@@ -91,6 +93,18 @@ export function createFileBrowserState(changed) {
     },
     searchFinished() {
       state.searching = false;
+      changed();
+    },
+    archiveStarted(path) {
+      state.archiving.add(path);
+      state.archiveError = "";
+      changed();
+    },
+    archiveFailed(error) {
+      state.archiveError = error.message;
+    },
+    archiveFinished(path) {
+      state.archiving.delete(path);
       changed();
     },
     showBlocked(path, url) {

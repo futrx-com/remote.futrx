@@ -50,7 +50,8 @@ export default function activate(remote) {
         ? withPrefetchedRoot(createFilesApi(remote, context), prefetched, context.projectId)
         : null,
       createLayout: createFilesLayout,
-      createBrowser: (api, changed) => createFileBrowser(api, createFileBrowserState(changed)),
+      createBrowser: (api, changed) =>
+        createFileBrowser(api, createFileBrowserState(changed), browserNavigation.download),
       createView: createFileBrowserView,
       createFileOpener: (target, onBlocked) =>
         createFileOpeningService(dependencies, target, onBlocked),

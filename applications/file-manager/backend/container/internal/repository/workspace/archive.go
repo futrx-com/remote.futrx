@@ -7,7 +7,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/config"
 	model "futrx.local/catalog/applications/file-manager/backend/container/internal/model/files/application"
@@ -42,75 +44,124 @@ func (s *WorkspaceFileStore) writeArchive(
 		return err
 	}
 
-	archive := zip.NewWriter(destination)
-	budget := archiveBudget{
-		remainingBytes:   limits.maxSourceBytes,
-		remainingEntries: limits.maxEntries,
+	walk := &archiveWalk{
+		ctx:       ctx,
+		workspace: workspace,
+		archive:   zip.NewWriter(destination),
+		budget: archiveBudget{
+			remainingBytes:   limits.maxSourceBytes,
+			remainingEntries: limits.maxEntries,
+		},
+		base:     path.Clean(base),
+		expanded: map[string]bool{},
 	}
+	walkErr := walk.directory(base, "")
+	closeErr := walk.archive.Close()
+	return errors.Join(walkErr, closeErr, ctx.Err())
+}
 
-	// WalkDir does not descend into symlinked directories, so directory-symlink
-	// loops are impossible. Symlinked files are included only if they still
-	// resolve inside the workspace.
-	walkErr := fs.WalkDir(workspace.root.FS(), base, func(walkPath string, entry fs.DirEntry, walkErr error) error {
-		if err := ctx.Err(); err != nil {
+// archiveWalk writes one folder into a ZIP. Entries are named by the path
+// under the chosen folder, including paths that pass through a symlink.
+type archiveWalk struct {
+	ctx       context.Context
+	workspace secureWorkspace
+	archive   *zip.Writer
+	budget    archiveBudget
+	// base is the chosen folder, by resolved path.
+	base string
+	// expanded holds every directory already written, by resolved path, so a
+	// directory reached through several symlinks, or a symlink loop, is
+	// written once.
+	expanded map[string]bool
+}
+
+// directory writes dir's contents under prefix. fs.WalkDir does not descend
+// into symlinked directories itself; entry follows each one that resolves
+// inside the workspace, so content reached through a link, such as
+// .claude/skills -> ../.agents/skills, is not silently left out.
+func (a *archiveWalk) directory(dir, prefix string) error {
+	return fs.WalkDir(a.workspace.root.FS(), dir, func(walkPath string, entry fs.DirEntry, walkErr error) error {
+		if err := a.ctx.Err(); err != nil {
 			return err
 		}
 		if walkErr != nil {
 			return walkErr
 		}
-		if walkPath != base {
-			if err := budget.visitEntry(); err != nil {
-				return err
-			}
+		if isDownloads(walkPath, entry) {
+			return fs.SkipDir
+		}
+		if walkPath == dir {
+			return nil
+		}
+		if err := a.budget.visitEntry(); err != nil {
+			return err
 		}
 		if entry.IsDir() {
 			return nil
 		}
-		return workspace.writeArchiveEntry(ctx, archive, &budget, base, walkPath, entry)
+		relative, err := filepath.Rel(dir, walkPath)
+		if err != nil {
+			return err
+		}
+		return a.entry(walkPath, path.Join(prefix, filepath.ToSlash(relative)), entry)
 	})
-	closeErr := archive.Close()
-	return errors.Join(walkErr, closeErr, ctx.Err())
 }
 
-func (w secureWorkspace) writeArchiveEntry(
-	ctx context.Context,
-	archive *zip.Writer,
-	budget *archiveBudget,
-	base string,
-	walkPath string,
-	entry fs.DirEntry,
-) error {
-	openPath := walkPath
-	if entry.Type()&os.ModeSymlink != 0 {
-		target, err := w.resolve(walkPath)
-		if err != nil {
-			// Broken and escaping symlinks are intentionally omitted: neither is a
-			// usable file inside the workspace boundary.
-			return nil
-		}
-		openPath = target
+func (a *archiveWalk) entry(walkPath, name string, entry fs.DirEntry) error {
+	if entry.Type()&os.ModeSymlink == 0 {
+		return a.file(walkPath, name)
 	}
+	target, err := a.workspace.resolve(walkPath)
+	if err != nil {
+		// Broken and escaping symlinks are intentionally omitted: neither is a
+		// usable file inside the workspace boundary.
+		return nil
+	}
+	info, err := a.workspace.root.Stat(target)
+	if err != nil {
+		return nil
+	}
+	if !info.IsDir() {
+		return a.file(target, name)
+	}
+	target = path.Clean(target)
+	// A link to the chosen folder or one above it would archive the folder
+	// inside itself, or the whole workspace; it is left out like a loop.
+	if a.expanded[target] || insideDownloads(target) || within(a.base, target) {
+		return nil
+	}
+	a.expanded[target] = true
+	return a.directory(target, name)
+}
 
-	source, info, err := w.openRegular(openPath)
+// file writes one regular file. Special files are skipped.
+func (a *archiveWalk) file(openPath, name string) error {
+	source, info, err := a.workspace.openRegular(openPath)
 	if err != nil {
 		if errors.Is(err, errNotRegularFile) {
 			return nil
 		}
 		return err
 	}
-	if err := budget.acceptFile(info.Size()); err != nil {
+	if err := a.budget.acceptFile(info.Size()); err != nil {
 		return errors.Join(err, source.Close())
 	}
-	relative, err := filepath.Rel(base, walkPath)
+	destination, err := a.archive.Create(name)
 	if err != nil {
 		return errors.Join(err, source.Close())
 	}
-	destination, err := archive.Create(filepath.ToSlash(relative))
-	if err != nil {
-		return errors.Join(err, source.Close())
-	}
-	copyErr := budget.copy(ctx, destination, source)
+	copyErr := a.budget.copy(a.ctx, destination, source)
 	return errors.Join(copyErr, source.Close())
+}
+
+// within reports whether rootRelative is directory or lies below it.
+func within(rootRelative, directory string) bool {
+	return directory == "." || rootRelative == directory || strings.HasPrefix(rootRelative, directory+"/")
+}
+
+func insideDownloads(rootRelative string) bool {
+	return rootRelative == config.DownloadsDirectory ||
+		strings.HasPrefix(rootRelative, config.DownloadsDirectory+"/")
 }
 
 type archiveBudget struct {

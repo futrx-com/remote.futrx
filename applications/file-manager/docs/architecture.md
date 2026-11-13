@@ -9,8 +9,9 @@ global install to include projects created later. The drawer appears only while
 that project's copy is installed and running.
 Its drawer calls the installation's backend routes, which Remote admits only
 for project members; each route runs the application's command in the project
-container through `lxc exec`. Single files download through Remote's chat
-download route.
+container through `lxc exec`. Files download through Remote's chat download
+route, which streams them from disk. A folder is first built into a ZIP inside
+the workspace; the browser then downloads that ZIP through the same route.
 
 ```mermaid
 flowchart LR

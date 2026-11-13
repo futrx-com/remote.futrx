@@ -4,7 +4,8 @@ import { createFileBrowser } from "../scripts/services/fileBrowserService.js";
 
 import { createFileBrowserState } from "../scripts/state/fileBrowserState.js";
 
-const browserWith = (api, changed) => createFileBrowser(api, createFileBrowserState(changed));
+const browserWith = (api, changed, download = () => {}) =>
+  createFileBrowser(api, createFileBrowserState(changed), download);
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -50,5 +51,31 @@ test("directory errors finish loading and blocked-link dismissal notifies in a m
   assert.equal(changes, before);
   await settle();
   assert.equal(changes, before + 1);
+  browser.dispose();
+});
+
+test("a folder downloads once its zip is built, and a refused zip explains why", async () => {
+  const downloads = [];
+  let finish;
+  const api = {
+    archive: (path) => new Promise((resolve, reject) => { finish = { resolve, reject, path }; }),
+  };
+  const browser = browserWith(api, () => {}, (url) => downloads.push(url));
+  void browser.downloadFolder("src");
+  void browser.downloadFolder("src");
+  assert.equal(browser.state.archiving.has("src"), true);
+  finish.resolve("/api/chats/c1/files/download?path=zip");
+  await settle();
+  assert.deepEqual(downloads, ["/api/chats/c1/files/download?path=zip"]);
+  assert.equal(browser.state.archiving.has("src"), false);
+
+  void browser.downloadFolder("big");
+  finish.reject(new Error("This folder is too large to download as a ZIP."));
+  await settle();
+  assert.equal(downloads.length, 1);
+  assert.equal(browser.state.archiving.has("big"), false);
+  assert.equal(browser.state.archiveError, "This folder is too large to download as a ZIP.");
+  void browser.downloadFolder("src");
+  assert.equal(browser.state.archiveError, "");
   browser.dispose();
 });

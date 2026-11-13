@@ -65,5 +65,5 @@ func TestFileManagerContainerBuildsIndependently(t *testing.T) {
 }
 
 func TestBackendBuildsAndDescribesRoutes(t *testing.T) {
-	applicationtest.BackendRoutes(t, "file-manager", []string{"GET archive", "GET list", "GET search"})
+	applicationtest.BackendRoutes(t, "file-manager", []string{"GET list", "GET search", "POST archive"})
 }

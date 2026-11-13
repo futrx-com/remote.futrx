@@ -38,6 +38,10 @@ export function mountFilesDrawer(
     },
     dismissBlocked: browser.dismissBlocked,
     downloadUrl: api.downloadUrl,
+    downloadFolder(node) {
+      if (node.path && !workspaceRelative(node.path)) return;
+      void browser.downloadFolder(node.path);
+    },
   });
 
   // The header follows every change at once; the tree is drawn only once the

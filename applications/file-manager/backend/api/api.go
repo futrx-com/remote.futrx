@@ -4,10 +4,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"mime"
 	"net/http"
 	"path"
 	"strings"
@@ -39,6 +39,10 @@ type searchResult struct {
 	Truncated bool    `json:"truncated"`
 }
 
+type publishedArchive struct {
+	Path string `json:"path"`
+}
+
 type API struct {
 	router   *applications.Router
 	run      containerio.Runner
@@ -58,7 +62,7 @@ func New(run containerio.Runner, downloads *archives.Downloads) *API {
 	}
 	b.router.GET("list", "List one workspace folder", b.list)
 	b.router.GET("search", "Search workspace file names", b.search)
-	b.router.GET("archive", "Download a workspace folder as a ZIP", b.archive)
+	b.router.POST("archive", "Build a workspace folder ZIP for the browser to download", b.archive)
 	return b
 }
 
@@ -119,26 +123,29 @@ func (b *API) query(command string, input containerio.Request, result any) (appl
 	return applications.Response{}, true
 }
 
+// archive has the container build the ZIP into the workspace and answers with
+// its path. The browser then downloads it through Remote's chat download
+// route, which streams it from disk, so the ZIP never passes through here.
 func (b *API) archive(request applications.Request) applications.Response {
 	relative := cleanRelative(first(request, "path"))
 	container, response, ok := b.target(containerio.Request{Path: relative})
 	if !ok {
 		return response
 	}
-	content, err := b.archives.Build(func(ctx context.Context) ([]byte, error) {
-		return b.run(ctx, container, "archive", containerio.Request{Path: relative}, config.MaxArchiveBytes)
+	output, err := b.archives.Build(func(ctx context.Context) ([]byte, error) {
+		return b.run(ctx, container, "archive", containerio.Request{Path: relative}, config.MaxArchiveResultBytes)
 	})
 	if err != nil {
 		return failure(err)
 	}
-	return applications.Response{
-		Status: http.StatusOK,
-		Headers: map[string][]string{
-			"Content-Type":        {"application/zip"},
-			"Content-Disposition": {mime.FormatMediaType("attachment", map[string]string{"filename": archiveName(relative)})},
-		},
-		Body: content,
+	if bytes.HasPrefix(output, zipSignature) {
+		return applications.Errorf(http.StatusConflict, "File Manager in this project is out of date. Stop and start it from the project's applications, then try again.")
 	}
+	var result publishedArchive
+	if err := json.Unmarshal(output, &result); err != nil || !publishedDownload(result.Path) {
+		return applications.Errorf(http.StatusBadGateway, "Unreadable archive result from the project container.")
+	}
+	return applications.JSON(http.StatusOK, result)
 }
 
 func (b *API) target(input containerio.Request) (string, applications.Response, bool) {
@@ -177,9 +184,8 @@ func first(request applications.Request, key string) string {
 	return ""
 }
 
-// cleanRelative mirrors the container's normalisation so the download is
-// named after the folder that is actually archived. Containment is enforced
-// inside the container.
+// cleanRelative mirrors the container's normalisation of workspace paths.
+// Containment is enforced inside the container.
 func cleanRelative(relativePath string) string {
 	relativePath = strings.TrimSpace(relativePath)
 	if relativePath == "" {
@@ -188,10 +194,17 @@ func cleanRelative(relativePath string) string {
 	return strings.TrimPrefix(path.Clean("/"+strings.TrimPrefix(relativePath, "/")), "/")
 }
 
-func archiveName(relative string) string {
-	name := path.Base(relative)
-	if relative == "" || name == "." || name == "/" {
-		name = "workspace"
-	}
-	return name + ".zip"
+// zipSignature starts the output of a container program from before archives
+// were built into the workspace: it wrote the ZIP itself to stdout. Remote
+// rebuilds that program only when the application is installed or started, so
+// a backend upgraded under a running copy can still meet it.
+var zipSignature = []byte("PK\x03\x04")
+
+// publishedDownload accepts only a ZIP inside the downloads directory. The
+// chat download route already confines reads to the workspace; this keeps the
+// container from steering the browser to any other workspace file.
+func publishedDownload(relative string) bool {
+	return relative == cleanRelative(relative) &&
+		strings.HasPrefix(relative, config.DownloadsDirectory+"/") &&
+		strings.HasSuffix(relative, ".zip")
 }

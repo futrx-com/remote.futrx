@@ -236,6 +236,16 @@
   opacity: 0;
   transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
+.remote-files button.download {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.remote-files .download[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
 .remote-files .download svg {
   width: 14px;
   height: 14px;

@@ -53,6 +53,10 @@ type searchResult struct {
 	Truncated bool    `json:"truncated"`
 }
 
+type publishedArchive struct {
+	Path string `json:"path"`
+}
+
 // Run executes the command named by args[0] and returns the process status.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, files inbound.Files) int {
 	if len(args) != 1 {
@@ -101,16 +105,14 @@ func search(stdout io.Writer, files inbound.Files, query string) error {
 	return json.NewEncoder(stdout).Encode(searchResult{Entries: presentNodes(result.Entries), Truncated: result.Truncated})
 }
 
-// archive writes nothing until the bounded archive is complete, so a failed
-// build never looks like the start of a ZIP.
+// archive reports where the finished ZIP is in the workspace. Its bytes stay
+// on disk for Remote's download route instead of crossing stdout.
 func archive(ctx context.Context, stdout io.Writer, files inbound.Files, path string) error {
-	file, err := files.DownloadArchive(ctx, path)
+	result, err := files.PublishArchive(ctx, path)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
-	_, err = io.Copy(stdout, file.Content())
-	return err
+	return json.NewEncoder(stdout).Encode(publishedArchive{Path: result.Path})
 }
 
 func presentNodes(entries []*model.Node) []*node {

@@ -14,9 +14,12 @@ const (
 	MaxQueryBytes = 4096
 	// MaxListingBytes bounds the JSON a listing or search may return.
 	MaxListingBytes int64 = 32 << 20
-	// MaxArchiveBytes matches the container's archive spool. The whole ZIP is
-	// held in memory to answer one backend call.
-	MaxArchiveBytes int64 = 256 << 20
+	// MaxArchiveResultBytes bounds the JSON an archive build returns: only the
+	// finished ZIP's path, never its bytes.
+	MaxArchiveResultBytes int64 = 64 << 10
+	// DownloadsDirectory mirrors the container's: finished ZIPs wait there,
+	// relative to the workspace, for Remote's chat download route.
+	DownloadsDirectory = ".file-manager-downloads"
 	// MaxConcurrentArchives bounds the archives one project builds at once.
 	MaxConcurrentArchives = 2
 )
