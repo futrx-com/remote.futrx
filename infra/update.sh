@@ -160,9 +160,10 @@ else
     write_update_progress "host-convergence" "Converging the host and application"
     FUTRX_INSTALL_CHECKOUT_SELECTED=1 \
         bash "$INFRA_DIR/install.sh" "$HOSTNAME" --skip-dns-check
+    write_update_progress "finishing" "Finishing the infrastructure update"
 fi
 
-write_update_progress "finishing" "Finishing the infrastructure update"
+# Keep the workspace summary, including project setup warnings, for the UI.
 echo
 echo "✓ update complete"
 }

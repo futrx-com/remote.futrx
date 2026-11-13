@@ -18,7 +18,6 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceapps "github.com/futrx-com/remote.futrx.com/internal/service/applications"
-	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/stores"
 )
@@ -60,12 +59,9 @@ func main() {
 	)
 	apps := serviceapps.New(registry, storeSet.Applications, containerStack.AppInstaller, nil, containerStack.AppPorts)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
 	progress := newProgressWriter(*progressFile)
-	upgraded, skipped, failed, err := upgradeAll(
-		ctx,
+	upgraded, skipped, setupFailed, failed, err := upgradeAll(
+		context.Background(),
 		projects,
 		containerStack.Lifecycle,
 		*dryRun,
@@ -74,10 +70,10 @@ func main() {
 		apps.RestoreProject,
 	)
 	if err != nil {
-		log.Fatalf("list projects: %v", err)
+		log.Fatalf("upgrade workspaces: %v", err)
 	}
 
-	fmt.Printf("workspace upgrade: %d upgraded, %d busy skipped, %d failed\n", upgraded, skipped, failed)
+	fmt.Printf("workspace upgrade: %d upgraded, %d busy skipped, %d need setup repair, %d failed\n", upgraded, skipped, setupFailed, failed)
 	if failed > 0 {
 		os.Exit(1)
 	}
@@ -90,49 +86,60 @@ func main() {
 func upgradeAll(
 	ctx context.Context,
 	projects *serviceproject.Service,
-	lifecycle *servicelifecycle.Service,
+	lifecycle serviceproject.ContainerLifecycle,
 	dryRun, includeBusy bool,
 	progress progressWriter,
 	restoreProject func(context.Context, string) error,
-) (upgraded, skipped, failed int, err error) {
+) (upgraded, skipped, setupFailed, failed int, err error) {
 	// This root-run maintenance command has no authenticated user. Upgrade is
 	// guarded by projects.controls.manage, so act as the explicit system actor.
 	ctx = rbac.ContextWithSystemActor(ctx)
 	metas, err := projects.List(ctx)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, 0, err
 	}
+	var setupFailures []string
 	total := len(metas)
 	if err := progress.write(0, total, "", "Preparing workspace migration"); err != nil {
 		log.Printf("progress: %v", err)
 	}
 
 	for index, meta := range metas {
+		if err := ctx.Err(); err != nil {
+			return upgraded, skipped, setupFailed, failed, err
+		}
+		// Budget each workspace independently: setup and app restoration for
+		// earlier projects must not consume the next project's migration time.
+		workspaceCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		message := fmt.Sprintf("Recycling workspace %d of %d", index+1, total)
-		if err := progress.write(index, total, meta.Slug, message); err != nil {
+		if err := progress.write(index, total, meta.Slug, message, setupFailures...); err != nil {
 			log.Printf("progress: %v", err)
 		}
-		state, stateErr := lifecycle.State(ctx, meta.ContainerName)
+		state, stateErr := lifecycle.State(workspaceCtx, meta.ContainerName)
 		if stateErr != nil {
+			cancel()
 			failed++
 			log.Printf("FAIL %s: inspect container: %v", meta.Slug, stateErr)
 			continue
 		}
 		busy := false
 		if state != serviceproject.ContainerStateMissing {
-			busy, err = lifecycle.Busy(ctx, meta.ContainerName)
+			busy, err = lifecycle.Busy(workspaceCtx, meta.ContainerName)
 			if err != nil {
+				cancel()
 				failed++
 				log.Printf("FAIL %s: inspect activity: %v", meta.Slug, err)
 				continue
 			}
 		}
 		if busy && !includeBusy {
+			cancel()
 			skipped++
 			log.Printf("SKIP %s: active agent process", meta.Slug)
 			continue
 		}
 		if dryRun {
+			cancel()
 			upgraded++
 			action := "replace"
 			if state == serviceproject.ContainerStateMissing {
@@ -142,31 +149,57 @@ func upgradeAll(
 			continue
 		}
 
-		if _, err := projects.Upgrade(ctx, meta.ID, includeBusy); err != nil {
+		updated, upgradeErr := projects.Upgrade(workspaceCtx, meta.ID, includeBusy)
+		if err := upgradeErr; err != nil {
 			if errors.Is(err, serviceproject.ErrProjectBusy) {
+				cancel()
 				skipped++
 				log.Printf("SKIP %s: active agent process", meta.Slug)
 				continue
 			}
-			failed++
-			log.Printf("FAIL %s: %v", meta.Slug, err)
-			continue
+			if !errors.Is(err, serviceproject.ErrSetupFailed) || updated.Status != serviceproject.StatusError || workspaceCtx.Err() != nil {
+				cancel()
+				failed++
+				log.Printf("FAIL %s: %v", meta.Slug, err)
+				continue
+			}
+			// Only a confirmed script failure is recoverable. A project script
+			// may also have stopped its container; that is not a healthy upgrade.
+			state, stateErr := lifecycle.State(workspaceCtx, meta.ContainerName)
+			if stateErr != nil || state != serviceproject.ContainerStateRunning {
+				cancel()
+				failed++
+				log.Printf("FAIL %s: container after setup failure: state=%s, error=%v; %v", meta.Slug, state, stateErr, err)
+				continue
+			}
+			setupFailed++
+			setupFailures = append(setupFailures, meta.Slug)
+			log.Printf("WARN %s: container upgraded; project setup needs repair: %v", meta.Slug, err)
 		}
-		if err := restoreProject(ctx, string(meta.ID)); err != nil {
-			failed++
-			log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
-			continue
+		if upgradeErr == nil {
+			if err := restoreProject(workspaceCtx, string(meta.ID)); err != nil {
+				cancel()
+				failed++
+				log.Printf("FAIL %s: restore applications: %v", meta.Slug, err)
+				continue
+			}
 		}
+		// A setup failure may leave application dependencies unavailable. Keep
+		// their running intent intact; setup recovery restores them after the
+		// repaired script passes verification.
+		cancel()
 		upgraded++
-		log.Printf("OK %s: persistent agent state migrated; container replaced and validated", meta.Slug)
-		if err := progress.write(index+1, total, "", message); err != nil {
+		if upgradeErr == nil {
+			log.Printf("OK %s: persistent agent state migrated; container replaced and validated", meta.Slug)
+		}
+		if err := progress.write(index+1, total, "", message, setupFailures...); err != nil {
 			log.Printf("progress: %v", err)
 		}
 	}
 
-	summary := fmt.Sprintf("Workspace migration complete: %d upgraded, %d busy skipped, %d failed", upgraded, skipped, failed)
-	if err := progress.write(total, total, "", summary); err != nil {
+	summary := fmt.Sprintf("Workspace migration complete: %d upgraded, %d busy skipped, %d need setup repair, %d failed", upgraded, skipped, setupFailed, failed)
+	if err := progress.write(total, total, "", summary, setupFailures...); err != nil {
 		log.Printf("progress: %v", err)
 	}
-	return upgraded, skipped, failed, nil
+	return upgraded, skipped, setupFailed, failed, nil
 }

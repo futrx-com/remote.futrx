@@ -361,11 +361,49 @@ has a 15-minute limit. Successful setup records the script checksum at
 The same script is skipped on later starts; a changed script or replacement
 container runs it again. Concurrent attempts serialize inside the container.
 
-A setup failure leaves the container available for repair and marks the
-project as errored with a bounded error message. Fix the script or credentials,
-then use Start or Restart to retry. Failed attempts never record success.
+A setup failure leaves the container available to agents and marks the
+project as errored with a bounded error message. Agent preparation bypasses
+only confirmed project-script failures in a running container; infrastructure
+errors still prevent agent startup. Failed attempts never record success.
 Setup output capture retains at most 64 KiB; displayed failures retain at most
 4 KiB of output and redact supplied secret values.
+
+Full infrastructure updates replace project containers. APT packages and other
+tools installed outside the durable mounts must therefore be reinstalled by
+`setup.sh`, even after a successful update. Application-only updates do not
+replace containers. Setup instructions must include the project's own required
+packages and referenced installer files.
+
+After maintenance and active project chats finish, Remote automatically creates
+an **Automatic setup repair** chat using the most recently used eligible project
+chat's provider, account, model, and permission settings. The originating user
+must still be registered and have project access. The recovery prompt asks the
+agent to back up and repair the actual script and required dependencies. It does
+not hardcode project-specific packages or authorize placeholder installers,
+disabled signature verification, credential changes, or publishing changes.
+
+One automatic repair is allowed per failed container setup, with a 30-minute
+deadline including verification. The durable attempt survives backend restarts;
+interrupted or unsuccessful attempts do not retry indefinitely. Projects without
+an eligible chat wait for one. The repair chat remains available for follow-up,
+and project settings show its status and link. Repairs run one project at a time
+and hold exclusive prompt admission for that project while running and verifying.
+
+Remote independently reruns the executable setup script, bypassing the success
+cache, before reporting recovery. Removing or disabling the script fails this
+check. Successful verification restores installed applications and clears the
+project error without replacing its container. Explicit Start or Restart remains
+available to retry a script repaired outside the automatic workflow.
+
+During a workspace upgrade, a failed project setup script is reported separately
+from infrastructure failures. If the replacement container is still running,
+the update completes with a list of projects that reported setup failures.
+Their application restoration waits until setup is repaired, preserving which
+applications should run. This historical update summary stays unchanged;
+current recovery status appears in each project's settings and repair chat.
+Automatic recovery starts after workspace maintenance releases its lock. Other
+projects are not recycled by a repair. Container, transport,
+state-storage, and application-restoration failures still fail the update.
 
 ## Container creation reliability
 

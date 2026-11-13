@@ -13,6 +13,8 @@ export function UpdateRunCard({
   applying?: boolean;
   onRetry?: (target: string) => Promise<void> | void;
 }) {
+  const setupFailures = run.progress?.setupFailures ?? [];
+
   return (
     <section class="rounded-card border border-line bg-surface overflow-hidden">
       <header class="px-4 py-3 border-b border-line">
@@ -50,6 +52,12 @@ export function UpdateRunCard({
         )}
         {run.state === "running" && run.progress && (
           <UpdateProgress progress={run.progress} />
+        )}
+        {setupFailures.length > 0 && (
+          <div class="mt-2 text-[12px] text-accent-yellow" role="status">
+            {setupFailures.length} {setupFailures.length === 1 ? "project reported a setup failure" : "projects reported setup failures"}: {setupFailures.join(", ")}.
+            {" "}Automatic repair is attempted after the update. Check each project's settings or Automatic setup repair chat for its current result.
+          </div>
         )}
         {run.state === "failed" && onRetry && (
           <button

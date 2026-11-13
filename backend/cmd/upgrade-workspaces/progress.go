@@ -8,12 +8,13 @@ import (
 )
 
 type workspaceProgress struct {
-	Phase       string `json:"phase"`
-	Message     string `json:"message"`
-	Completed   int    `json:"completed,omitempty"`
-	Total       int    `json:"total,omitempty"`
-	CurrentItem string `json:"currentItem,omitempty"`
-	UpdatedAt   int64  `json:"updatedAt"`
+	Phase         string   `json:"phase"`
+	Message       string   `json:"message"`
+	Completed     int      `json:"completed,omitempty"`
+	Total         int      `json:"total,omitempty"`
+	CurrentItem   string   `json:"currentItem,omitempty"`
+	UpdatedAt     int64    `json:"updatedAt"`
+	SetupFailures []string `json:"setupFailures,omitempty"`
 }
 
 type progressWriter struct {
@@ -25,17 +26,18 @@ func newProgressWriter(path string) progressWriter {
 	return progressWriter{path: path, now: time.Now}
 }
 
-func (w progressWriter) write(completed, total int, current, message string) error {
+func (w progressWriter) write(completed, total int, current, message string, setupFailures ...string) error {
 	if w.path == "" {
 		return nil
 	}
 	state := workspaceProgress{
-		Phase:       "workspace-migration",
-		Message:     message,
-		Completed:   completed,
-		Total:       total,
-		CurrentItem: current,
-		UpdatedAt:   w.now().Unix(),
+		Phase:         "workspace-migration",
+		Message:       message,
+		Completed:     completed,
+		Total:         total,
+		CurrentItem:   current,
+		UpdatedAt:     w.now().Unix(),
+		SetupFailures: setupFailures,
 	}
 	data, err := json.Marshal(state)
 	if err != nil {

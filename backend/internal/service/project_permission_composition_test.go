@@ -36,6 +36,18 @@ func (r *systemCallerRepository) SetStatus(
 	return serviceproject.Meta{ID: id, Slug: "alpha", Status: status}, nil
 }
 
+func (r *systemCallerRepository) Update(
+	ctx context.Context, id serviceproject.ID, mutate func(*serviceproject.Meta),
+) (serviceproject.Meta, error) {
+	m, err := r.Get(ctx, id)
+	if err != nil {
+		return serviceproject.Meta{}, err
+	}
+	mutate(&m)
+	r.status = m.Status
+	return m, nil
+}
+
 // realAuthorizerProjects builds the project service with the production
 // registry and a real permission service, and denies "member@example.com"
 // lifecycle and access management with explicit assignments.

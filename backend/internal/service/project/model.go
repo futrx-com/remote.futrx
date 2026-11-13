@@ -1,5 +1,7 @@
 package project
 
+import "strings"
+
 type ID string
 type Status string
 type ContainerState string
@@ -40,8 +42,23 @@ type Meta struct {
 	ResourceLimits *ContainerLimits `json:"resourceLimits,omitempty"`
 	Order          int64            `json:"order,omitempty"`
 	ErrorMsg       string           `json:"errorMsg,omitempty"`
+	SetupFailed    bool             `json:"setupFailed,omitempty"`
+	SetupRepair    *SetupRepair     `json:"setupRepair,omitempty"`
 	CreatedAt      int64            `json:"createdAt"`
 	UpdatedAt      int64            `json:"updatedAt"`
+}
+
+// SetupRepair is durable so a restart cannot launch the same automatic repair
+// again. The chat retains the complete repair transcript.
+type SetupRepair struct {
+	ChatID  string `json:"chatId,omitempty"`
+	State   string `json:"state"`
+	Message string `json:"message,omitempty"`
+}
+
+func (m Meta) NeedsSetupRepair() bool {
+	// Releases before this field persisted the typed error as text only.
+	return m.Status == StatusError && (m.SetupFailed || strings.HasPrefix(m.ErrorMsg, ErrSetupFailed.Error()+":"))
 }
 
 type CreateInput struct {

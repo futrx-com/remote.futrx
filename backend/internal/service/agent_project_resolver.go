@@ -23,7 +23,7 @@ func (r agentProjectResolver) Get(ctx context.Context, id agent.ProjectID) (agen
 // admitted to. Runs also start from background contexts that carry no
 // authenticated actor, so this is a reviewed trusted internal entry point.
 func (r agentProjectResolver) Start(ctx context.Context, id agent.ProjectID) (agent.Project, error) {
-	project, err := r.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
+	project, err := r.projects.StartForAgent(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
 	return projectForAgent(project), err
 }
 

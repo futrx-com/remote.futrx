@@ -165,6 +165,7 @@ type Service struct {
 	quota            QuotaRecorder
 	startGate        StartGate
 	interactions     interactionResponseRouter
+	projectRuns      projectAdmissions
 	audit            audit.Recorder
 }
 
@@ -225,9 +226,17 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 			return RunHandle{}, err
 		}
 	}
+	// Account authorization has no side effects, so it runs before admission
+	// reserves the project.
+	release, err := rnr.admitProject(parentCtx, input)
+	if err != nil {
+		emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
+		return RunHandle{}, err
+	}
 	ctx, cancel := context.WithCancel(parentCtx)
 	runID, ok := rnr.hub.StartRun(input.ChatID, cancel)
 	if !ok {
+		release()
 		cancel()
 		rnr.recordRun(parentCtx, audit.ActionAgentRunStart, input, ErrPromptAlreadyRunning)
 		emitTransient(ChatEvent{
@@ -241,6 +250,8 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 	done := make(chan RunResult, 1)
 	ledgerRunID := newLedgerRunID()
 	go func() {
+		defer cancel()
+		defer release()
 		defer close(done)
 		defer rnr.hub.FinishRun(input.ChatID, runID)
 		defer rnr.interactions.remove(input.ChatID, runID)
@@ -461,6 +472,7 @@ func (rnr *Service) runPromptAs(
 			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
 			ledger: ledger, emit: emit,
 		}
+		var completion *agent.Event
 		runErr := provider.Run(ctx, agent.RunRequest{
 			Provider:       providerID,
 			AccountID:      meta.AccountID,
@@ -481,7 +493,38 @@ func (rnr *Service) runPromptAs(
 			EnableBrowser:        enableBrowser,
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
-		}, relay.forward)
+		}, func(event agent.Event) {
+			if meta.SetupRepair && event.Type == agent.EventRunCompleted {
+				completion = &event
+				return
+			}
+			relay.forward(event)
+		})
+		if runErr == nil && meta.SetupRepair {
+			verifier, ok := rnr.projects.(interface {
+				VerifySetup(context.Context, serviceproject.ID) (serviceproject.Meta, error)
+			})
+			if !ok {
+				runErr = errors.New("project setup verifier unavailable")
+			} else {
+				_, runErr = verifier.VerifySetup(ctx, serviceproject.ID(meta.ProjectID))
+			}
+		}
+		if completion != nil {
+			if runErr != nil {
+				// The provider spent these tokens even when setup still fails.
+				// Keep its completion for accounting, with a failed turn status
+				// and a platform result instead of the agent's success summary.
+				completion.Status = "failed"
+				relay.emit = func(event ChatEvent) {
+					if event.Type == "complete" {
+						event.NotificationSummary = "Automatic setup repair did not pass verification. Open the repair chat for details."
+					}
+					emit(event)
+				}
+			}
+			relay.forward(*completion)
+		}
 		relay.finish()
 		return runErr
 	}

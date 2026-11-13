@@ -5,13 +5,16 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/shared/output"
 )
 
@@ -29,14 +32,21 @@ const (
 const setupCommand = `set -eu
 script="$1"
 marker="$2"
-if [ ! -f "$script" ] || [ ! -x "$script" ]; then exit 0; fi
+verify="${3:-false}"
+if [ ! -f "$script" ] || [ ! -x "$script" ]; then
+  if [ "$verify" = true ]; then echo "setup.sh must exist and remain executable" >&2; exit 78; fi
+  exit 0
+fi
 umask 077
 mkdir -p "$(dirname "$marker")"
 exec 9>"$marker.lock"
 flock --exclusive 9
+if [ "$verify" = true ]; then rm -f "$marker"; fi
 checksum=$(sha256sum "$script")
-if [ -f "$marker" ] && [ "$(cat "$marker")" = "$checksum" ]; then exit 0; fi
-bash -e "$script" 9>&-
+if [ "$verify" != true ] && [ -f "$marker" ] && [ "$(cat "$marker")" = "$checksum" ]; then exit 0; fi
+# Reserve an exit code for the project script so LXD/marker failures remain
+# infrastructure errors. The outer timeout reports 124 for overlong setup.
+bash -e "$script" 9>&- || exit 78
 printf '%s\n' "$checksum" > "$marker.tmp"
 mv "$marker.tmp" "$marker"
 `
@@ -48,6 +58,14 @@ func NewProvisioner(runner command.Runner) *Provisioner { return &Provisioner{ru
 // Ensure restores setup once per script revision in each container. Explicit
 // environment values also support multiline secrets, which LXD config rejects.
 func (p *Provisioner) Ensure(ctx context.Context, containerName string, environment map[string]string) error {
+	return p.run(ctx, containerName, environment, false)
+}
+
+func (p *Provisioner) Verify(ctx context.Context, containerName string, environment map[string]string) error {
+	return p.run(ctx, containerName, environment, true)
+}
+
+func (p *Provisioner) run(ctx context.Context, containerName string, environment map[string]string, verify bool) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}
@@ -61,14 +79,24 @@ func (p *Provisioner) Ensure(ctx context.Context, containerName string, environm
 		args = append(args, "--env", key+"="+environment[key])
 	}
 	args = append(args, "--", "timeout", "--kill-after=5s", "15m", "bash", "-c", setupCommand, "remote-user-setup", setupScriptPath, setupMarkerPath)
+	if verify {
+		args = append(args, "true")
+	}
 	// Setup output may contain credentials. Do not stream it into an outer log.
 	ctx = command.WithCaptureLimit(command.WithOutput(ctx, io.Discard), setupOutputLimit)
 	out, err := command.RunWithTimeout(ctx, p.runner, setupRunTimeout, args...)
 	if err != nil {
+		var exitErr *exec.ExitError
+		scriptFailed := errors.As(err, &exitErr) && (exitErr.ExitCode() == 78 || exitErr.ExitCode() == 124)
 		if ctx.Err() != nil {
 			err = ctx.Err()
+			scriptFailed = false
 		}
-		return fmt.Errorf("run %s: %w; %s; fix the script and Start the project to retry", setupScriptPath, err, failureOutput(out, environment))
+		failure := fmt.Errorf("run %s: %w; %s", setupScriptPath, err, failureOutput(out, environment))
+		if scriptFailed {
+			return fmt.Errorf("%w: %w", project.ErrSetupFailed, failure)
+		}
+		return failure
 	}
 	return nil
 }
