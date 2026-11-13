@@ -16,7 +16,9 @@ func PermissionDefinitions() []rbac.Definition {
 	for _, capability := range []string{"terminal", "files", "git", "browser"} {
 		out = append(out,
 			rbac.Definition{Key: rbac.Key("workspace." + capability + ".use"), Description: "Use project " + capability + " controls.", Scopes: []rbac.ScopeKind{rbac.ScopeProject}, Baseline: rbac.BaselineProjectMember, Delegable: true},
-			rbac.Definition{Key: rbac.Key("workspace.host" + capability + ".use"), Description: "Use host " + capability + " controls.", Scopes: []rbac.ScopeKind{rbac.ScopePlatform}, Baseline: rbac.BaselineAdmin, Delegable: true},
+			// Chats outside a project have always offered these tools to every
+			// registered user; keep that default and let administrators deny it.
+			rbac.Definition{Key: rbac.Key("workspace.host" + capability + ".use"), Description: "Use " + capability + " controls in chats outside a project.", Scopes: []rbac.ScopeKind{rbac.ScopePlatform}, Baseline: rbac.BaselineAuthenticated, Delegable: true},
 		)
 	}
 	return out
