@@ -100,7 +100,14 @@ export function ChatRow({
           class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 pr-2 text-left"
         >
           <span class="grid h-4 w-4 flex-none place-items-center">
-            {chat.running ? (
+            {chat.awaitingAnswer ? (
+              <span
+                class="h-2 w-2 rounded-full bg-accent-blue"
+                role="img"
+                aria-label="Needs your answer"
+                title="Needs your answer"
+              />
+            ) : chat.running ? (
               <Loader class="h-3.5 w-3.5 animate-spin text-accent-blue" />
             ) : unread ? (
               <span class="h-2 w-2 rounded-full bg-accent-green" title="Unread" />

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -72,7 +73,17 @@ func (r notifyingChatRepository) appendEvent(
 	if err != nil {
 		return next, err
 	}
-	if eventUpdatesWorkspace(next.Type) {
+	questionEvent := servicechat.IsQuestionRequest(next) || next.Type == "interaction_resolved" ||
+		next.Type == "user" || next.Type == "complete" || next.Type == "error" || next.Type == "turn_status"
+	questionChanged := false
+	if notify && questionEvent {
+		if _, err := r.Repository.Update(ctx, id, func(meta *servicechat.Meta) {
+			meta.QuestionState, questionChanged = meta.QuestionState.Apply(next)
+		}); err != nil {
+			return next, fmt.Errorf("update question state: %w", err)
+		}
+	}
+	if questionChanged || eventUpdatesWorkspace(next.Type) {
 		r.publishChat(ctx, id)
 	}
 	if notify {
@@ -88,6 +99,11 @@ func (r notifyingChatRepository) TruncateEventsBefore(
 ) ([]servicechat.Event, error) {
 	events, err := r.Repository.TruncateEventsBefore(ctx, id, beforeT)
 	if err == nil {
+		if _, err := r.Repository.Update(ctx, id, func(meta *servicechat.Meta) {
+			meta.QuestionState = servicechat.QuestionState{}
+		}); err != nil {
+			return events, fmt.Errorf("clear rewound question state: %w", err)
+		}
 		r.publishChat(ctx, id)
 	}
 	return events, err
@@ -103,6 +119,7 @@ func (r notifyingChatRepository) withRunning(meta servicechat.Meta) servicechat.
 	if r.running != nil {
 		meta.Running = r.running(meta.ID)
 	}
+	meta.AwaitingAnswer = meta.QuestionState.AwaitingAnswer(meta.Running)
 	return meta
 }
 

@@ -126,3 +126,23 @@ test("detects approval and sandbox preference changes from a workspace upsert", 
   assert.notEqual(sandboxChanged, current);
   assert.equal(sandboxChanged[0].sandboxPolicy, "dangerFullAccess");
 });
+
+test("question-only workspace updates reach the sidebar and can clear status", () => {
+  const current: ChatMeta[] = [{
+    id: "chat", title: "Chat", createdAt: 1, lastMessageAt: 1, running: true,
+  }];
+  const waiting = workspaceDataProjector.upsertChat(current, {
+    ...current[0], awaitingAnswer: true,
+  });
+  assert.notEqual(waiting, current);
+  assert.equal(waiting[0].awaitingAnswer, true);
+  assert.equal(waiting[0].running, true);
+
+  const resolved = workspaceDataProjector.upsertChat(waiting, current[0]);
+  assert.notEqual(resolved, waiting);
+  assert.equal(resolved[0].awaitingAnswer, undefined);
+  assert.equal(resolved[0].running, true);
+  assert.equal(workspaceDataProjector.upsertChat(resolved, {
+    ...resolved[0], awaitingAnswer: false,
+  }), resolved);
+});
