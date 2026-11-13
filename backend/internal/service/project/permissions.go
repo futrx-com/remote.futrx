@@ -24,7 +24,7 @@ const (
 // registered-user creation and project-member lifecycle/access behavior.
 func PermissionDefinitions() []permission.Definition {
 	return []permission.Definition{
-		{Key: PermissionControlsManage, Description: "Rename, delete, upgrade and change project resource limits.", Scopes: []permission.ScopeKind{permission.ScopeProject}, Baseline: permission.BaselineProjectMember, Delegable: true},
+		{Key: PermissionControlsManage, Description: "Rename and upgrade a project. Deleting it and changing resource limits stay administrator-only.", Scopes: []permission.ScopeKind{permission.ScopeProject}, Baseline: permission.BaselineProjectMember, Delegable: true},
 		{Key: PermissionSecretsManage, Description: "Read and change project secrets.", Scopes: []permission.ScopeKind{permission.ScopeProject}, Baseline: permission.BaselineProjectMember, Delegable: true},
 		{Key: PermissionCreate, Description: "Create a project.", Scopes: []permission.ScopeKind{permission.ScopePlatform}, Baseline: permission.BaselineAuthenticated, Delegable: true},
 		{
