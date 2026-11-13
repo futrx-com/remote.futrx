@@ -11,6 +11,7 @@ export function usePromptQueue({
   chatId,
   status,
   canSendPrompt,
+  suspended = false,
   sendPrompt,
   promptOutcome,
   onSent,
@@ -18,6 +19,7 @@ export function usePromptQueue({
   chatId: string;
   status: ChatStatus;
   canSendPrompt: boolean;
+  suspended?: boolean;
   sendPrompt: (text: string, clientId?: string) => boolean;
   promptOutcome: PromptOutcome | null;
   onSent: () => void;
@@ -63,11 +65,11 @@ export function usePromptQueue({
   }, [status, canSendPrompt]);
 
   useEffect(() => {
-    const next = promptQueueState.nextDispatch(queuedPrompts, inflightId, status, canSendPrompt);
+    const next = promptQueueState.nextDispatch(queuedPrompts, inflightId, status, canSendPrompt && !suspended);
     if (!next) return;
     if (!sendPrompt(next.text, next.id)) return;
     setInflightId(next.id);
-  }, [status, canSendPrompt, queuedPrompts, inflightId, sendPrompt]);
+  }, [status, canSendPrompt, suspended, queuedPrompts, inflightId, sendPrompt]);
 
   return {
     queuedPrompts,
