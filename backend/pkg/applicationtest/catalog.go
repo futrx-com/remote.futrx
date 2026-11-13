@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	hostapps "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
 	catalogapps "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/pkg/applications"
@@ -74,7 +75,8 @@ func BackendRoutes(t *testing.T, id string, want []string) {
 }
 
 // BuildContainer compiles the actual source payload from the public generated
-// install script. It never executes provisioning commands from that script.
+// install script with the pinned container Go toolchain. It never executes
+// provisioning commands from that script.
 func BuildContainer(t *testing.T, script []byte, command string) {
 	t.Helper()
 	if testing.Short() {
@@ -136,7 +138,8 @@ func BuildContainer(t *testing.T, script []byte, command string) {
 	defer cancel()
 	build := exec.CommandContext(ctx, goTool, "build", "-mod=mod", "-buildvcs=false", "-o", filepath.Join(t.TempDir(), command), "./cmd/"+command)
 	build.Dir = directory
-	build.Env = append(os.Environ(), "GOWORK=off", "CGO_ENABLED=0")
+	build.Env = append(os.Environ(), "GOWORK=off", "CGO_ENABLED=0",
+		"GOTOOLCHAIN=go"+constants.ApplicationContainerGoVersion)
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("generated container module: %v\n%s", err, output)
 	}
