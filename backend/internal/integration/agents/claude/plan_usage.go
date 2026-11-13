@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	"io"
 	"log"
 	"math"
@@ -69,7 +70,7 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 // record by the same rules as a run.
 func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) agent.AccountPlanUsage {
 	usage := agent.AccountPlanUsage{AccountID: accountID}
-	saved, _, err := p.accounts.CredentialForRun(accountID)
+	saved, _, err := p.accounts.CredentialForRun(rbac.ContextWithSystemActor(ctx), accountID)
 	if err != nil {
 		usage.Err = err
 		return usage

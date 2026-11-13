@@ -61,6 +61,7 @@ type APIKeyService struct {
 	validator     APIKeyValidator
 	accountsStore AccountStore
 	accountLabel  string
+	authorizer    AccountAuthorizer
 
 	mutationMu sync.Mutex
 	mu         sync.RWMutex
@@ -142,9 +143,10 @@ func NewAPIKeyService(
 	id agent.ProviderID,
 	store APIKeyStore,
 	validator APIKeyValidator,
+	authorizer AccountAuthorizer,
 ) (*APIKeyService, error) {
 	service := &APIKeyService{
-		id: id, store: store, validator: validator,
+		id: id, store: store, validator: validator, authorizer: authorizer,
 		subs: make(map[chan APIKeyStatus]struct{}),
 	}
 	if store == nil {
@@ -200,6 +202,63 @@ func (s *APIKeyService) APIKeyFor(accountID string) (string, bool) {
 		return s.key, s.key != "" && strings.TrimSpace(accountID) == ""
 	}
 	return apiKeyFromAccounts(s.accounts, strings.TrimSpace(accountID))
+}
+
+// RunAPIKey is a private runtime credential paired with its resolved account.
+// It is never returned by an auth transport.
+type RunAPIKey struct {
+	AccountID string
+	Key       string
+}
+
+// APIKeyForRun authorizes the actual selected account while holding the same
+// lock used to acquire its key. A changed default cannot substitute a different
+// account between permission evaluation and credential acquisition.
+func (s *APIKeyService) APIKeyForRun(ctx context.Context, accountID string) (RunAPIKey, bool, error) {
+	if s == nil {
+		return RunAPIKey{}, false, ErrAPIKeyStoreUnavailable
+	}
+	accountID = strings.TrimSpace(accountID)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.accountsStore != nil && accountID == "" {
+		accountID = s.accounts.ActiveAccountID
+	}
+	if err := RequireAccountUse(ctx, s.authorizer, s.id, accountID); err != nil {
+		return RunAPIKey{}, false, err
+	}
+	if s.accountsStore == nil {
+		if accountID != "" {
+			return RunAPIKey{}, false, ErrAccountNotFound
+		}
+		return RunAPIKey{Key: s.key}, s.key != "", nil
+	}
+	key, ok := apiKeyFromAccounts(s.accounts, accountID)
+	return RunAPIKey{AccountID: accountID, Key: key}, ok, nil
+}
+
+// RequireRunAccess rechecks the exact account paired with an acquired key.
+// It deliberately does not resolve an empty ID again: that credential belongs
+// to the default scope even if a saved account became active during setup.
+func (s *APIKeyService) RequireRunAccess(ctx context.Context, accountID string) error {
+	if s == nil {
+		return ErrAPIKeyStoreUnavailable
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := RequireAccountUse(ctx, s.authorizer, s.id, accountID); err != nil {
+		return err
+	}
+	if s.accountsStore == nil {
+		if accountID == "" && s.key != "" {
+			return nil
+		}
+	} else if accountID != "" {
+		if _, ok := apiKeyFromAccounts(s.accounts, accountID); ok {
+			return nil
+		}
+	}
+	return ErrAccountNotFound
 }
 
 func apiKeyFromAccounts(accounts AccountSet, accountID string) (string, bool) {
@@ -266,6 +325,9 @@ func (s *APIKeyService) Set(ctx context.Context, key string) error {
 	if s == nil || s.store == nil {
 		return ErrAPIKeyStoreUnavailable
 	}
+	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
+		return err
+	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	if s.validator != nil {
@@ -292,6 +354,9 @@ func (s *APIKeyService) SetAccount(ctx context.Context, label, accountID, key st
 	}
 	if s == nil || !s.AccountsEnabled() {
 		return ErrAPIKeyStoreUnavailable
+	}
+	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
+		return err
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -351,6 +416,9 @@ func (s *APIKeyService) SetAccount(ctx context.Context, label, accountID, key st
 func (s *APIKeyService) Delete(ctx context.Context) error {
 	if s == nil || s.store == nil {
 		return ErrAPIKeyStoreUnavailable
+	}
+	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
+		return err
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
@@ -414,6 +482,9 @@ func (s *APIKeyService) ActivateAccount(ctx context.Context, accountID string) e
 	if s == nil || !s.AccountsEnabled() {
 		return ErrUnsupportedFlow
 	}
+	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
+		return err
+	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
 	s.mu.RLock()
@@ -437,6 +508,9 @@ func (s *APIKeyService) ActivateAccount(ctx context.Context, accountID string) e
 func (s *APIKeyService) DeleteAccount(ctx context.Context, accountID string) error {
 	if s == nil || !s.AccountsEnabled() {
 		return ErrUnsupportedFlow
+	}
+	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
+		return err
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()

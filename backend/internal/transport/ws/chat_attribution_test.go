@@ -32,7 +32,7 @@ func (r attributionRunner) Start(input serviceprompt.StartInput, _ func(servicec
 	r.inputs <- input
 	return serviceprompt.RunHandle{}, nil
 }
-func (attributionRunner) CancelPrompt(servicechat.ID) bool { return false }
+func (attributionRunner) CancelPrompt(context.Context, servicechat.ID) bool { return false }
 func (attributionRunner) RespondInteraction(servicechat.ID, agent.InteractionResponse) error {
 	return nil
 }

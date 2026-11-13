@@ -74,7 +74,7 @@ func TestReadPlanUsageReadsEverySavedAccountInItsOwnHome(t *testing.T) {
 		},
 	}}
 	provider := newTestRuntime(agentmodule.BuildDependencies{
-		Accounts: agentauth.NewAccountVault(store),
+		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
 	}).Lookup(agent.ProviderClaude).(*Provider)
 
 	usages := provider.ReadPlanUsage(context.Background())
@@ -130,7 +130,7 @@ func TestReadPlanUsageReadsTheHostLoginOnlyWhileNoAccountIsActive(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			store := &memoryAccountStore{accounts: test.accounts}
 			provider := newTestRuntime(agentmodule.BuildDependencies{
-				Accounts: agentauth.NewAccountVault(store),
+				Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
 			}).Lookup(agent.ProviderClaude).(*Provider)
 			var got []string
 			for _, usage := range provider.ReadPlanUsage(context.Background()) {

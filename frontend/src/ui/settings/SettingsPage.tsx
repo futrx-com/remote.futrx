@@ -1,5 +1,7 @@
+import type { ProjectMeta } from "../../models/project";
 import type { AppearanceTheme } from "../../models/settings";
 import type { UserDirectory } from "../../state/hooks/users/useUserDirectory";
+import type { AuditLog } from "../../state/hooks/admin/useAuditLog";
 import type { ServerInfo } from "../../models/serverInfo";
 import type { SelfUpdateStatus } from "../../models/selfUpdate";
 import type { SecuritySettingsController } from "../../state/hooks/auth/useSecuritySettings";
@@ -23,15 +25,19 @@ import { AppearanceSettings } from "./AppearanceSettings";
 import { NotificationSettings } from "./NotificationSettings";
 import { AgentAuthSettingsList } from "./AgentAuthSettings";
 import { EmailSettings } from "./email/EmailSettings";
+import { AuditLogSettings } from "./AuditLogSettings";
 import { GoogleOAuthSettings } from "./GoogleOAuthSettings";
+import { PermissionsSettings } from "./PermissionsSettings";
 import { SecuritySettings } from "./SecuritySettings";
 import { ServerInfoSettings } from "./ServerInfoSettings";
 import { UpdatesSettings } from "./UpdatesSettings";
 import { UsageSettings } from "./UsageSettings";
 import { UsersPanel } from "../account/UsersPanel";
+import { PLATFORM_SCOPE } from "../../config/constants/user-roles";
 import type { UsageDashboard } from "../../state/hooks/usage/useUsageDashboard";
 import { ApplicationsSection } from "../applications/ApplicationsSection";
 import type { ApplicationsController } from "../../state/hooks/applications/useApplications";
+import type { PermissionsController } from "../../state/hooks/permissions/usePermissionAdministration";
 
 import type { SettingsTab } from "../../models/workspace";
 import type { ReleaseNotesController } from "../../state/hooks/server/useReleaseNotes";
@@ -42,6 +48,8 @@ const tabs: Array<{
   label: string;
   description: string;
   Icon: ComponentType<{ class?: string }>;
+  // Hidden from non-admins instead of showing a notice.
+  adminOnly?: boolean;
 }> = [
   {
     id: "appearance",
@@ -66,12 +74,25 @@ const tabs: Array<{
     label: "Usage",
     description: "Track token usage per project, user, provider, and model.",
     Icon: Activity,
+    adminOnly: true,
   },
   {
     id: "users",
     label: "Users",
     description: "Control who can access this server.",
     Icon: Users,
+  },
+  {
+    id: "permissions",
+    label: "Permissions",
+    description: "Roles, assignments, and bindings.",
+    Icon: ShieldCheck,
+  },
+  {
+    id: "audit",
+    label: "Audit log",
+    description: "Review who did what on this server.",
+    Icon: Activity,
   },
   {
     id: "security",
@@ -106,7 +127,7 @@ const tabs: Array<{
 ];
 
 export function SettingsPage({
-  activeTab,
+  activeTab: requestedTab,
   currentEmail,
   isAdmin,
   googleOAuthEnabled,
@@ -122,6 +143,7 @@ export function SettingsPage({
   selfUpdateRestarting,
   selfUpdateError,
   userDirectory,
+  auditLog,
   usageDashboard,
   usageRebuilding,
   usageRebuildMessage,
@@ -140,6 +162,8 @@ export function SettingsPage({
   onApplyUpdate,
   onAppearanceThemeChange,
   applications,
+  permissions,
+  projects,
 }: {
   activeTab: SettingsTab;
   currentEmail: string;
@@ -157,6 +181,7 @@ export function SettingsPage({
   selfUpdateRestarting: boolean;
   selfUpdateError: string | null;
   userDirectory: UserDirectory;
+  auditLog: AuditLog;
   usageDashboard: UsageDashboard;
   usageRebuilding: boolean;
   usageRebuildMessage: string | null;
@@ -175,7 +200,13 @@ export function SettingsPage({
   onApplyUpdate: (tag?: string) => Promise<void>;
   onAppearanceThemeChange: (theme: AppearanceTheme) => void;
   applications: ApplicationsController;
+  permissions: PermissionsController;
+  projects: ProjectMeta[];
 }) {
+  // A non-admin who opens an admin-only tab by URL lands on the first tab.
+  const activeTab = tabs.some((tab) => tab.id === requestedTab && tab.adminOnly && !isAdmin)
+    ? tabs[0].id
+    : requestedTab;
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
@@ -206,11 +237,13 @@ export function SettingsPage({
       <div class="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         <SettingsNavigation
           activeTab={activeTab}
+          isAdmin={isAdmin}
           onTabChange={onTabChange}
           className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <SettingsNavigation
           activeTab={activeTab}
+          isAdmin={isAdmin}
           onTabChange={onTabChange}
           mobile
           className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
@@ -284,11 +317,48 @@ export function SettingsPage({
                   onAdd={userDirectory.add}
                   onRemove={userDirectory.remove}
                   onSetRole={userDirectory.setRole}
+                  customRoles={permissions.roles}
+                  bindings={permissions.bindings}
+                  onBindRole={(userEmail, roleId) =>
+                    permissions.addBinding({ roleId, userEmail, scope: PLATFORM_SCOPE })
+                  }
+                  onUnbindRole={(userEmail, roleId) =>
+                    permissions.removeBinding({ roleId, userEmail, scope: PLATFORM_SCOPE })
+                  }
                 />
               </div>
             )}
 
+            {activeTab === "audit" &&
+              (isAdmin ? (
+                <AuditLogSettings
+                  entries={auditLog.entries}
+                  filters={auditLog.filters}
+                  loading={auditLog.loading}
+                  loadingMore={auditLog.loadingMore}
+                  hasMore={auditLog.hasMore}
+                  error={auditLog.error}
+                  exportUrl={auditLog.exportUrl}
+                  onFiltersChange={auditLog.setFilters}
+                  onRefresh={auditLog.refresh}
+                  onLoadMore={auditLog.loadMore}
+                />
+              ) : (
+                <SettingsNotice>
+                  The audit log is visible to server administrators only.
+                </SettingsNotice>
+              ))}
+
             {activeTab === "security" && <SecuritySettings controller={security} />}
+
+            {activeTab === "permissions" &&
+              (isAdmin ? (
+                <PermissionsSettings permissions={permissions} projects={projects} />
+              ) : (
+                <SettingsNotice>
+                  Permissions are managed by server administrators.
+                </SettingsNotice>
+              ))}
 
             {activeTab === "applications" &&
               (isAdmin ? (
@@ -348,11 +418,13 @@ export function SettingsPage({
 
 function SettingsNavigation({
   activeTab,
+  isAdmin,
   onTabChange,
   mobile = false,
   className,
 }: {
   activeTab: SettingsTab;
+  isAdmin: boolean;
   onTabChange: (tab: SettingsTab) => void;
   mobile?: boolean;
   className: string;
@@ -364,7 +436,7 @@ function SettingsNavigation({
         role="tablist"
         aria-orientation={mobile ? "horizontal" : "vertical"}
       >
-        {tabs.map(({ id, label, Icon }) => {
+        {tabs.filter((tab) => isAdmin || !tab.adminOnly).map(({ id, label, Icon }) => {
           const active = id === activeTab;
           return (
             <button

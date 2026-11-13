@@ -4,6 +4,8 @@ import (
 	"context"
 	"regexp"
 	"time"
+
+	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
 // emailPattern is intentionally permissive: anything with a non-empty local
@@ -15,6 +17,7 @@ var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 type Service struct {
 	repo    Repository
 	cleanup RemovalCleanup
+	audit   audit.Recorder
 }
 
 // Option configures an optional user-service collaborator.
@@ -28,11 +31,25 @@ func WithRemovalCleanup(cleanup RemovalCleanup) Option {
 }
 
 func New(repo Repository, options ...Option) *Service {
-	service := &Service{repo: repo}
+	service := &Service{repo: repo, audit: audit.Nop{}}
 	for _, option := range options {
 		option(service)
 	}
 	return service
+}
+
+// WithAudit records directory changes (invites, removals, role changes) to
+// the audit log.
+func WithAudit(recorder audit.Recorder) Option {
+	return func(s *Service) { s.audit = audit.RecorderOrNop(recorder) }
+}
+
+func (s *Service) record(ctx context.Context, action, email string, meta audit.Meta, err error) {
+	if s == nil || s.audit == nil {
+		return
+	}
+	target := audit.Target{Type: audit.TargetUser, ID: NormalizeEmail(email), Name: NormalizeEmail(email)}
+	s.audit.Record(ctx, audit.Result(action, target, meta, err))
 }
 
 func (s *Service) List(ctx context.Context) ([]User, error) {
@@ -86,6 +103,12 @@ func (s *Service) IsAdmin(ctx context.Context, email string) (bool, error) {
 // Add validates email + role, lowercases, fails if the user already exists.
 // addedBy is the admin who initiated the add (empty for bootstrap).
 func (s *Service) Add(ctx context.Context, email string, role Role, addedBy string) (User, error) {
+	user, err := s.add(ctx, email, role, addedBy)
+	s.record(ctx, audit.ActionUserInvite, email, audit.Meta{"role": string(role), "addedBy": NormalizeEmail(addedBy)}, err)
+	return user, err
+}
+
+func (s *Service) add(ctx context.Context, email string, role Role, addedBy string) (User, error) {
 	if s == nil || s.repo == nil {
 		return User{}, ErrUserNotFound
 	}
@@ -117,6 +140,12 @@ func (s *Service) Add(ctx context.Context, email string, role Role, addedBy stri
 
 // Remove refuses to delete the last admin so the box can't lock its owners out.
 func (s *Service) Remove(ctx context.Context, email string) error {
+	err := s.remove(ctx, email)
+	s.record(ctx, audit.ActionUserRemove, email, nil, err)
+	return err
+}
+
+func (s *Service) remove(ctx context.Context, email string) error {
 	if s == nil || s.repo == nil {
 		return ErrUserNotFound
 	}
@@ -150,6 +179,12 @@ func (s *Service) Remove(ctx context.Context, email string) error {
 
 // SetRole refuses to demote the last admin.
 func (s *Service) SetRole(ctx context.Context, email string, role Role) (User, error) {
+	user, err := s.setRole(ctx, email, role)
+	s.record(ctx, audit.ActionUserRoleChange, email, audit.Meta{"role": string(role)}, err)
+	return user, err
+}
+
+func (s *Service) setRole(ctx context.Context, email string, role Role) (User, error) {
 	if s == nil || s.repo == nil {
 		return User{}, ErrUserNotFound
 	}

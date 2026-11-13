@@ -54,6 +54,8 @@ export interface AgentAuthAccount {
 }
 
 export interface AgentAuthAccountsSnapshot {
+  defaultAllowed?: boolean;
+  defaultOnly?: boolean;
   activeAccountId?: string;
   items: AgentAuthAccount[];
 }

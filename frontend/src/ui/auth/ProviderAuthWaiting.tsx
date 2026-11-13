@@ -9,20 +9,19 @@ export function ProviderAuthWaiting({ adminEmail }: { adminEmail?: string }) {
             <Key class="w-6 h-6 text-accent-blue" />
           </div>
           <div>
-            <div class="text-lg font-semibold">Waiting for an AI provider</div>
+            <div class="text-lg font-semibold">You don't have access to an AI provider yet</div>
             <div class="text-xs text-ink-300 mt-1.5 leading-relaxed">
-              An admin
+              Ask an admin
               {adminEmail ? (
                 <> (<span class="font-mono text-ink-100">{adminEmail}</span>)</>
               ) : null}{" "}
-              must finish setting up one of the configured coding agents before
-              the workspace opens. This page will continue automatically once
-              an access-gate agent is ready.
+              to give you access to an AI provider account. This page continues
+              automatically once you have access.
             </div>
           </div>
         </div>
         <div class="flex items-center justify-center gap-2 text-ink-300 text-sm">
-          <Loader class="w-4 h-4 animate-spin" /> Listening for authentication…
+          <Loader class="w-4 h-4 animate-spin" /> Waiting for access…
         </div>
       </div>
     </div>

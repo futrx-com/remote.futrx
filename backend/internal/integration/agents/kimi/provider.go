@@ -3,14 +3,17 @@ package kimi
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type Provider struct {
+	accountAuthorizer     agentauth.AccountAuthorizer
 	projectPreparer       agent.ProjectPreparer
 	credentialCollector   provisioning.CredentialCollector
 	profile               provisioning.Profile
@@ -22,9 +25,11 @@ func newProvider(
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
+	accountAuthorizer agentauth.AccountAuthorizer,
 ) *Provider {
 	return &Provider{
 		projectPreparer:       projectPreparer,
+		accountAuthorizer:     accountAuthorizer,
 		credentialCollector:   credentialCollector,
 		profile:               profile.Clone(),
 		credentialSyncTimeout: credentialSyncTimeout,
@@ -40,6 +45,12 @@ func (p *Provider) Parser(req agent.RunRequest) agent.LineParser {
 }
 
 func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderKimi, ""); err != nil {
+		return err
+	}
+	if strings.TrimSpace(req.AccountID) != "" {
+		return agentauth.ErrAccountNotFound
+	}
 	if emit == nil {
 		emit = func(agent.Event) {}
 	}
@@ -53,6 +64,9 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 
 	cmd, containerName, err := p.buildCmd(ctx, req, p.args(req), emit)
 	if err != nil {
+		return err
+	}
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderKimi, ""); err != nil {
 		return err
 	}
 	err = agentruntime.RunProcess(ctx, cmd, p.Parser(req), emit, agentruntime.ProcessOptions{

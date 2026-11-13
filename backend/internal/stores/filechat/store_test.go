@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -442,7 +443,7 @@ func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
 }
 
 func TestPromptAuthorsSurviveReopenAndFork(t *testing.T) {
-	ctx := context.Background()
+	ctx := rbac.ContextWithSystemActor(context.Background())
 	root := t.TempDir()
 	store, err := New(root)
 	if err != nil {

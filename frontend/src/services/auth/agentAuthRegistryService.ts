@@ -6,8 +6,15 @@ import type {
 
 // Questions the app asks of the agent-auth provider list: how one provider
 // reads, whether the access gate is open, what changed since last time, and
-// which managed agents the composer must refuse.
+// which agents the composer must refuse.
 class AgentAuthRegistryService {
+  supportsSavedAccounts(entry: AgentAuthProvider): boolean {
+    return !!entry.status.accounts
+      && !entry.status.accounts.defaultOnly
+      && entry.authentication.mode !== "external"
+      && entry.authentication.mode !== "none";
+  }
+
   statusKind(entry: AgentAuthProvider): AgentAuthStatusKind {
     if (entry.authentication.mode === "none") return "no-auth";
     if (entry.status.authenticated) return "authenticated";
@@ -26,27 +33,40 @@ class AgentAuthRegistryService {
   }
 
   gateReady(providers: AgentAuthProvider[]): boolean {
-    return providers.some(
-      (entry) => entry.authentication.satisfiesAccessGate && entry.status.authenticated,
-    );
+    return providers.some((entry) => {
+      const accounts = entry.status.accounts;
+      if (accounts?.defaultAllowed !== undefined) {
+        // A member's filtered catalog answers whether they can use an agent.
+        // Deployment onboarding readiness is enforced separately by the server.
+        const hasAccountAccess = accounts.defaultAllowed || accounts.items.length > 0;
+        return hasAccountAccess
+          && (entry.authentication.mode === "external" || entry.status.authenticated);
+      }
+      return entry.authentication.satisfiesAccessGate && entry.status.authenticated;
+    });
   }
 
-  /** A value that changes whenever a managed login does — what effects watch
+  /** A value that changes whenever a login or account grant does — what effects watch
    *  instead of the provider array, which is rebuilt on every poll. */
   revision(providers: AgentAuthProvider[]): string {
     return providers
-      .filter((entry) => entry.authentication.mode !== "external")
+      .filter((entry) => entry.authentication.mode !== "external"
+        || entry.status.accounts?.defaultAllowed !== undefined)
       .map((entry) => {
         const completion = entry.status.login.completed
           ? String(entry.status.login.startedAt || "completed")
           : "";
         const activeAccount = entry.status.accounts?.activeAccountId || "";
-        return `${entry.provider}:${entry.status.authenticated ? "1" : "0"}:${activeAccount}:${completion}`;
+        const accounts = entry.status.accounts;
+        const access = accounts?.defaultAllowed === undefined
+          ? ""
+          : JSON.stringify([accounts.defaultAllowed, accounts.items.map((account) => account.id)]);
+        return `${entry.provider}:${entry.status.authenticated ? "1" : "0"}:${activeAccount}:${completion}:${access}`;
       })
       .join("|");
   }
 
-  /** Managed agents that cannot be picked yet, mapped to the reason shown in
+  /** Agents that cannot be picked yet, mapped to the reason shown in
    *  the composer. Empty until the auth snapshot has actually been checked,
    *  so a slow first load never blames the user for not logging in. */
   unavailableReasons(
@@ -56,6 +76,10 @@ class AgentAuthRegistryService {
     if (!checked) return {};
     const unavailable: Partial<Record<string, string>> = {};
     for (const entry of providers) {
+      if (entry.status.accounts?.defaultAllowed === false && entry.status.accounts.items.length === 0) {
+        unavailable[entry.provider] = `Ask an administrator to grant access to a ${entry.label} account.`;
+        continue;
+      }
       if (
         entry.authentication.mode === "managed-api-key"
         && !entry.status.authenticated

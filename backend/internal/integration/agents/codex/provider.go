@@ -49,7 +49,7 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	var run *accountRun
 	var releaseAccount func()
 	if p.accounts != nil {
-		saved, isolated, err := p.accounts.CredentialForRun(req.AccountID)
+		saved, isolated, err := p.accounts.CredentialForRun(ctx, req.AccountID)
 		if err != nil {
 			return err
 		}

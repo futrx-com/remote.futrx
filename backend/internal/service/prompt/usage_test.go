@@ -80,7 +80,7 @@ func newUsagePromptService(
 	meta, err := store.Create(context.Background(), servicechat.Meta{
 		ID:        "abcdef123456",
 		Title:     "existing",
-		Provider:  servicechat.ProviderClaude,
+		Provider:  provider.ID(),
 		Model:     "claude-sonnet-4-5",
 		ProjectID: "aaaa1111",
 		Cwd:       t.TempDir(),

@@ -1,4 +1,5 @@
-export type UserRole = "admin" | "member";
+// "" is a registered non-admin; their access comes from custom roles.
+export type UserRole = "admin" | "";
 
 export interface User {
   email: string;

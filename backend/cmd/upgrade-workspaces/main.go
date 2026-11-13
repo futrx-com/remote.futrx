@@ -16,6 +16,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	containerapps "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/lxc"
+	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceapps "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -94,6 +95,9 @@ func upgradeAll(
 	progress progressWriter,
 	restoreProject func(context.Context, string) error,
 ) (upgraded, skipped, failed int, err error) {
+	// This root-run maintenance command has no authenticated user. Upgrade is
+	// guarded by projects.controls.manage, so act as the explicit system actor.
+	ctx = rbac.ContextWithSystemActor(ctx)
 	metas, err := projects.List(ctx)
 	if err != nil {
 		return 0, 0, 0, err

@@ -1,11 +1,16 @@
 import { useCallback, useState } from "preact/hooks";
+import { createPermissionAdministration } from "../permissions";
+import { createAuditLog } from "../audit";
 import {
   SettingsPage,
   type SettingsTab,
 } from "../../ui/settings/SettingsPage";
+import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useUserSettingsContext } from "../../state/context/UserSettingsContext";
 import { useUserDirectory } from "../../state/hooks/users/useUserDirectory";
+import { usePermissionAdministration } from "../../state/hooks/permissions/usePermissionAdministration";
+import { useAuditLog } from "../../state/hooks/admin/useAuditLog";
 import { useSecuritySettings } from "../../state/hooks/auth/useSecuritySettings";
 import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import type { SelfUpdateController } from "../../state/hooks/server/useSelfUpdate";
@@ -30,20 +35,28 @@ export function SettingsContainer({
   onTabChange: (tab: SettingsTab) => void;
 }) {
   const { auth } = useAuthContext();
+  const { projects } = useWorkspaceContext();
   const userSettings = useUserSettingsContext();
   const userDirectory = useUserDirectory(auth.isAdmin);
   const serverInfo = useServerInfo(activeTab === "info");
+  const [auditLogDependencies] = useState(createAuditLog);
+  const auditLog = useAuditLog(activeTab === "audit" && auth.isAdmin, auditLogDependencies);
   const releaseNotes = useReleaseNotes(
     activeTab === "updates" && auth.isAdmin && !selfUpdate.status?.lastCheck?.error,
     selfUpdate.status?.lastCheck?.latestTag,
   );
   const security = useSecuritySettings(activeTab === "security");
+  const [permissionAdministration] = useState(createPermissionAdministration);
+  const permissions = usePermissionAdministration(
+    (activeTab === "permissions" || activeTab === "users") && auth.isAdmin,
+    permissionAdministration,
+  );
   const applications = useGlobalApplications({
     enabled: activeTab === "applications" && auth.isAdmin,
     managesPackages: auth.isAdmin,
     onApplicationsSettled: extensionHost.sync,
   });
-  const usageDashboard = useUsageDashboard(activeTab === "usage");
+  const usageDashboard = useUsageDashboard(activeTab === "usage" && auth.isAdmin);
   const [usageRebuilding, setUsageRebuilding] = useState(false);
   const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
 
@@ -87,6 +100,7 @@ export function SettingsContainer({
       selfUpdateRestarting={selfUpdate.restarting}
       selfUpdateError={selfUpdate.error}
       userDirectory={userDirectory}
+      auditLog={auditLog}
       usageDashboard={usageDashboard}
       usageRebuilding={usageRebuilding}
       usageRebuildMessage={usageRebuildMessage}
@@ -105,6 +119,8 @@ export function SettingsContainer({
       onAppearanceThemeChange={(theme) => void userSettings.setTheme(theme)}
       security={security}
       applications={applications}
+      permissions={permissions}
+      projects={projects}
     />
   );
 }
