@@ -40,6 +40,22 @@ func setupWorkspace(t *testing.T) (root, secret string) {
 	return root, secret
 }
 
+// openRooted is the containment sequence every file read goes through:
+// resolve inside the workspace, then open a regular file through os.Root.
+func openRooted(root, relative string) (*os.File, error) {
+	workspace, err := newSecureWorkspace(root)
+	if err != nil {
+		return nil, err
+	}
+	defer workspace.close()
+	resolved, err := workspace.resolve(relative)
+	if err != nil {
+		return nil, err
+	}
+	file, _, err := workspace.openRegular(resolved)
+	return file, err
+}
+
 func TestListDirShowsDotfiles(t *testing.T) {
 	root, _ := setupWorkspace(t)
 	store := New()
@@ -92,13 +108,12 @@ func TestListDirPreservesGlobalOrderAcrossReadBatches(t *testing.T) {
 	}
 }
 
-func TestOpenFileRejectsTraversal(t *testing.T) {
+func TestRootedOpenRejectsTraversal(t *testing.T) {
 	root, _ := setupWorkspace(t)
-	store := New()
 
 	for _, rel := range []string{"../outside-secret.txt", "src/../../outside-secret.txt", "/etc/hosts"} {
-		if _, _, _, err := store.OpenFile(root, rel); err == nil {
-			t.Fatalf("OpenFile(%q) succeeded, want error", rel)
+		if _, err := openRooted(root, rel); err == nil {
+			t.Fatalf("openRooted(%q) succeeded, want error", rel)
 		}
 	}
 }
@@ -114,8 +129,8 @@ func TestSymlinkEscapeIsBlocked(t *testing.T) {
 	}
 
 	// Downloading the escaping symlink must fail.
-	if _, _, _, err := store.OpenFile(root, "escape"); err == nil {
-		t.Fatal("OpenFile via escaping symlink succeeded, want error")
+	if _, err := openRooted(root, "escape"); err == nil {
+		t.Fatal("openRooted via escaping symlink succeeded, want error")
 	}
 
 	// And it must not appear as a usable entry in the listing.
@@ -132,16 +147,15 @@ func TestSymlinkEscapeIsBlocked(t *testing.T) {
 
 func TestSymlinkInsideWorkspaceIsAllowed(t *testing.T) {
 	root, _ := setupWorkspace(t)
-	store := New()
 
 	link := filepath.Join(root, "alias.go")
 	if err := os.Symlink(filepath.Join(root, "src", "app.go"), link); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
 
-	rc, _, _, err := store.OpenFile(root, "alias.go")
+	rc, err := openRooted(root, "alias.go")
 	if err != nil {
-		t.Fatalf("OpenFile via in-workspace symlink: %v", err)
+		t.Fatalf("openRooted via in-workspace symlink: %v", err)
 	}
 	defer rc.Close()
 	data, _ := io.ReadAll(rc)
@@ -293,23 +307,22 @@ func TestWriteArchiveIncludesAbsoluteSymlinkWithinWorkspace(t *testing.T) {
 	t.Fatal("archive omitted in-workspace absolute symlink")
 }
 
-func TestOpenFileRejectsNamedPipeWithoutBlocking(t *testing.T) {
+func TestRootedOpenRejectsNamedPipeWithoutBlocking(t *testing.T) {
 	root, _ := setupWorkspace(t)
 	pipePath := filepath.Join(root, "events.pipe")
 	if err := syscall.Mkfifo(pipePath, 0o600); err != nil {
 		t.Fatalf("mkfifo: %v", err)
 	}
-	store := New()
 
 	err := awaitPipeOperation(t, pipePath, func() error {
-		file, _, _, err := store.OpenFile(root, "events.pipe")
+		file, err := openRooted(root, "events.pipe")
 		if file != nil {
 			_ = file.Close()
 		}
 		return err
 	})
 	if err == nil {
-		t.Fatal("OpenFile accepted a named pipe")
+		t.Fatal("openRooted accepted a named pipe")
 	}
 }
 
@@ -490,5 +503,93 @@ func awaitPipeOperation(t *testing.T, pipePath string, operation func() error) e
 		<-writerDone
 		t.Fatal("filesystem operation blocked while opening a named pipe")
 		return nil
+	}
+}
+
+// archiveNames writes relative from root as a ZIP and returns its entries.
+func archiveNames(t *testing.T, root, relative string) []string {
+	t.Helper()
+	var destination bytes.Buffer
+	if err := New().WriteArchive(context.Background(), root, relative, &destination); err != nil {
+		t.Fatalf("WriteArchive(%q): %v", relative, err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(destination.Bytes()), int64(destination.Len()))
+	if err != nil {
+		t.Fatalf("open archive: %v", err)
+	}
+	names := make([]string, 0, len(archive.File))
+	for _, file := range archive.File {
+		names = append(names, file.Name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+func mustSymlink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink %s -> %s: %v", link, target, err)
+	}
+}
+
+// A folder whose content is reached through a directory symlink, the way
+// .claude/skills points at ../.agents/skills, must not download as an empty ZIP.
+func TestWriteArchiveFollowsDirectorySymlinksInsideTheWorkspace(t *testing.T) {
+	root, _ := setupWorkspace(t)
+	if err := os.MkdirAll(filepath.Join(root, ".agents", "skills", "demo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".agents", "skills", "demo", "SKILL.md"), []byte("# demo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustSymlink(t, "../.agents/skills", filepath.Join(root, ".claude", "skills"))
+
+	if names := archiveNames(t, root, ".claude"); !slices.Equal(names, []string{"skills/demo/SKILL.md"}) {
+		t.Fatalf("entries = %v", names)
+	}
+}
+
+func TestWriteArchiveSymlinkLoopsAndEscapesTerminate(t *testing.T) {
+	root, secret := setupWorkspace(t)
+	// A link back to an ancestor, a link to itself, a directory outside the
+	// workspace, and a link into the downloads directory.
+	mustSymlink(t, "..", filepath.Join(root, "src", "up"))
+	mustSymlink(t, ".", filepath.Join(root, "src", "self"))
+	mustSymlink(t, filepath.Dir(secret), filepath.Join(root, "src", "outside"))
+	if err := os.MkdirAll(filepath.Join(root, config.DownloadsDirectory, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, config.DownloadsDirectory, "old", "x.zip"), []byte("zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustSymlink(t, "../"+config.DownloadsDirectory, filepath.Join(root, "src", "downloads"))
+
+	// A link to a sibling directory is followed, once, however many links
+	// lead to it.
+	if err := os.MkdirAll(filepath.Join(root, "lib"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "lib", "util.go"), []byte("package lib"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustSymlink(t, "../lib", filepath.Join(root, "src", "lib"))
+	mustSymlink(t, "../lib", filepath.Join(root, "src", "lib-again"))
+	mustSymlink(t, "..", filepath.Join(root, "lib", "back"))
+
+	names := archiveNames(t, root, "src")
+	// src/up is above src and src/self is src: following either would put
+	// src inside its own ZIP, so both are left out, like the escaping link,
+	// the downloads link, and lib/back (the workspace root).
+	want := []string{"app.go", "lib/util.go"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("entries = %v, want %v", names, want)
+	}
+	for _, name := range names {
+		if bytes.Contains([]byte(name), []byte("secret")) {
+			t.Fatalf("archive escaped the workspace: %v", names)
+		}
 	}
 }

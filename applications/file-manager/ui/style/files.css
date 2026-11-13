@@ -1,0 +1,309 @@
+/* File Manager renders inside Remote's page, so every rule is scoped to its
+   drawer and colours come from Remote's own theme tokens. */
+.remote-files {
+  --pad-x: 16px;
+  --list-pad-x: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, system-ui, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: rgb(var(--fg));
+  background: rgb(var(--bg-surface-rgb));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* Remote pads its panes less below its `md` breakpoint. */
+@media (max-width: 767px) {
+  .remote-files {
+    --pad-x: 12px;
+    --list-pad-x: 8px;
+  }
+}
+.remote-files *,
+.remote-files *::before,
+.remote-files *::after {
+  box-sizing: border-box;
+}
+.remote-files ::selection {
+  background: var(--selection-bg);
+}
+.remote-files button,
+.remote-files input {
+  font: inherit;
+  letter-spacing: 0;
+  color: inherit;
+}
+.remote-files :focus-visible {
+  outline: 2px solid rgb(var(--accent-blue) / 0.75);
+  outline-offset: 1px;
+  border-radius: 0.375rem;
+}
+.remote-files svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.remote-files ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Search */
+.remote-files .search-bar {
+  flex: none;
+  padding: 8px var(--pad-x);
+  border-bottom: 1px solid var(--line);
+}
+.remote-files .search {
+  position: relative;
+}
+.remote-files .search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  color: rgb(var(--fg-subtle));
+  pointer-events: none;
+}
+.remote-files .search-input {
+  display: block;
+  width: 100%;
+  height: 32px;
+  padding: 0 32px;
+  font-size: 13px;
+  color: rgb(var(--fg));
+  background: rgb(var(--bg-inset-rgb));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.remote-files .search-input::placeholder {
+  color: rgb(var(--fg-faint));
+}
+.remote-files .search-input:focus {
+  outline: none;
+  border-color: rgb(var(--accent-blue) / 0.6);
+}
+.remote-files .search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  transform: translateY(-50%);
+  color: rgb(var(--fg-subtle));
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.remote-files .search-clear[hidden] {
+  display: none;
+}
+.remote-files .search-clear:hover {
+  color: rgb(var(--fg));
+}
+.remote-files .search-clear svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* List */
+.remote-files .entries {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px var(--list-pad-x);
+}
+.remote-files .scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+.remote-files .scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.remote-files .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.remote-files .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+.remote-files .scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.remote-files .nested {
+  margin-left: 12px;
+  padding-left: 4px;
+  border-left: 1px solid var(--line);
+}
+.remote-files .row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.remote-files .row:hover {
+  background: var(--tint);
+}
+.remote-files .row[role="button"] {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.remote-files .icon {
+  width: 16px;
+  height: 16px;
+}
+.remote-files .chevron,
+.remote-files .spinner {
+  width: 14px;
+  height: 14px;
+  color: rgb(var(--fg-subtle));
+}
+.remote-files .chevron {
+  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.remote-files .row[aria-expanded="true"] .chevron {
+  transform: rotate(90deg);
+}
+.remote-files .spinner {
+  animation: remote-files-spin 1s linear infinite;
+}
+@keyframes remote-files-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.remote-files .indent {
+  width: 14px;
+  flex: none;
+}
+.remote-files .name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: rgb(var(--fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.remote-files .detail {
+  flex: 1;
+  min-width: 0;
+}
+.remote-files .detail .name {
+  display: block;
+}
+.remote-files .dir {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: rgb(var(--fg-faint));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.remote-files .meta {
+  flex: none;
+  font-size: 11px;
+  color: rgb(var(--fg-faint));
+  font-variant-numeric: tabular-nums;
+}
+.remote-files .download {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  color: rgb(var(--fg-subtle));
+  opacity: 0;
+  transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.remote-files button.download {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.remote-files .download[aria-busy="true"] {
+  opacity: 1;
+  cursor: progress;
+}
+.remote-files .download svg {
+  width: 14px;
+  height: 14px;
+}
+.remote-files .row:hover .download,
+.remote-files .download:focus {
+  opacity: 1;
+}
+.remote-files .download:hover {
+  color: rgb(var(--accent-blue));
+  background: var(--tint-strong);
+}
+@media (hover: none) {
+  .remote-files .download {
+    opacity: 1;
+  }
+}
+.remote-files .tone-blue { color: rgb(var(--accent-blue)); }
+.remote-files .tone-green { color: rgb(var(--accent-green)); }
+.remote-files .tone-red { color: rgb(var(--accent-red)); }
+.remote-files .tone-yellow { color: rgb(var(--accent-yellow)); }
+.remote-files .tone-orange { color: rgb(var(--accent-orange)); }
+.remote-files .tone-purple { color: rgb(var(--accent-purple)); }
+.remote-files .tone-muted { color: rgb(var(--fg-muted)); }
+
+/* Notices */
+.remote-files .banner {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.remote-files .banner.error {
+  color: rgb(var(--accent-red));
+  background: rgb(var(--accent-red) / 0.1);
+  border: 1px solid rgb(var(--accent-red) / 0.3);
+}
+.remote-files .banner.warning {
+  font-size: 12px;
+  color: rgb(var(--accent-yellow));
+  background: rgb(var(--accent-yellow) / 0.08);
+  border: 1px solid rgb(var(--accent-yellow) / 0.25);
+}
+.remote-files .banner a {
+  color: inherit;
+  font-weight: 600;
+}
+.remote-files .empty {
+  padding: 8px;
+  font-size: 13px;
+  color: rgb(var(--fg-subtle));
+}
+.remote-files .inline-note {
+  margin-left: 12px;
+  padding: 4px 0 4px 8px;
+  font-size: 12px;
+  color: rgb(var(--fg-faint));
+}
+.remote-files .inline-note.error {
+  color: rgb(var(--accent-red));
+}

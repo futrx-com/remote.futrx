@@ -393,3 +393,46 @@ func (l *startTestLifecycle) EnsureResources(context.Context, string) error { re
 func (l *startTestLifecycle) SetResourceLimits(context.Context, string, ContainerLimits) error {
 	return nil
 }
+
+// Copies that went out of date while a container was down catch up when it
+// starts again, without the start waiting for them. A container that was
+// already up, or that was just restored in full, has nothing to catch up.
+func TestStartUpgradesApplicationsOnlyAfterAStoppedContainerStarts(t *testing.T) {
+	for _, tc := range []struct {
+		state ContainerState
+		want  bool
+	}{
+		{ContainerStateStopped, true},
+		{ContainerStateRunning, false},
+		{ContainerStateMissing, false},
+	} {
+		t.Run(string(tc.state), func(t *testing.T) {
+			repo := &startTestRepository{meta: Meta{ID: ID("abcd"), Name: "project", ContainerName: "project", Status: StatusStopped}}
+			service := New(repo, ContainerDependencies{Lifecycle: &startTestLifecycle{state: tc.state}}, nil, nil)
+			service.SetContainerRestorer(func(context.Context, string) error { return nil })
+			upgraded := make(chan string, 2)
+			service.SetContainerUpgrader(func(_ context.Context, projectID string) { upgraded <- projectID })
+			if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case projectID := <-upgraded:
+				if !tc.want || projectID != "abcd" {
+					t.Fatalf("upgraded %q, want upgrade=%v", projectID, tc.want)
+				}
+			case <-time.After(200 * time.Millisecond):
+				if tc.want {
+					t.Fatal("a started container's applications were not upgraded")
+				}
+			}
+			if _, err := service.Start(context.Background(), repo.meta.ID); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-upgraded:
+				t.Fatal("starting a running container upgraded its applications again")
+			case <-time.After(50 * time.Millisecond):
+			}
+		})
+	}
+}

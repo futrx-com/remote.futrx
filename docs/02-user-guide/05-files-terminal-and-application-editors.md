@@ -4,15 +4,6 @@ File Manager and Terminal are optional applications over the same project
 workspace. Install them in the projects where you need browsing or shell
 commands. Editor applications can add editing actions and file openers.
 
-Install **File Manager** from the project's Applications tab before browsing,
-or install it globally from **Settings → Applications** to add it to every
-existing project. Repeat the global install for projects created later.
-The Files action is available only in projects with a running installation.
-Stopping or uninstalling the application removes the drawer and leaves workspace
-files intact. Chat attachment previews and file links remain available.
-
-![The Files drawer showing the durable project workspace](/assets/docs/screenshots/19-file-manager-14m10s.webp)
-
 ## Before you begin
 
 - Open a chat inside the intended project. These workspace controls are not
@@ -39,68 +30,9 @@ that location where supported.
 
 ## Browse and download files
 
-1. Open the project chat.
-2. Select **Files** in the chat header.
-3. Select a folder row to expand it. Subdirectories load as they are opened.
-4. Select a file row to open it in the media viewer or an installed application,
-   or to download it as described below.
-5. Hover or focus a file and select **Download _filename_** to download
-   directly instead.
-6. To export a directory, hover or focus it and select **Download _folder_ as
-   zip**.
-7. Select **Refresh** after an agent or terminal command changes the tree.
-8. Select **Close files** when finished.
+See the [File Manager usage](../../applications/file-manager/docs/usage.md).
 
-**Outcome:** supported media opens inside Remote. Code, data, and text files
-use a registered application opener when available; otherwise they download.
-Folders download as ZIP archives.
-
-### Search by filename
-
-1. Open **Files**.
-2. Enter at least two Unicode code points in **Search all files...**.
-3. Select a matching file row to open it, or use its download control. Search
-   result directories can also be expanded or downloaded.
-4. If Remote says **Showing the first matches only — refine your search to
-   narrow it down**, add a more specific substring.
-5. Clear the search field to return to the directory tree.
-
-Search matches path names by substring. It does not search file contents.
-
-### Exact Files limits
-
-| Operation | Current limit |
-| --- | --- |
-| One directory listing | 10,000 entries |
-| Minimum search query | 2 Unicode code points |
-| Returned search matches | 300 |
-| Entries visited by one search | 200,000 |
-| Folder ZIP source data | 1 GiB |
-| Folder ZIP compressed spool | 1 GiB |
-| Entries in one folder ZIP | 200,000 |
-| Folder ZIP jobs | 2 concurrently per project File Manager service |
-
-A directory can therefore show a truncated warning even when its contents
-exist. Search can stop at its visit cap before finding every possible match.
-A ZIP fails when either its source-byte, compressed-spool, or entry limit is
-reached.
-
-Folder archives omit broken symlinks, symlinks that escape the workspace, and
-special files such as sockets or devices. They include regular files and safe
-directories.
-
-### What happens when you select a file
-
-| File type | Selection result |
-| --- | --- |
-| Supported image, audio, video, or PDF | Opens in Remote's full-screen media viewer |
-| Code, data, text, log, or unknown non-media file | Uses a registered application file opener, or downloads |
-| Archive or unsupported image/audio/video format | Downloads the file |
-
-The media viewer provides **Open in new tab**, **Download**, and **Close**.
-Press Escape or select outside the content to close it.
-
-### Open workspace links from chat
+## Open workspace links from chat
 
 Validated absolute workspace links in an agent message follow the same split:
 supported media opens in the in-app viewer; other safe files use a running
@@ -127,48 +59,7 @@ rejected.
 
 ## Run a terminal command
 
-Install the **Terminal** application before opening a shell. An administrator
-can install it for every project from the global Applications page, or a
-project member can install it for their project. The terminal button appears
-in the chat header once the application is installed and running.
-
-1. Select **Container terminal** in a project chat's header.
-2. Wait until the pane's status reads **Connected**.
-3. Check the path shown beside the status before running a command. It is the
-   path inside the container, for example `/workspace`.
-4. Run the command in the interactive login shell.
-5. Select **Close Terminal** when finished.
-
-**Outcome:** Terminal runs `bash -l` as root inside the project container.
-It starts in the chat's working directory if that directory is inside
-`/workspace`. Otherwise, it starts in `/workspace`.
-
-On desktop, Terminal opens as a pane beside the chat. Drag its left edge to
-resize it; Remote remembers that width in this browser. Opening Files, History,
-or Browser hides Terminal. Only one workspace pane can be open at a time.
-
-The status reads **Connecting**, **Connected**, **Reconnecting**, or
-**Closed**.
-
-Each chat has its own shell. You can return to it after a dropped connection
-or a page reload:
-
-- If the connection drops while the pane is open, Terminal reconnects by itself
-  and returns to the same shell, with its recent output replayed.
-- Closing and reopening the pane, reloading the page, or switching chats and
-  coming back also returns to the same shell.
-- A shell ends after 10 minutes without a viewer. Stopping, restarting,
-  or upgrading the Terminal application ends every shell in that project.
-- When the shell exits, the status reads **Closed**. Press **Enter** in the
-  terminal to start a new one.
-- Press **Ctrl+F** (**Cmd+F** on macOS) in the terminal to search its output.
-
-The terminal does not start a stopped project or a stopped Terminal
-application; start it from the project's Applications page.
-
-Use a service manager inside the project for commands that need to keep
-running unattended. Terminal reconnects to shells, but does not keep them
-running indefinitely.
+See the [Terminal usage](../../applications/terminal/docs/usage.md).
 
 ## Open an application editor
 

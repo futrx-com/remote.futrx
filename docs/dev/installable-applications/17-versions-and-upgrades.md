@@ -58,8 +58,20 @@ the global install and each project's install.
 brings the app up, and an upload has no business resurrecting an app someone
 deliberately stopped. A stopped copy therefore keeps its old version, is
 badged in the UI with the version it will move to, and upgrades the moment its
-owner starts it. This is also how a copy that was down during a Remote release
-catches up with a built-in application that changed version.
+owner starts it.
+
+**On Remote start**, for a copy that is *running* or in *error* in a project
+whose container is up, and for such a global copy. A Remote release can change
+a built-in application's version or container program under copies that keep
+running; a host backend compiled from the new source would otherwise talk to
+the old container program until the copy happened to be restarted. Projects
+whose container is down are not woken for this.
+
+**On project container start**, for the running copies in a project whose
+container was stopped. This is where the copies skipped at Remote start catch
+up. It runs in the background, so starting the project does not wait for it.
+
+Outcomes of these two automatic upgrades go to the server log.
 
 ## Container replacement recovery
 
@@ -143,10 +155,13 @@ UI reports them under the upload:
 ## Built-in applications
 
 The same mechanism, the same recorded version. What differs is the trigger:
-there is no upload event for an application compiled into the binary, so a running
-instance of a built-in application is not re-provisioned by a Remote release on its
-own — `infra/update.sh` owns that, and recycles workspaces deliberately rather
-than re-running install scripts across every container at boot. A stopped
+there is no upload event for an application compiled into the binary.
+`infra/update.sh` recycles eligible workspaces onto the new image, and
+[container replacement recovery](#container-replacement-recovery) reinstalls
+their applications. Workspaces it skips (busy ones, or every one with
+`--skip-workspaces`) keep their containers, and their outdated copies are
+reinstalled on Remote start as described above. Only copies that are out of
+date are touched; nothing re-runs for a copy that is current. A stopped
 instance still upgrades on its next start.
 
 ## Related

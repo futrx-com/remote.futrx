@@ -106,6 +106,12 @@ type ProjectContainers interface {
 	ListProjectIDs(ctx context.Context) ([]string, error)
 }
 
+// RunningProjects is the optional project-state capability used when deciding
+// whether startup upgrades can run without waking an idle project container.
+type RunningProjects interface {
+	Running(ctx context.Context, projectID string) (bool, error)
+}
+
 // PortAllocator picks a free host port for a new proxy device.
 type PortAllocator interface {
 	// Allocate returns the first free host port at or after preferred, skipping

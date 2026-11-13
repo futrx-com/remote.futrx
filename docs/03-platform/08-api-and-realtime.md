@@ -164,7 +164,7 @@ Every `{id}` project route first requires admin status or project membership. Re
 
 Directory browsing, filename search, and folder ZIPs belong to the optional
 [File Manager application](../../applications/file-manager/README.md), reached
-through its authenticated project application web route. Shared single-file
+through its project application backend routes. Shared single-file
 downloads and media remain core chat capabilities.
 
 All chat routes resolve the caller and enforce the chat's project membership. Loose chats have no project membership check.

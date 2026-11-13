@@ -1,34 +1,25 @@
 package main
 
 import (
-	"flag"
-	"log"
-	"net/http"
-	"strconv"
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/config"
-	"futrx.local/catalog/applications/file-manager/backend/container/internal/presentation/web"
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/repository/archives"
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/repository/workspace"
 	"futrx.local/catalog/applications/file-manager/backend/container/internal/service/files"
-	httptransport "futrx.local/catalog/applications/file-manager/backend/container/internal/transport/http"
-	httphandlers "futrx.local/catalog/applications/file-manager/backend/container/internal/transport/http/handlers"
-	httpmiddleware "futrx.local/catalog/applications/file-manager/backend/container/internal/transport/http/middleware"
+	"futrx.local/catalog/applications/file-manager/backend/container/internal/transport/cli"
 )
 
+// Each invocation serves one host request; the host backend bounds how many
+// archives build at once.
 func main() {
-	port := flag.Int("port", config.DefaultPort, "HTTP port")
-	flag.Parse()
-	if *port < 1 || *port > 65535 {
-		log.Fatal("invalid port")
-	}
-	spool := archives.New(config.MaxConcurrentArchives, config.MaxArchiveSpoolBytes)
-	service := files.New(config.WorkspaceDirectory, workspace.New(), spool)
-	handler := httptransport.NewHandler(httptransport.Handlers{
-		Files:      httphandlers.NewFileHandler(service),
-		Static:     http.FileServer(http.FS(web.Files())),
-		Middleware: httpmiddleware.PageHeaders{},
-	})
-	server := httptransport.NewServer("0.0.0.0:"+strconv.Itoa(*port), handler)
-	log.Fatal(server.ListenAndServe())
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	downloads := archives.New(config.WorkspaceDirectory, config.MaxArchiveBytes, config.DownloadRetention)
+	service := files.New(config.WorkspaceDirectory, workspace.New(), downloads)
+	status := cli.Run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, service)
+	stop()
+	os.Exit(status)
 }

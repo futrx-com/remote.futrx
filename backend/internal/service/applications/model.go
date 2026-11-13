@@ -247,6 +247,10 @@ type Application struct {
 	// the target container.
 	Service *ApplicationService `json:"service,omitempty"`
 	Web     *ApplicationWeb     `json:"web,omitempty"`
+	// Preinstall optionally runs before everything else an install does,
+	// including the build of backend/container/, so it can retire what an
+	// earlier version left in the container before the new version lands.
+	Preinstall string `json:"preinstall,omitempty"`
 	// Install is the install-script filename relative to the application directory.
 	Install string `json:"install"`
 	// Uninstall optionally removes application-owned files from a project container.
@@ -390,6 +394,25 @@ type View struct {
 	Instance
 	// EnvPublic contains only non-secret env values, keyed by var name.
 	EnvPublic map[string]string `json:"envPublic,omitempty"`
+}
+
+// UpgradeOutcome is what happened to one instance when its application's version
+// moved. It is reported rather than logged: an upgrade re-runs an install
+// script inside a container someone is using, so its result is something the
+// administrator who triggered it has to be able to read.
+type UpgradeOutcome struct {
+	InstanceID string `json:"instanceId"`
+	Name       string `json:"name"`
+	Scope      Scope  `json:"scope"`
+	ProjectID  string `json:"projectId,omitempty"`
+	// From is the version the instance had recorded; empty for an instance
+	// installed before versions were tracked.
+	From string `json:"fromVersion,omitempty"`
+	To   string `json:"toVersion"`
+	// Error is set when the re-install failed. The instance is left in the
+	// error state with its old version recorded, so the next upload — or a
+	// manual start — tries again rather than skipping it as already current.
+	Error string `json:"error,omitempty"`
 }
 
 // Credentials is the full connection detail for an installed instance,
