@@ -154,6 +154,7 @@ export function ProjectContainersPage({
   const permissions = useEffectivePermissions(project?.id);
   const canSecrets = permissions["projects.secrets.manage"] === true;
   const canControls = permissions["projects.controls.manage"] === true;
+  const canManageAccess = permissions["projects.access.manage"] === true;
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   // Draft state for the "Add new secret" form — owned here so it survives tab
@@ -328,17 +329,19 @@ export function ProjectContainersPage({
 
                 {activeTab === "sharing" && (
                   <div class="space-y-4">
-                    <ProjectSettingsPanel
-                      title="Project access"
-                      description={accessDescription(accessRecord)}
-                      Icon={Users}
-                    >
-                      <ProjectSharingSection
-                        record={accessRecord}
-                        onAdd={onAddMember}
-                        onRemove={onRemoveMember}
-                      />
-                    </ProjectSettingsPanel>
+                    {canManageAccess && (
+                      <ProjectSettingsPanel
+                        title="Project access"
+                        description={accessDescription(accessRecord)}
+                        Icon={Users}
+                      >
+                        <ProjectSharingSection
+                          record={accessRecord}
+                          onAdd={onAddMember}
+                          onRemove={onRemoveMember}
+                        />
+                      </ProjectSettingsPanel>
+                    )}
                     <ProjectSettingsPanel
                       title="Public preview links"
                       description={sharesDescription(sharesRecord)}

@@ -48,6 +48,8 @@ const tabs: Array<{
   label: string;
   description: string;
   Icon: ComponentType<{ class?: string }>;
+  // Hidden from non-admins instead of showing a notice.
+  adminOnly?: boolean;
 }> = [
   {
     id: "appearance",
@@ -72,6 +74,7 @@ const tabs: Array<{
     label: "Usage",
     description: "Track token usage per project, user, provider, and model.",
     Icon: Activity,
+    adminOnly: true,
   },
   {
     id: "users",
@@ -124,7 +127,7 @@ const tabs: Array<{
 ];
 
 export function SettingsPage({
-  activeTab,
+  activeTab: requestedTab,
   currentEmail,
   isAdmin,
   googleOAuthEnabled,
@@ -200,6 +203,10 @@ export function SettingsPage({
   permissions: PermissionsController;
   projects: ProjectMeta[];
 }) {
+  // A non-admin who opens an admin-only tab by URL lands on the first tab.
+  const activeTab = tabs.some((tab) => tab.id === requestedTab && tab.adminOnly && !isAdmin)
+    ? tabs[0].id
+    : requestedTab;
   const activeTabDetails = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
 
   return (
@@ -230,11 +237,13 @@ export function SettingsPage({
       <div class="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
         <SettingsNavigation
           activeTab={activeTab}
+          isAdmin={isAdmin}
           onTabChange={onTabChange}
           className="theme-submenu-surface hidden md:flex w-56 flex-none border-r border-line bg-inset p-3"
         />
         <SettingsNavigation
           activeTab={activeTab}
+          isAdmin={isAdmin}
           onTabChange={onTabChange}
           mobile
           className="theme-submenu-surface md:hidden flex-none border-b border-line bg-inset px-3 py-2 overflow-x-auto no-scrollbar"
@@ -409,11 +418,13 @@ export function SettingsPage({
 
 function SettingsNavigation({
   activeTab,
+  isAdmin,
   onTabChange,
   mobile = false,
   className,
 }: {
   activeTab: SettingsTab;
+  isAdmin: boolean;
   onTabChange: (tab: SettingsTab) => void;
   mobile?: boolean;
   className: string;
@@ -425,7 +436,7 @@ function SettingsNavigation({
         role="tablist"
         aria-orientation={mobile ? "horizontal" : "vertical"}
       >
-        {tabs.map(({ id, label, Icon }) => {
+        {tabs.filter((tab) => isAdmin || !tab.adminOnly).map(({ id, label, Icon }) => {
           const active = id === activeTab;
           return (
             <button

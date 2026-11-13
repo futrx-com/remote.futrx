@@ -56,7 +56,7 @@ export function SettingsContainer({
     managesPackages: auth.isAdmin,
     onApplicationsSettled: extensionHost.sync,
   });
-  const usageDashboard = useUsageDashboard(activeTab === "usage");
+  const usageDashboard = useUsageDashboard(activeTab === "usage" && auth.isAdmin);
   const [usageRebuilding, setUsageRebuilding] = useState(false);
   const [usageRebuildMessage, setUsageRebuildMessage] = useState<string | null>(null);
 
