@@ -6,6 +6,7 @@ import (
 	"errors"
 	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -302,7 +303,10 @@ func sendPermissionsError(w http.ResponseWriter, err error) {
 		errors.Is(err, servicepermission.ErrUserNotRegistered):
 		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
 	default:
-		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())
+		// Store and audit failures can name files and internal state; keep
+		// those details in the server log.
+		log.Printf("permissions: %v", err)
+		httptransport.SendErr(w, http.StatusInternalServerError, "internal server error")
 	}
 }
 

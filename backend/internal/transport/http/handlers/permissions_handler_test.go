@@ -3,6 +3,7 @@ package httphandlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -270,5 +271,16 @@ func TestEffectivePermissionsHTTPUsesEncodedDecisionsAndScope(t *testing.T) {
 	response = f.do(t, "", "GET", permissionsBase+"/effective", "")
 	if response.Code != 401 {
 		t.Fatalf("anonymous: %d", response.Code)
+	}
+}
+
+func TestPermissionsUnexpectedErrorsDoNotExposeInternals(t *testing.T) {
+	response := httptest.NewRecorder()
+	sendPermissionsError(response, errors.New("rename /opt/remote.futrx/data/permissions.json.tmp: no space left on device"))
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", response.Code)
+	}
+	if body := response.Body.String(); strings.Contains(body, "permissions.json") || !strings.Contains(body, "internal server error") {
+		t.Fatalf("body = %s", body)
 	}
 }
