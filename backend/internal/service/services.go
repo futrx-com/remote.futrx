@@ -362,6 +362,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithAudit(auditLog),
 		)
 		projectService.SetContainerRestorer(applicationsService.RestoreProject)
+		projectService.SetApplicationCleanup(func(ctx context.Context, projectID serviceproject.ID) error {
+			return applicationsService.DeleteProjectApplications(ctx, string(projectID))
+		})
 	}
 
 	if applicationsService != nil {
