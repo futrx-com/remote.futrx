@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // readErrorLimit bounds the provider error text kept for one account.
@@ -49,15 +49,15 @@ func newAccountReadings(ctx context.Context, store Repository) *accountReadings 
 
 func (r *accountReadings) record(
 	ctx context.Context,
-	provider agent.ProviderID,
+	provider harness.ProviderID,
 	accountID string,
-	quota agent.Quota,
+	quota harness.Quota,
 ) {
 	key := newAccountKey(provider, accountID)
 	if key.provider == "" {
 		return
 	}
-	if quota.Window != agent.QuotaWindowSession && quota.Window != agent.QuotaWindowWeekly {
+	if quota.Window != harness.QuotaWindowSession && quota.Window != harness.QuotaWindowWeekly {
 		return
 	}
 
@@ -69,9 +69,9 @@ func (r *accountReadings) record(
 	current.Provider = key.provider
 	current.AccountID = key.account
 	switch quota.Window {
-	case agent.QuotaWindowSession:
+	case harness.QuotaWindowSession:
 		current.Session = cloneWindow(&quota)
-	case agent.QuotaWindowWeekly:
+	case harness.QuotaWindowWeekly:
 		current.Weekly = cloneWindow(&quota)
 	}
 	r.values[key] = current
@@ -83,8 +83,8 @@ func (r *accountReadings) record(
 // failed read keeps the last windows and records why.
 func (r *accountReadings) replace(
 	ctx context.Context,
-	provider agent.ProviderID,
-	usage agent.AccountPlanUsage,
+	provider harness.ProviderID,
+	usage harness.AccountPlanUsage,
 ) {
 	key := newAccountKey(provider, usage.AccountID)
 	if key.provider == "" {
@@ -104,9 +104,9 @@ func (r *accountReadings) replace(
 	reading := AccountQuota{Provider: key.provider, AccountID: key.account}
 	for _, window := range usage.Windows {
 		switch window.Window {
-		case agent.QuotaWindowSession:
+		case harness.QuotaWindowSession:
 			reading.Session = cloneWindow(&window)
-		case agent.QuotaWindowWeekly:
+		case harness.QuotaWindowWeekly:
 			reading.Weekly = cloneWindow(&window)
 		}
 	}
@@ -175,7 +175,7 @@ func sortAccountViews(views []AccountView) {
 	})
 }
 
-func newAccountKey(provider agent.ProviderID, accountID string) accountKey {
+func newAccountKey(provider harness.ProviderID, accountID string) accountKey {
 	return accountKey{
 		provider: strings.TrimSpace(string(provider)),
 		account:  strings.TrimSpace(accountID),

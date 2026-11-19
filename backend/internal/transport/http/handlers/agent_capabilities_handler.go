@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type AgentCapabilitiesService interface {
-	List(context.Context, agentcapability.ListQuery) ([]agent.Capabilities, error)
+	List(context.Context, agentcapability.ListQuery) ([]harness.Capabilities, error)
 }
 
 type AgentCapabilitiesHandler struct {
@@ -46,7 +46,7 @@ func (h *AgentCapabilitiesHandler) HandleCollection(w http.ResponseWriter, r *ht
 		sendAgentCapabilitiesError(w, err)
 		return
 	}
-	httptransport.SendJSON(w, http.StatusOK, map[string][]agent.Capabilities{"providers": items})
+	httptransport.SendJSON(w, http.StatusOK, map[string][]harness.Capabilities{"providers": items})
 }
 
 func sendAgentCapabilitiesError(w http.ResponseWriter, err error) {

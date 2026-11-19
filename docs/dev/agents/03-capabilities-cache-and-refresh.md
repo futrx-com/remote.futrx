@@ -7,11 +7,11 @@ normalizes those answers, and exposes one catalog to every client.
 
 The main contracts are:
 
-- [`agent.CapabilityProvider`](../../../backend/internal/agent/model.go) and the
+- [`agent.CapabilityProvider`](../../../backend/internal/harness/model.go) and the
   normalized models in
-  [`capability_model.go`](../../../backend/internal/agent/capability_model.go);
+  [`capability_model.go`](../../../backend/internal/harness/capability_model.go);
 - the host/container command boundary in
-  [`integration/agents/runtime/capability_command.go`](../../../backend/internal/integration/agents/runtime/capability_command.go);
+  [`integration/agents/runtime/capability_command.go`](../../../backend/internal/integration/harnesses/runtime/capability_command.go);
 - aggregation, authorization, deadlines, and descriptor decoration in
   [`service/agent/capability/service.go`](../../../backend/internal/service/agent/capability/service.go);
 - completed-result caching in
@@ -65,7 +65,7 @@ Capability discovery deliberately bypasses `agent.ProjectPreparer` and
 `runtime.BuildContainerCommand`: it does not reconcile lifecycle, provision
 CLIs or credentials, publish workspace assets, or load project secrets.
 Provider probes use
-[`runtime.NewCapabilityCommand`](../../../backend/internal/integration/agents/runtime/capability_command.go)
+[`runtime.NewCapabilityCommand`](../../../backend/internal/integration/harnesses/runtime/capability_command.go)
 to run directly on the host or in the already-running selected container.
 
 The cache key is `host` or
@@ -198,7 +198,7 @@ the probe sees the container's new state.
 When changing discovery or cache behavior, keep tests close to the owning
 layer:
 
-- provider probe/parser tests under `backend/internal/integration/agents/<provider>/`;
+- provider probe/parser tests under `backend/internal/integration/harnesses/<provider>/`;
 - aggregation, timeout, fallback, cache, authorization, and flight tests under
   `backend/internal/service/agent/capability/`;
 - HTTP query/error mapping in

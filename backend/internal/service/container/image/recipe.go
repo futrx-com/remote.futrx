@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 // baseImageInstallPreamble is the provider-neutral part of the shell recipe.

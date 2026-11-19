@@ -3,7 +3,7 @@ package filechat
 import (
 	"encoding/json"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
@@ -191,7 +191,7 @@ type eventRecord struct {
 	ApplicationID        string                `json:"applicationId,omitempty"`
 	ApplicationRequestID string                `json:"applicationRequestId,omitempty"`
 	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
-	Native               *agent.NativeEnvelope `json:"native,omitempty"`
+	Native               *harness.NativeEnvelope `json:"native,omitempty"`
 	InteractionID        string                `json:"interactionId,omitempty"`
 	Status               string                `json:"status,omitempty"`
 }

@@ -51,7 +51,7 @@ policy. Shared services enforce scope and feature declarations and apply
 provisioning without provider-specific branches.
 
 The package boundary is intentional: `internal/agent` contains provider-neutral
-contracts and provisioning policy types; `internal/integration/agents`
+contracts and provisioning policy types; `internal/integration/harnesses`
 contains concrete CLI, protocol, parser, auth, and profile adapters plus their
 shared process/LXC execution mechanics; `internal/service/agent` contains cross-provider
 application workflows such as module construction, authentication lifecycle,

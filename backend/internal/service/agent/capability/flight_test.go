@@ -4,27 +4,27 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestCloneCapabilitiesIsolatesNestedProviderMetadata(t *testing.T) {
-	input := []agent.Capabilities{{
+	input := []harness.Capabilities{{
 		ExecutionScopes: []string{"host"},
-		Modes: []agent.CapabilityOption{{
+		Modes: []harness.CapabilityOption{{
 			Value: "default",
 			Raw:   json.RawMessage(`{"mode":true}`),
 		}},
-		Models: []agent.ModelCapability{{
+		Models: []harness.ModelCapability{{
 			ID:              "model",
 			InputModalities: []string{"text"},
 			Raw:             json.RawMessage(`{"model":true}`),
 			UpgradeInfo:     json.RawMessage(`{"upgrade":true}`),
 			AvailabilityNux: json.RawMessage(`{"available":true}`),
-			ReasoningEfforts: []agent.CapabilityOption{{
+			ReasoningEfforts: []harness.CapabilityOption{{
 				Value: "high",
 				Raw:   json.RawMessage(`{"effort":true}`),
 			}},
-			ServiceTiers: []agent.CapabilityOption{{
+			ServiceTiers: []harness.CapabilityOption{{
 				Value: "priority",
 				Raw:   json.RawMessage(`{"tier":true}`),
 			}},

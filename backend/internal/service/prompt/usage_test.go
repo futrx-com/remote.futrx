@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
@@ -20,29 +20,29 @@ type usageProvider struct {
 	fail  bool
 }
 
-func (p *usageProvider) ID() agent.ProviderID                     { return agent.ProviderClaude }
-func (p *usageProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
+func (p *usageProvider) ID() harness.ProviderID                     { return harness.ProviderClaude }
+func (p *usageProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
 
-// Capabilities satisfies the interface qa added to agent.Provider. This double
+// Capabilities satisfies the interface qa added to harness.Provider. This double
 // exists to record usage events, so it reports nothing rather than pretending
 // to have a capability set.
-func (p *usageProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{}, nil
+func (p *usageProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{}, nil
 }
 
 func (p *usageProvider) Run(
-	_ context.Context, _ agent.RunRequest, emit func(agent.Event)) error {
+	_ context.Context, _ harness.RunRequest, emit func(harness.Event)) error {
 	now := time.Now().UnixMilli()
-	emit(agent.Event{T: now, Type: agent.EventAssistantTextDelta, Text: "done"})
+	emit(harness.Event{T: now, Type: harness.EventAssistantTextDelta, Text: "done"})
 	if p.fail {
-		emit(agent.Event{
-			T: now, Type: agent.EventRunFailed, Provider: agent.ProviderClaude,
+		emit(harness.Event{
+			T: now, Type: harness.EventRunFailed, Provider: harness.ProviderClaude,
 			Message: "boom", Usage: p.usage,
 		})
-		return agent.ErrRunFailed
+		return harness.ErrRunFailed
 	}
-	emit(agent.Event{
-		T: now, Type: agent.EventRunCompleted, Provider: agent.ProviderClaude, Usage: p.usage,
+	emit(harness.Event{
+		T: now, Type: harness.EventRunCompleted, Provider: harness.ProviderClaude, Usage: p.usage,
 	})
 	return nil
 }
@@ -68,7 +68,7 @@ func (stubApplicationTools) IssueApplicationTools(
 
 func newUsagePromptService(
 	t *testing.T,
-	provider agent.Provider,
+	provider harness.Provider,
 	ledger UsageRecorder,
 	options ...Option,
 ) (*Service, servicechat.Repository, servicechat.Meta) {
@@ -88,7 +88,7 @@ func newUsagePromptService(
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestStartRecordsOneLedgerEntryPerCompletedRun(t *testing.T) {
 	if event.ChatID != string(meta.ID) || event.ProjectID != "aaaa1111" {
 		t.Fatalf("unexpected identity: %+v", event)
 	}
-	if event.UserEmail != "member@example.com" || event.Provider != string(agent.ProviderClaude) {
+	if event.UserEmail != "member@example.com" || event.Provider != string(harness.ProviderClaude) {
 		t.Fatalf("unexpected attribution: %+v", event)
 	}
 	if event.Scheduled {
@@ -136,7 +136,7 @@ func TestStartRecordsOneLedgerEntryPerCompletedRun(t *testing.T) {
 	if event.At == 0 {
 		t.Fatal("run must be timestamped")
 	}
-	usage, ok := agent.ParseUsage(event.Usage)
+	usage, ok := harness.ParseUsage(event.Usage)
 	if !ok || usage.InputTokens != 120 || usage.CostUSD == nil || *usage.CostUSD != 0.11 {
 		t.Fatalf("usage payload lost: %s", event.Usage)
 	}

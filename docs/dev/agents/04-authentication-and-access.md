@@ -371,7 +371,7 @@ Relevant code:
   `backend/internal/service/agent/auth/{account_service,accounts}.go`;
 - saved-account persistence (`agent-accounts.json`):
   `backend/internal/stores/fileauth/store.go`;
-- provider configurations: `backend/internal/integration/agents/<provider>/auth.go`,
+- provider configurations: `backend/internal/integration/harnesses/<provider>/auth.go`,
   with Claude's and Codex's account credentials and isolated logins in the
   same packages;
 - host-authoritative credential push:

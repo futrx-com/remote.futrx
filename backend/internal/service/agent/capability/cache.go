@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // catalogCache is the shared freshness boundary for every web client. Entries
@@ -21,7 +21,7 @@ type catalogCache struct {
 
 type catalogCacheEntry struct {
 	expiresAt time.Time
-	result    []agent.Capabilities
+	result    []harness.Capabilities
 }
 
 func newCatalogCache(liveTTL, degradedTTL time.Duration) *catalogCache {
@@ -33,7 +33,7 @@ func newCatalogCache(liveTTL, degradedTTL time.Duration) *catalogCache {
 	}
 }
 
-func (c *catalogCache) load(key string) ([]agent.Capabilities, bool) {
+func (c *catalogCache) load(key string) ([]harness.Capabilities, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry, ok := c.entries[key]
@@ -44,7 +44,7 @@ func (c *catalogCache) load(key string) ([]agent.Capabilities, bool) {
 	return cloneCapabilities(entry.result), true
 }
 
-func (c *catalogCache) store(key string, result []agent.Capabilities) {
+func (c *catalogCache) store(key string, result []harness.Capabilities) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = catalogCacheEntry{
@@ -53,9 +53,9 @@ func (c *catalogCache) store(key string, result []agent.Capabilities) {
 	}
 }
 
-func (c *catalogCache) ttl(result []agent.Capabilities) time.Duration {
+func (c *catalogCache) ttl(result []harness.Capabilities) time.Duration {
 	for _, capabilities := range result {
-		if capabilities.Source != agent.CapabilitySourceLive || capabilities.Warning != "" {
+		if capabilities.Source != harness.CapabilitySourceLive || capabilities.Warning != "" {
 			return c.degradedTTL
 		}
 	}

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
@@ -27,7 +27,7 @@ func newProviderPolicy(t *testing.T) *rbac.Service {
 
 func TestEveryRegisteredProviderRequiresItsOwnDefaultGrant(t *testing.T) {
 	// Include a catalog extension so a new provider cannot silently bypass RBAC.
-	for _, provider := range []agent.ProviderID{agent.ProviderClaude, agent.ProviderCodex, agent.ProviderMiniMax, agent.ProviderKimi, agent.ProviderAntigravity, "future-agent"} {
+	for _, provider := range []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderMiniMax, harness.ProviderKimi, harness.ProviderAntigravity, "future-agent"} {
 		t.Run(string(provider), func(t *testing.T) {
 			policy := newProviderPolicy(t)
 			binding := agentauth.NewExternalBinding(provider)
@@ -81,13 +81,13 @@ func TestEveryRegisteredProviderRequiresItsOwnDefaultGrant(t *testing.T) {
 }
 
 func TestTargetsFollowRegisteredProvidersAndIncludeSavedAccounts(t *testing.T) {
-	providers := []agent.ProviderID{agent.ProviderClaude, agent.ProviderCodex, agent.ProviderMiniMax, agent.ProviderKimi, agent.ProviderAntigravity, "future-agent"}
+	providers := []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderMiniMax, harness.ProviderKimi, harness.ProviderAntigravity, "future-agent"}
 	bindings := make([]agentauth.Binding, 0, len(providers))
 	want := make([]string, 0, len(providers)+1)
 	for _, provider := range providers {
 		binding := agentauth.NewExternalBinding(provider)
 		want = append(want, string(provider)+":default")
-		if provider == agent.ProviderMiniMax {
+		if provider == harness.ProviderMiniMax {
 			binding = binding.WithAccounts(&accountSource{snapshot: agentauth.AccountsSnapshot{Items: []agentauth.Account{{ID: "team", Label: "Team"}}}})
 			want = append(want, "minimax:team")
 		}

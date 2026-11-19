@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"

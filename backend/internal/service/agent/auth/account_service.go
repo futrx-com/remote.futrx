@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // accountValidationTimeout bounds provider validation of a credential that
@@ -67,7 +67,7 @@ type AccountLogin interface {
 
 // AccountConfig describes one provider's saved accounts.
 type AccountConfig struct {
-	Provider agent.ProviderID
+	Provider harness.ProviderID
 	// Label names the provider in user-facing errors, such as "Codex".
 	Label       string
 	Credentials AccountCredentials
@@ -189,7 +189,7 @@ func (s *AccountService) CredentialForRun(ctx context.Context, accountID string)
 		accountID = s.accounts.ActiveAccountID
 	}
 	if err := RequireAccountUse(ctx, s.authorizer, s.config.Provider, accountID); err != nil {
-		s.recordAccount(ctx, "agent.credential.acquire", accountID, err)
+		s.recordAccount(ctx, "harness.credential.acquire", accountID, err)
 		return RunCredential{}, false, err
 	}
 	if accountID == "" {
@@ -199,7 +199,7 @@ func (s *AccountService) CredentialForRun(ctx context.Context, accountID string)
 	if !ok {
 		return RunCredential{}, false, ErrAccountNotFound
 	}
-	s.recordAccount(ctx, "agent.credential.acquire", accountID, nil)
+	s.recordAccount(ctx, "harness.credential.acquire", accountID, nil)
 	return RunCredential{
 		AccountID:  record.ID,
 		Credential: append(json.RawMessage(nil), record.Credential...),
@@ -258,7 +258,7 @@ func (s *AccountService) captureRunCredentialLocked(ctx context.Context, run Run
 // ImportCurrent validates the current host login and saves it as a new
 // active account.
 func (s *AccountService) ImportCurrent(ctx context.Context, label string) (resultErr error) {
-	defer func() { s.recordAccount(ctx, "agent.account.import", "", resultErr) }()
+	defer func() { s.recordAccount(ctx, "harness.account.import", "", resultErr) }()
 	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
 		return err
 	}
@@ -304,7 +304,7 @@ func (s *AccountService) ImportCurrent(ctx context.Context, label string) (resul
 // StartAccountLogin starts a provider login for a new account, or for the
 // saved account accountID. The finished login is saved by FinishLogin.
 func (s *AccountService) StartAccountLogin(ctx context.Context, label, accountID string) (result LoginSnapshot, resultErr error) {
-	defer func() { s.recordAccount(ctx, "agent.account.login", accountID, resultErr) }()
+	defer func() { s.recordAccount(ctx, "harness.account.login", accountID, resultErr) }()
 	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
 		return LoginSnapshot{}, err
 	}
@@ -449,7 +449,7 @@ func (s *AccountService) FinishLogin(exitErr error, output string) (bool, error)
 // ActivateAccount validates the saved account accountID and makes it the
 // host login.
 func (s *AccountService) ActivateAccount(ctx context.Context, accountID string) (resultErr error) {
-	defer func() { s.recordAccount(ctx, "agent.account.activate", accountID, resultErr) }()
+	defer func() { s.recordAccount(ctx, "harness.account.activate", accountID, resultErr) }()
 	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
 		return err
 	}
@@ -494,7 +494,7 @@ func (s *AccountService) ActivateAccount(ctx context.Context, accountID string) 
 
 // DeleteAccount removes a saved account other than the active one.
 func (s *AccountService) DeleteAccount(ctx context.Context, accountID string) (resultErr error) {
-	defer func() { s.recordAccount(ctx, "agent.account.delete", accountID, resultErr) }()
+	defer func() { s.recordAccount(ctx, "harness.account.delete", accountID, resultErr) }()
 	if err := RequireAccountManagement(ctx, s.authorizer); err != nil {
 		return err
 	}

@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
@@ -19,14 +19,14 @@ type stubAgentCapabilitiesService struct {
 func (s *stubAgentCapabilitiesService) List(
 	_ context.Context,
 	query agentcapability.ListQuery,
-) ([]agent.Capabilities, error) {
+) ([]harness.Capabilities, error) {
 	s.query = query
-	return []agent.Capabilities{{
-		Provider: agent.ProviderCodex,
+	return []harness.Capabilities{{
+		Provider: harness.ProviderCodex,
 		Label:    "Codex",
-		Source:   agent.CapabilitySourceLive,
-		Models:   []agent.ModelCapability{},
-		Modes:    []agent.CapabilityOption{},
+		Source:   harness.CapabilitySourceLive,
+		Models:   []harness.ModelCapability{},
+		Modes:    []harness.CapabilityOption{},
 	}}, nil
 }
 
@@ -50,12 +50,12 @@ func TestAgentCapabilitiesHandlerReturnsProjectCatalog(t *testing.T) {
 		t.Fatalf("unexpected query: %+v", service.query)
 	}
 	var body struct {
-		Providers []agent.Capabilities `json:"providers"`
+		Providers []harness.Capabilities `json:"providers"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Providers) != 1 || body.Providers[0].Provider != agent.ProviderCodex {
+	if len(body.Providers) != 1 || body.Providers[0].Provider != harness.ProviderCodex {
 		t.Fatalf("unexpected response: %+v", body)
 	}
 }

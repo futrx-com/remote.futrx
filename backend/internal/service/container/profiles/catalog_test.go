@@ -3,7 +3,7 @@ package profiles
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 func TestCatalogReturnsDefensiveSnapshots(t *testing.T) {

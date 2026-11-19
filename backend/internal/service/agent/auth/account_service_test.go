@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
-const testAccountProvider = agent.ProviderCodex
+const testAccountProvider = harness.ProviderCodex
 
 // testCredential is the opaque credential format the fakes understand: "id"
 // is the stable account identity and "token" changes on every refresh.
@@ -53,7 +53,7 @@ func twoAccounts() AccountSet {
 
 type fakeAccountStore struct {
 	mu      sync.Mutex
-	sets    map[agent.ProviderID]AccountSet
+	sets    map[harness.ProviderID]AccountSet
 	loadErr error
 	saveErr error
 	loads   int
@@ -61,10 +61,10 @@ type fakeAccountStore struct {
 }
 
 func newFakeAccountStore(set AccountSet) *fakeAccountStore {
-	return &fakeAccountStore{sets: map[agent.ProviderID]AccountSet{testAccountProvider: set.Clone()}}
+	return &fakeAccountStore{sets: map[harness.ProviderID]AccountSet{testAccountProvider: set.Clone()}}
 }
 
-func (s *fakeAccountStore) AgentAccounts(_ context.Context, provider agent.ProviderID) (AccountSet, error) {
+func (s *fakeAccountStore) AgentAccounts(_ context.Context, provider harness.ProviderID) (AccountSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.loads++
@@ -74,7 +74,7 @@ func (s *fakeAccountStore) AgentAccounts(_ context.Context, provider agent.Provi
 	return s.sets[provider].Clone(), nil
 }
 
-func (s *fakeAccountStore) SaveAgentAccounts(_ context.Context, provider agent.ProviderID, set AccountSet) error {
+func (s *fakeAccountStore) SaveAgentAccounts(_ context.Context, provider harness.ProviderID, set AccountSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.saveErr != nil {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
@@ -20,7 +20,7 @@ type interactionResponseRouter struct {
 
 type interactionResponseRoute struct {
 	runID     uint64
-	responses chan agent.InteractionResponse
+	responses chan harness.InteractionResponse
 }
 
 func newInteractionResponseRouter() interactionResponseRouter {
@@ -32,9 +32,9 @@ func newInteractionResponseRouter() interactionResponseRouter {
 func (router *interactionResponseRouter) open(
 	chatID servicechat.ID,
 	runID uint64,
-) chan agent.InteractionResponse {
+) chan harness.InteractionResponse {
 	responses := make(
-		chan agent.InteractionResponse,
+		chan harness.InteractionResponse,
 		configconstants.PromptInteractionResponseQueueCapacity,
 	)
 	router.mu.Lock()
@@ -48,7 +48,7 @@ func (router *interactionResponseRouter) open(
 
 func (router *interactionResponseRouter) respond(
 	chatID servicechat.ID,
-	response agent.InteractionResponse,
+	response harness.InteractionResponse,
 ) error {
 	if strings.TrimSpace(response.ID) == "" || (len(response.Result) == 0 && len(response.Error) == 0) {
 		return ErrNoPendingInteraction

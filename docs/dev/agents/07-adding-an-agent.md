@@ -26,17 +26,17 @@ Choose one stable ID matching `[a-z][a-z0-9-]*`. Provider IDs appear in chats,
 sessions, skills, settings, routes, and capability results, so changing one is
 a data migration, not a cosmetic rename. A built-in may add a named
 `agent.ProviderID` constant in
-[`model.go`](../../../backend/internal/agent/model.go), but the catalog—not the
+[`model.go`](../../../backend/internal/harness/model.go), but the catalog—not the
 constant—registers it.
 
 ## Create the provider package
 
 Use the existing packages under
-[`backend/internal/integration/agents`](../../../backend/internal/integration/agents) as examples. A
+[`backend/internal/integration/harnesses`](../../../backend/internal/integration/harnesses) as examples. A
 typical integration looks like:
 
 ```text
-backend/internal/integration/agents/acme/
+backend/internal/integration/harnesses/acme/
 ├── factory.go              complete module declaration and construction
 ├── provider.go             Provider implementation and dependencies
 ├── command.go              provider-native launch arguments and environment
@@ -98,7 +98,7 @@ CLI also needs one so the updater can converge the host binary. Declare:
   templates as needed.
 
 Add the version to
-[`provisioning/versions.env`](../../../backend/internal/agent/provisioning/versions.env)
+[`provisioning/versions.env`](../../../backend/internal/harness/provisioning/versions.env)
 and read it through `provisioning.MustCLIVersion`; use `MustPin` for associated
 checksums. Do not duplicate literal pins in provider code, tests, or docs.
 
@@ -272,7 +272,7 @@ Add focused tests for every provider-owned boundary:
 
 Extend `internal/service/agent/execution` tests for changes to common project
 lifecycle, ordering, error, or best-effort semantics. Extend
-`internal/integration/agents/runtime` tests for changes to common
+`internal/integration/harnesses/runtime` tests for changes to common
 container-command and environment precedence. Keep native arguments and
 protocol assertions in the provider package.
 
@@ -314,7 +314,7 @@ network powers change.
 
 When a local/project provider adds a preinstalled CLI or durable provider home,
 also update the embedded
-[`provisioning/assets/AGENTS.md`](../../../backend/internal/agent/provisioning/assets/AGENTS.md)
+[`provisioning/assets/AGENTS.md`](../../../backend/internal/harness/provisioning/assets/AGENTS.md)
 workspace instructions. That template currently enumerates the installed CLIs,
 provider-home paths, and durable-mount count; those human-facing details are not
 generated from the module catalog.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -98,7 +98,7 @@ type UsageRecorder interface {
 // host login. It is optional: without one the readings are dropped and the
 // dashboard has no plan card, which is the behaviour before this existed.
 type QuotaRecorder interface {
-	Record(ctx context.Context, provider agent.ProviderID, accountID string, quota agent.Quota)
+	Record(ctx context.Context, provider harness.ProviderID, accountID string, quota harness.Quota)
 }
 
 type Option func(*Service)
@@ -143,7 +143,7 @@ type AgentPolicy interface {
 }
 
 type AgentRegistry interface {
-	Lookup(agent.ProviderID) agent.Provider
+	Lookup(harness.ProviderID) harness.Provider
 }
 
 func WithAgentPolicy(policy AgentPolicy) Option {
@@ -219,7 +219,7 @@ func (rnr *Service) Start(input StartInput, emitTransient func(ChatEvent)) (RunH
 		parentCtx = accountActorContext(parentCtx, input)
 		meta, err := rnr.store.Get(parentCtx, input.ChatID)
 		if err == nil {
-			_, err = rnr.accountAccess.Resolve(parentCtx, agent.ProviderID(meta.Provider), meta.AccountID)
+			_, err = rnr.accountAccess.Resolve(parentCtx, harness.ProviderID(meta.Provider), meta.AccountID)
 		}
 		if err != nil {
 			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
@@ -283,7 +283,7 @@ func (rnr *Service) CancelPrompt(ctx context.Context, id servicechat.ID) bool {
 	return canceled
 }
 
-func (rnr *Service) RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error {
+func (rnr *Service) RespondInteraction(id servicechat.ID, response harness.InteractionResponse) error {
 	return rnr.interactions.respond(id, response)
 }
 
@@ -308,7 +308,7 @@ func (rnr *Service) runPromptAs(
 	ctx context.Context,
 	input StartInput,
 	ledgerRunID string,
-	interactionResponses <-chan agent.InteractionResponse,
+	interactionResponses <-chan harness.InteractionResponse,
 	emit func(ChatEvent),
 	emitTransient func(ChatEvent),
 ) (resultErr error) {
@@ -330,7 +330,7 @@ func (rnr *Service) runPromptAs(
 
 	if rnr.accountAccess != nil {
 		ctx = accountActorContext(ctx, input)
-		selected, err := rnr.accountAccess.Resolve(ctx, agent.ProviderID(meta.Provider), meta.AccountID)
+		selected, err := rnr.accountAccess.Resolve(ctx, harness.ProviderID(meta.Provider), meta.AccountID)
 		if err != nil {
 			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
 			return err
@@ -358,7 +358,7 @@ func (rnr *Service) runPromptAs(
 	// Codex-harness tools and MCP servers use this request cwd when they spawn.
 	cwd := meta.Cwd
 	if meta.ProjectID != "" {
-		cwd = agent.ProjectWorkspacePath
+		cwd = harness.ProjectWorkspacePath
 	} else if meta.TmuxSession != "" {
 		if c, err := rnr.tmux.Cwd(meta.TmuxSession); err == nil && c != "" {
 			cwd = c
@@ -373,7 +373,7 @@ func (rnr *Service) runPromptAs(
 
 	priorEvents, _ := rnr.store.ReadEvents(ctx, id)
 
-	// Persist the user message before spawning the selected agent.
+	// Persist the user message before spawning the selected harness.
 	emit(ChatEvent{T: time.Now().UnixMilli(), Type: "user", Text: prompt})
 
 	providerID := providerIDFromChatProvider(meta.Provider)
@@ -472,29 +472,29 @@ func (rnr *Service) runPromptAs(
 			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
 			ledger: ledger, emit: emit,
 		}
-		var completion *agent.Event
-		runErr := provider.Run(ctx, agent.RunRequest{
+		var completion *harness.Event
+		runErr := provider.Run(ctx, harness.RunRequest{
 			Provider:       providerID,
 			AccountID:      meta.AccountID,
 			ConversationID: string(id),
 			Prompt:         runPrompt,
 			Cwd:            cwd,
 			Model:          meta.Model,
-			Mode:           agent.RunMode(meta.Mode),
+			Mode:           harness.RunMode(meta.Mode),
 			ResumeID:       runResumeID,
 			ProjectID:      string(meta.ProjectID),
 			Fork:           forkSession,
-			Preferences: agent.RunPreferences{
-				ReasoningEffort: agent.ReasoningEffort(meta.ReasoningEffort),
-				ServiceTier:     agent.ServiceTier(meta.ServiceTier),
+			Preferences: harness.RunPreferences{
+				ReasoningEffort: harness.ReasoningEffort(meta.ReasoningEffort),
+				ServiceTier:     harness.ServiceTier(meta.ServiceTier),
 				ApprovalPolicy:  servicechat.NormalizeApprovalPolicy(meta.ApprovalPolicy),
 				SandboxPolicy:   servicechat.NormalizeSandboxPolicy(meta.SandboxPolicy),
 			},
 			EnableBrowser:        enableBrowser,
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
-		}, func(event agent.Event) {
-			if meta.SetupRepair && event.Type == agent.EventRunCompleted {
+		}, func(event harness.Event) {
+			if meta.SetupRepair && event.Type == harness.EventRunCompleted {
 				completion = &event
 				return
 			}
@@ -530,7 +530,7 @@ func (rnr *Service) runPromptAs(
 	}
 
 	err = run(effectivePrompt, resumeID)
-	if errors.Is(err, agent.ErrSessionNotFound) && resumeID != "" {
+	if errors.Is(err, harness.ErrSessionNotFound) && resumeID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			clearSessionIDForProvider(m, providerID)
 			m.ForkPending = false
@@ -548,7 +548,7 @@ func (rnr *Service) runPromptAs(
 		)
 		err = run(freshPrompt, "")
 	}
-	if err != nil && !errors.Is(err, agent.ErrRunFailed) {
+	if err != nil && !errors.Is(err, harness.ErrRunFailed) {
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: string(providerID) + " exit: " + err.Error()})
 	}
 	return err
@@ -561,7 +561,7 @@ func withTurnID(turnID string, emit func(ChatEvent)) func(ChatEvent) {
 	}
 }
 
-func clearSessionIDForProvider(meta *ChatMeta, provider agent.ProviderID) {
+func clearSessionIDForProvider(meta *ChatMeta, provider harness.ProviderID) {
 	meta.SetSessionID(servicechat.Provider(provider), "")
 }
 
@@ -587,11 +587,11 @@ func (rnr *Service) keepAgentBrowserActivity(ctx context.Context, projectID serv
 	return cancel
 }
 
-func providerIDFromChatProvider(provider servicechat.Provider) agent.ProviderID {
+func providerIDFromChatProvider(provider servicechat.Provider) harness.ProviderID {
 	return servicechat.NormalizeProvider(provider)
 }
 
-func sessionIDForProvider(meta ChatMeta, provider agent.ProviderID) string {
+func sessionIDForProvider(meta ChatMeta, provider harness.ProviderID) string {
 	return meta.SessionID(servicechat.Provider(provider))
 }
 
@@ -626,7 +626,7 @@ func hasBrowserSkill(skills []servicechat.SkillRef) bool {
 func promptWithSelectedSkills(
 	strategy agentmodule.SkillStrategy,
 	providerLabel string,
-	provider agent.ProviderID,
+	provider harness.ProviderID,
 	skills []servicechat.SkillRef,
 	projectScoped bool,
 	prompt string,

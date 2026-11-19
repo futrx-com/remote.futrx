@@ -1,0 +1,73 @@
+package minimax
+
+import (
+	"context"
+
+	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
+	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+)
+
+// NewFactory returns MiniMax's project-scoped module. The provider uses the
+// Codex app-server harness with a separate home and MiniMax Responses endpoint.
+func NewFactory() (agentmodule.Factory, error) {
+	profile := Profile()
+	return agentmodule.NewFactory(agentmodule.Descriptor{
+		ID:               harness.ProviderMiniMax,
+		Label:            configconstants.MiniMaxLabel,
+		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+		Auth:             agentmodule.AuthManagedAPIKey,
+		AuthInstructions: configconstants.MiniMaxAuthInstructions,
+		APIKeyAuth: &agentmodule.APIKeyAuth{
+			CreateURL:       configconstants.MiniMaxAPIKeyCreateURL,
+			CreateLabel:     configconstants.MiniMaxAPIKeyCreateLabel,
+			CredentialLabel: configconstants.MiniMaxAPIKeyCredentialLabel,
+		},
+		Features: agentmodule.Features{
+			Sessions:              agentmodule.SessionSupport{Resume: true, Fork: true},
+			Skills:                agentmodule.SkillsDollarMention,
+			BrowserTools:          true,
+			ApplicationTools:      true,
+			ExecutionPolicies:     true,
+			StreamingPresentation: agentmodule.StreamingBlocks,
+		},
+	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
+		tokenPlans := newAPIKeyValidator()
+		apiKeys, err := agentauth.NewAPIKeyService(
+			context.Background(),
+			harness.ProviderMiniMax,
+			deps.APIKeys,
+			tokenPlans,
+			deps.AccountAuthorizer,
+		)
+		if err != nil {
+			return agentmodule.Components{}, err
+		}
+		if err := apiKeys.EnableAccounts(context.Background(), deps.Accounts, configconstants.MiniMaxLabel); err != nil {
+			return agentmodule.Components{}, err
+		}
+		binding := agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys)
+		return agentmodule.Components{
+			Provider: newProvider(
+				deps.ProjectPreparer,
+				apiKeys,
+				newModelCatalogClient(),
+				deps.RuntimeAssets,
+				validatedProfile.CLI.Binary,
+				tokenPlans,
+			),
+			Auth: &binding,
+		}, nil
+	}, agentmodule.WithProjectPreparation(agentmodule.ProjectPreparationPolicy{
+		SkillLinksRequired: true,
+		BrowserAssets:      true,
+		BrowserMCPRuntime:  true,
+	}))
+}
+
+var (
+	_ harness.Provider           = (*Provider)(nil)
+	_ agentmodule.FactoryBuilder = NewFactory
+)

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type Flow string
@@ -47,7 +47,7 @@ type Snapshot struct {
 // It lets inbound adapters expose HTTP or WebSocket protocols without importing
 // a concrete agent package or knowing its CLI policy.
 type Binding struct {
-	id            agent.ProviderID
+	id            harness.ProviderID
 	flow          Flow
 	status        func() any
 	subscribe     func() Subscription
@@ -67,7 +67,7 @@ type Binding struct {
 	deleteAPIKey     func(context.Context) error
 }
 
-func NewCodeBinding(id agent.ProviderID, service *CodeService) Binding {
+func NewCodeBinding(id harness.ProviderID, service *CodeService) Binding {
 	binding := Binding{id: id, flow: FlowCode}
 	if service == nil {
 		return binding
@@ -97,7 +97,7 @@ func NewCodeBinding(id agent.ProviderID, service *CodeService) Binding {
 	return binding
 }
 
-func NewDeviceBinding[S any](id agent.ProviderID, service *DeviceService[S]) Binding {
+func NewDeviceBinding[S any](id harness.ProviderID, service *DeviceService[S]) Binding {
 	binding := Binding{id: id, flow: FlowDevice}
 	if service == nil {
 		return binding
@@ -129,7 +129,7 @@ func NewDeviceBinding[S any](id agent.ProviderID, service *DeviceService[S]) Bin
 // Remote's managed code/device flows. It intentionally has no status stream
 // or mutation callbacks; callers can use the module descriptor to present the
 // provider-owned sign-in instructions instead.
-func NewExternalBinding(id agent.ProviderID) Binding {
+func NewExternalBinding(id harness.ProviderID) Binding {
 	return Binding{
 		id: id, flow: FlowExternal,
 		snapshot: func() Snapshot { return Snapshot{} },
@@ -138,7 +138,7 @@ func NewExternalBinding(id agent.ProviderID) Binding {
 
 // NewAPIKeyBinding exposes a write-only managed credential flow. Status and
 // subscriptions reveal only whether a key exists; the key is never returned.
-func NewAPIKeyBinding(id agent.ProviderID, service *APIKeyService) Binding {
+func NewAPIKeyBinding(id harness.ProviderID, service *APIKeyService) Binding {
 	binding := Binding{id: id, flow: FlowAPIKey}
 	if service == nil {
 		return binding
@@ -172,7 +172,7 @@ func (b Binding) WithAccounts(accounts AccountController) Binding {
 	return b
 }
 
-func (b Binding) ID() agent.ProviderID { return b.id }
+func (b Binding) ID() harness.ProviderID { return b.id }
 
 func (b Binding) Flow() Flow { return b.flow }
 

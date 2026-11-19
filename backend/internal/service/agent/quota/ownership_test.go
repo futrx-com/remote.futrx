@@ -8,20 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func ownedReading() AccountQuota {
 	return AccountQuota{
 		Provider:  "codex",
 		AccountID: "work",
-		Session:   &agent.Quota{Window: agent.QuotaWindowSession, UsedPercent: percent(20), Status: "allowed"},
-		Weekly:    &agent.Quota{Window: agent.QuotaWindowWeekly, UsedPercent: percent(60), Status: "allowed_warning"},
+		Session:   &harness.Quota{Window: harness.QuotaWindowSession, UsedPercent: percent(20), Status: "allowed"},
+		Weekly:    &harness.Quota{Window: harness.QuotaWindowWeekly, UsedPercent: percent(60), Status: "allowed_warning"},
 	}
 }
 
 func corruptReading(reading AccountQuota) {
-	for _, window := range []*agent.Quota{reading.Session, reading.Weekly} {
+	for _, window := range []*harness.Quota{reading.Session, reading.Weekly} {
 		*window.UsedPercent = 99
 		window.Status = "changed"
 	}
@@ -103,8 +103,8 @@ func TestRecordSerializesPersistenceWithoutBlockingView(t *testing.T) {
 	service := New(context.Background(), store)
 	firstDone := make(chan struct{})
 	go func() {
-		service.Record(context.Background(), agent.ProviderCodex, "work", agent.Quota{
-			Window: agent.QuotaWindowSession, UsedPercent: percent(20),
+		service.Record(context.Background(), harness.ProviderCodex, "work", harness.Quota{
+			Window: harness.QuotaWindowSession, UsedPercent: percent(20),
 		})
 		close(firstDone)
 	}()
@@ -125,8 +125,8 @@ func TestRecordSerializesPersistenceWithoutBlockingView(t *testing.T) {
 
 	secondDone := make(chan struct{})
 	go func() {
-		service.Record(context.Background(), agent.ProviderCodex, "work", agent.Quota{
-			Window: agent.QuotaWindowWeekly, UsedPercent: percent(60),
+		service.Record(context.Background(), harness.ProviderCodex, "work", harness.Quota{
+			Window: harness.QuotaWindowWeekly, UsedPercent: percent(60),
 		})
 		close(secondDone)
 	}()

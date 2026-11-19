@@ -7,19 +7,19 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type Service struct {
 	authorizer agentauth.AccountAuthorizer
-	bindings   map[agent.ProviderID]agentauth.Binding
-	providers  []agent.ProviderID
+	bindings   map[harness.ProviderID]agentauth.Binding
+	providers  []harness.ProviderID
 }
 
 func New(authorizer agentauth.AccountAuthorizer, bindings []agentauth.Binding) *Service {
-	s := &Service{authorizer: authorizer, bindings: map[agent.ProviderID]agentauth.Binding{}}
+	s := &Service{authorizer: authorizer, bindings: map[harness.ProviderID]agentauth.Binding{}}
 	for _, binding := range bindings {
 		s.bindings[binding.ID()] = binding
 		s.providers = append(s.providers, binding.ID())
@@ -46,7 +46,7 @@ func (s *Service) RequireManage(ctx context.Context) error {
 	}
 	return nil
 }
-func (s *Service) canUse(ctx context.Context, provider agent.ProviderID, id string) (bool, error) {
+func (s *Service) canUse(ctx context.Context, provider harness.ProviderID, id string) (bool, error) {
 	if s == nil {
 		return false, rbac.ErrDenied
 	}
@@ -59,7 +59,7 @@ func (s *Service) canUse(ctx context.Context, provider agent.ProviderID, id stri
 
 // Resolve checks the actual selected account. Callers may pin the returned ID
 // for a run; the credential owner also re-checks under its account lock.
-func (s *Service) Resolve(ctx context.Context, provider agent.ProviderID, id string) (string, error) {
+func (s *Service) Resolve(ctx context.Context, provider harness.ProviderID, id string) (string, error) {
 	id = strings.TrimSpace(id)
 	if s == nil {
 		return "", rbac.ErrDenied
@@ -98,7 +98,7 @@ func (s *Service) Resolve(ctx context.Context, provider agent.ProviderID, id str
 }
 
 // Visible hides all unauthorized account metadata and login-flow details.
-func (s *Service) Visible(ctx context.Context, provider agent.ProviderID, snapshot agentauth.Snapshot) (agentauth.Snapshot, error) {
+func (s *Service) Visible(ctx context.Context, provider harness.ProviderID, snapshot agentauth.Snapshot) (agentauth.Snapshot, error) {
 	manage, err := s.CanManage(ctx)
 	if err != nil {
 		return agentauth.Snapshot{}, err
@@ -139,12 +139,12 @@ func (s *Service) Visible(ctx context.Context, provider agent.ProviderID, snapsh
 	}
 	return visible, nil
 }
-func (s *Service) CanViewAccount(ctx context.Context, provider agent.ProviderID, id string) (bool, error) {
+func (s *Service) CanViewAccount(ctx context.Context, provider harness.ProviderID, id string) (bool, error) {
 	return s.canUse(ctx, provider, id)
 }
 
 type Target struct {
-	Provider  agent.ProviderID `json:"provider"`
+	Provider  harness.ProviderID `json:"provider"`
 	AccountID string           `json:"accountId"`
 	Label     string           `json:"label"`
 	Scope     rbac.Scope       `json:"scope"`

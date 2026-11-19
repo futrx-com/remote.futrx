@@ -58,12 +58,12 @@ if [ -n "$previous" ] && [ "${previous%.*}" = "$current_train" ]; then
         infra/templates \
         infra/launcher \
 		infra/versions.env \
-		backend/internal/agent/provisioning \
-		':(glob)backend/internal/integration/agents/*/assets/**' \
-		':(glob)backend/internal/integration/agents/*/factory*.go' \
-		':(glob)backend/internal/integration/agents/*/profile*.go' \
-		':(glob)backend/internal/integration/agents/*/install*.go' \
-		':(glob)backend/internal/integration/agents/*/provisioning*.go' \
+		backend/internal/harness/provisioning \
+		':(glob)backend/internal/integration/harnesses/*/assets/**' \
+		':(glob)backend/internal/integration/harnesses/*/factory*.go' \
+		':(glob)backend/internal/integration/harnesses/*/profile*.go' \
+		':(glob)backend/internal/integration/harnesses/*/install*.go' \
+		':(glob)backend/internal/integration/harnesses/*/provisioning*.go' \
         backend/internal/config/agents.go \
         backend/internal/service/agent/module \
         backend/cmd/install-host-agents \

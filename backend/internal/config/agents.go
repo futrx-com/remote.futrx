@@ -5,11 +5,11 @@ package config
 // reviewed registration order and has no provider construction details.
 
 import (
-	antigravityagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/antigravity"
-	claudeagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/claude"
-	codexagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/codex"
-	kimiagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/kimi"
-	minimaxagent "github.com/futrx-com/remote.futrx.com/internal/integration/agents/minimax"
+	antigravityagent "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/antigravity"
+	claudeagent "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/claude"
+	codexagent "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codex"
+	kimiagent "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/kimi"
+	minimaxagent "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/minimax"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 

@@ -6,8 +6,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
@@ -30,11 +30,11 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 	profile.CLI.Binary = "mutated-after-construction"
 
 	var events []string
-	prepared, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
+	prepared, err := preparer.Prepare(context.Background(), harness.ProjectPreparationRequest{
 		ProjectID:      "project-id",
 		ConversationID: "conversation-id",
 		EnableBrowser:  true,
-	}, func(event agent.Event) {
+	}, func(event harness.Event) {
 		events = append(events, string(event.Provider)+":"+event.ConversationID+":"+event.Subtype)
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestPreparerPreservesStrictSkillLinkPolicy(t *testing.T) {
 	)
 	_, err := preparer.Prepare(
 		context.Background(),
-		agent.ProjectPreparationRequest{ProjectID: "project-id"},
+		harness.ProjectPreparationRequest{ProjectID: "project-id"},
 		nil,
 	)
 	if err == nil || err.Error() != "prepare workspace skill links: link failed" {
@@ -98,7 +98,7 @@ func TestPreparerUsesRunCredentialOverride(t *testing.T) {
 		Name: "isolated-account", HostDir: "/host/run", ContainerDir: "/root/.future/run",
 		Files: []provisioning.CredentialFile{{HostPath: "/host/run/auth.json", ContainerPath: "/root/.future/run/auth.json"}},
 	}
-	_, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
+	_, err := preparer.Prepare(context.Background(), harness.ProjectPreparationRequest{
 		ProjectID: "project-id", Credentials: &override,
 	}, nil)
 	if err != nil {
@@ -119,7 +119,7 @@ func TestPreparerRuntimeAssetFailurePreservesErrorAndShortCircuits(t *testing.T)
 
 	_, err := preparer.Prepare(
 		context.Background(),
-		agent.ProjectPreparationRequest{ProjectID: "project-id"},
+		harness.ProjectPreparationRequest{ProjectID: "project-id"},
 		nil,
 	)
 	if err == nil || err.Error() != "push agent runtime assets to container: publish failed" {
@@ -144,19 +144,19 @@ type preparationRecorder struct {
 
 type preparationProjects struct{ recorder *preparationRecorder }
 
-func (p preparationProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
+func (p preparationProjects) Get(context.Context, harness.ProjectID) (harness.Project, error) {
 	p.recorder.calls = append(p.recorder.calls, "get")
-	return agent.Project{ID: "project-id", ContainerName: "project-container", Status: "stopped"}, nil
+	return harness.Project{ID: "project-id", ContainerName: "project-container", Status: "stopped"}, nil
 }
 
-func (p preparationProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
+func (p preparationProjects) Start(context.Context, harness.ProjectID) (harness.Project, error) {
 	p.recorder.calls = append(p.recorder.calls, "start")
-	return agent.Project{}, nil
+	return harness.Project{}, nil
 }
 
-func (p preparationProjects) ListSecrets(context.Context, agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (p preparationProjects) ListSecrets(context.Context, harness.ProjectID) ([]harness.ProjectSecret, error) {
 	p.recorder.calls = append(p.recorder.calls, "secrets")
-	return []agent.ProjectSecret{{Key: "PROJECT_SECRET", Value: "value"}}, nil
+	return []harness.ProjectSecret{{Key: "PROJECT_SECRET", Value: "value"}}, nil
 }
 
 type preparationCLI struct{ recorder *preparationRecorder }

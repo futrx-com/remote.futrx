@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -34,7 +34,7 @@ type ProviderCatalog interface {
 }
 
 type defaultProviderCatalog interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+	DefaultProvider(scope agentmodule.ExecutionScope) harness.ProviderID
 }
 
 type Option func(*Service)
@@ -74,7 +74,7 @@ func NewWithSkillHomes(agentsHome, claudeHome, codexHome string, options ...Opti
 }
 
 func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace string) ([]Skill, error) {
-	if !agent.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
+	if !harness.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
 		return nil, ErrInvalidProvider
 	}
 	descriptor := agentmodule.Descriptor{}

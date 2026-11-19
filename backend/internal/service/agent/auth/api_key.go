@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var (
@@ -23,9 +23,9 @@ var (
 // snapshots or capability responses. An empty key means the provider has not
 // been configured.
 type APIKeyStore interface {
-	AgentAPIKey(context.Context, agent.ProviderID) (string, error)
-	SaveAgentAPIKey(context.Context, agent.ProviderID, string) error
-	DeleteAgentAPIKey(context.Context, agent.ProviderID) error
+	AgentAPIKey(context.Context, harness.ProviderID) (string, error)
+	SaveAgentAPIKey(context.Context, harness.ProviderID, string) error
+	DeleteAgentAPIKey(context.Context, harness.ProviderID) error
 }
 
 // APIKeyValidator verifies a credential with its provider before the service
@@ -56,7 +56,7 @@ type APIKeyStatus struct {
 // APIKeyService owns one provider's stored API-key accounts and broadcasts
 // configured/unconfigured transitions to auth subscribers.
 type APIKeyService struct {
-	id            agent.ProviderID
+	id            harness.ProviderID
 	store         APIKeyStore
 	validator     APIKeyValidator
 	accountsStore AccountStore
@@ -140,7 +140,7 @@ func (s *APIKeyService) AccountsEnabled() bool {
 
 func NewAPIKeyService(
 	ctx context.Context,
-	id agent.ProviderID,
+	id harness.ProviderID,
 	store APIKeyStore,
 	validator APIKeyValidator,
 	authorizer AccountAuthorizer,

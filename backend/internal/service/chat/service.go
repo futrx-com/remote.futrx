@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
@@ -43,7 +43,7 @@ type ProviderPolicy interface {
 }
 
 type defaultProviderPolicy interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+	DefaultProvider(scope agentmodule.ExecutionScope) harness.ProviderID
 }
 
 // Option configures an optional chat-service collaborator.
@@ -392,14 +392,14 @@ func (s *Service) providerForScope(input Provider, projectID ProjectID) (Provide
 	if projectID != "" {
 		scope = agentmodule.ScopeProject
 	}
-	normalized := agent.NormalizeProviderID(string(input))
+	normalized := harness.NormalizeProviderID(string(input))
 	if normalized == "" {
 		normalized = ProviderCodex
 		if defaults, ok := s.providers.(defaultProviderPolicy); ok {
 			normalized = defaults.DefaultProvider(scope)
 		}
 	}
-	if !agent.ValidProviderID(normalized) || !s.validProviderScope(normalized, projectID) {
+	if !harness.ValidProviderID(normalized) || !s.validProviderScope(normalized, projectID) {
 		return "", false
 	}
 	return normalized, true

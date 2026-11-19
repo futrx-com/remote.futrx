@@ -4,13 +4,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestRegistryPreservesOrderAndReturnsDefensiveCopies(t *testing.T) {
 	registry := NewRegistry()
-	claude := NewCodeBinding(agent.ProviderClaude, nil)
-	codex := NewDeviceBinding[bindingTestStatus](agent.ProviderCodex, nil)
+	claude := NewCodeBinding(harness.ProviderClaude, nil)
+	codex := NewDeviceBinding[bindingTestStatus](harness.ProviderCodex, nil)
 	for _, binding := range []Binding{claude, codex} {
 		if err := registry.Register(binding); err != nil {
 			t.Fatalf("Register(%q): %v", binding.ID(), err)
@@ -18,14 +18,14 @@ func TestRegistryPreservesOrderAndReturnsDefensiveCopies(t *testing.T) {
 	}
 
 	bindings := registry.Bindings()
-	if len(bindings) != 2 || bindings[0].ID() != agent.ProviderClaude || bindings[1].ID() != agent.ProviderCodex {
+	if len(bindings) != 2 || bindings[0].ID() != harness.ProviderClaude || bindings[1].ID() != harness.ProviderCodex {
 		t.Fatalf("Bindings = %#v", bindings)
 	}
 	bindings[0] = Binding{}
-	if got := registry.Bindings()[0].ID(); got != agent.ProviderClaude {
+	if got := registry.Bindings()[0].ID(); got != harness.ProviderClaude {
 		t.Fatalf("registry mutated through returned slice: first ID = %q", got)
 	}
-	if got, ok := registry.Lookup(agent.ProviderCodex); !ok || got.ID() != agent.ProviderCodex {
+	if got, ok := registry.Lookup(harness.ProviderCodex); !ok || got.ID() != harness.ProviderCodex {
 		t.Fatalf("Lookup(codex) = (%q, %v)", got.ID(), ok)
 	}
 }
@@ -35,7 +35,7 @@ func TestRegistryRejectsInvalidAndDuplicateBindings(t *testing.T) {
 	if err := registry.Register(Binding{}); !errors.Is(err, ErrInvalidBinding) {
 		t.Fatalf("Register(empty) error = %v", err)
 	}
-	binding := NewCodeBinding(agent.ProviderClaude, nil)
+	binding := NewCodeBinding(harness.ProviderClaude, nil)
 	if err := registry.Register(binding); err != nil {
 		t.Fatalf("Register(claude): %v", err)
 	}
@@ -55,7 +55,7 @@ func TestRegistryRequiresAtLeastOneAuthenticatedProvider(t *testing.T) {
 			}
 		},
 	})
-	if err := registry.Register(NewDeviceBinding(agent.ProviderCodex, service)); err != nil {
+	if err := registry.Register(NewDeviceBinding(harness.ProviderCodex, service)); err != nil {
 		t.Fatalf("Register(codex): %v", err)
 	}
 	if registry.AnyAuthenticated() {

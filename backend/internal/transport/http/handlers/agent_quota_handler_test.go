@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
@@ -54,15 +54,15 @@ func TestAgentQuotaResponseAndGuards(t *testing.T) {
 		{"invalid session", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{}, auth), "invalid", 401, `{"error":"authentication required"}`},
 		{"nil readings", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{}, auth), token, 200, `{"accounts":[]}`},
 		{"saved account, host login and failed read", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountView{
-			{AccountQuota: agentquota.AccountQuota{Provider: "codex", Session: &agent.Quota{Window: agent.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123}}},
-			{AccountQuota: agentquota.AccountQuota{Provider: "codex", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}}},
+			{AccountQuota: agentquota.AccountQuota{Provider: "codex", Session: &harness.Quota{Window: harness.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123}}},
+			{AccountQuota: agentquota.AccountQuota{Provider: "codex", AccountID: "work", Weekly: &harness.Quota{Window: harness.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}}},
 			{AccountQuota: agentquota.AccountQuota{Provider: "codex", AccountID: "spare"}, Error: "sign-in expired"},
 		}}, auth), token, 200, `{"accounts":[` +
 			`{"provider":"codex","session":{"window":"session","usedPercent":0,"measuredAt":123}},` +
 			`{"provider":"codex","accountId":"work","weekly":{"window":"weekly","status":"allowed","measuredAt":456}},` +
 			`{"provider":"codex","accountId":"spare","error":"sign-in expired"}]}`},
 		{"reported window without auth", http.MethodGet, NewAgentQuotaHandler(&stubAgentQuota{accounts: []agentquota.AccountView{{
-			AccountQuota: agentquota.AccountQuota{Provider: "claude", AccountID: "work", Weekly: &agent.Quota{Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}},
+			AccountQuota: agentquota.AccountQuota{Provider: "claude", AccountID: "work", Weekly: &harness.Quota{Window: harness.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456}},
 		}}}, nil), "", 200, `{"accounts":[{"provider":"claude","accountId":"work","weekly":{"window":"weekly","status":"allowed","measuredAt":456}}]}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {

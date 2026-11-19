@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // planUsageRefresher owns provider fan-out, freshness, and sharing one
@@ -13,7 +13,7 @@ import (
 // accountReadings.
 type planUsageRefresher struct {
 	readings        *accountReadings
-	readers         []agent.PlanUsageReader
+	readers         []harness.PlanUsageReader
 	refreshInterval time.Duration
 	readTimeout     time.Duration
 	now             func() time.Time
@@ -25,7 +25,7 @@ type planUsageRefresher struct {
 
 func newPlanUsageRefresher(
 	readings *accountReadings,
-	readers []agent.PlanUsageReader,
+	readers []harness.PlanUsageReader,
 	refreshInterval time.Duration,
 	readTimeout time.Duration,
 	now func() time.Time,

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -21,7 +21,7 @@ type ProviderCatalog interface {
 }
 
 type defaultProviderCatalog interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+	DefaultProvider(scope agentmodule.ExecutionScope) harness.ProviderID
 }
 
 type Option func(*Service)
@@ -219,7 +219,7 @@ func (s *Service) normalizeChat(chat, defaults Chat, scope agentmodule.Execution
 }
 
 func normalizeChatProvider(provider ChatProvider) ChatProvider {
-	return agent.NormalizeProviderID(string(provider))
+	return harness.NormalizeProviderID(string(provider))
 }
 
 func (s *Service) validProviderForScope(provider ChatProvider, scope agentmodule.ExecutionScope) bool {

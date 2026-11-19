@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -46,13 +46,13 @@ func TestAgentAuthCatalogPublishesOrderedFactoryMetadata(t *testing.T) {
 			Auth:            agentmodule.AuthExternal, AuthInstructions: "Run future-agent login.",
 		},
 		{
-			ID: agent.ProviderCodex, Label: "Codex",
+			ID: harness.ProviderCodex, Label: "Codex",
 			ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
 			Auth:            agentmodule.AuthManagedDevice, AuthInstructions: "Complete device login.",
 			SatisfiesAccessGate: true,
 		},
 		{
-			ID: agent.ProviderMiniMax, Label: "MiniMax",
+			ID: harness.ProviderMiniMax, Label: "MiniMax",
 			ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
 			Auth:            agentmodule.AuthManagedAPIKey, AuthInstructions: "Add an API key.",
 			APIKeyAuth: &agentmodule.APIKeyAuth{
@@ -224,8 +224,8 @@ func TestAgentAuthAPIKeyRouteValidatesMethodAndKey(t *testing.T) {
 func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
 	apiKeys, err := agentauth.NewAPIKeyService(
 		context.Background(),
-		agent.ProviderMiniMax,
-		&agentAuthMemoryKeyStore{keys: map[agent.ProviderID]string{}},
+		harness.ProviderMiniMax,
+		&agentAuthMemoryKeyStore{keys: map[harness.ProviderID]string{}},
 		agentauth.APIKeyValidatorFunc(func(context.Context, string) error {
 			return agentauth.ErrAPIKeyRejected
 		}),
@@ -235,7 +235,7 @@ func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewAgentAuthHandler([]agentauth.Binding{
-		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
+		agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys),
 	}, nil)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
@@ -253,20 +253,20 @@ func TestAgentAuthAPIKeyRouteMapsProviderRejectionToCallerError(t *testing.T) {
 }
 
 func TestAgentAuthAPIKeyRoutesFailClosedWithoutPolicy(t *testing.T) {
-	store := &agentAuthMemoryKeyStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "existing-key"}}
-	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, nil)
+	store := &agentAuthMemoryKeyStore{keys: map[harness.ProviderID]string{harness.ProviderMiniMax: "existing-key"}}
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), harness.ProviderMiniMax, store, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	NewAgentAuthHandler([]agentauth.Binding{agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys)}, nil).RegisterRoutes(mux)
+	NewAgentAuthHandler([]agentauth.Binding{agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys)}, nil).RegisterRoutes(mux)
 	for _, method := range []string{http.MethodPost, http.MethodDelete} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest(method, "/api/minimax/login/api-key", strings.NewReader(`{"apiKey":"replacement-key"}`)))
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("%s: %d %s", method, rec.Code, rec.Body)
 		}
-		if store.keys[agent.ProviderMiniMax] != "existing-key" {
+		if store.keys[harness.ProviderMiniMax] != "existing-key" {
 			t.Fatalf("%s changed denied credential", method)
 		}
 	}
@@ -380,8 +380,8 @@ func newTestAgentAuthHandler() *AgentAuthHandler {
 		})
 	}
 
-	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, &agentAuthMemoryKeyStore{
-		keys: map[agent.ProviderID]string{},
+	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), harness.ProviderMiniMax, &agentAuthMemoryKeyStore{
+		keys: map[harness.ProviderID]string{},
 	}, nil, allowAgentAccountPolicy{})
 	if err != nil {
 		panic(err)
@@ -395,13 +395,13 @@ func newTestAgentAuthHandler() *AgentAuthHandler {
 			}, ActiveAccountID: "first"},
 		}
 	}
-	claudeBinding := agentauth.NewCodeBinding(agent.ProviderClaude, code).WithAccounts(savedAccounts())
-	codexBinding := agentauth.NewDeviceBinding(agent.ProviderCodex, device("codex CLI not found on PATH - install it first")).WithAccounts(savedAccounts())
+	claudeBinding := agentauth.NewCodeBinding(harness.ProviderClaude, code).WithAccounts(savedAccounts())
+	codexBinding := agentauth.NewDeviceBinding(harness.ProviderCodex, device("codex CLI not found on PATH - install it first")).WithAccounts(savedAccounts())
 	return NewAgentAuthHandler([]agentauth.Binding{
 		claudeBinding,
 		codexBinding,
-		agentauth.NewDeviceBinding(agent.ProviderKimi, device("kimi CLI not found on PATH - install it first")),
-		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
+		agentauth.NewDeviceBinding(harness.ProviderKimi, device("kimi CLI not found on PATH - install it first")),
+		agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys),
 	}, nil)
 }
 
@@ -422,19 +422,19 @@ func (s *agentAuthMemoryAccounts) ActivateAccount(_ context.Context, id string) 
 func (s *agentAuthMemoryAccounts) DeleteAccount(context.Context, string) error { return nil }
 
 type agentAuthMemoryKeyStore struct {
-	keys map[agent.ProviderID]string
+	keys map[harness.ProviderID]string
 }
 
-func (s *agentAuthMemoryKeyStore) AgentAPIKey(_ context.Context, id agent.ProviderID) (string, error) {
+func (s *agentAuthMemoryKeyStore) AgentAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
 	return s.keys[id], nil
 }
 
-func (s *agentAuthMemoryKeyStore) SaveAgentAPIKey(_ context.Context, id agent.ProviderID, key string) error {
+func (s *agentAuthMemoryKeyStore) SaveAgentAPIKey(_ context.Context, id harness.ProviderID, key string) error {
 	s.keys[id] = key
 	return nil
 }
 
-func (s *agentAuthMemoryKeyStore) DeleteAgentAPIKey(_ context.Context, id agent.ProviderID) error {
+func (s *agentAuthMemoryKeyStore) DeleteAgentAPIKey(_ context.Context, id harness.ProviderID) error {
 	delete(s.keys, id)
 	return nil
 }

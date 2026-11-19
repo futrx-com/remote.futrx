@@ -8,7 +8,7 @@ declare their small policy differences and still construct native host/project
 CLI arguments, prompt transport, and run/probe protocols.
 
 The contract is defined in
-[`provisioning/profile.go`](../../../backend/internal/agent/provisioning/profile.go).
+[`provisioning/profile.go`](../../../backend/internal/harness/provisioning/profile.go).
 Each provider passes its profile separately from its public descriptor to
 `module.NewFactory` in `factory.go`. The factory validates and retains a
 defensive snapshot; consumers that only need metadata never receive
@@ -85,7 +85,7 @@ parallel provider list in infrastructure shell.
 ## Version pins and host convergence
 
 All external pins live in
-[`backend/internal/agent/provisioning/versions.env`](../../../backend/internal/agent/provisioning/versions.env).
+[`backend/internal/harness/provisioning/versions.env`](../../../backend/internal/harness/provisioning/versions.env).
 `infra/versions.env` is a symlink to it, while the backend embeds the same file
 through `versions.go`. `MustCLIVersion` fails fast on a missing or malformed
 strict semver pin.
@@ -357,9 +357,9 @@ not sufficient for a profile/toolchain change.
 Release classification rejects an application-only patch when changes touch
 protected infrastructure paths, including:
 
-- `backend/internal/agent/provisioning`;
+- `backend/internal/harness/provisioning`;
 - provider `assets/`, `factory*.go`, `profile*.go`, `install*.go`, and
-  `provisioning*.go` under `backend/internal/integration/agents`;
+  `provisioning*.go` under `backend/internal/integration/harnesses`;
 - `backend/internal/config/agents.go` and
   `backend/internal/service/agent/module`;
 - host-agent installer/runtime and container-image services;

@@ -84,7 +84,7 @@ browser and scheduled-tool enablement, and short-lived backend runtime
 environment.
 
 The compiled-in integrations are composed through validated provider-owned
-factories. Each `backend/internal/integration/agents/<id>/factory.go` attaches
+factories. Each `backend/internal/integration/harnesses/<id>/factory.go` attaches
 the provider's provisioning `Profile()` separately from its public descriptor
 and declares the provider-neutral extension contract: stable ID and label,
 default-provider flag, host/project execution scopes, authentication
@@ -123,7 +123,7 @@ policy, credential synchronization, persistent directories,
 shared instruction destination, workspace-skill compatibility links, and any
 non-secret runtime assets or browser MCP templates. The built-ins define their module and provisioning
 policy in protected provider-local `factory*.go`, `profile*.go`, `install*.go`,
-`provisioning*.go`, and `assets/` paths under `internal/integration/agents`.
+`provisioning*.go`, and `assets/` paths under `internal/integration/harnesses`.
 Changes there require a minor/major full-infrastructure release.
 
 Execution scope is enforced at the service boundary. `host` permits loose-chat
@@ -367,11 +367,11 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Chat service: [`backend/internal/service/chat/service.go`](../../backend/internal/service/chat/service.go)
 - Prompt service: [`backend/internal/service/prompt/service.go`](../../backend/internal/service/prompt/service.go)
 - Run hub: [`backend/internal/service/runhub/hub.go`](../../backend/internal/service/runhub/hub.go)
-- Agent model: [`backend/internal/agent/model.go`](../../backend/internal/agent/model.go)
+- Agent model: [`backend/internal/harness/model.go`](../../backend/internal/harness/model.go)
 - Agent module contract and runtime: [`backend/internal/service/agent/module/`](../../backend/internal/service/agent/module/)
 - Agent authentication: [`backend/internal/service/agent/auth/`](../../backend/internal/service/agent/auth/)
 - Agent composition root: [`backend/internal/config/agents.go`](../../backend/internal/config/agents.go)
-- Provider-owned adapters and factories: [`backend/internal/integration/agents/`](../../backend/internal/integration/agents/)
+- Provider-owned adapters and factories: [`backend/internal/integration/harnesses/`](../../backend/internal/integration/harnesses/)
 - Project-run preparation: [`backend/internal/service/agent/execution/`](../../backend/internal/service/agent/execution/)
 - Capability catalog: [`backend/internal/service/agent/capability/`](../../backend/internal/service/agent/capability/)
 - Frontend chat hook: [`frontend/src/state/hooks/chat/useChat.ts`](../../frontend/src/state/hooks/chat/useChat.ts)

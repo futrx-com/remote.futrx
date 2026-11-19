@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type memoryStore struct {
@@ -27,12 +27,12 @@ func percent(value float64) *float64 { return &value }
 
 func TestRecordKeepsBothWindowsPerAccount(t *testing.T) {
 	service := New(context.Background(), nil)
-	service.Record(context.Background(), agent.ProviderClaude, "work", agent.Quota{
-		Window:      agent.QuotaWindowSession,
+	service.Record(context.Background(), harness.ProviderClaude, "work", harness.Quota{
+		Window:      harness.QuotaWindowSession,
 		UsedPercent: percent(20),
 	})
-	service.Record(context.Background(), agent.ProviderClaude, "work", agent.Quota{
-		Window:      agent.QuotaWindowWeekly,
+	service.Record(context.Background(), harness.ProviderClaude, "work", harness.Quota{
+		Window:      harness.QuotaWindowWeekly,
 		UsedPercent: percent(70),
 	})
 
@@ -56,8 +56,8 @@ func TestRecordKeepsEachAccountsPlanApart(t *testing.T) {
 		account string
 		used    float64
 	}{{"work", 90}, {"personal", 5}, {"", 40}} {
-		service.Record(context.Background(), agent.ProviderCodex, reading.account, agent.Quota{
-			Window:      agent.QuotaWindowSession,
+		service.Record(context.Background(), harness.ProviderCodex, reading.account, harness.Quota{
+			Window:      harness.QuotaWindowSession,
 			UsedPercent: percent(reading.used),
 		})
 	}
@@ -77,8 +77,8 @@ func TestRecordKeepsEachAccountsPlanApart(t *testing.T) {
 func TestRecordReplacesTheSameWindow(t *testing.T) {
 	service := New(context.Background(), nil)
 	for _, used := range []float64{10, 45} {
-		service.Record(context.Background(), agent.ProviderCodex, " work ", agent.Quota{
-			Window:      agent.QuotaWindowSession,
+		service.Record(context.Background(), harness.ProviderCodex, " work ", harness.Quota{
+			Window:      harness.QuotaWindowSession,
 			UsedPercent: percent(used),
 		})
 	}
@@ -92,8 +92,8 @@ func TestRecordReplacesTheSameWindow(t *testing.T) {
 // somewhere: guessing would make the card confidently wrong.
 func TestRecordIgnoresAnUnknownWindow(t *testing.T) {
 	service := New(context.Background(), nil)
-	service.Record(context.Background(), agent.ProviderClaude, "", agent.Quota{Window: "monthly"})
-	service.Record(context.Background(), agent.ProviderClaude, "", agent.Quota{})
+	service.Record(context.Background(), harness.ProviderClaude, "", harness.Quota{Window: "monthly"})
+	service.Record(context.Background(), harness.ProviderClaude, "", harness.Quota{})
 	if view := service.View(); len(view) != 0 {
 		t.Fatalf("expected nothing recorded, got %#v", view)
 	}
@@ -101,7 +101,7 @@ func TestRecordIgnoresAnUnknownWindow(t *testing.T) {
 
 func TestRecordIgnoresAnEmptyProvider(t *testing.T) {
 	service := New(context.Background(), nil)
-	service.Record(context.Background(), "  ", "work", agent.Quota{Window: agent.QuotaWindowSession})
+	service.Record(context.Background(), "  ", "work", harness.Quota{Window: harness.QuotaWindowSession})
 	if view := service.View(); len(view) != 0 {
 		t.Fatalf("expected nothing recorded, got %#v", view)
 	}
@@ -110,8 +110,8 @@ func TestRecordIgnoresAnEmptyProvider(t *testing.T) {
 func TestReadingsSurviveARestart(t *testing.T) {
 	store := &memoryStore{}
 	service := New(context.Background(), store)
-	service.Record(context.Background(), agent.ProviderClaude, "work", agent.Quota{
-		Window:      agent.QuotaWindowWeekly,
+	service.Record(context.Background(), harness.ProviderClaude, "work", harness.Quota{
+		Window:      harness.QuotaWindowWeekly,
 		UsedPercent: percent(80),
 	})
 	if store.saves == 0 {
@@ -128,8 +128,8 @@ func TestReadingsSurviveARestart(t *testing.T) {
 // A persisted reading without a provider cannot be attributed to any plan.
 func TestNewDropsLoadedReadingsWithoutAProvider(t *testing.T) {
 	store := &memoryStore{readings: []AccountQuota{
-		{Provider: " ", AccountID: "work", Session: &agent.Quota{Window: agent.QuotaWindowSession}},
-		{Provider: " codex ", AccountID: " work ", Session: &agent.Quota{Window: agent.QuotaWindowSession}},
+		{Provider: " ", AccountID: "work", Session: &harness.Quota{Window: harness.QuotaWindowSession}},
+		{Provider: " codex ", AccountID: " work ", Session: &harness.Quota{Window: harness.QuotaWindowSession}},
 	}}
 	view := New(context.Background(), store).View()
 	if len(view) != 1 || view[0].Provider != "codex" || view[0].AccountID != "work" {
@@ -142,12 +142,12 @@ func TestNewDropsLoadedReadingsWithoutAProvider(t *testing.T) {
 func TestViewIsStablyOrdered(t *testing.T) {
 	service := New(context.Background(), nil)
 	for _, reading := range []struct {
-		provider agent.ProviderID
+		provider harness.ProviderID
 		account  string
 	}{
-		{agent.ProviderCodex, "b"}, {agent.ProviderClaude, "z"}, {agent.ProviderCodex, "a"}, {agent.ProviderCodex, ""},
+		{harness.ProviderCodex, "b"}, {harness.ProviderClaude, "z"}, {harness.ProviderCodex, "a"}, {harness.ProviderCodex, ""},
 	} {
-		service.Record(context.Background(), reading.provider, reading.account, agent.Quota{Window: agent.QuotaWindowSession})
+		service.Record(context.Background(), reading.provider, reading.account, harness.Quota{Window: harness.QuotaWindowSession})
 	}
 	var order []string
 	for _, reading := range service.View() {

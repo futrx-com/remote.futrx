@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
@@ -21,16 +21,16 @@ type stubCLIProvisioner struct{}
 func (stubCLIProvisioner) Ensure(context.Context, string, provisioning.CLISpec) error { return nil }
 
 type serviceTestProvider struct {
-	id agent.ProviderID
+	id harness.ProviderID
 }
 
-func (p serviceTestProvider) ID() agent.ProviderID { return p.id }
+func (p serviceTestProvider) ID() harness.ProviderID { return p.id }
 
-func (p serviceTestProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: p.id}, nil
+func (p serviceTestProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: p.id}, nil
 }
 
-func (p serviceTestProvider) Run(context.Context, agent.RunRequest, func(agent.Event)) error {
+func (p serviceTestProvider) Run(context.Context, harness.RunRequest, func(harness.Event)) error {
 	return nil
 }
 

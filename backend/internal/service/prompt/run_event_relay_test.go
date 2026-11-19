@@ -6,28 +6,28 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 type collaborationPromptProvider struct {
-	events []agent.Event
+	events []harness.Event
 }
 
-func (p *collaborationPromptProvider) ID() agent.ProviderID { return agent.ProviderCodex }
+func (p *collaborationPromptProvider) ID() harness.ProviderID { return harness.ProviderCodex }
 
-func (p *collaborationPromptProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
+func (p *collaborationPromptProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
 
-func (p *collaborationPromptProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+func (p *collaborationPromptProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: harness.ProviderCodex}, nil
 }
 
 func (p *collaborationPromptProvider) Run(
 	_ context.Context,
-	_ agent.RunRequest,
-	emit func(agent.Event),
+	_ harness.RunRequest,
+	emit func(harness.Event),
 ) error {
 	for _, ev := range p.events {
 		emit(ev)
@@ -152,18 +152,18 @@ func TestRelayStripsNotificationSummaryFromSubagentMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := &collaborationPromptProvider{events: []agent.Event{
+	provider := &collaborationPromptProvider{events: []harness.Event{
 		{
-			Type:     agent.EventCollaboration,
+			Type:     harness.EventCollaboration,
 			ItemID:   "subagent:child-1",
-			ItemKind: agent.ItemToolCall,
+			ItemKind: harness.ItemToolCall,
 			ToolName: "Researcher",
 			Status:   "completed",
 			Data:     marshalSubagentThread(t),
 		},
-		{Type: agent.EventRunCompleted},
+		{Type: harness.EventRunCompleted},
 	}}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
