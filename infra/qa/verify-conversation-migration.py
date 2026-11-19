@@ -60,7 +60,7 @@ def fingerprint(meta, path):
 def validate(root):
     database = root / "conversations.sqlite"
     require(database.is_file(), "conversation database is missing")
-    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro")
+    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
     connection.execute("PRAGMA query_only=ON")
     connection.execute("BEGIN")
     try:
