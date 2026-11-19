@@ -55,3 +55,19 @@ func TestMissingSessionRecoveryDoesNotMatchOtherErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestStreamDeltaIdentityUsesMessageNotPerEventUUID(t *testing.T) {
+	parser := NewParser(harness.RunRequest{TrackInputAcceptance: true, ResumeID: "session"})
+	if _, err := parser.ParseLine([]byte(`{"type":"stream_event","uuid":"start-event","event":{"type":"message_start","message":{"id":"stable-message"}}}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, uuid := range []string{"first-delta", "second-delta"} {
+		events, err := parser.ParseLine([]byte(`{"type":"stream_event","uuid":"` + uuid + `","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"fragment"}}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != 1 || events[0].MessageID != "stable-message" || events[0].Native == nil || events[0].Native.ItemID != uuid {
+			t.Fatalf("identity lost: %#v", events)
+		}
+	}
+}

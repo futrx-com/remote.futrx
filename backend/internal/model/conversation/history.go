@@ -6,9 +6,11 @@ import "encoding/json"
 
 type Record struct {
 	Seq        int64           `json:"seq"`
+	EndSeq     int64           `json:"endSeq,omitempty"`
 	TurnID     string          `json:"turnId,omitempty"`
 	Kind       string          `json:"kind"`
 	Provider   string          `json:"provider,omitempty"`
+	AccountID  string          `json:"accountId,omitempty"`
 	MessageID  string          `json:"messageId,omitempty"`
 	ToolCallID string          `json:"toolCallId,omitempty"`
 	Name       string          `json:"name,omitempty"`

@@ -67,8 +67,25 @@ func sessionRecordID() string {
 }
 
 func (s *Store) PrepareRun(ctx context.Context, input chat.RunPreparation) (chat.PreparedRun, error) {
+	// Reserve the native mapping and capture an immutable branch/range under
+	// a short write transaction. Loading/assembling large history must not
+	// hold the global writer lock or block unrelated conversation appends.
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	prepared, err := s.prepareRunLocked(ctx, input)
+	s.mu.Unlock()
+	if err != nil {
+		return chat.PreparedRun{}, err
+	}
+	events, err := readPortableHistoryRange(ctx, s.db, prepared.History.BranchID, prepared.History.AfterSeq, prepared.History.ThroughSeq)
+	if err != nil {
+		finishErr := s.FinishRun(context.WithoutCancel(ctx), prepared.RunID, chat.RunOutcome{Status: "failed", Error: err.Error()})
+		return chat.PreparedRun{}, errors.Join(err, finishErr)
+	}
+	prepared.History.Records = chat.ConversationRecords(events)
+	return prepared, nil
+}
+
+func (s *Store) prepareRunLocked(ctx context.Context, input chat.RunPreparation) (chat.PreparedRun, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return chat.PreparedRun{}, err
@@ -129,11 +146,7 @@ func (s *Store) PrepareRun(ctx context.Context, input chat.RunPreparation) (chat
 	if covered > tail {
 		return chat.PreparedRun{}, fmt.Errorf("session bookmark %d is after history boundary %d", covered, tail)
 	}
-	events, err := readPortableHistoryRange(ctx, tx, branch, covered, tail)
-	if err != nil {
-		return chat.PreparedRun{}, err
-	}
-	prepared.History = conversation.History{BranchID: branch, AfterSeq: covered, ThroughSeq: tail, Records: chat.ConversationRecords(events)}
+	prepared.History = conversation.History{BranchID: branch, AfterSeq: covered, ThroughSeq: tail}
 	_, err = tx.ExecContext(ctx, `INSERT INTO runs
 	 (id,branch_id,turn_id,harness_session_id,provider,account_id,model,status,history_through_seq,created_at)
 	 VALUES(?,?,?,?,?,?,?,'pending',?,?)`, input.RunID, branch, input.TurnID, prepared.SessionID, input.Provider, input.AccountID, input.Model, tail, now)

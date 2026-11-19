@@ -137,3 +137,33 @@ func TestHandoffRangeKeepsLargeContentAndExcludesTelemetry(t *testing.T) {
 		t.Fatal("filtered records changed history bookmark")
 	}
 }
+
+func TestPrepareRunHistoryReadFailureFinalizesAttempt(t *testing.T) {
+	ctx := context.Background()
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	meta, err := store.Create(ctx, chat.Meta{ID: "abcdef123456", Provider: chat.ProviderClaude})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AppendEvent(ctx, meta.ID, chat.Event{Type: "user", Text: "history"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.db.Exec(`UPDATE events SET payload_json='invalid-json'`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.PrepareRun(ctx, chat.RunPreparation{ChatID: meta.ID, RunID: "failed-read", TurnID: "turn", Provider: chat.ProviderClaude})
+	if err == nil {
+		t.Fatal("corrupt history was accepted")
+	}
+	var status, state string
+	if err = store.db.QueryRow(`SELECT r.status,s.state FROM runs r JOIN harness_sessions s ON s.id=r.harness_session_id WHERE r.id='failed-read'`).Scan(&status, &state); err != nil {
+		t.Fatal(err)
+	}
+	if status != "failed" || state != "uncertain" {
+		t.Fatalf("attempt left resumable: status=%s state=%s", status, state)
+	}
+}

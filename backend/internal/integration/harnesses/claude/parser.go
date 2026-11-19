@@ -16,6 +16,7 @@ type Parser struct {
 	sawModel           string
 	sawInputAcceptance bool
 	messageUUID        string
+	streamMessageID    string
 }
 
 func NewParser(req harness.RunRequest) *Parser {
@@ -69,11 +70,20 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		if err := json.Unmarshal(raw.Event, &inner); err != nil {
 			return events, nil
 		}
+		if inner.Type == "message_start" {
+			p.streamMessageID = inner.Message.ID
+		} else if inner.Type == "message_stop" {
+			p.streamMessageID = ""
+		}
 		if inner.Type == "content_block_delta" &&
 			inner.Delta.Type == "text_delta" && inner.Delta.Text != "" {
 			events = append(events, p.event(now, harness.EventAssistantTextDelta, rawLine, func(ev *harness.Event) {
 				ev.ItemKind = harness.ItemMessage
 				ev.Text = inner.Delta.Text
+				// The wrapper UUID identifies this stream event, not its message.
+				// Keep that UUID in Native.ItemID and use message_start's stable
+				// API message identity for assembling text fragments.
+				ev.MessageID = p.streamMessageID
 			}))
 		}
 
@@ -212,6 +222,9 @@ type streamMsg struct {
 }
 
 type streamInner struct {
+	Message struct {
+		ID string `json:"id"`
+	} `json:"message,omitempty"`
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
 	Delta struct {
