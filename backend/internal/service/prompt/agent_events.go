@@ -49,11 +49,17 @@ func chatEventFromAgentEvent(ev harness.Event) (ChatEvent, bool) {
 
 	out := ChatEvent{
 		T:             t,
+		Provider:      ev.Provider,
+		AccountID:     ev.AccountID,
+		Raw:           ev.Raw,
 		Native:        ev.Native,
 		InteractionID: ev.InteractionID,
 		Status:        ev.Status,
 	}
 	switch ev.Type {
+	case harness.EventInputAccepted:
+		out.Type = "provider_event"
+		out.Name = string(harness.EventInputAccepted)
 	case harness.EventSessionUpdated:
 		out.Type = "session"
 		out.SetSession(servicechat.Provider(ev.Provider), ev.SessionID)

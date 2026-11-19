@@ -120,6 +120,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			h.handleEvents(w, r, id)
 		case "transcript":
 			h.handleTranscript(w, r, id)
+		case "search":
+			h.handleSearch(w, r, id)
 		case "transcript/content":
 			h.handleTranscriptContent(w, r, id)
 		case "rewind":
@@ -175,6 +177,22 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 	default:
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+func (h *ChatHandler) handleSearch(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	hits, err := h.chats.SearchTranscript(r.Context(), id, r.URL.Query().Get("q"), intQuery(r, "limit", 50))
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	if hits == nil {
+		hits = []servicechat.SearchHit{}
+	}
+	httptransport.SendJSON(w, http.StatusOK, hits)
 }
 
 func (h *ChatHandler) handleEvents(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
@@ -369,6 +387,7 @@ func sendChatError(w http.ResponseWriter, err error) {
 	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
 		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
+		errors.Is(err, servicechat.ErrInvalidSearch),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),
 		errors.Is(err, servicechat.ErrInvalidRewindTimestamp):

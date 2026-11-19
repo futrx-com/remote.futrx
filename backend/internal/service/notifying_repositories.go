@@ -5,6 +5,7 @@ import (
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
+	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspacehub"
 )
 
@@ -15,6 +16,28 @@ type notifyingChatRepository struct {
 	// push receives every appended event so it can raise notifications for
 	// the few that matter. Nil when push is not configured.
 	push *chatPushNotifier
+}
+
+type notifyingBranchRewinder struct {
+	source servicechat.BranchRewinder
+	chats  notifyingChatRepository
+	runs   *runhub.Hub
+}
+
+func (r notifyingChatRepository) HistoryVersion(ctx context.Context, id servicechat.ID) (string, error) {
+	if source, ok := r.Repository.(servicechat.HistoryVersionSource); ok {
+		return source.HistoryVersion(ctx, id)
+	}
+	return "", nil
+}
+
+func (r notifyingBranchRewinder) RewindBranch(ctx context.Context, id servicechat.ID, before int64) error {
+	if err := r.source.RewindBranch(ctx, id, before); err != nil {
+		return err
+	}
+	r.chats.publishChat(ctx, id)
+	r.runs.BroadcastTransient(id, servicechat.Event{Type: "system", Subtype: "history_reset"})
+	return nil
 }
 
 func (r notifyingChatRepository) Create(ctx context.Context, meta servicechat.Meta) (servicechat.Meta, error) {
@@ -154,4 +177,18 @@ func (r notifyingProjectRepository) Delete(ctx context.Context, id serviceprojec
 		r.workspace.PublishProjectDelete(id)
 	}
 	return err
+}
+
+// notifyingBranchForker publishes only after the branch transaction commits.
+type notifyingBranchForker struct {
+	source servicechat.BranchForker
+	chats  notifyingChatRepository
+}
+
+func (r notifyingBranchForker) ForkChat(ctx context.Context, id servicechat.ID, meta servicechat.Meta, cutoff int64) (servicechat.Meta, error) {
+	next, err := r.source.ForkChat(ctx, id, meta, cutoff)
+	if err == nil {
+		r.chats.workspace.PublishChatUpsert(r.chats.withRunning(next))
+	}
+	return next, err
 }

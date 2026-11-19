@@ -83,21 +83,24 @@ type Event struct {
 	KimiSessionID        string          `json:"kimiSessionId,omitempty"`
 	AntigravitySessionID string          `json:"antigravitySessionId,omitempty"`
 	Provider             Provider        `json:"provider,omitempty"`
+	AccountID            string          `json:"accountId,omitempty"`
+	Raw                  json.RawMessage `json:"raw,omitempty"`
 	Usage                json.RawMessage `json:"usage,omitempty"`
 	Message              string          `json:"message,omitempty"`
 	// NotificationSummary is transient notification metadata. It is neither
 	// written to the event log nor exposed in the chat event wire format.
 	NotificationSummary string `json:"-"`
 	Running             bool   `json:"running,omitempty"`
+	HistoryVersion      string `json:"historyVersion,omitempty"`
 	// ScheduledTaskID marks events produced by a scheduled run rather than an
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
-	ApplicationID        string                `json:"applicationId,omitempty"`
-	ApplicationRequestID string                `json:"applicationRequestId,omitempty"`
-	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
+	ApplicationID        string                  `json:"applicationId,omitempty"`
+	ApplicationRequestID string                  `json:"applicationRequestId,omitempty"`
+	ScheduledTaskID      string                  `json:"scheduledTaskId,omitempty"`
 	Native               *harness.NativeEnvelope `json:"native,omitempty"`
-	InteractionID        string                `json:"interactionId,omitempty"`
-	Status               string                `json:"status,omitempty"`
+	InteractionID        string                  `json:"interactionId,omitempty"`
+	Status               string                  `json:"status,omitempty"`
 }
 
 // NormalizeSessions makes the provider-keyed session map authoritative while

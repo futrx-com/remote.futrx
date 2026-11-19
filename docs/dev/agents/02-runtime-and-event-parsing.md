@@ -76,7 +76,7 @@ input a provider receives.
 | --- | --- |
 | `Provider` | Normalized chat provider ID. Chat creation/update and the prompt boundary both enforce module membership and host/project scope. |
 | `ConversationID` | Remote chat ID, used to correlate events and logs. It is not the provider-native session ID. |
-| `Prompt` | Current prompt after optional visible-history recovery and provider-specific skill triggers are added. |
+| `Prompt` | Current prompt including provider-specific skill triggers; the adapter composes any shared history handoff. |
 | `Cwd` | Live tmux working directory when available, otherwise stored chat cwd, then host home as a fallback. |
 | `Model` | Saved model ID. The adapter must validate or safely pass it as one process/protocol argument. |
 | `Mode` | Provider-neutral `default` or `plan`; the adapter translates it to native flags or protocol settings. |
@@ -88,11 +88,15 @@ input a provider receives.
 | `RuntimeEnv` | Short-lived backend-issued schedule API URL and grant. Invalid environment names are discarded and these values override same-named project secrets. |
 | `InteractionResponses` | Run-scoped channel carrying explicit UI responses to provider-initiated requests. Providers without interactive protocols may ignore it. |
 
-If no native session is available, the prompt service prepends visible `user`
-and `assistant_text` history. The transcript is bounded to the last 24,000
-bytes. Tool output and reasoning are not copied into that transcript. See
-[`visibleTranscript`](../../../backend/internal/service/prompt/service.go) and
-[`promptWithVisibleHistory`](../../../backend/internal/service/prompt/service.go).
+The SQLite run/session mapping identifies the missing branch-history range.
+The selected harness adapter composes available shared records as historical
+context alongside the current prompt. Fresh sessions receive the retained
+prefix; resumed sessions receive the missing suffix. This is prompt context,
+not insertion of arbitrary native historical turns. No shared layer summarizes
+or silently truncates the history. The run and handoff input are persisted
+before execution; native acceptance evidence and terminal status determine
+whether the session bookmark can advance. See
+[conversation storage](../conversation-storage.md).
 
 Selected skills are translated from the module's declared strategy by
 [`promptWithSelectedSkills`](../../../backend/internal/service/prompt/service.go):
@@ -343,44 +347,44 @@ when `Fork` is true.
 
 ### Antigravity
 
-Antigravity print mode is unstructured. Production
-[`antigravity.Provider.Run`](../../../backend/internal/integration/harnesses/antigravity/provider.go)
-therefore bypasses `RunProcess` and streams raw stdout chunks as assistant
-deltas so blank lines and Markdown paragraphs survive. It captures a 4 KiB
-combined output tail for errors, maps sign-in-looking failures to a focused
-instruction, and emits completion itself.
+Tracked SQLite runs use the pinned CLI's `--input-format stream-json` and
+`--output-format stream-json` flags. The adapter sends the composed user event
+on stdin and closes it to execute one turn. The native `init` event supplies
+conversation identity, and a completed `user_input` step provides acceptance
+evidence. Step updates normalize exposed tool calls/results and assistant
+text, while retaining their native payloads. The terminal result supplies
+completion/error status; quota fields are not mislabeled as turn usage.
 
-Because print mode does not report a new conversation ID, the adapter snapshots
-the provider's `brain` directory before and after a fresh run. Exactly one new,
-valid directory becomes `session.updated`; zero or multiple candidates are
-treated as ambiguous and no session is saved. See
+Legacy direct requests without tracked-input delivery retain the old plain
+print-stream path and native-directory discovery. See
 [`antigravity/session.go`](../../../backend/internal/integration/harnesses/antigravity/session.go).
-Its [`parser.go`](../../../backend/internal/integration/harnesses/antigravity/parser.go) is a
-line-oriented test/helper parser, not the production chunk-streaming path.
+The tracked parser is
+[`stream_parser.go`](../../../backend/internal/integration/harnesses/antigravity/stream_parser.go).
 Antigravity and Kimi both clear resume state for requested forks because their
 descriptors do not declare native fork support.
 
 ## Sessions, forks, and recovery
 
-Sessions are stored in the provider-keyed `Meta.Sessions` map. The four named
-session fields remain only as compatibility mirrors for older records and
-clients. A new provider needs no new storage field. See
+SQLite `harness_sessions` stores native identity and history boundaries for a
+branch/provider/account. `Meta.Sessions` and its four named session fields
+remain compatibility metadata for older records and clients, not proof of
+successful history delivery. A new provider needs no new storage field. See
 [`chat.Meta.NormalizeSessions`](../../../backend/internal/service/chat/model.go)
-and [`filechat` records](../../../backend/internal/stores/filechat/records.go).
+and [`sqlitechat` sessions](../../../backend/internal/stores/sqlitechat/handoffs.go).
 
 The module descriptor controls orchestration:
 
 - without `Resume`, the prompt service never passes the saved ID;
 - `Fork` is invalid unless `Resume` is also true;
-- chat forking preserves and marks a provider session only when native fork is
-  declared; otherwise the copied chat starts fresh from visible history;
+- Remote branch forks and rewinds start fresh native sessions with retained
+  history, so the parent or discarded branch cannot leak into continuation;
 - a `session.updated` event clears `ForkPending` and may populate an empty chat
   model from the provider's reported model.
 
 Any adapter may return `agent.ErrSessionNotFound`. When it does so during a
 resume, the prompt service clears only that provider's saved session, clears
 the pending fork, persists a `system/session_recovered` event, rebuilds a
-bounded visible transcript, and retries the turn once without `ResumeID`.
+retained shared history, and retries the turn once without `ResumeID`.
 
 ## Failure and cancellation rules
 

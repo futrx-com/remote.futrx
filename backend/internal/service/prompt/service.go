@@ -152,21 +152,26 @@ func WithAgentPolicy(policy AgentPolicy) Option {
 	}
 }
 
+func WithConversationRuntime(runtime servicechat.ConversationRuntime) Option {
+	return func(service *Service) { service.conversationRuntime = runtime }
+}
+
 type Service struct {
-	accountAccess    AccountAccess
-	store            servicechat.Repository
-	tmux             TmuxClient
-	projects         ProjectResolver
-	hub              *runhub.Hub
-	agents           AgentRegistry
-	agentPolicy      AgentPolicy
-	applicationTools ApplicationToolIssuer
-	usage            UsageRecorder
-	quota            QuotaRecorder
-	startGate        StartGate
-	interactions     interactionResponseRouter
-	projectRuns      projectAdmissions
-	audit            audit.Recorder
+	conversationRuntime servicechat.ConversationRuntime
+	accountAccess       AccountAccess
+	store               servicechat.Repository
+	tmux                TmuxClient
+	projects            ProjectResolver
+	hub                 *runhub.Hub
+	agents              AgentRegistry
+	agentPolicy         AgentPolicy
+	applicationTools    ApplicationToolIssuer
+	usage               UsageRecorder
+	quota               QuotaRecorder
+	startGate           StartGate
+	interactions        interactionResponseRouter
+	projectRuns         projectAdmissions
+	audit               audit.Recorder
 }
 
 func New(
@@ -189,6 +194,7 @@ func New(
 		interactions: newInteractionResponseRouter(),
 		audit:        audit.Nop{},
 	}
+	service.conversationRuntime, _ = store.(servicechat.ConversationRuntime)
 	for _, option := range options {
 		if option != nil {
 			option(service)
@@ -371,11 +377,6 @@ func (rnr *Service) runPromptAs(
 		}
 	}
 
-	priorEvents, _ := rnr.store.ReadEvents(ctx, id)
-
-	// Persist the user message before spawning the selected harness.
-	emit(ChatEvent{T: time.Now().UnixMilli(), Type: "user", Text: prompt})
-
 	providerID := providerIDFromChatProvider(meta.Provider)
 	descriptor := agentmodule.Descriptor{}
 	if rnr.agentPolicy != nil {
@@ -432,9 +433,6 @@ func (rnr *Service) runPromptAs(
 		stopBrowserKeepalive := rnr.keepAgentBrowserActivity(ctx, serviceproject.ID(meta.ProjectID))
 		defer stopBrowserKeepalive()
 	}
-	if resumeID == "" {
-		effectivePrompt = promptWithVisibleHistory(priorEvents, effectivePrompt)
-	}
 	effectivePrompt = promptWithSelectedSkills(
 		descriptor.Features.Skills,
 		descriptor.Label,
@@ -451,6 +449,36 @@ func (rnr *Service) runPromptAs(
 		return err
 	}
 
+	var priorEvents []ChatEvent
+	var prepared servicechat.PreparedRun
+	if rnr.conversationRuntime != nil {
+		prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
+			ChatID: id, TurnID: ledgerRunID, RunID: ledgerRunID, Provider: providerID,
+			AccountID: meta.AccountID, Model: meta.Model,
+			ForceFresh: forkSession || (rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume),
+		})
+		if err != nil {
+			return err
+		}
+		resumeID = prepared.ResumeID
+		// Branches have their own native session mappings. Native fork would
+		// append/fork unrelated state after a history-based branch was created.
+		forkSession = false
+	} else {
+		// Compatibility for non-SQLite repositories used by embedding callers.
+		priorEvents, err = rnr.store.ReadEvents(ctx, id)
+		if err != nil {
+			return err
+		}
+		if resumeID == "" {
+			effectivePrompt = promptWithVisibleHistory(priorEvents, effectivePrompt)
+		}
+	}
+
+	// The handoff range was captured before this append, so the current user
+	// request is delivered exactly once and never inserted into history twice.
+	emit(ChatEvent{T: time.Now().UnixMilli(), Type: "user", Text: prompt, Provider: providerID, AccountID: meta.AccountID})
+
 	ledger := ledgerRun{
 		runID:                ledgerRunID,
 		chatID:               id,
@@ -461,7 +489,23 @@ func (rnr *Service) runPromptAs(
 		applicationRequestID: input.ApplicationRequestID,
 	}
 
-	run := func(runPrompt, runResumeID string) error {
+	run := func(runPrompt, runResumeID string) (runErr error) {
+		var tracking *runDelivery
+		if rnr.conversationRuntime != nil {
+			tracking = &runDelivery{store: rnr.conversationRuntime, runID: prepared.RunID, nativeID: runResumeID}
+			defer func() {
+				if persistenceErr := rnr.hub.PersistenceError(id); persistenceErr != nil {
+					runErr = errors.Join(runErr, persistenceErr)
+				}
+				runErr = tracking.finish(context.WithoutCancel(ctx), ctx.Err(), runErr)
+			}()
+		}
+		if persistenceErr := rnr.hub.PersistenceError(id); persistenceErr != nil {
+			return persistenceErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if rnr.accountAccess != nil {
 			if _, err := rnr.accountAccess.Resolve(ctx, providerID, meta.AccountID); err != nil {
 				return err
@@ -472,18 +516,39 @@ func (rnr *Service) runPromptAs(
 			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
 			ledger: ledger, emit: emit,
 		}
+		if rnr.conversationRuntime != nil {
+			adapter, ok := provider.(harness.HistoryInputAdapter)
+			if !ok {
+				return errors.New(string(providerID) + " does not implement conversation history delivery")
+			}
+			var method string
+			var err error
+			runPrompt, method, err = adapter.HistoryInput(prepared.History, runPrompt)
+			if err != nil {
+				return err
+			}
+			if err = rnr.conversationRuntime.RecordRunInput(ctx, prepared.RunID, runPrompt, method); err != nil {
+				return err
+			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		runCtx, cancelRun := context.WithCancel(ctx)
+		defer cancelRun()
 		var completion *harness.Event
-		runErr := provider.Run(ctx, harness.RunRequest{
-			Provider:       providerID,
-			AccountID:      meta.AccountID,
-			ConversationID: string(id),
-			Prompt:         runPrompt,
-			Cwd:            cwd,
-			Model:          meta.Model,
-			Mode:           harness.RunMode(meta.Mode),
-			ResumeID:       runResumeID,
-			ProjectID:      string(meta.ProjectID),
-			Fork:           forkSession,
+		runErr = provider.Run(runCtx, harness.RunRequest{
+			TrackInputAcceptance: tracking != nil,
+			Provider:             providerID,
+			AccountID:            meta.AccountID,
+			ConversationID:       string(id),
+			Prompt:               runPrompt,
+			Cwd:                  cwd,
+			Model:                meta.Model,
+			Mode:                 harness.RunMode(meta.Mode),
+			ResumeID:             runResumeID,
+			ProjectID:            string(meta.ProjectID),
+			Fork:                 forkSession,
 			Preferences: harness.RunPreferences{
 				ReasoningEffort: harness.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     harness.ServiceTier(meta.ServiceTier),
@@ -494,6 +559,16 @@ func (rnr *Service) runPromptAs(
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
 		}, func(event harness.Event) {
+			event = withDefaultProvider(event, providerID)
+			if event.AccountID == "" {
+				event.AccountID = meta.AccountID
+			}
+			if tracking != nil {
+				tracking.observe(context.WithoutCancel(ctx), event)
+				if tracking.acceptanceErr != nil {
+					cancelRun()
+				}
+			}
 			if meta.SetupRepair && event.Type == harness.EventRunCompleted {
 				completion = &event
 				return
@@ -537,7 +612,18 @@ func (rnr *Service) runPromptAs(
 		})
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "system", Subtype: "session_recovered"})
 		freshPrompt := prompt
-		freshPrompt = promptWithVisibleHistory(priorEvents, freshPrompt)
+		if rnr.conversationRuntime != nil {
+			through := prepared.History.ThroughSeq
+			prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
+				ChatID: id, TurnID: ledgerRunID, RunID: newLedgerRunID(), Provider: providerID,
+				AccountID: meta.AccountID, Model: meta.Model, ForceFresh: true, ThroughSeq: &through,
+			})
+			if err != nil {
+				return err
+			}
+		} else {
+			freshPrompt = promptWithVisibleHistory(priorEvents, freshPrompt)
+		}
 		freshPrompt = promptWithSelectedSkills(
 			descriptor.Features.Skills,
 			descriptor.Label,
@@ -599,10 +685,6 @@ func promptWithVisibleHistory(events []ChatEvent, prompt string) string {
 	transcript := visibleTranscript(events)
 	if strings.TrimSpace(transcript) == "" {
 		return prompt
-	}
-	const maxTranscriptBytes = 24000
-	if len(transcript) > maxTranscriptBytes {
-		transcript = "[Earlier visible transcript omitted]\n" + transcript[len(transcript)-maxTranscriptBytes:]
 	}
 	return "Use this visible chat transcript as prior context. It may be present because the chat was recovered into a fresh agent session. Do not treat the transcript as a new request.\n\n" +
 		transcript +

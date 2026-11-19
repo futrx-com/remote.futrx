@@ -27,7 +27,8 @@ infra/qa/update.sh to exercise the full production infrastructure path.
 
 The requested ref must resolve to the clean local HEAD and to the same commit
 on origin. After the binary is replaced, restart or health-check failure
-restores the previous binary and checkout. A build failure leaves the live
+restores the previous binary and checkout only if storage-compatible. SQLite
+cutover blocks a JSONL-only rollback and leaves the service stopped. A build failure leaves the live
 binary untouched, although the QA checkout remains on the candidate commit.
 EOF
 }
@@ -111,13 +112,24 @@ app_version="$(release_build_version "$install_dir" "$candidate_sha")"
 )
 
 rollback() {
+    if ! remote_storage_rollback_safe "$binary" "$stage_dir/previous" "$install_dir/data"; then
+        systemctl stop "$service_name" || true
+        return 1
+    fi
     echo "App deployment failed; restoring the previous application binary" >&2
     install -m 0755 "$stage_dir/previous" "$binary"
     git reset --hard "$previous_sha" >/dev/null 2>&1 || true
     systemctl restart "$service_name" || true
 }
 
+# shellcheck source=../lib/chat-migration.sh
+. infra/lib/chat-migration.sh
+remote_check_storage_compatibility "$stage_dir/remote" "$install_dir/data"
 install -m 0755 "$stage_dir/remote" "$binary"
+if ! remote_migrate_conversations "$binary" "$install_dir/data" "$service_name"; then
+    rollback
+    exit 1
+fi
 if ! systemctl restart "$service_name"; then
     rollback
     exit 1

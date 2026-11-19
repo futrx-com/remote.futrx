@@ -20,6 +20,7 @@ type Parser struct {
 	req          harness.RunRequest
 	sawSessionID string
 	sawUsage     harness.Usage
+	sawAssistant bool
 }
 
 func NewParser(req harness.RunRequest) *Parser {
@@ -76,6 +77,12 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 					ev.SessionID = raw.SessionID
 				}))
 			}
+			if p.req.TrackInputAcceptance && p.sawAssistant && p.sawSessionID != "" {
+				events = append(events, p.event(now, harness.EventInputAccepted, rawLine, func(ev *harness.Event) {
+					ev.SessionID = p.sawSessionID
+					ev.Status = "kimi_assistant_and_resume_hint"
+				}))
+			}
 			// kimi-code emits no turn-completed line; the resume hint is the
 			// de-facto end of the run. Usage is normally absent, so the event
 			// carries the model alone and cost stays unknown downstream.
@@ -86,6 +93,7 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		}
 
 	case "assistant":
+		p.sawAssistant = true
 		if text := decodeContent(raw.Content); text != "" {
 			events = append(events, p.event(now, harness.EventAssistantTextDelta, rawLine, func(ev *harness.Event) {
 				ev.ItemKind = harness.ItemMessage

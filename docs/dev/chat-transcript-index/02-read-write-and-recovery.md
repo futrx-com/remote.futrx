@@ -1,5 +1,7 @@
 # Reads, writes, and recovery
 
+> Historical design: this guide describes the pre-migration JSONL/disposable-index implementation. Current runtime storage is [authoritative SQLite](../conversation-storage.md); do not delete `conversations.sqlite` using the old cache-recovery procedure.
+
 The durable index accelerates history by mapping complete turns to event byte
 ranges. It never replaces the JSONL event log and never stores event payloads.
 

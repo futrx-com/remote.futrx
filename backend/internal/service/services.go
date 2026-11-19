@@ -9,8 +9,8 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/smtp"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
@@ -268,6 +268,15 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithAuthorizer(permissionService),
 		servicechat.WithAccountAccess(accountAccess),
 	)
+	if source, ok := deps.Chats.(servicechat.TranscriptSearchSource); ok {
+		servicechat.WithTranscriptSearchSource(source)(chatService)
+	}
+	if source, ok := deps.Chats.(servicechat.BranchForker); ok {
+		servicechat.WithBranchForker(notifyingBranchForker{source: source, chats: chats})(chatService)
+	}
+	if source, ok := deps.Chats.(servicechat.BranchRewinder); ok {
+		servicechat.WithBranchRewinder(notifyingBranchRewinder{source: source, chats: chats, runs: runs})(chatService)
+	}
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
 	userService := serviceuser.New(
@@ -285,6 +294,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	promptOptions := []prompt.Option{
 		prompt.WithAudit(auditLog),
 		prompt.WithAgentPolicy(agentRuntime),
+	}
+	if runtime, ok := deps.Chats.(servicechat.ConversationRuntime); ok {
+		promptOptions = append(promptOptions, prompt.WithConversationRuntime(runtime))
 	}
 	if deps.PromptStartGate != nil {
 		promptOptions = append(promptOptions, prompt.WithStartGate(deps.PromptStartGate))

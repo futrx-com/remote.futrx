@@ -11,10 +11,10 @@ stateDiagram-v2
     Ready --> Running: send prompt
     Running --> Ready: complete or error, then sync unlocked
     Running --> Ready: cancel
-    Ready --> Rewound: remove selected prompt and later events
-    Rewound --> Ready: next prompt starts fresh with visible transcript
-    Ready --> Forked: copy metadata and visible history
-    Forked --> Ready: next prompt materializes provider session fork
+    Ready --> Rewound: select branch before chosen prompt
+    Rewound --> Ready: fresh native session with retained history
+    Ready --> Forked: create branch sharing history
+    Forked --> Ready: fresh native session with retained history
     Ready --> [*]: delete chat
 ```
 
@@ -294,8 +294,9 @@ The UI groups text, reasoning, and tool events into readable assistant messages.
 
 The thread also provides Markdown and syntax-highlighted code, grouped tool calls, expandable reasoning blocks, token-usage totals, a working indicator, older-history loading, jump-to-latest behavior, and an error block. An `AskUserQuestion` tool call becomes a paged answer form whose submitted answer is sent as the next prompt.
 
-Antigravity currently contributes streamed assistant text and session/error
-state, not structured reasoning, tools, or usage.
+Tracked Antigravity runs use the CLI's stdin/stream-JSON interface and expose
+session identity, text, tool calls/results and completion/error state. Native
+quota fields are not treated as per-turn token usage.
 
 ## Skills
 
@@ -329,10 +330,10 @@ Claude, Codex, and MiniMax.
 | Read/unread | Updates `lastReadAt` for sidebar indicators |
 | Cancel | Cancels the active provider context and releases the run lock |
 | Queue | Per-tab `sessionStorage` queue sends prompts one at a time after each run unlocks and removes one only after server acceptance |
-| Fork | Copies visible history and provider session IDs; next run forks without mutating the parent |
-| Rewind | Deletes the selected event and everything after it; unavailable while running |
+| Fork | Creates a branch sharing retained history; next run supplies it to a fresh native session |
+| Rewind | Creates a branch retaining events before the selected point; unavailable while running |
 | Delete | Cancels an active run, then removes chat metadata and history |
-| Load older | Pages backward in complete prompt turns projected from the JSONL event log |
+| Load older | Pages backward in complete prompt turns projected from SQLite events |
 
 Draft text and queued prompts are mirrored into per-tab `sessionStorage` by
 chat ID. They survive switching chats, navigation, and reloads in the same tab,
@@ -358,9 +359,25 @@ selection. Scheduled turns receive a narrower `complete-self` capability tied
 to one task and run. Newly created tasks are active immediately. See
 [Scheduled tasks](06-scheduled-tasks.md).
 
-## Rewind and fresh-session context
+## Harness switching, rewind, and fresh-session context
 
-Rewind clears provider session IDs. On the next run, the backend converts remaining user and assistant text into a bounded visible transcript and prepends it to the current request. This keeps the visible conversation meaningful while avoiding a resume into the discarded provider session.
+SQLite tracks history delivery for each branch, provider/account and native
+session. Returning to a synchronized session supplies the intervening history
+with the next prompt. A fresh session receives the retained branch history.
+Each harness adapter formats this as explicitly historical context, including
+available user/assistant messages and exposed tool records; it does not import
+those records as native past turns or replay old tool calls.
+
+Rewind and fork create new branches and use fresh native sessions so discarded
+context is not resumed. Failed, interrupted or unconfirmed runs leave their
+native mapping uncertain; the next attempt starts fresh. There is no silent
+24 KB history truncation. Very large histories can still exceed a harness's
+input limit, which is reported as a failure. Harnesses retain ownership of
+their compaction and native session state.
+
+Migration assumes the last selected harness already owns the imported prefix
+and records `legacy_assumed`. It does not repair earlier mixed-provider gaps.
+See [conversation storage](../dev/conversation-storage.md).
 
 ## Code map
 

@@ -466,6 +466,13 @@ func (run *appServerRun) handleResponse(responseID appServerRequestID, resultJSO
 			return
 		}
 		run.turnID = result.Turn.ID
+		if run.req.TrackInputAcceptance {
+			run.emit(harness.Event{
+				Type: harness.EventInputAccepted, Provider: run.req.Provider,
+				SessionID: run.threadID, Status: "codex_turn_start_acknowledged",
+				Native: &harness.NativeEnvelope{SchemaVersion: harness.NativeEnvelopeSchemaVersion, Method: "turn/start", ThreadID: run.threadID, TurnID: run.turnID, Payload: resultJSON},
+			})
+		}
 		if run.cancelRequested {
 			run.protocolErr = run.maybeInterrupt()
 		}

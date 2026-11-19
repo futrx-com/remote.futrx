@@ -1,5 +1,7 @@
 # Durable chat transcript index developer guide
 
+> Historical design: this guide describes the pre-migration JSONL/disposable-index implementation. Current runtime storage is [authoritative SQLite](../conversation-storage.md); do not delete `conversations.sqlite` using the old cache-recovery procedure.
+
 This guide explains how Remote serves bounded transcript pages from canonical
 chat logs without rescanning an entire conversation on every request. The
 SQLite database is a disposable, durable index over JSONL byte ranges; it is

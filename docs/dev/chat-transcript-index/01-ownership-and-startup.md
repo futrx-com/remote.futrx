@@ -1,5 +1,7 @@
 # Ownership and startup warming
 
+> Historical design: this guide describes the pre-migration JSONL/disposable-index implementation. Current runtime storage is [authoritative SQLite](../conversation-storage.md); do not delete `conversations.sqlite` using the old cache-recovery procedure.
+
 The transcript index is a persistence optimization with a small startup policy
 at the composition boundary. It does not introduce another source of truth or
 move transcript projection rules into storage.

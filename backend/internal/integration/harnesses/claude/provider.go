@@ -2,7 +2,9 @@ package claude
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/harness"
@@ -82,12 +84,22 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if err != nil {
 		return err
 	}
-	err = agentruntime.RunProcess(ctx, cmd, p.Parser(req), emit, agentruntime.ProcessOptions{
+	missingSession := false
+	runEmit := func(event harness.Event) {
+		if req.ResumeID != "" && event.Type == harness.EventRunFailed && isMissingSessionMessage(event.Message, req.ResumeID) {
+			missingSession = true
+		}
+		emit(event)
+	}
+	err = agentruntime.RunProcess(ctx, cmd, p.Parser(req), runEmit, agentruntime.ProcessOptions{
 		Name:           "claude",
 		LogID:          req.ConversationID,
 		Provider:       harness.ProviderClaude,
 		ConversationID: req.ConversationID,
 	})
+	if req.ResumeID != "" && (missingSession || isMissingSessionMessage(agentruntime.ErrorStderr(err), req.ResumeID)) {
+		return fmt.Errorf("%w: Claude cannot resume the selected session", harness.ErrSessionNotFound)
+	}
 	// An isolated account run refreshes only its private home. Pull that exact
 	// home back from a project container, then offer it to the matching vault
 	// record without changing another chat's credential files.
@@ -139,4 +151,10 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		}
 	}
 	return err
+}
+
+// Keep recovery narrow: authentication/tool/model errors mentioning a missing
+// resource must not silently launch a new native session.
+func isMissingSessionMessage(message, sessionID string) bool {
+	return sessionID != "" && strings.Contains(message, "No conversation found with session ID: "+sessionID)
 }

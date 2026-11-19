@@ -69,6 +69,10 @@ export function useChat(chatId: string): UseChatResult {
   const pendingEventsRef = useRef<ChatEvent[]>([]);
   const pendingFrameRef = useRef<number | null>(null);
   const lastSeqRef = useRef(0);
+  const historyVersionRef = useRef<string | null>(null);
+  const historyGenerationRef = useRef(0);
+  const historyNeedsRefreshRef = useRef(false);
+  const reloadHistoryRef = useRef<(() => Promise<void>) | null>(null);
   const hydratedTextPartRef = useRef<HydratedTextPart | null>(null);
 
   // The batcher reaches state only through refs and setState updaters, so these
@@ -193,6 +197,34 @@ export function useChat(chatId: string): UseChatResult {
     const streamChatId = meta.id;
     setWsReady(false);
 
+    let refreshingHistory = false;
+    let eventsDuringRefresh: ChatEvent[] = [];
+    const refreshHistory = async () => {
+      const generation = ++historyGenerationRef.current;
+      historyNeedsRefreshRef.current = true;
+      setLoadingOlder(false);
+      refreshingHistory = true;
+      eventsDuringRefresh = [];
+      clearPendingEvents();
+      setSynced(false);
+      try {
+        const page = await chatApi.fetchTranscript(streamChatId, { limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT });
+        if (streamRef.current !== stream || generation !== historyGenerationRef.current) return;
+        const suffix = eventsDuringRefresh.filter((event) => !event.seq || event.seq > page.lastSeq);
+        lastSeqRef.current = Math.max(page.lastSeq, chatEventStateProjector.latestSequence(suffix));
+        setRenderState(chatEventStateProjector.append(chatEventStateProjector.fromEvents(page.events, page), suffix));
+        hydratedTextPartRef.current = null;
+        historyNeedsRefreshRef.current = false;
+        setSynced(true);
+      } catch (error) {
+        if (streamRef.current === stream) setError((error as Error).message);
+      } finally {
+        if (generation === historyGenerationRef.current) refreshingHistory = false;
+      }
+    };
+
+    reloadHistoryRef.current = refreshHistory;
+
     const stream = chatApi.openStream(
       streamChatId,
       () => lastSeqRef.current,
@@ -206,8 +238,15 @@ export function useChat(chatId: string): UseChatResult {
         },
         onEvent: (event) => {
           if (streamRef.current !== stream) return;
+          if (event.type === "system" && event.subtype === "history_reset") {
+            void refreshHistory();
+            return;
+          }
           if (event.type === "sync") {
-            setSynced(true);
+            if (historyNeedsRefreshRef.current || (event.historyVersion && event.historyVersion !== historyVersionRef.current)) {
+              historyVersionRef.current = event.historyVersion ?? null;
+              void refreshHistory();
+            } else if (!refreshingHistory) setSynced(true);
             setStatus(event.running ? "streaming" : "ready");
             if (!event.running) setLocallyStartedTurn(false);
             return;
@@ -226,7 +265,8 @@ export function useChat(chatId: string): UseChatResult {
             if (event.subtype === "prompt_rejected") setLocallyStartedTurn(false);
             return;
           }
-          enqueueEvent(event);
+          if (refreshingHistory) eventsDuringRefresh.push(event);
+          else enqueueEvent(event);
         },
         onClose: () => {
           if (streamRef.current !== stream) return;
@@ -239,6 +279,8 @@ export function useChat(chatId: string): UseChatResult {
 
     return () => {
       if (streamRef.current === stream) streamRef.current = null;
+      reloadHistoryRef.current = null;
+      historyGenerationRef.current++;
       setWsReady(false);
       setSynced(false);
       clearPendingEvents();
@@ -275,30 +317,35 @@ export function useChat(chatId: string): UseChatResult {
   }, [status, wsReady, synced]);
 
   const rewind = useCallback(async (rewindBeforeTimestamp: number) => {
-    const res = await chatApi.rewind(chatId, rewindBeforeTimestamp);
-    clearPendingEvents();
-    hydratedTextPartRef.current = null;
-    lastSeqRef.current = Math.max(
-      res.lastSeq,
-      chatEventStateProjector.latestSequence(res.events)
-    );
-    setRenderState(chatEventStateProjector.fromEvents(res.events, res));
-    setStatus("ready");
-    setLocallyStartedTurn(false);
-    return res;
+    historyGenerationRef.current++;
+    historyNeedsRefreshRef.current = true;
+    setSynced(false);
+    try {
+      const res = await chatApi.rewind(chatId, rewindBeforeTimestamp);
+      // The broadcast may already have refreshed this tab. Read the current
+      // branch again rather than applying a potentially older HTTP snapshot.
+      await reloadHistoryRef.current?.();
+      setLocallyStartedTurn(false);
+      return res;
+    } catch (error) {
+      await reloadHistoryRef.current?.();
+      throw error;
+    }
   }, [chatId]);
 
   const loadOlder = useCallback(async () => {
-    if (loadingOlder || !renderState.hasOlder || !renderState.nextBefore) return;
+    if (loadingOlder || historyNeedsRefreshRef.current || !renderState.hasOlder || !renderState.nextBefore) return;
+    const generation = historyGenerationRef.current;
     setLoadingOlder(true);
     try {
       const page = await chatApi.fetchTranscript(chatId, {
         limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
         before: renderState.nextBefore,
       });
+      if (generation !== historyGenerationRef.current) return;
       setRenderState((current) => chatEventStateProjector.prepend(current, page));
     } finally {
-      setLoadingOlder(false);
+      if (generation === historyGenerationRef.current) setLoadingOlder(false);
     }
   }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
 

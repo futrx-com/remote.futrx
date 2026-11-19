@@ -34,6 +34,26 @@ HOST_CLI_PROFILE_PATH="/etc/profile.d/remote-futrx-host-clis.sh"
 . "$INFRA_DIR/lib/install-migration.sh"
 # shellcheck source=../lib/health-check.sh
 . "$INFRA_DIR/lib/health-check.sh"
+# shellcheck source=../lib/chat-migration.sh
+. "$INFRA_DIR/lib/chat-migration.sh"
+
+# A legacy service binary cannot read the new authoritative database. Keep
+# rollback conservative after cutover, even if startup fails before health.
+rollback_storage_compatible_legacy_service() {
+    if [ -e "$INSTALL_DIR/data/conversations.sqlite" ]; then
+        local storage_status
+        storage_status="$(DATA_DIR="$INSTALL_DIR/data" "$INSTALL_DIR/backend/remote" storage-status 2>/dev/null)" || storage_status="unknown"
+        case "$storage_status" in
+            legacy|importing) ;;
+            *)
+                err "Conversation storage is SQLite or its status is uncertain; legacy service rollback is blocked. Recover with a SQLite-compatible release."
+                systemctl stop "$SERVICE_NAME" || true
+                return 1
+                ;;
+        esac
+    fi
+    rollback_legacy_service_migration "$SERVICE_NAME" "$LEGACY_SERVICE_NAME"
+}
 
 # Shell commands need the same installation settings as the service below.
 # Some existing hosts do not have /usr/local/bin yet, and standard input is not
@@ -77,6 +97,14 @@ if ! prepare_legacy_service_migration "$LEGACY_SERVICE_NAME" "$LEGACY_SERVICE_UN
     exit 1
 fi
 
+# The backend must be fully stopped before reading the legacy source. This
+# phase has its own lifetime; the 30-second HTTP deadline starts only below.
+log "Migrating conversation storage"
+if ! remote_migrate_conversations "$INSTALL_DIR/backend/remote" "$INSTALL_DIR/data" "$SERVICE_NAME"; then
+    err "Conversation migration failed; service remains stopped. Fix the reported source issue and rerun the upgrade to resume."
+    exit 1
+fi
+
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     log "Restarting $SERVICE_NAME"
     SERVICE_ACTION="restart"
@@ -87,7 +115,7 @@ fi
 if { [ "$SERVICE_ACTION" = "restart" ] && ! systemctl restart "$SERVICE_NAME"; } || \
    { [ "$SERVICE_ACTION" = "enable" ] && ! systemctl enable --now "$SERVICE_NAME"; }; then
     err "$SERVICE_NAME failed to $SERVICE_ACTION."
-    if ! rollback_legacy_service_migration "$SERVICE_NAME" "$LEGACY_SERVICE_NAME"; then
+    if ! rollback_storage_compatible_legacy_service; then
         err "Automatic rollback to $LEGACY_SERVICE_NAME also failed."
     fi
     journalctl -u "$SERVICE_NAME" -n 30 --no-pager >&2 || true
@@ -97,7 +125,7 @@ fi
 # ───────────────── health check ─────────────────
 if ! systemctl is-active --quiet "$SERVICE_NAME"; then
     err "Service failed to start. Recent logs:"
-    if ! rollback_legacy_service_migration "$SERVICE_NAME" "$LEGACY_SERVICE_NAME"; then
+    if ! rollback_storage_compatible_legacy_service; then
         err "Automatic rollback to $LEGACY_SERVICE_NAME also failed."
     fi
     journalctl -u "$SERVICE_NAME" -n 30 --no-pager >&2 || true
@@ -109,7 +137,7 @@ log "Health-checking backend on 127.0.0.1:${SERVICE_PORT}"
 # (~13s with 16 projects), so allow a real 30-second wall-clock deadline.
 if ! wait_for_http_health "http://127.0.0.1:${SERVICE_PORT}/" 30; then
     err "Backend did not respond on 127.0.0.1:${SERVICE_PORT} within 30s"
-    if ! rollback_legacy_service_migration "$SERVICE_NAME" "$LEGACY_SERVICE_NAME"; then
+    if ! rollback_storage_compatible_legacy_service; then
         err "Automatic rollback to $LEGACY_SERVICE_NAME also failed."
     fi
     journalctl -u "$SERVICE_NAME" -n 30 --no-pager >&2 || true

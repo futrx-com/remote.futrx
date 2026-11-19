@@ -18,9 +18,8 @@ import (
 	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
-	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
@@ -135,6 +134,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}
+	defer storeSet.Close()
 
 	////////////////////////////////////////
 	// Application services
@@ -289,12 +289,7 @@ func main() {
 	////////////////////////////////////////
 	address := cfg.Addr()
 	server := transport.NewHTTPServer(address, handler)
-	startChatIndexWarmup(
-		ctx,
-		storeSet,
-		configconstants.StartupChatIndexWarmupChatLimit,
-		log.Default(),
-	)
+
 	log.Printf("remote.futrx listening on %s", address)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)

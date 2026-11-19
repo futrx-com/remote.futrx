@@ -88,7 +88,7 @@ export type ChatEvent = ChatEventBase & (
   | { type: "session"; sessionId?: string; claudeSessionId?: string; codexSessionId?: string; kimiSessionId?: string; antigravitySessionId?: string }
   | { type: "complete"; usage?: ChatUsagePayload }
   | { type: "error"; message: string }
-  | { type: "sync"; running?: boolean }
+  | { type: "sync"; running?: boolean; historyVersion?: string }
 );
 
 export interface ChatEventPage {

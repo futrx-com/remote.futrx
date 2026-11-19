@@ -21,9 +21,6 @@ const (
 	// ChatIndexCheckpointBytes bounds index backfill batches before advancing
 	// to the next complete event record.
 	ChatIndexCheckpointBytes int64 = 32 * 1024 * 1024
-	// StartupChatIndexWarmupChatLimit bounds the recent chats indexed during
-	// startup. It counts chats, not transcript turns.
-	StartupChatIndexWarmupChatLimit = 10
 	// PromptInteractionResponseQueueCapacity bounds browser answers waiting for
 	// the active provider turn to consume them.
 	PromptInteractionResponseQueueCapacity = 64

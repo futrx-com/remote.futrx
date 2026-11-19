@@ -11,9 +11,11 @@ import (
 // Parser converts Claude Code headless stream-json lines into normalized agent
 // events. It owns Claude's native event shape; callers only see harness.Event.
 type Parser struct {
-	req          harness.RunRequest
-	sawSessionID string
-	sawModel     string
+	req                harness.RunRequest
+	sawSessionID       string
+	sawModel           string
+	sawInputAcceptance bool
+	messageUUID        string
 }
 
 func NewParser(req harness.RunRequest) *Parser {
@@ -30,6 +32,7 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		return nil, err
 	}
 
+	p.messageUUID = raw.UUID
 	now := time.Now().UnixMilli()
 	events := make([]harness.Event, 0, 2)
 	if raw.Model != "" {
@@ -75,6 +78,13 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		}
 
 	case "assistant":
+		if p.req.TrackInputAcceptance && !p.sawInputAcceptance && raw.UUID != "" && p.sawSessionID != "" {
+			p.sawInputAcceptance = true
+			events = append(events, p.event(now, harness.EventInputAccepted, rawLine, func(ev *harness.Event) {
+				ev.SessionID = p.sawSessionID
+				ev.Status = "claude_assistant_message"
+			}))
+		}
 		var msg message
 		if err := json.Unmarshal(raw.Message, &msg); err != nil {
 			return events, nil
@@ -109,7 +119,7 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 					ev.ItemKind = harness.ItemToolCall
 					ev.ItemID = block.ToolUseID
 					ev.Output = normalizeToolResult(block.Content)
-					ev.IsError = false
+					ev.IsError = block.IsError
 				}))
 			}
 		}
@@ -165,6 +175,12 @@ func (p *Parser) event(
 		Provider:       harness.ProviderClaude,
 		ConversationID: p.req.ConversationID,
 		Raw:            raw,
+		MessageID:      p.messageUUID,
+	}
+	if p.req.TrackInputAcceptance {
+		var envelope streamMsg
+		_ = json.Unmarshal(raw, &envelope)
+		ev.Native = &harness.NativeEnvelope{SchemaVersion: harness.NativeEnvelopeSchemaVersion, Method: envelope.Type, ThreadID: p.sawSessionID, ItemID: envelope.UUID, Payload: raw}
 	}
 	if fn != nil {
 		fn(&ev)
@@ -177,6 +193,7 @@ func (p *Parser) event(
 // subset; unknown fields are allowed.
 type streamMsg struct {
 	Type      string          `json:"type"`
+	UUID      string          `json:"uuid,omitempty"`
 	Subtype   string          `json:"subtype,omitempty"`
 	SessionID string          `json:"session_id,omitempty"`
 	Model     string          `json:"model,omitempty"`
@@ -222,6 +239,7 @@ type contentBlock struct {
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
+	IsError   bool            `json:"is_error,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
 }
 

@@ -2,6 +2,7 @@ package antigravity
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"strings"
@@ -20,6 +21,9 @@ func (p *Provider) args(req harness.RunRequest) []string {
 	// interactive permission prompts for headless execution. Plan uses agy's
 	// native mode and deliberately omits that bypass.
 	args := []string{"--print", req.Prompt, "--print-timeout", printTimeout}
+	if req.TrackInputAcceptance {
+		args = []string{"--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", printTimeout}
+	}
 	if req.Mode == harness.RunModePlan {
 		args = append(args, "--mode", string(harness.RunModePlan))
 	} else {
@@ -70,6 +74,7 @@ func (p *Provider) buildCmd(
 		cmd := exec.CommandContext(ctx, "agy", args...)
 		cmd.Dir = cwd
 		cmd.Env = harness.WithRuntimeEnvironment(os.Environ(), req.RuntimeEnv)
+		setStreamInput(cmd, req)
 		return cmd, "", nil
 	}
 
@@ -89,5 +94,23 @@ func (p *Provider) buildCmd(
 		Binary:             p.binary,
 		Arguments:          args,
 	})
+	setStreamInput(cmd, req)
 	return cmd, project.ContainerName, nil
+}
+
+func setStreamInput(cmd *exec.Cmd, req harness.RunRequest) {
+	if !req.TrackInputAcceptance {
+		return
+	}
+	// Documented agy stdin protocol: one user event followed by EOF runs one
+	// turn and exits. Prompt bytes never pass through a shell or argv.
+	encoded, _ := json.Marshal(struct {
+		Event   string `json:"event"`
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}{Event: "user", Message: struct {
+		Content string `json:"content"`
+	}{Content: req.Prompt}})
+	cmd.Stdin = strings.NewReader(string(encoded) + "\n")
 }

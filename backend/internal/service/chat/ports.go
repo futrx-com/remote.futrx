@@ -35,7 +35,7 @@ type TranscriptEventWindowSource interface {
 }
 
 // TranscriptProjectionSource serves the durable, compact read model directly.
-// The canonical JSONL stream remains the source of truth and fallback.
+// Authoritative events remain separate from this derived read model.
 type TranscriptProjectionSource interface {
 	ReadTranscriptPage(ctx context.Context, id ID, query TranscriptPageQuery) (TranscriptPage, error)
 	ReadTranscriptContent(

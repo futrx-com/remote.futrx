@@ -100,7 +100,7 @@ export function ChatThread({
             onLoadOlder={onLoadOlder}
             onRewind={onRewind}
           />
-          <ChatFindBar find={find} hasUnloadedMessages={hasOlder} />
+          <ChatFindBar find={find} />
           {showJump && <JumpToLatestButton onClick={onJumpToBottom} />}
         </div>
 

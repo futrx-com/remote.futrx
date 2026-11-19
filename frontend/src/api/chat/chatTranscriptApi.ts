@@ -76,3 +76,16 @@ export async function fetchFullTranscriptContent(
     after = page.nextAfter;
   }
 }
+
+export interface ConversationSearchHit {
+  turnId: string;
+  itemId: string;
+  startSeq: number;
+  endSeq: number;
+  text: string;
+}
+
+export function searchTranscript(id: string, query: string): Promise<ConversationSearchHit[]> {
+  const search = new URLSearchParams({ q: query, limit: "100" });
+  return requestJson<ConversationSearchHit[]>("GET", API_ROUTES.chats.search(id, search.toString()));
+}

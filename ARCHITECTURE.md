@@ -258,9 +258,10 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project membership | `DATA_DIR/projectaccess/<id>.json` | JSON | flat email list |
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
 | Public preview links | `DATA_DIR/projectshares/<id>.json` | JSON | SHA-256 token digests only, mode 0600 |
-| Chat events | `DATA_DIR/chats/<id>/events.jsonl` | JSONL | append-only, monotonic `seq`, no rotation |
+| Conversations | `DATA_DIR/conversations.sqlite` | SQLite | authoritative metadata, events, branches, session bookmarks and handoffs; WAL transactions |
 | Agent quota snapshots | `DATA_DIR/agent-quota.json` | JSON | latest provider-reported plan windows per provider account, mode 0600 |
-| Chat event index | `DATA_DIR/transcript-index.sqlite` | SQLite | disposable event-offset and transcript-turn index rebuilt from chat JSONL |
+| Chat transcript/search projections | tables in `DATA_DIR/conversations.sqlite` | SQLite/FTS5 | derived from authoritative events in the same database |
+| Legacy chat backup | `DATA_DIR/chats/<id>/` after migration | JSON/JSONL | inactive pre-cutover backup; never receives new writes |
 | Application agent receipts | `DATA_DIR/application-turns/<instance-hash>/<request-hash>.json` | JSON | accepted input, turn identity and execution results |
 | Application workflow state | each backend instance's `DataDir` | application-owned | Scheduled Tasks stores definitions, deadlines and claims in `tasks.json` |
 | Push subscriptions | `DATA_DIR/push-subscriptions/sha256-<hash>.json` | JSON | one file per user, filename hashes the email |
@@ -274,7 +275,15 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Workspace files | `/var/lib/remote/projects/<slug>/workspace` | on-disk tree | bind-mounted to `/workspace` |
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
 
-JSON and metadata writes use temp-file + rename. Chat events are different: they append directly to JSONL with `O_APPEND`. The SQLite chat index is derived state, transactionally refreshed from those logs, and is not a source of truth. Most authoritative stores do not add `fsync`, file locking, or a transaction spanning multiple stores. Application agent receipts and Scheduled Tasks snapshots fsync both file and directory. The design assumes exactly one backend process touching `DATA_DIR`.
+Conversations use transactional SQLite with WAL, full synchronous durability,
+foreign keys and an exclusive store lease. Events and their transcript/search
+projections commit together. Other JSON stores continue using temp-file +
+rename and do not share a cross-store transaction. Application agent receipts
+and Scheduled Tasks snapshots fsync both file and directory. The design still
+assumes one backend process. The old disposable `transcript-index.sqlite` is
+removed only after validated migration. See the
+[conversation storage and migration guide](docs/dev/conversation-storage.md)
+for cutover, recovery and supported backup procedures.
 
 ## Container model
 
