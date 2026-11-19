@@ -122,11 +122,13 @@ leaves the service stopped; recover with a compatible SQLite release. An
 unreadable or uncertain storage status also blocks unsafe rollback.
 
 If migration stops, correct the reported condition and rerun it with the
-backend stopped. Restoring the original frozen source permits checkpoint
-resume. If an operator intentionally changed legacy sources after an aborted
-import, the source check will reject resume: archive the unfinished database
-and sidecars before starting a new import, only after verifying that cutover
-never completed. Never discard a completed database to retry a migration.
+backend stopped. Checkpoint resume requires the original source files to
+remain unchanged, including their filesystem identity and timestamps.
+Replacing files with copies restored from backup changes that identity even
+when their contents match. If legacy sources were changed or replaced after
+an aborted import, the source check will reject resume: archive the unfinished
+database and sidecars before starting a new import, only after verifying that
+cutover never completed. Never discard a completed database to retry a migration.
 
 ## Verification
 

@@ -137,8 +137,10 @@ compatible module in stable registration order.
 Each provider has its own command builder and parser. Claude, Codex, MiniMax,
 and Kimi produce structured streams; MiniMax shares Codex's app-server
 transport while retaining its own provider identity and isolated home.
-Antigravity print mode emits plain text, and its
-adapter recovers the conversation ID from the CLI brain directory. The shared
+Tracked Antigravity runs send structured input through stdin and consume
+newline-delimited JSON events. Its init event supplies the native conversation
+ID, and a completed `user_input` step acknowledges input acceptance. Legacy
+direct calls retain plain-text output and brain-directory ID discovery. The shared
 layer sees whichever normalized session, text, reasoning, tool, completion,
 usage, and error events that provider can supply.
 
