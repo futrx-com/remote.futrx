@@ -488,66 +488,22 @@ func (rnr *Service) runPromptAs(
 		applicationRequestID: input.ApplicationRequestID,
 	}
 
-	run := func(runPrompt, runResumeID string) (runErr error) {
-		var tracking *runDelivery
-		if rnr.conversationRuntime != nil {
-			tracking = &runDelivery{store: rnr.conversationRuntime, run: prepared.RunReference, nativeID: runResumeID}
-			defer func() {
-				if persistenceErr := rnr.hub.PersistenceError(id); persistenceErr != nil {
-					runErr = errors.Join(runErr, persistenceErr)
-				}
-				runErr = tracking.finish(context.WithoutCancel(ctx), ctx.Err(), runErr)
-			}()
-		}
-		if persistenceErr := rnr.hub.PersistenceError(id); persistenceErr != nil {
-			return persistenceErr
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if rnr.accountAccess != nil {
-			if _, err := rnr.accountAccess.Resolve(ctx, providerID, meta.AccountID); err != nil {
-				return err
-			}
-		}
-		rnr.recordAccountUse(ctx, input, meta, providerID, ledgerRunID)
-		relay := runEventRelay{
-			service: rnr, ctx: ctx, chatID: id, providerID: providerID,
-			ledger: ledger, emit: emit,
-		}
-		if rnr.conversationRuntime != nil {
-			adapter, ok := provider.(harness.HistoryInputAdapter)
-			if !ok {
-				return errors.New(string(providerID) + " does not implement conversation history delivery")
-			}
-			var method string
-			var err error
-			runPrompt, method, err = adapter.HistoryInput(prepared.History, runPrompt)
-			if err != nil {
-				return err
-			}
-			if err = rnr.conversationRuntime.RecordRunInput(ctx, prepared.RunReference, method); err != nil {
-				return err
-			}
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		runCtx, cancelRun := context.WithCancel(ctx)
-		defer cancelRun()
-		var completion *harness.Event
-		runErr = provider.Run(runCtx, harness.RunRequest{
-			TrackInputAcceptance: tracking != nil,
-			Provider:             providerID,
-			AccountID:            meta.AccountID,
-			ConversationID:       string(id),
-			Prompt:               runPrompt,
-			Cwd:                  cwd,
-			Model:                meta.Model,
-			Mode:                 harness.RunMode(meta.Mode),
-			ResumeID:             runResumeID,
-			ProjectID:            string(meta.ProjectID),
-			Fork:                 forkSession,
+	attempt := providerAttempt{
+		provider: provider,
+		input:    input,
+		meta:     meta,
+		ledger:   ledger,
+		request: harness.RunRequest{
+			Provider:       providerID,
+			AccountID:      meta.AccountID,
+			ConversationID: string(id),
+			Prompt:         effectivePrompt,
+			Cwd:            cwd,
+			Model:          meta.Model,
+			Mode:           harness.RunMode(meta.Mode),
+			ResumeID:       resumeID,
+			ProjectID:      string(meta.ProjectID),
+			Fork:           forkSession,
 			Preferences: harness.RunPreferences{
 				ReasoningEffort: harness.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     harness.ServiceTier(meta.ServiceTier),
@@ -557,53 +513,10 @@ func (rnr *Service) runPromptAs(
 			EnableBrowser:        enableBrowser,
 			RuntimeEnv:           runtimeEnv,
 			InteractionResponses: interactionResponses,
-		}, func(event harness.Event) {
-			event = withDefaultProvider(event, providerID)
-			if event.AccountID == "" {
-				event.AccountID = meta.AccountID
-			}
-			if tracking != nil {
-				tracking.observe(context.WithoutCancel(ctx), event)
-				if tracking.acceptanceErr != nil {
-					cancelRun()
-				}
-			}
-			if meta.SetupRepair && event.Type == harness.EventRunCompleted {
-				completion = &event
-				return
-			}
-			relay.forward(event)
-		})
-		if runErr == nil && meta.SetupRepair {
-			verifier, ok := rnr.projects.(interface {
-				VerifySetup(context.Context, serviceproject.ID) (serviceproject.Meta, error)
-			})
-			if !ok {
-				runErr = errors.New("project setup verifier unavailable")
-			} else {
-				_, runErr = verifier.VerifySetup(ctx, serviceproject.ID(meta.ProjectID))
-			}
-		}
-		if completion != nil {
-			if runErr != nil {
-				// The provider spent these tokens even when setup still fails.
-				// Keep its completion for accounting, with a failed turn status
-				// and a platform result instead of the agent's success summary.
-				completion.Status = "failed"
-				relay.emit = func(event ChatEvent) {
-					if event.Type == "complete" {
-						event.NotificationSummary = "Automatic setup repair did not pass verification. Open the repair chat for details."
-					}
-					emit(event)
-				}
-			}
-			relay.forward(*completion)
-		}
-		relay.finish()
-		return runErr
+		},
 	}
 
-	err = run(effectivePrompt, resumeID)
+	err = rnr.runAttempt(ctx, attempt, prepared, emit)
 	if errors.Is(err, harness.ErrSessionNotFound) && resumeID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			clearSessionIDForProvider(m, providerID)
@@ -631,7 +544,8 @@ func (rnr *Service) runPromptAs(
 			meta.ProjectID != "",
 			freshPrompt,
 		)
-		err = run(freshPrompt, "")
+		attempt.request.Prompt, attempt.request.ResumeID = freshPrompt, ""
+		err = rnr.runAttempt(ctx, attempt, prepared, emit)
 	}
 	if err != nil && !errors.Is(err, harness.ErrRunFailed) {
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: string(providerID) + " exit: " + err.Error()})
