@@ -171,7 +171,7 @@ The agent runs as root with approvals disabled and ingests untrusted content —
 
 ### 6. Injected agent exfiltrates secrets over unrestricted egress — **High**
 
-**Information disclosure.** Project secrets are injected into the agent's environment (`lxc exec --env KEY=VALUE`) and mirrored to `/workspace/.env` ([`env_writer.go`](../backend/internal/service/project/env_writer.go)), and the bundled `AGENTS.md` tells the agent the network is fully open and even how to enumerate tokens. There is no egress filtering ([`resources/manager.go`](../backend/internal/integration/containers/resources/manager.go) adds none) and no data-loss guardrail. Injected content (web page, project file, attachment) can steer the agent to read `GITHUB_SSH_KEY`, cloud tokens, etc. and POST them to an attacker endpoint.
+**Information disclosure.** Project secrets are injected into the agent's environment (`lxc exec --env KEY=VALUE`) and mirrored to `/workspace/.env` ([`env_writer.go`](../backend/internal/service/project/env_writer.go)), and the bundled platform `SYSTEM.md` tells the agent the network is fully open and even how to enumerate tokens. There is no egress filtering ([`resources/manager.go`](../backend/internal/integration/containers/resources/manager.go) adds none) and no data-loss guardrail. Injected content (web page, project file, attachment) can steer the agent to read `GITHUB_SSH_KEY`, cloud tokens, etc. and POST them to an attacker endpoint.
 
 - **Existing mitigations:** secret files are 0600 on the host; Codex drops `OPENAI_API_KEY` from container env; multiline values are kept out of persistent LXD env.
 - **Residual gap:** no outbound allowlist, no exfiltration guardrail. The only "policy" is prose in the browser skill, and it covers browser writes only.

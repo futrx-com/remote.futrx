@@ -4,12 +4,12 @@ package browser
 // /workspace/scripts/browser.mjs and seeds an empty config file at
 // /workspace/.agents/browser-auth.json. Both are workspace-resident so
 // they survive container deletes; the host re-pushes the script whenever
-// the embedded template changes (sha256 marker, same pattern as AGENTS.md).
+// the embedded template changes (sha256 marker, same pattern as SYSTEM.md).
 //
 // The script reads .agents/browser-auth.json to know which cookie to
 // attach per host; the agent edits that file when adding a new site, and
 // the user pastes the cookie value into the Secrets UI under the named
-// env var. See agent/provisioning/assets/AGENTS.md for the user-facing recipe.
+// env var. See harness/provisioning/assets/SYSTEM.md for the user-facing recipe.
 
 import (
 	"context"

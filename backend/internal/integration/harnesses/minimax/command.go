@@ -45,12 +45,12 @@ func (p *Provider) buildCmd(
 	apiKey string,
 	modelCatalog []byte,
 	emit func(harness.Event),
-) (*exec.Cmd, error) {
+) (*exec.Cmd, harness.PreparedProject, error) {
 	if req.ProjectID == "" || p.projectPreparer == nil {
-		return nil, ErrProjectRequired
+		return nil, harness.PreparedProject{}, ErrProjectRequired
 	}
 	if apiKey == "" {
-		return nil, ErrMiniMaxAPIKeyMissing
+		return nil, harness.PreparedProject{}, ErrMiniMaxAPIKeyMissing
 	}
 	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
 		ProjectID:      harness.ProjectID(req.ProjectID),
@@ -58,17 +58,17 @@ func (p *Provider) buildCmd(
 		EnableBrowser:  req.EnableBrowser,
 	}, emit)
 	if err != nil {
-		return nil, err
+		return nil, harness.PreparedProject{}, err
 	}
 	if p.runtimeAssets == nil {
-		return nil, ErrMiniMaxRuntimeUnavailable
+		return nil, harness.PreparedProject{}, ErrMiniMaxRuntimeUnavailable
 	}
 	if err := p.runtimeAssets.Ensure(
 		ctx,
 		project.ContainerName,
 		[]provisioning.RuntimeAsset{miniMaxRuntimeCatalogAsset(modelCatalog)},
 	); err != nil {
-		return nil, fmt.Errorf("publish MiniMax model catalog: %w", err)
+		return nil, harness.PreparedProject{}, fmt.Errorf("publish MiniMax model catalog: %w", err)
 	}
 	runtimeEnvironment := make(map[string]string, len(req.RuntimeEnv)+1)
 	for key, value := range req.RuntimeEnv {
@@ -87,7 +87,7 @@ func (p *Provider) buildCmd(
 		RuntimeEnvironment: runtimeEnvironment,
 		Binary:             p.binary,
 		Arguments:          args,
-	}), nil
+	}), project, nil
 }
 
 func miniMaxModelContextWindow(model string) int {

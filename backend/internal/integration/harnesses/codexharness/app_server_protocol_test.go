@@ -1,10 +1,41 @@
 package codexharness
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
+
+func TestPlatformInstructionsUseApplicationContextWithoutChangingUserOrModeInstructions(t *testing.T) {
+	for _, mode := range []harness.RunMode{harness.RunModeDefault, harness.RunModePlan} {
+		for _, session := range []harness.RunRequest{{}, {ResumeID: "existing"}, {ResumeID: "existing", Fork: true}} {
+			session.Mode = mode
+			session.Prompt = "the user's message"
+			session.SystemInstructions = "platform guidance\nwith quotes: \"literal\" and $(literal)"
+			params := buildAppServerTurnParams(session, "thread", "model")
+			context := params.AdditionalContext["remote-futrx/platform"]
+			if context.Kind != "application" || context.Value != session.SystemInstructions {
+				t.Fatalf("platform context = %#v", context)
+			}
+			if len(params.Input) != 1 || params.Input[0].Text != session.Prompt {
+				t.Fatalf("platform instructions leaked into user input: %#v", params.Input)
+			}
+			if params.CollaborationMode.Mode != mode || params.CollaborationMode.Settings.DeveloperInstructions != nil {
+				t.Fatalf("built-in mode instructions were replaced: %#v", params.CollaborationMode)
+			}
+			data, err := json.Marshal(params)
+			if err != nil || !strings.Contains(string(data), `"additionalContext"`) {
+				t.Fatalf("wire context is missing: %s, %v", data, err)
+			}
+		}
+	}
+	data, err := json.Marshal(buildAppServerTurnParams(harness.RunRequest{}, "thread", "model"))
+	if err != nil || strings.Contains(string(data), `"additionalContext"`) {
+		t.Fatalf("host run received platform context: %s, %v", data, err)
+	}
+}
 
 func TestAppServerTurnIncludesReasoningEffort(t *testing.T) {
 	params := buildAppServerTurnParams(harness.RunRequest{

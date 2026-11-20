@@ -33,8 +33,8 @@ const (
 	MiniMaxContainerHome             = "/root/.minimax"
 	MiniMaxContainerCatalog          = MiniMaxContainerHome + "/model-catalog.json"
 	MiniMaxContainerCatalogHash      = MiniMaxContainerHome + "/.model-catalog.sha256"
-	MiniMaxContainerInstructions     = MiniMaxContainerHome + "/AGENTS.md"
-	MiniMaxContainerInstructionsHash = MiniMaxContainerHome + "/.agents-md.sha256"
+	MiniMaxContainerInstructions     = MiniMaxContainerHome + "/remote-system.md"
+	MiniMaxContainerInstructionsHash = MiniMaxContainerHome + "/.remote-system.sha256"
 	MiniMaxContainerSkills           = MiniMaxContainerHome + "/skills"
 	MiniMaxWorkspaceHome             = "/workspace/.minimax"
 )

@@ -24,11 +24,10 @@ crashed processes, and deleted files stay within this project.
   authentication, and session state survive container replacement. Only the
   Antigravity subdirectory is mounted, not all of `/root/.gemini`. Keep project
   artifacts in `/workspace`, not in these homes.
-- `/root/.claude/CLAUDE.md`, `/root/.codex/AGENTS.md`, AND
-  `/root/.minimax/AGENTS.md` - this file (identical content, three paths so
-  Claude, Codex, and MiniMax pick it up). The host re-pushes all three whenever
-  the template changes; don't edit
-  them expecting changes to stick.
+- Remote supplies these platform instructions through each harness's native
+  system/developer prompt interface. The host refreshes its managed prompt
+  assets before each run; edits to those generated assets do not persist.
+  Keep your own project guidance in `/workspace` instruction files.
 - Everything else outside the six durable mounts: replaceable.
 
 ## Capabilities

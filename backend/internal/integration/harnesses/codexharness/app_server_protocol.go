@@ -51,14 +51,20 @@ type appServerThreadParams struct {
 }
 
 type appServerTurnParams struct {
-	ApprovalPolicy    string                     `json:"approvalPolicy"`
-	CollaborationMode appServerCollaborationMode `json:"collaborationMode"`
-	Effort            string                     `json:"effort,omitempty"`
-	Input             []appServerUserInput       `json:"input"`
-	Model             string                     `json:"model"`
-	SandboxPolicy     appServerSandboxPolicy     `json:"sandboxPolicy"`
-	ServiceTier       string                     `json:"serviceTier,omitempty"`
-	ThreadID          string                     `json:"threadId"`
+	AdditionalContext map[string]appServerContextEntry `json:"additionalContext,omitempty"`
+	ApprovalPolicy    string                           `json:"approvalPolicy"`
+	CollaborationMode appServerCollaborationMode       `json:"collaborationMode"`
+	Effort            string                           `json:"effort,omitempty"`
+	Input             []appServerUserInput             `json:"input"`
+	Model             string                           `json:"model"`
+	SandboxPolicy     appServerSandboxPolicy           `json:"sandboxPolicy"`
+	ServiceTier       string                           `json:"serviceTier,omitempty"`
+	ThreadID          string                           `json:"threadId"`
+}
+
+type appServerContextEntry struct {
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
 }
 
 type appServerCollaborationMode struct {

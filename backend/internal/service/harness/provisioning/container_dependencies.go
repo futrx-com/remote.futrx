@@ -33,7 +33,7 @@ type CredentialSynchronizer interface {
 
 // WorkspaceProvisioner publishes shared harness instructions and workspace links.
 type WorkspaceProvisioner interface {
-	EnsureHarnessInstructions(context.Context, string) error
+	EnsureHarnessInstructions(context.Context, string) (string, error)
 	EnsureSkillLinks(context.Context, string) error
 }
 

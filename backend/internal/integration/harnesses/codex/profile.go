@@ -12,8 +12,8 @@ const (
 
 	containerCodexDir          = "/root/.codex"
 	containerCodexAuth         = "/root/.codex/auth.json"
-	containerCodexInstructions = "/root/.codex/AGENTS.md"
-	containerInstructionsHash  = "/root/.claude/.agents-md.sha256"
+	containerCodexInstructions = "/root/.codex/remote-system.md"
+	containerInstructionsHash  = "/root/.codex/.remote-system.sha256"
 	workspaceCodexHome         = "/workspace/.codex"
 	containerCodexSkills       = "/root/.codex/skills"
 )
@@ -43,8 +43,10 @@ var codexProfile = provisioning.Profile{
 		ContainerPath: containerCodexDir,
 	}},
 	Instructions: &provisioning.InstructionTarget{
-		Path:     containerCodexInstructions,
-		HashPath: containerInstructionsHash,
+		Path:           containerCodexInstructions,
+		HashPath:       containerInstructionsHash,
+		LegacyPath:     "/root/.codex/AGENTS.md",
+		LegacyHashPath: "/root/.claude/.agents-md.sha256",
 	},
 	WorkspaceSkills: &provisioning.WorkspaceSkills{
 		WorkspaceHome: workspaceCodexHome,

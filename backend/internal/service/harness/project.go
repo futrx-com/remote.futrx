@@ -61,6 +61,10 @@ type PreparedProject struct {
 	ID            ProjectID
 	ContainerName string
 	Secrets       []ProjectSecret
+	// SystemInstructions is the trusted, rendered platform template. Providers
+	// deliver it through their native system/developer instruction interface,
+	// separately from the user's prompt and repository instruction files.
+	SystemInstructions string
 }
 
 // ProjectPreparer owns the shared project lifecycle and provisioning workflow.

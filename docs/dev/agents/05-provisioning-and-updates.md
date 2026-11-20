@@ -273,13 +273,44 @@ into an error. Antigravity has no sync step.
 
 ## Instructions, runtime assets, skills, Browser, and schedules
 
-Remote renders one embedded instruction template with the installation's public
-hostname. The workspace provisioner publishes it idempotently to every
-profile-declared instruction target, grouping targets that share a hash marker.
-Claude currently targets `/root/.claude/CLAUDE.md`; Codex targets
-`/root/.codex/AGENTS.md`; MiniMax targets `/root/.minimax/AGENTS.md`. Shared project preparation asks the workspace
-provisioner to converge the configured targets; provider command code does not
-embed instruction text itself.
+Remote renders the embedded
+[`SYSTEM.md`](../../../backend/internal/service/harness/provisioning/assets/SYSTEM.md)
+platform template with the installation's public hostname. Before every project
+run, the workspace provisioner publishes and verifies each profile's native
+system-prompt asset. The shared preparer also returns the trusted template text
+for adapters that send it directly through their protocol. These instructions
+are separate from the user's chat message and user-owned repository instructions.
+Host-only runs do not receive this container-specific template.
+
+| Harness | Platform instruction delivery |
+| --- | --- |
+| Claude | `/root/.claude/remote-system.md`, passed with `--append-system-prompt-file`. `--system-prompt-snapshot off` refreshes it on resumed runs while preserving Claude's base prompt. |
+| Codex | Trusted text in `turn/start.additionalContext["remote-futrx/platform"]` with `kind: "application"`, which the pinned CLI emits as a developer-role message. `/root/.codex/remote-system.md` is the verified diagnostic copy. |
+| MiniMax | The same Codex app-server application context; diagnostic copy at `/root/.minimax/remote-system.md`. |
+| Kimi | `/root/.kimi-code/SYSTEM.md`, prefixed with `${base_prompt}` to preserve built-in guidance, tools, skills, and plugin context. The native loader applies it on new and resumed default-agent sessions. |
+| Antigravity | `/root/.gemini/config/agents/remote-futrx/agent.md`, selected with `--agent remote-futrx` for project runs. The custom main agent's body supplies the platform system instructions. |
+
+Codex application context is supplied on each turn, including resume and fork,
+and is recorded in thread history; it therefore adds input context per turn.
+Thread startup `developerInstructions` alone does not refresh the developer
+message already stored in a resumed thread. Supplying application context leaves
+both the model's base prompt and the built-in default/plan instructions intact.
+The exact message role is provider-specific: Codex and MiniMax use **developer**,
+while Claude, Kimi, and Antigravity use their native **system** prompt interfaces.
+
+Migration removes the former `/root/.claude/CLAUDE.md`,
+`/root/.codex/AGENTS.md`, and `/root/.minimax/AGENTS.md` only when their current
+bytes still match the legacy publication marker. User-edited or unmanaged files
+are preserved. Old conversation history is retained; historical user-role
+copies are not rewritten. New prompt assets use distinct markers and verified
+publication, so a stale marker cannot hide changed or missing content. Inspection
+hashes the provider-rendered form, including any native wrapper.
+
+Provider interfaces: [Claude system prompt flags](https://code.claude.com/docs/en/cli-reference#system-prompt-flags),
+[Codex app-server](https://learn.chatgpt.com/docs/app-server) (the pinned CLI's
+`generate-json-schema --experimental` describes `additionalContext`),
+[Kimi system prompts](https://www.kimi.com/code/docs/en/kimi-code-cli/customization/agents.html#overriding-the-main-agent-s-system-prompt-with-system-md),
+and [Antigravity custom agents](https://antigravity.google/blog/introducing-custom-agents).
 
 The [`runtimeassets.Adapter`](../../../backend/internal/integration/containers/runtimeassets/adapter.go)
 separately publishes only the selected profile's

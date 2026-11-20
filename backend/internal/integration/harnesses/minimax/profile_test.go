@@ -18,7 +18,7 @@ func TestProfileUsesIsolatedCodexHome(t *testing.T) {
 	}) {
 		t.Fatalf("persistent state = %#v", profile.PersistentState)
 	}
-	if profile.Instructions == nil || profile.Instructions.Path != "/root/.minimax/AGENTS.md" {
+	if profile.Instructions == nil || profile.Instructions.Path != "/root/.minimax/remote-system.md" {
 		t.Fatalf("instructions = %#v", profile.Instructions)
 	}
 	if profile.WorkspaceSkills == nil || profile.WorkspaceSkills.WorkspaceHome != "/workspace/.minimax" ||

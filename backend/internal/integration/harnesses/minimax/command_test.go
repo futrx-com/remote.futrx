@@ -65,7 +65,8 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 	provider := newProvider(
 		miniMaxTestPreparer{
 			project: harness.PreparedProject{
-				ContainerName: "project-container",
+				ContainerName:      "project-container",
+				SystemInstructions: "platform instructions",
 				Secrets: []harness.ProjectSecret{
 					{Key: configconstants.MiniMaxAPIKeyEnvironment, Value: "project-key-must-not-pass"},
 					{Key: "OPENAI_API_KEY", Value: "must-not-pass"},
@@ -88,7 +89,7 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 			configconstants.MiniMaxAPIKeyEnvironment: "request-key-must-not-pass",
 		},
 	}
-	cmd, err := provider.buildCmd(
+	cmd, prepared, err := provider.buildCmd(
 		context.Background(),
 		req,
 		provider.args(req),
@@ -98,6 +99,9 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if prepared.SystemInstructions != "platform instructions" {
+		t.Fatalf("system instructions = %q", prepared.SystemInstructions)
 	}
 	if runtimeAssets.container != "project-container" || len(runtimeAssets.assets) != 1 ||
 		string(runtimeAssets.assets[0].Content) != string(modelCatalog) {
@@ -141,7 +145,7 @@ func TestBuildCmdProcessOutlivesRequestCancellation(t *testing.T) {
 		newAPIKeyValidator(),
 	)
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd, err := provider.buildCmd(
+	cmd, _, err := provider.buildCmd(
 		ctx,
 		harness.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
 		provider.args(harness.RunRequest{Model: "MiniMax-M3"}),
@@ -168,7 +172,7 @@ func TestBuildCmdRequiresRuntimeCatalogProvisioner(t *testing.T) {
 		"codex",
 		newAPIKeyValidator(),
 	)
-	_, err := provider.buildCmd(
+	_, _, err := provider.buildCmd(
 		context.Background(),
 		harness.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
 		provider.args(harness.RunRequest{Model: "MiniMax-M3"}),

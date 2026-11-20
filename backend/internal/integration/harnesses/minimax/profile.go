@@ -20,8 +20,10 @@ var miniMaxProfile = provisioning.Profile{
 		ContainerPath: configconstants.MiniMaxContainerHome,
 	}},
 	Instructions: &provisioning.InstructionTarget{
-		Path:     configconstants.MiniMaxContainerInstructions,
-		HashPath: configconstants.MiniMaxContainerInstructionsHash,
+		Path:           configconstants.MiniMaxContainerInstructions,
+		HashPath:       configconstants.MiniMaxContainerInstructionsHash,
+		LegacyPath:     configconstants.MiniMaxContainerHome + "/AGENTS.md",
+		LegacyHashPath: configconstants.MiniMaxContainerHome + "/.agents-md.sha256",
 	},
 	WorkspaceSkills: &provisioning.WorkspaceSkills{
 		WorkspaceHome: configconstants.MiniMaxWorkspaceHome,

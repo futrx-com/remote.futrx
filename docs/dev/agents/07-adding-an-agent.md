@@ -314,7 +314,7 @@ network powers change.
 
 When a local/project provider adds a preinstalled CLI or durable provider home,
 also update the embedded
-[`provisioning/assets/AGENTS.md`](../../../backend/internal/service/harness/provisioning/assets/AGENTS.md)
+[`provisioning/assets/SYSTEM.md`](../../../backend/internal/service/harness/provisioning/assets/SYSTEM.md)
 workspace instructions. That template currently enumerates the installed CLIs,
 provider-home paths, and durable-mount count; those human-facing details are not
 generated from the module catalog.

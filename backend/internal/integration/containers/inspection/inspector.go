@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -37,9 +36,9 @@ func NewAdapter(
 		lxd:   containerLXDInspector{commands: commands},
 		guest: containerGuestInspector{commands: commands},
 		agents: containerAgentInspector{
-			commands:        commands,
-			profiles:        profileSource,
-			instructionHash: assets.Hash(agentInstructions),
+			commands:     commands,
+			profiles:     profileSource,
+			instructions: append([]byte(nil), agentInstructions...),
 		},
 		credentials: containerCredentialInspector{commands: commands, profiles: profileSource},
 	}

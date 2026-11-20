@@ -7,7 +7,7 @@ import (
 
 const publicHostnamePlaceholder = "{{PUBLIC_HOSTNAME}}"
 
-//go:embed assets/AGENTS.md
+//go:embed assets/SYSTEM.md
 var instructionsTemplate []byte
 
 func InstructionsTemplate(publicHostname string) []byte {

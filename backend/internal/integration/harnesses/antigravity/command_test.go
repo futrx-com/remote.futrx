@@ -137,6 +137,7 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 		t.Fatalf("unsupported preparation calls = %#v", calls)
 	}
 	requireAntigravityArgPair(t, command.Args, "--env", "HOME=/root")
+	requireAntigravityArgPair(t, command.Args, "--agent", "remote-futrx")
 	requireAntigravityArgPair(t, command.Args, "--env", "SAFE_SECRET=safe")
 	requireAntigravityArgPair(t, command.Args, "--env", "REMOTE_APPLICATION_API=https://remote.test/agent-api/applications")
 	if slices.Contains(command.Args, "REMOTE_APPLICATION_API=https://attacker.invalid") {
@@ -199,9 +200,9 @@ func (f antigravityTestCredentials) SyncFromContainer(context.Context, string, p
 
 type antigravityTestWorkspace struct{ calls *antigravityPreparationCalls }
 
-func (f antigravityTestWorkspace) EnsureHarnessInstructions(context.Context, string) error {
+func (f antigravityTestWorkspace) EnsureHarnessInstructions(context.Context, string) (string, error) {
 	f.calls.instructions++
-	return nil
+	return "platform instructions", nil
 }
 
 func (f antigravityTestWorkspace) EnsureSkillLinks(context.Context, string) error {

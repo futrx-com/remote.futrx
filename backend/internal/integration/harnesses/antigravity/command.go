@@ -92,7 +92,7 @@ func (p *Provider) buildCmd(
 		Secrets:            project.Secrets,
 		RuntimeEnvironment: req.RuntimeEnv,
 		Binary:             p.binary,
-		Arguments:          args,
+		Arguments:          append(append([]string(nil), args...), "--agent", containerAgentName),
 	})
 	setStreamInput(cmd, req)
 	return cmd, project.ContainerName, nil

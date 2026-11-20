@@ -15,6 +15,11 @@ const (
 
 var kimiProfile = provisioning.Profile{
 	ID: string(harness.ProviderKimi),
+	Instructions: &provisioning.InstructionTarget{
+		Path:     containerKimiHome + "/SYSTEM.md",
+		HashPath: containerKimiHome + "/.remote-system.sha256",
+		Prefix:   "${base_prompt}\n\n",
+	},
 	CLI: provisioning.CLISpec{
 		Name:               "kimi",
 		ImageLabel:         "kimi-code",

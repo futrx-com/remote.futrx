@@ -47,8 +47,10 @@ func TestProfileMatchesCodexProvisioningPolicy(t *testing.T) {
 			ContainerPath: "/root/.codex",
 		}},
 		Instructions: &provisioning.InstructionTarget{
-			Path:     "/root/.codex/AGENTS.md",
-			HashPath: "/root/.claude/.agents-md.sha256",
+			Path:           "/root/.codex/remote-system.md",
+			HashPath:       "/root/.codex/.remote-system.sha256",
+			LegacyPath:     "/root/.codex/AGENTS.md",
+			LegacyHashPath: "/root/.claude/.agents-md.sha256",
 		},
 		WorkspaceSkills: &provisioning.WorkspaceSkills{
 			WorkspaceHome: "/workspace/.codex",

@@ -67,6 +67,15 @@ func buildAppServerTurnParams(req harness.RunRequest, threadID, model string) ap
 	if tier := serviceTierArg(req.Preferences.ServiceTier); tier != "" {
 		params.ServiceTier = tier
 	}
+	if req.SystemInstructions != "" {
+		// Application context is injected at developer priority. Unlike thread
+		// developerInstructions (retained in resumed history), this keyed context
+		// refreshes on each turn, including resume/fork, without replacing the
+		// model's base prompt or the built-in default/plan mode instructions.
+		params.AdditionalContext = map[string]appServerContextEntry{
+			"remote-futrx/platform": {Kind: "application", Value: req.SystemInstructions},
+		}
+	}
 	return params
 }
 

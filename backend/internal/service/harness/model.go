@@ -103,6 +103,9 @@ type NativeEnvelope struct {
 // RunRequest is provider-neutral. Provider adapters translate it into the
 // concrete CLI flags and runtime setup required by Claude Code, Codex, etc.
 type RunRequest struct {
+	// SystemInstructions is populated by trusted project preparation, never by
+	// the chat prompt. Harness adapters use their native privileged message role.
+	SystemInstructions string `json:"-"`
 	// TrackInputAcceptance asks the adapter for evidence the native run consumed input.
 	TrackInputAcceptance bool
 	Provider             ProviderID

@@ -10,7 +10,8 @@ import (
 
 func TestProfilePreservesKimiProvisioningPolicy(t *testing.T) {
 	want := provisioning.Profile{
-		ID: "kimi",
+		ID:           "kimi",
+		Instructions: &provisioning.InstructionTarget{Path: "/root/.kimi-code/SYSTEM.md", HashPath: "/root/.kimi-code/.remote-system.sha256", Prefix: "${base_prompt}\n\n"},
 		CLI: provisioning.CLISpec{
 			Name:               "kimi",
 			ImageLabel:         "kimi-code",

@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	browserMCPConfigPath = "/workspace/.browser-gui/mcp-claude.json"
-	browserMCPConfigHash = "/workspace/.browser-gui/.mcp-claude.sha256"
-	browserGUIDir        = "/workspace/.browser-gui"
+	containerSystemPrompt = "/root/.claude/remote-system.md"
+	browserMCPConfigPath  = "/workspace/.browser-gui/mcp-claude.json"
+	browserMCPConfigHash  = "/workspace/.browser-gui/.mcp-claude.sha256"
+	browserGUIDir         = "/workspace/.browser-gui"
 )
 
 //go:embed assets/mcp.json
@@ -65,8 +66,10 @@ func Profile() provisioning.Profile {
 			ContainerPath: "/root/.claude",
 		}},
 		Instructions: &provisioning.InstructionTarget{
-			Path:     "/root/.claude/CLAUDE.md",
-			HashPath: "/root/.claude/.agents-md.sha256",
+			Path:           containerSystemPrompt,
+			HashPath:       "/root/.claude/.remote-system.sha256",
+			LegacyPath:     "/root/.claude/CLAUDE.md",
+			LegacyHashPath: "/root/.claude/.agents-md.sha256",
 		},
 		WorkspaceSkills: &provisioning.WorkspaceSkills{
 			WorkspaceHome: "/workspace/.claude",

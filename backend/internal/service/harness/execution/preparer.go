@@ -77,14 +77,14 @@ func (p *Preparer) Prepare(
 	if err := p.containers.Validate(); err != nil {
 		return harness.PreparedProject{}, err
 	}
+	prepared := harness.PreparedProject{ID: project.ID, ContainerName: project.ContainerName}
 	if !p.containers.IsZero() {
 		p.emitSystem(request, emit, "container_preparing")
-		if err := p.prepareContainer(ctx, request, project.ContainerName); err != nil {
+		if err := p.prepareContainer(ctx, request, &prepared); err != nil {
 			return harness.PreparedProject{}, err
 		}
 	}
 
-	prepared := harness.PreparedProject{ID: project.ID, ContainerName: project.ContainerName}
 	if secrets, err := p.projects.ListSecrets(ctx, project.ID); err == nil {
 		prepared.Secrets = secrets
 	}
@@ -94,8 +94,9 @@ func (p *Preparer) Prepare(
 func (p *Preparer) prepareContainer(
 	ctx context.Context,
 	request harness.ProjectPreparationRequest,
-	containerName string,
+	prepared *harness.PreparedProject,
 ) error {
+	containerName := prepared.ContainerName
 	if err := p.containers.CLI.Ensure(ctx, containerName, p.options.Profile.CLI); err != nil {
 		return fmt.Errorf("%s: %w", p.cliErrorOperation(), err)
 	}
@@ -113,9 +114,11 @@ func (p *Preparer) prepareContainer(
 			return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 		}
 	}
-	if err := p.containers.Workspace.EnsureHarnessInstructions(ctx, containerName); err != nil {
+	instructions, err := p.containers.Workspace.EnsureHarnessInstructions(ctx, containerName)
+	if err != nil {
 		return fmt.Errorf("push agent instructions to container: %w", err)
 	}
+	prepared.SystemInstructions = instructions
 	if err := p.containers.RuntimeAssets.Ensure(ctx, containerName, p.options.Profile.RuntimeAssets); err != nil {
 		return fmt.Errorf("push agent runtime assets to container: %w", err)
 	}

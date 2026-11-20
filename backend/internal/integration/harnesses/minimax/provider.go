@@ -84,7 +84,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		return err
 	}
 
-	cmd, err := p.buildCmd(ctx, req, p.args(req), key, catalog, emit)
+	cmd, project, err := p.buildCmd(ctx, req, p.args(req), key, catalog, emit)
 	if err != nil {
 		return err
 	}
@@ -93,6 +93,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if err := p.apiKeys.RequireRunAccess(ctx, req.AccountID); err != nil {
 		return err
 	}
+	req.SystemInstructions = project.SystemInstructions
 	return codexharness.Run(ctx, cmd, req, configconstants.MiniMaxLabel, emit)
 }
 

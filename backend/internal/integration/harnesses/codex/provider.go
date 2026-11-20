@@ -79,10 +79,12 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		req.Provider = harness.ProviderCodex
 	}
 
-	cmd, containerName, err := p.buildCmdForAccount(ctx, req, p.args(req), emit, run)
+	cmd, project, err := p.buildCmdForAccount(ctx, req, p.args(req), emit, run)
 	if err != nil {
 		return err
 	}
+	containerName := project.ContainerName
+	req.SystemInstructions = project.SystemInstructions
 	err = codexharness.Run(ctx, cmd, req, "Codex", emit)
 	// An isolated account run refreshes only its private home. Pull that exact
 	// home back from a project container, then offer it to the matching vault

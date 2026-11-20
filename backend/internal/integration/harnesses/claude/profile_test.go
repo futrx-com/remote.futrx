@@ -58,7 +58,7 @@ func TestProfilePreservesClaudeProvisioningPolicy(t *testing.T) {
 		t.Fatalf("refresh credential = %#v", got)
 	}
 
-	if profile.Instructions == nil || profile.Instructions.Path != "/root/.claude/CLAUDE.md" || profile.Instructions.HashPath != "/root/.claude/.agents-md.sha256" {
+	if profile.Instructions == nil || profile.Instructions.Path != "/root/.claude/remote-system.md" || profile.Instructions.HashPath != "/root/.claude/.remote-system.sha256" {
 		t.Fatalf("instruction target = %#v", profile.Instructions)
 	}
 	if profile.WorkspaceSkills == nil || profile.WorkspaceSkills.WorkspaceHome != "/workspace/.claude" || profile.WorkspaceSkills.HomeSkillsDir != "" {

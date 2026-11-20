@@ -4,15 +4,16 @@ import (
 	"context"
 	"strings"
 
+	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
 // containerAgentInspector reports provider CLI and instruction readiness.
 type containerAgentInspector struct {
-	commands        *quickCommandRunner
-	profiles        serviceprofiles.Source
-	instructionHash string
+	commands     *quickCommandRunner
+	profiles     serviceprofiles.Source
+	instructions []byte
 }
 
 func (i *containerAgentInspector) inspect(ctx context.Context, containerName string) []serviceproject.AgentContainerStatus {
@@ -37,7 +38,7 @@ func (i *containerAgentInspector) inspect(ctx context.Context, containerName str
 				status.InstructionsInstalled = true
 			}
 			if hash, err := i.commands.run(ctx, "exec", containerName, "--", "cat", profile.Instructions.HashPath); err == nil {
-				status.InstructionsInSync = strings.TrimSpace(hash) == i.instructionHash
+				status.InstructionsInSync = strings.TrimSpace(hash) == assets.Hash(profile.Instructions.Render(i.instructions))
 			}
 		}
 		statuses = append(statuses, status)

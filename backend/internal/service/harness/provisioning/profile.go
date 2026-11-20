@@ -107,6 +107,16 @@ func (s CredentialSpec) Empty() bool {
 type InstructionTarget struct {
 	Path     string
 	HashPath string
+	// Prefix wraps the shared text in the provider's native system-prompt format.
+	Prefix string
+	// LegacyPath is removed only when its bytes still match LegacyHashPath.
+	// User-edited instruction files are never removed by this migration.
+	LegacyPath     string
+	LegacyHashPath string
+}
+
+func (t InstructionTarget) Render(instructions []byte) []byte {
+	return []byte(t.Prefix + string(instructions))
 }
 
 type WorkspaceSkills struct {

@@ -94,7 +94,7 @@ func TestAdapterLXDProbeFailuresLeaveExistingSnapshotUntouched(t *testing.T) {
 }
 
 func TestAdapterGuestAndAgentProbesTranslateCommandOutput(t *testing.T) {
-	instructionHash := assets.Hash(testAgentInstructions)
+	instructionHash := assets.Hash(append([]byte("native-prefix\n"), testAgentInstructions...))
 	runner := &inspectionRecordingRunner{respond: func(args []string) inspectionResponse {
 		joined := strings.Join(args, " ")
 		switch joined {
@@ -132,6 +132,7 @@ Filesystem 1B-blocks Used Available Capacity MountedOn
 		Instructions: &provisioning.InstructionTarget{
 			Path:     "/workspace/CLAUDE.md",
 			HashPath: "/workspace/.claude.hash",
+			Prefix:   "native-prefix\n",
 		},
 	}})
 	adapter := NewAdapter(runner, profiles, testAgentInstructions)

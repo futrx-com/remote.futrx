@@ -559,7 +559,7 @@ If those questions have no concrete answers, the feature is not yet compatible w
 - LXD runtime adapter: [`backend/internal/integration/containers/lifecycle/runtime.go`](../../backend/internal/integration/containers/lifecycle/runtime.go)
 - Resource envelope: [`backend/internal/integration/containers/resources/manager.go`](../../backend/internal/integration/containers/resources/manager.go)
 - Agent provisioning contract: [`backend/internal/service/harness/provisioning/container_dependencies.go`](../../backend/internal/service/harness/provisioning/container_dependencies.go)
-- Shared agent instructions: [`backend/internal/service/harness/provisioning/assets/AGENTS.md`](https://github.com/futrx-com/remote.futrx.com/blob/main/backend/internal/service/harness/provisioning/assets/AGENTS.md)
+- Shared agent instructions: [`backend/internal/service/harness/provisioning/assets/SYSTEM.md`](../../backend/internal/service/harness/provisioning/assets/SYSTEM.md)
 - Codex execution: [`backend/internal/integration/harnesses/codex/command.go`](../../backend/internal/integration/harnesses/codex/command.go)
 - Claude execution: [`backend/internal/integration/harnesses/claude/command.go`](../../backend/internal/integration/harnesses/claude/command.go)
 - Kimi execution: [`backend/internal/integration/harnesses/kimi/command.go`](../../backend/internal/integration/harnesses/kimi/command.go)

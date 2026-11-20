@@ -23,7 +23,7 @@ func (p *Provider) buildCmd(
 	req harness.RunRequest,
 	args []string,
 	emit func(harness.Event),
-) (*exec.Cmd, string, error) {
+) (*exec.Cmd, harness.PreparedProject, error) {
 	return p.buildCmdForAccount(ctx, req, args, emit, nil)
 }
 
@@ -33,7 +33,7 @@ func (p *Provider) buildCmdForAccount(
 	args []string,
 	emit func(harness.Event),
 	run *accountRun,
-) (*exec.Cmd, string, error) {
+) (*exec.Cmd, harness.PreparedProject, error) {
 	cwd := req.Cwd
 	if cwd == "" {
 		cwd = os.Getenv("HOME")
@@ -50,14 +50,14 @@ func (p *Provider) buildCmdForAccount(
 			env = isolatedCodexAuthEnvFor(os.Environ(), run.hostHome)
 		}
 		if err := ensureSubscriptionAuth(authPath); err != nil {
-			return nil, "", err
+			return nil, harness.PreparedProject{}, err
 		}
 		// The app-server process must outlive request cancellation long enough for
 		// runAppServer to send turn/interrupt and receive the terminal status.
 		cmd := exec.CommandContext(context.WithoutCancel(ctx), "codex", args...)
 		cmd.Dir = cwd
 		cmd.Env = harness.WithRuntimeEnvironment(env, req.RuntimeEnv)
-		return cmd, "", nil
+		return cmd, harness.PreparedProject{}, nil
 	}
 
 	var credentials *provisioning.CredentialSpec
@@ -72,7 +72,7 @@ func (p *Provider) buildCmdForAccount(
 		Credentials:    credentials,
 	}, emit)
 	if err != nil {
-		return nil, "", err
+		return nil, harness.PreparedProject{}, err
 	}
 	prefixEnvironment := []string{"HOME=/root", "CODEX_HOME=/root/.codex"}
 	binary := p.profile.CLI.Binary
@@ -80,7 +80,7 @@ func (p *Provider) buildCmdForAccount(
 	if run != nil {
 		prefixEnvironment = []string{"HOME=" + filepath.Dir(run.containerHome), "CODEX_HOME=" + run.containerHome}
 		binary = "sh"
-		arguments = codexAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
+		arguments = codexAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, arguments)
 	}
 	cmd := harnessruntime.BuildContainerCommand(context.WithoutCancel(ctx), harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
@@ -92,7 +92,7 @@ func (p *Provider) buildCmdForAccount(
 		Binary:             binary,
 		Arguments:          arguments,
 	})
-	return cmd, project.ContainerName, nil
+	return cmd, project, nil
 }
 
 func ensureHostSubscriptionAuth() error {

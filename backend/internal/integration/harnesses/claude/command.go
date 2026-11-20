@@ -107,13 +107,15 @@ func (p *Provider) buildCmdForAccount(
 	var excludedSecrets []string
 	var suffixEnvironment []string
 	binary := p.profile.CLI.Binary
-	arguments := args
+	arguments := append(append([]string(nil), args...),
+		"--append-system-prompt-file", containerSystemPrompt,
+		"--system-prompt-snapshot", "off")
 	if run != nil {
 		prefixEnvironment = append(prefixEnvironment, "CLAUDE_CONFIG_DIR="+run.containerHome)
 		excludedSecrets = []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"}
 		suffixEnvironment = []string{"ANTHROPIC_API_KEY=", "ANTHROPIC_AUTH_TOKEN=", "CLAUDE_CODE_OAUTH_TOKEN="}
 		binary = "sh"
-		arguments = claudeAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
+		arguments = claudeAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, arguments)
 	}
 	cmd := harnessruntime.BuildContainerCommand(ctx, harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,

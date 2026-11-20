@@ -2,6 +2,7 @@ package claude
 
 import (
 	"context"
+	"io"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +14,33 @@ import (
 	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
+
+func TestProjectSystemPromptKeepsUserInputAndRefreshesOnResume(t *testing.T) {
+	project := harness.Project{ID: "project", ContainerName: "instructions-project", Status: harness.ProjectStatusRunning}
+	provider := newTestProvider(fakeClaudeProjects{project: project}, claudeContainerDependencies(&fakeClaudeBrowser{}))
+	for _, resumeID := range []string{"", "existing"} {
+		req := harness.RunRequest{ProjectID: "project", ResumeID: resumeID, Prompt: "user input"}
+		cmd, _, err := provider.buildCmd(context.Background(), req, provider.args(req), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		requireClaudeArgPair(t, cmd.Args, "--append-system-prompt-file", "/root/.claude/remote-system.md")
+		requireClaudeArgPair(t, cmd.Args, "--system-prompt-snapshot", "off")
+		input, err := io.ReadAll(cmd.Stdin)
+		if err != nil || string(input) != req.Prompt {
+			t.Fatalf("user input = %q, error = %v", input, err)
+		}
+	}
+	provider = newTestProvider(nil, provisioning.ContainerDependencies{})
+	req := harness.RunRequest{Cwd: t.TempDir(), Prompt: "host input"}
+	cmd, _, err := provider.buildCmd(context.Background(), req, provider.args(req), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(cmd.Args, "--append-system-prompt-file") {
+		t.Fatal("container instructions applied to a host run")
+	}
+}
 
 func newTestProvider(
 	projects harness.ProjectResolver,
@@ -478,7 +506,9 @@ func (fakeClaudeCredentials) SyncFromContainer(context.Context, string, provisio
 
 type fakeClaudeWorkspace struct{}
 
-func (fakeClaudeWorkspace) EnsureHarnessInstructions(context.Context, string) error { return nil }
+func (fakeClaudeWorkspace) EnsureHarnessInstructions(context.Context, string) (string, error) {
+	return "platform instructions", nil
+}
 
 func (fakeClaudeWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 

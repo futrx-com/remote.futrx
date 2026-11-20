@@ -18,11 +18,18 @@ const containerAgentHome = "/root"
 // stateDirUnderHome is where agy stores conversations and headless auth state.
 const stateDirUnderHome = ".gemini/antigravity-cli"
 
+const containerAgentName = "remote-futrx"
+
 // releaseBaseURL contains version-addressed Antigravity CLI assets.
 const releaseBaseURL = "https://github.com/google-antigravity/antigravity-cli/releases/download"
 
 var antigravityProfile = provisioning.Profile{
 	ID: string(harness.ProviderAntigravity),
+	Instructions: &provisioning.InstructionTarget{
+		Path:     "/root/.gemini/config/agents/remote-futrx/agent.md",
+		HashPath: "/root/.gemini/config/agents/remote-futrx/.remote-system.sha256",
+		Prefix:   "---\nname: " + containerAgentName + "\ndescription: Coding assistant in a Remote project container\nmainAgent: true\nsubagent: false\n---\n\n",
+	},
 	CLI: provisioning.CLISpec{
 		Name:               "antigravity",
 		ImageLabel:         "antigravity",

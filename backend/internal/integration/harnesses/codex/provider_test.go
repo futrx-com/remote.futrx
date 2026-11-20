@@ -256,7 +256,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	hostProvider := newTestProvider(nil, provisioning.ContainerDependencies{})
 	hostRequest := harness.RunRequest{Cwd: t.TempDir(), RuntimeEnv: runtimeEnv}
-	hostCmd, containerName, err := hostProvider.buildCmd(
+	hostCmd, prepared, err := hostProvider.buildCmd(
 		context.Background(),
 		hostRequest,
 		hostProvider.args(hostRequest),
@@ -265,8 +265,8 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if containerName != "" {
-		t.Fatalf("host command container = %q", containerName)
+	if prepared.ContainerName != "" || prepared.SystemInstructions != "" {
+		t.Fatalf("host command project = %#v", prepared)
 	}
 	for key, value := range runtimeEnv {
 		if !slices.Contains(hostCmd.Env, key+"="+value) {
@@ -293,7 +293,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		ProjectID:  string(project.ID),
 		RuntimeEnv: runtimeEnv,
 	}
-	containerCmd, containerName, err := containerProvider.buildCmd(
+	containerCmd, prepared, err := containerProvider.buildCmd(
 		context.Background(),
 		containerRequest,
 		containerProvider.args(containerRequest),
@@ -302,8 +302,8 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if containerName != project.ContainerName {
-		t.Fatalf("container name = %q, want %q", containerName, project.ContainerName)
+	if prepared.ContainerName != project.ContainerName {
+		t.Fatalf("container name = %q, want %q", prepared.ContainerName, project.ContainerName)
 	}
 	for key, value := range runtimeEnv {
 		requireCodexArgPair(t, containerCmd.Args, "--env", key+"="+value)
@@ -465,7 +465,7 @@ func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd, _, err := provider.buildCmdForAccount(context.Background(), req, provider.args(req), nil, run)
+	cmd, prepared, err := provider.buildCmdForAccount(context.Background(), req, provider.args(req), nil, run)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,6 +474,9 @@ func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
 		t.Fatalf("prepared credential spec = %#v, run = %#v", credentials.ensured, run)
 	}
 	requireCodexArgPair(t, cmd.Args, "--env", "CODEX_HOME="+run.containerHome)
+	if prepared.SystemInstructions != "platform instructions" {
+		t.Fatalf("isolated run lost platform instructions: %q", prepared.SystemInstructions)
+	}
 	if !slices.Contains(cmd.Args, codexAccountCommand) {
 		t.Fatalf("container command does not initialize the private account home: %#v", cmd.Args)
 	}
@@ -562,7 +565,9 @@ func (f *fakeCodexCredentials) SyncFromContainer(_ context.Context, _ string, sp
 
 type fakeCodexWorkspace struct{}
 
-func (fakeCodexWorkspace) EnsureHarnessInstructions(context.Context, string) error { return nil }
+func (fakeCodexWorkspace) EnsureHarnessInstructions(context.Context, string) (string, error) {
+	return "platform instructions", nil
+}
 
 func (fakeCodexWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 

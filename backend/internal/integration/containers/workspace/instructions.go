@@ -44,62 +44,54 @@ func NewProvisioner(
 	}
 }
 
-// EnsureHarnessInstructions pushes the shared system-instructions template to
-// all configured targets, grouped by hash marker. Idempotent.
-func (p *Provisioner) EnsureHarnessInstructions(ctx context.Context, containerName string) error {
+// EnsureHarnessInstructions publishes native system-prompt assets and returns
+// the trusted template for providers that accept instruction text directly.
+func (p *Provisioner) EnsureHarnessInstructions(ctx context.Context, containerName string) (string, error) {
 	if !p.runner.Available() {
-		return command.ErrUnavailable
+		return "", command.ErrUnavailable
 	}
 	targets := configuredInstructionTargets(p.profiles.Snapshot())
 	if len(targets) == 0 {
-		return nil
+		return string(p.instructions), nil
 	}
 	if len(p.instructions) == 0 {
-		return errors.New("agent instructions not configured")
+		return "", errors.New("agent instructions not configured")
 	}
 
-	dctx, cancelD := context.WithTimeout(ctx, 30*time.Second)
-	defer cancelD()
-	created := map[string]bool{}
 	for _, target := range targets {
-		directory := path.Dir(target.Path)
-		if created[directory] {
-			continue
+		dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		out, err := p.runner.Run(dctx, "exec", containerName, "--",
+			"install", "-d", "-m", "700", path.Dir(target.Path))
+		cancel()
+		if err != nil {
+			return "", fmt.Errorf("mkdir %s: %w; output: %s", path.Dir(target.Path), err, out)
 		}
-		if out, err := p.runner.Run(dctx, "exec", containerName, "--",
-			"install", "-d", "-m", "700", directory); err != nil {
-			return fmt.Errorf("mkdir %s: %w; output: %s", directory, err, out)
+		// Provider homes are writable inside the container. Verify the bytes,
+		// not just a sidecar marker, before using these as privileged guidance.
+		if err := p.publisher.PushVerified(ctx, containerName, target.Render(p.instructions),
+			target.HashPath, "644", target.Path); err != nil {
+			return "", err
 		}
-		created[directory] = true
-	}
-
-	type batch struct {
-		hashPath string
-		paths    []string
-	}
-	var batches []batch
-	for _, target := range targets {
-		index := -1
-		for i := range batches {
-			if batches[i].hashPath == target.HashPath {
-				index = i
-				break
+		if target.LegacyPath != "" && target.LegacyHashPath != "" {
+			if _, err := command.RunWithTimeout(ctx, p.runner, 30*time.Second,
+				"exec", containerName, "--", "sh", "-eu", "-c", removeManagedInstructions,
+				"remote-instructions-migration", target.LegacyPath, target.LegacyHashPath); err != nil {
+				return "", fmt.Errorf("migrate %s: %w", target.LegacyPath, err)
 			}
 		}
-		if index < 0 {
-			batches = append(batches, batch{hashPath: target.HashPath})
-			index = len(batches) - 1
-		}
-		batches[index].paths = append(batches[index].paths, target.Path)
 	}
-	for _, batch := range batches {
-		if err := p.publisher.Push(ctx, containerName, p.instructions,
-			batch.hashPath, "644", batch.paths...); err != nil {
-			return err
-		}
-	}
-	return nil
+	return string(p.instructions), nil
 }
+
+// Keep the old marker: Claude and Codex shared it, so deleting it while migrating
+// one profile would prevent recognizing the other profile's managed file.
+const removeManagedInstructions = `if [ -f "$1" ] && [ -f "$2" ]; then
+    expected=$(cat "$2")
+    actual=$(sha256sum "$1")
+    if [ "${actual%% *}" = "$expected" ]; then
+        rm -- "$1"
+    fi
+fi`
 
 func configuredInstructionTargets(profiles []provisioning.Profile) []provisioning.InstructionTarget {
 	targets := make([]provisioning.InstructionTarget, 0, len(profiles))

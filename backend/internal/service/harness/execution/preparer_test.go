@@ -55,7 +55,7 @@ func TestPreparerAppliesSharedWorkflowInOrder(t *testing.T) {
 		t.Fatalf("events = %v", events)
 	}
 	if prepared.ID != "project-id" || prepared.ContainerName != "project-container" ||
-		len(prepared.Secrets) != 1 || prepared.Secrets[0].Key != "PROJECT_SECRET" {
+		len(prepared.Secrets) != 1 || prepared.Secrets[0].Key != "PROJECT_SECRET" || prepared.SystemInstructions != "platform instructions" {
 		t.Fatalf("prepared project = %#v", prepared)
 	}
 	if recorder.runtimeAssetContainer != "project-container" || len(recorder.runtimeAssets) != 1 ||
@@ -180,9 +180,9 @@ func (p preparationCredentials) SyncFromContainer(context.Context, string, provi
 
 type preparationWorkspace struct{ recorder *preparationRecorder }
 
-func (p preparationWorkspace) EnsureHarnessInstructions(context.Context, string) error {
+func (p preparationWorkspace) EnsureHarnessInstructions(context.Context, string) (string, error) {
 	p.recorder.calls = append(p.recorder.calls, "instructions")
-	return nil
+	return "platform instructions", nil
 }
 
 func (p preparationWorkspace) EnsureSkillLinks(context.Context, string) error {
