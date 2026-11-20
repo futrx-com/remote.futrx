@@ -367,7 +367,7 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Chat service: [`backend/internal/service/chat/service.go`](../../backend/internal/service/chat/service.go)
 - Prompt service: [`backend/internal/service/prompt/service.go`](../../backend/internal/service/prompt/service.go)
 - Run hub: [`backend/internal/service/runhub/hub.go`](../../backend/internal/service/runhub/hub.go)
-- Agent model: [`backend/internal/agent/model.go`](../../backend/internal/agent/model.go)
+- Agent model: [`backend/internal/harness/model.go`](../../backend/internal/harness/model.go)
 - Agent module contract and runtime: [`backend/internal/service/agent/module/`](../../backend/internal/service/agent/module/)
 - Agent authentication: [`backend/internal/service/agent/auth/`](../../backend/internal/service/agent/auth/)
 - Agent composition root: [`backend/internal/config/agents.go`](../../backend/internal/config/agents.go)

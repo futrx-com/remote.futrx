@@ -3,7 +3,7 @@ package kimi
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestParseCapabilitiesFromProviderJSON(t *testing.T) {
@@ -39,7 +39,7 @@ func TestParseCapabilitiesFromProviderJSON(t *testing.T) {
 	if caps.Models[2].Label != "Kimi K2 0711 Preview" || caps.Models[2].Description != "Provider model: kimi-k2-0711-preview" {
 		t.Fatalf("versioned model = %+v", caps.Models[2])
 	}
-	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(harness.RunModeDefault) || caps.Modes[1].Value != string(harness.RunModePlan) {
 		t.Fatalf("modes = %+v", caps.Modes)
 	}
 }

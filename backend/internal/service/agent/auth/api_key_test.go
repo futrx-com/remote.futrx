@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type apiKeyTestStore struct {
-	keys map[agent.ProviderID]string
+	keys map[harness.ProviderID]string
 	err  error
 }
 
@@ -26,14 +26,14 @@ func (rejectingStoredKeyValidator) ValidateAPIKeyFormat(key string) error {
 	return nil
 }
 
-func (s *apiKeyTestStore) AgentAPIKey(_ context.Context, id agent.ProviderID) (string, error) {
+func (s *apiKeyTestStore) AgentAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
 	if s.err != nil {
 		return "", s.err
 	}
 	return s.keys[id], nil
 }
 
-func (s *apiKeyTestStore) SaveAgentAPIKey(_ context.Context, id agent.ProviderID, key string) error {
+func (s *apiKeyTestStore) SaveAgentAPIKey(_ context.Context, id harness.ProviderID, key string) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -41,7 +41,7 @@ func (s *apiKeyTestStore) SaveAgentAPIKey(_ context.Context, id agent.ProviderID
 	return nil
 }
 
-func (s *apiKeyTestStore) DeleteAgentAPIKey(_ context.Context, id agent.ProviderID) error {
+func (s *apiKeyTestStore) DeleteAgentAPIKey(_ context.Context, id harness.ProviderID) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -50,8 +50,8 @@ func (s *apiKeyTestStore) DeleteAgentAPIKey(_ context.Context, id agent.Provider
 }
 
 func TestAPIKeyServiceLoadsMutatesAndPublishesOnlyStatus(t *testing.T) {
-	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "stored-key"}}
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, allowAccountUse{})
+	store := &apiKeyTestStore{keys: map[harness.ProviderID]string{harness.ProviderMiniMax: "stored-key"}}
+	service, err := NewAPIKeyService(context.Background(), harness.ProviderMiniMax, store, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,12 +85,12 @@ func TestAPIKeyServiceLoadsMutatesAndPublishesOnlyStatus(t *testing.T) {
 }
 
 func TestAPIKeyServiceDoesNotActivateAStoredUnsupportedCredentialClass(t *testing.T) {
-	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{
-		agent.ProviderMiniMax: "legacy-key",
+	store := &apiKeyTestStore{keys: map[harness.ProviderID]string{
+		harness.ProviderMiniMax: "legacy-key",
 	}}
 	service, err := NewAPIKeyService(
 		context.Background(),
-		agent.ProviderMiniMax,
+		harness.ProviderMiniMax,
 		store,
 		rejectingStoredKeyValidator{},
 		allowAccountUse{},
@@ -104,16 +104,16 @@ func TestAPIKeyServiceDoesNotActivateAStoredUnsupportedCredentialClass(t *testin
 	if _, ok := service.APIKey(); ok {
 		t.Fatal("unsupported stored credential remains available to runs")
 	}
-	if got := store.keys[agent.ProviderMiniMax]; got != "legacy-key" {
+	if got := store.keys[harness.ProviderMiniMax]; got != "legacy-key" {
 		t.Fatalf("stored credential was unexpectedly mutated: %q", got)
 	}
 }
 
 func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 	ctx := context.Background()
-	legacy := &apiKeyTestStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "legacy-key"}}
-	accounts := &fakeAccountStore{sets: map[agent.ProviderID]AccountSet{agent.ProviderMiniMax: {}}}
-	service, err := NewAPIKeyService(ctx, agent.ProviderMiniMax, legacy, nil, allowAccountUse{})
+	legacy := &apiKeyTestStore{keys: map[harness.ProviderID]string{harness.ProviderMiniMax: "legacy-key"}}
+	accounts := &fakeAccountStore{sets: map[harness.ProviderID]AccountSet{harness.ProviderMiniMax: {}}}
+	service, err := NewAPIKeyService(ctx, harness.ProviderMiniMax, legacy, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,10 +128,10 @@ func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 	if key, ok := service.APIKeyFor(defaultID); !ok || key != "legacy-key" {
 		t.Fatalf("migrated key = (%q, %t)", key, ok)
 	}
-	if _, remains := legacy.keys[agent.ProviderMiniMax]; remains {
+	if _, remains := legacy.keys[harness.ProviderMiniMax]; remains {
 		t.Fatal("legacy key remains after successful migration")
 	}
-	binding := NewAPIKeyBinding(agent.ProviderMiniMax, service)
+	binding := NewAPIKeyBinding(harness.ProviderMiniMax, service)
 	if !binding.AccountsAvailable() || binding.Snapshot().Accounts == nil {
 		t.Fatalf("named API-key accounts were not attached to the auth binding: %#v", binding.Snapshot())
 	}
@@ -171,7 +171,7 @@ func TestAPIKeyServiceMigratesAndSelectsNamedAccounts(t *testing.T) {
 }
 
 func TestAPIKeyServiceRejectsBlankAndUnavailableStorage(t *testing.T) {
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, nil, nil, allowAccountUse{})
+	service, err := NewAPIKeyService(context.Background(), harness.ProviderMiniMax, nil, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,14 +187,14 @@ func TestAPIKeyServiceRejectsBlankAndUnavailableStorage(t *testing.T) {
 }
 
 func TestAPIKeyServiceValidatesBeforeReplacingStoredKey(t *testing.T) {
-	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{
-		agent.ProviderMiniMax: "working-key",
+	store := &apiKeyTestStore{keys: map[harness.ProviderID]string{
+		harness.ProviderMiniMax: "working-key",
 	}}
 	validationErr := ErrAPIKeyRejected
 	validatedKey := ""
 	service, err := NewAPIKeyService(
 		context.Background(),
-		agent.ProviderMiniMax,
+		harness.ProviderMiniMax,
 		store,
 		APIKeyValidatorFunc(func(_ context.Context, key string) error {
 			validatedKey = key
@@ -218,7 +218,7 @@ func TestAPIKeyServiceValidatesBeforeReplacingStoredKey(t *testing.T) {
 	if key, _ := service.APIKey(); key != "working-key" {
 		t.Fatalf("active key changed after rejection: %q", key)
 	}
-	if key := store.keys[agent.ProviderMiniMax]; key != "working-key" {
+	if key := store.keys[harness.ProviderMiniMax]; key != "working-key" {
 		t.Fatalf("stored key changed after rejection: %q", key)
 	}
 	select {
@@ -241,8 +241,8 @@ func TestAPIKeyServiceValidatesBeforeReplacingStoredKey(t *testing.T) {
 
 func TestNewAPIKeyServiceReturnsStorageErrors(t *testing.T) {
 	want := errors.New("read failed")
-	_, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, &apiKeyTestStore{
-		keys: map[agent.ProviderID]string{},
+	_, err := NewAPIKeyService(context.Background(), harness.ProviderMiniMax, &apiKeyTestStore{
+		keys: map[harness.ProviderID]string{},
 		err:  want,
 	}, nil, allowAccountUse{})
 	if !errors.Is(err, want) {

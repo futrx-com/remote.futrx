@@ -178,7 +178,7 @@ before it exits, so an unanswered read would delay the end of the turn.
 
 The Usage tab also reads plan limits on demand, the way Claude Code's `/usage`
 and Codex's `/status` do. Providers that can do this implement
-`agent.PlanUsageReader`, and `agentmodule.Runtime.PlanUsageReaders` lists them.
+`harness.PlanUsageReader`, and `agentmodule.Runtime.PlanUsageReaders` lists them.
 Claude's reader in `claude/plan_usage.go` runs the CLI headless and sends one
 `get_usage` control request; Codex's in `codex/plan_usage.go` starts an app
 server of its own and sends `account/rateLimits/read`. Each saved account is

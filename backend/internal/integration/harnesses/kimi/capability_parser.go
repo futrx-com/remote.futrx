@@ -7,27 +7,27 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type rawObject map[string]json.RawMessage
 
-func parseProviderCatalog(raw []byte, help, defaults string) (agent.Capabilities, error) {
+func parseProviderCatalog(raw []byte, help, defaults string) (harness.Capabilities, error) {
 	models, err := parseProviderModels(raw, parseDefaultModel(defaults))
 	if err != nil {
-		return agent.Capabilities{}, err
+		return harness.Capabilities{}, err
 	}
-	return agent.Capabilities{
-		Provider:    agent.ProviderKimi,
+	return harness.Capabilities{
+		Provider:    harness.ProviderKimi,
 		Label:       "Kimi",
-		Source:      agent.CapabilitySourceLive,
-		Models:      agent.WithAutoModel(models, "Kimi default"),
-		Modes:       agent.ProviderModes(strings.Contains(help, "--plan")),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceLive,
+		Models:      harness.WithAutoModel(models, "Kimi default"),
+		Modes:       harness.ProviderModes(strings.Contains(help, "--plan")),
+		DefaultMode: harness.RunModeDefault,
 	}, nil
 }
 
-func parseProviderModels(raw []byte, configuredDefault string) ([]agent.ModelCapability, error) {
+func parseProviderModels(raw []byte, configuredDefault string) ([]harness.ModelCapability, error) {
 	if len(strings.TrimSpace(string(raw))) == 0 {
 		return nil, nil
 	}
@@ -57,7 +57,7 @@ func parseProviderModels(raw []byte, configuredDefault string) ([]agent.ModelCap
 			aliases = append(aliases, alias)
 		}
 		sort.Strings(aliases)
-		models := make([]agent.ModelCapability, 0, len(aliases))
+		models := make([]harness.ModelCapability, 0, len(aliases))
 		for _, alias := range aliases {
 			models = append(models, parseModel(alias, modelsByAlias[alias], globalDefault))
 		}
@@ -68,7 +68,7 @@ func parseProviderModels(raw []byte, configuredDefault string) ([]agent.ModelCap
 	if err := json.Unmarshal(modelsRaw, &items); err != nil {
 		return nil, fmt.Errorf("decode kimi models: %w", err)
 	}
-	models := make([]agent.ModelCapability, 0, len(items))
+	models := make([]harness.ModelCapability, 0, len(items))
 	seen := make(map[string]bool)
 	for _, item := range items {
 		var object rawObject
@@ -90,7 +90,7 @@ func parseModel(
 	alias string,
 	raw json.RawMessage,
 	globalDefault string,
-) agent.ModelCapability {
+) harness.ModelCapability {
 	var object rawObject
 	_ = json.Unmarshal(raw, &object)
 	var overrides rawObject
@@ -129,25 +129,25 @@ func parseModel(
 		}
 	}
 
-	reasoning := []agent.CapabilityOption{}
+	reasoning := []harness.CapabilityOption{}
 	for _, effort := range values("support_efforts", "supportEfforts") {
-		effort = agent.NormalizeCapabilityValue(effort)
+		effort = harness.NormalizeCapabilityValue(effort)
 		if effort == "" {
 			continue
 		}
 		if len(reasoning) == 0 {
-			reasoning = append(reasoning, agent.AutoOption())
+			reasoning = append(reasoning, harness.AutoOption())
 		}
-		reasoning = append(reasoning, agent.CapabilityOption{
+		reasoning = append(reasoning, harness.CapabilityOption{
 			Value: effort,
 			Label: capabilityLabel(effort),
 		})
 	}
-	defaultEffort := agent.NormalizeCapabilityValue(value("default_effort", "defaultEffort"))
+	defaultEffort := harness.NormalizeCapabilityValue(value("default_effort", "defaultEffort"))
 	if !hasCapabilityOption(reasoning, defaultEffort) {
 		defaultEffort = ""
 	}
-	return agent.ModelCapability{
+	return harness.ModelCapability{
 		ID:                     alias,
 		Label:                  displayName,
 		Description:            description,
@@ -157,7 +157,7 @@ func parseModel(
 	}
 }
 
-func hasCapabilityOption(options []agent.CapabilityOption, value string) bool {
+func hasCapabilityOption(options []harness.CapabilityOption, value string) bool {
 	if value == "" {
 		return false
 	}

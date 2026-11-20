@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	accountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
@@ -21,18 +21,18 @@ func (permissionAccountSource) AccountsSnapshot() agentauth.AccountsSnapshot {
 	return agentauth.AccountsSnapshot{ActiveAccountID: "private", Items: []agentauth.Account{{ID: "private", Label: "private label", Email: "private@example.com"}, {ID: "team", Label: "Team"}}}
 }
 
-type permissionQuota struct{ provider agent.ProviderID }
+type permissionQuota struct{ provider harness.ProviderID }
 
 func (permissionQuota) Refresh(context.Context) {}
 func (q permissionQuota) View() []agentquota.AccountView {
 	return []agentquota.AccountView{{AccountQuota: agentquota.AccountQuota{Provider: string(q.provider), AccountID: "private"}}, {AccountQuota: agentquota.AccountQuota{Provider: string(q.provider), AccountID: "team"}}}
 }
 func TestAccountMetadataRoutesFilterWithRealMiddlewareAndPolicy(t *testing.T) {
-	for _, provider := range []agent.ProviderID{agent.ProviderClaude, agent.ProviderCodex, agent.ProviderMiniMax, agent.ProviderKimi, agent.ProviderAntigravity} {
+	for _, provider := range []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderMiniMax, harness.ProviderKimi, harness.ProviderAntigravity} {
 		t.Run(string(provider), func(t *testing.T) { testAccountMetadataRoutes(t, provider) })
 	}
 }
-func testAccountMetadataRoutes(t *testing.T, provider agent.ProviderID) {
+func testAccountMetadataRoutes(t *testing.T, provider harness.ProviderID) {
 	f := newMembershipRoutesFixture(t)
 	binding := agentauth.NewExternalBinding(provider).WithAccounts(permissionAccountSource{})
 	access := accountaccess.New(f.permissions, []agentauth.Binding{binding})

@@ -1,14 +1,14 @@
 package minimax
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 )
 
 var miniMaxProfile = provisioning.Profile{
-	ID: string(agent.ProviderMiniMax),
+	ID: string(harness.ProviderMiniMax),
 	CLI: codexharness.NewCLISpec(
 		configconstants.MiniMaxCLIName,
 		configconstants.MiniMaxImageLabel,

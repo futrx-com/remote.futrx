@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -38,14 +38,14 @@ func TestRuntimeFactoryRequiresDefaultAccountUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := runtime.Lookup(agent.ProviderAntigravity)
-	if err := provider.Run(context.Background(), agent.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
+	provider := runtime.Lookup(harness.ProviderAntigravity)
+	if err := provider.Run(context.Background(), harness.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("denied run reached preparation: %v", err)
 	}
 	if len(deny.checks) != 1 || deny.checks[0].Permission != agentauth.PermissionAccountUse || deny.checks[0].Scope != rbac.ProviderAccountScope("antigravity", "") {
 		t.Fatalf("account checks = %#v", deny.checks)
 	}
-	if err := (&Provider{}).Run(context.Background(), agent.RunRequest{}, nil); !errors.Is(err, rbac.ErrDenied) {
+	if err := (&Provider{}).Run(context.Background(), harness.RunRequest{}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("missing authorizer = %v", err)
 	}
 }
@@ -53,7 +53,7 @@ func TestRuntimeFactoryRequiresDefaultAccountUse(t *testing.T) {
 func TestRunRechecksDefaultAccountBeforeProcessStart(t *testing.T) {
 	authorizer := &runAccountAuthorizer{allowChecks: 1}
 	provider := &Provider{accountAuthorizer: authorizer}
-	if err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir()}, nil); !errors.Is(err, rbac.ErrDenied) {
+	if err := provider.Run(context.Background(), harness.RunRequest{Cwd: t.TempDir()}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("revoked permission reached process start: %v", err)
 	}
 	if len(authorizer.checks) != 2 {
@@ -64,7 +64,7 @@ func TestRunRechecksDefaultAccountBeforeProcessStart(t *testing.T) {
 func TestRunRejectsSavedAccountIDsWithoutUsingDefaultLogin(t *testing.T) {
 	authorizer := &runAccountAuthorizer{allowChecks: 1}
 	provider := &Provider{accountAuthorizer: authorizer}
-	if err := provider.Run(context.Background(), agent.RunRequest{AccountID: "invented-account"}, nil); !errors.Is(err, agentauth.ErrAccountNotFound) {
+	if err := provider.Run(context.Background(), harness.RunRequest{AccountID: "invented-account"}, nil); !errors.Is(err, agentauth.ErrAccountNotFound) {
 		t.Fatalf("unsupported saved account = %v", err)
 	}
 	if len(authorizer.checks) != 1 || authorizer.checks[0].Scope != rbac.ProviderAccountScope("antigravity", "") {

@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -16,7 +16,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	}
 	descriptors := catalog.Descriptors()
 	profiles := catalog.Profiles()
-	ids := make([]agent.ProviderID, len(descriptors))
+	ids := make([]harness.ProviderID, len(descriptors))
 	for index, descriptor := range descriptors {
 		ids[index] = descriptor.ID
 		if descriptor.Features.StreamingPresentation != agentmodule.StreamingBlocks {
@@ -26,12 +26,12 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 			t.Fatalf("descriptor %q has no aligned profile", descriptor.ID)
 		}
 	}
-	want := []agent.ProviderID{
-		agent.ProviderClaude,
-		agent.ProviderCodex,
-		agent.ProviderMiniMax,
-		agent.ProviderKimi,
-		agent.ProviderAntigravity,
+	want := []harness.ProviderID{
+		harness.ProviderClaude,
+		harness.ProviderCodex,
+		harness.ProviderMiniMax,
+		harness.ProviderKimi,
+		harness.ProviderAntigravity,
 	}
 	if !slices.Equal(ids, want) {
 		t.Fatalf("agent order = %v, want %v", ids, want)
@@ -39,17 +39,17 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	if !catalog.HasProvider("claude") || catalog.HasProvider("future-agent") {
 		t.Fatal("catalog provider membership is incorrect")
 	}
-	if got := catalog.DefaultProvider(agentmodule.ScopeHost); got != agent.ProviderCodex {
+	if got := catalog.DefaultProvider(agentmodule.ScopeHost); got != harness.ProviderCodex {
 		t.Fatalf("host default = %q, want codex", got)
 	}
 	if roots := catalog.LegacySkillRoots("codex"); !slices.Equal(roots, []string{"/root/.codex/skills"}) {
 		t.Fatalf("Codex legacy skill roots = %v", roots)
 	}
-	if !catalog.SupportsNativeFork(string(agent.ProviderClaude)) ||
-		!catalog.SupportsNativeFork(string(agent.ProviderCodex)) ||
-		!catalog.SupportsNativeFork(string(agent.ProviderMiniMax)) ||
-		catalog.SupportsNativeFork(string(agent.ProviderKimi)) ||
-		catalog.SupportsNativeFork(string(agent.ProviderAntigravity)) {
+	if !catalog.SupportsNativeFork(string(harness.ProviderClaude)) ||
+		!catalog.SupportsNativeFork(string(harness.ProviderCodex)) ||
+		!catalog.SupportsNativeFork(string(harness.ProviderMiniMax)) ||
+		catalog.SupportsNativeFork(string(harness.ProviderKimi)) ||
+		catalog.SupportsNativeFork(string(harness.ProviderAntigravity)) {
 		t.Fatal("catalog native-fork policies do not match provider behavior")
 	}
 	hostProfiles := catalog.HostProfiles()

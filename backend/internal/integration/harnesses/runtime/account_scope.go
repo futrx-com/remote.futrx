@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // AccountHomeScope returns a stable filesystem-safe name for one chat's
@@ -19,11 +19,11 @@ func AccountHomeScope(accountID, projectID, conversationID string) string {
 // emits, so what the provider reports about that account, such as its plan
 // limits, is filed under it. An empty accountID, the provider's host login,
 // leaves events unchanged.
-func EmitForAccount(emit func(agent.Event), accountID string) func(agent.Event) {
+func EmitForAccount(emit func(harness.Event), accountID string) func(harness.Event) {
 	if accountID == "" {
 		return emit
 	}
-	return func(ev agent.Event) {
+	return func(ev harness.Event) {
 		ev.AccountID = accountID
 		emit(ev)
 	}

@@ -14,13 +14,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
-var _ agent.PlanUsageReader = (*Provider)(nil)
+var _ harness.PlanUsageReader = (*Provider)(nil)
 
 // ReadPlanUsage asks the Codex app server for each account's rate limits
 // through account/rateLimits/read, the request Codex's /status is built
@@ -34,8 +34,8 @@ var _ agent.PlanUsageReader = (*Provider)(nil)
 // pinned account run on it, and account changes wait for that read. A Snap
 // build ignores CODEX_HOME, so there only the host login can be read, and it
 // belongs to the active account.
-func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
-	var usages []agent.AccountPlanUsage
+func (p *Provider) ReadPlanUsage(ctx context.Context) []harness.AccountPlanUsage {
+	var usages []harness.AccountPlanUsage
 	readHost, hostAccountID := true, ""
 	if p.accounts != nil {
 		snapshot := p.accounts.AccountsSnapshot()
@@ -57,7 +57,7 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 				return
 			}
 			windows, err := readCodexRateLimits(ctx, "")
-			usages = append(usages, agent.AccountPlanUsage{AccountID: hostAccountID, Windows: windows, Err: err})
+			usages = append(usages, harness.AccountPlanUsage{AccountID: hostAccountID, Windows: windows, Err: err})
 		}
 		if p.accounts == nil {
 			readHostLogin()
@@ -71,8 +71,8 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 // readSavedAccountUsage reads one saved account's rate limits in a private
 // CODEX_HOME, then offers a login the app server refreshed to the account's
 // vault record by the same rules as a run.
-func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) agent.AccountPlanUsage {
-	usage := agent.AccountPlanUsage{AccountID: accountID}
+func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) harness.AccountPlanUsage {
+	usage := harness.AccountPlanUsage{AccountID: accountID}
 	saved, _, err := p.accounts.CredentialForRun(rbac.ContextWithSystemActor(ctx), accountID)
 	if err != nil {
 		usage.Err = err
@@ -107,7 +107,7 @@ func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) 
 
 // readCodexRateLimits starts an app server on home, or on the host login when
 // home is empty, and returns the Codex windows its rate-limit read reports.
-func readCodexRateLimits(ctx context.Context, home string) ([]agent.Quota, error) {
+func readCodexRateLimits(ctx context.Context, home string) ([]harness.Quota, error) {
 	ctx, cancel := context.WithTimeout(ctx, configconstants.PlanUsageAccountReadTimeout)
 	defer cancel()
 

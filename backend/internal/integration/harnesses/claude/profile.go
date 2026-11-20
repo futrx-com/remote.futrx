@@ -4,8 +4,8 @@ import (
 	_ "embed"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 const (
@@ -22,7 +22,7 @@ var browserMCPConfig []byte
 // credentials, or filesystem layout.
 func Profile() provisioning.Profile {
 	return provisioning.Profile{
-		ID: string(agent.ProviderClaude),
+		ID: string(harness.ProviderClaude),
 		CLI: provisioning.CLISpec{
 			Name:               "Claude Code",
 			ImageLabel:         "claude-code",

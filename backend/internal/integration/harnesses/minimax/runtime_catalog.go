@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 type runtimeModelCatalog struct {
@@ -17,7 +17,7 @@ type runtimeModel struct {
 	Slug                       string                  `json:"slug"`
 	DisplayName                string                  `json:"display_name"`
 	Description                string                  `json:"description"`
-	DefaultReasoningLevel      agent.ReasoningEffort   `json:"default_reasoning_level"`
+	DefaultReasoningLevel      harness.ReasoningEffort `json:"default_reasoning_level"`
 	SupportedReasoningLevels   []runtimeReasoningLevel `json:"supported_reasoning_levels"`
 	ShellType                  string                  `json:"shell_type"`
 	Visibility                 string                  `json:"visibility"`
@@ -34,8 +34,8 @@ type runtimeModel struct {
 }
 
 type runtimeReasoningLevel struct {
-	Effort      agent.ReasoningEffort `json:"effort"`
-	Description string                `json:"description"`
+	Effort      harness.ReasoningEffort `json:"effort"`
+	Description string                  `json:"description"`
 }
 
 type runtimeTruncationPolicy struct {
@@ -46,7 +46,7 @@ type runtimeTruncationPolicy struct {
 func buildRuntimeModelCatalog(modelIDs []string) ([]byte, error) {
 	models := make([]runtimeModel, 0, len(modelIDs))
 	for index, id := range modelIDs {
-		if agent.NormalizeModelID(id) != id || !isMiniMaxLanguageModel(id) {
+		if harness.NormalizeModelID(id) != id || !isMiniMaxLanguageModel(id) {
 			return nil, fmt.Errorf("%w: %q", ErrMiniMaxModelDiscoveryUnavailable, id)
 		}
 		levels := []runtimeReasoningLevel{{

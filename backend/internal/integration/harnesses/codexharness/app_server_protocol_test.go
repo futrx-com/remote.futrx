@@ -3,12 +3,12 @@ package codexharness
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestAppServerTurnIncludesReasoningEffort(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ReasoningEffort: "high"},
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{ReasoningEffort: "high"},
 	}, "thread-1", "gpt-5.5")
 	if params.Effort != "high" {
 		t.Fatalf("effort = %q, want high", params.Effort)
@@ -16,8 +16,8 @@ func TestAppServerTurnIncludesReasoningEffort(t *testing.T) {
 }
 
 func TestAppServerTurnIgnoresInvalidReasoningEffort(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ReasoningEffort: "extreme;invalid"},
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{ReasoningEffort: "extreme;invalid"},
 	}, "thread-1", "gpt-5.5")
 
 	if params.Effort != "" {
@@ -26,8 +26,8 @@ func TestAppServerTurnIgnoresInvalidReasoningEffort(t *testing.T) {
 }
 
 func TestAppServerTurnIncludesServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ServiceTier: "priority"},
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{ServiceTier: "priority"},
 	}, "thread-1", "gpt-5.5")
 	if params.ServiceTier != "priority" {
 		t.Fatalf("serviceTier = %q, want priority", params.ServiceTier)
@@ -35,8 +35,8 @@ func TestAppServerTurnIncludesServiceTier(t *testing.T) {
 }
 
 func TestAppServerTurnIncludesReasoningEffortAndServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{
 			ReasoningEffort: "xhigh",
 			ServiceTier:     "default",
 		},
@@ -47,8 +47,8 @@ func TestAppServerTurnIncludesReasoningEffortAndServiceTier(t *testing.T) {
 }
 
 func TestAppServerTurnIgnoresInvalidServiceTier(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{ServiceTier: "turbo;invalid"},
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{ServiceTier: "turbo;invalid"},
 	}, "thread-1", "gpt-5.5")
 
 	if params.ServiceTier != "" {
@@ -57,8 +57,8 @@ func TestAppServerTurnIgnoresInvalidServiceTier(t *testing.T) {
 }
 
 func TestAppServerTurnNormalizesExecutionPolicies(t *testing.T) {
-	params := buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{
+	params := buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{
 			ApprovalPolicy: " never ",
 			SandboxPolicy:  " readOnly ",
 		},
@@ -67,8 +67,8 @@ func TestAppServerTurnNormalizesExecutionPolicies(t *testing.T) {
 		t.Fatalf("turn execution policies = %#v", params)
 	}
 
-	params = buildAppServerTurnParams(agent.RunRequest{
-		Preferences: agent.RunPreferences{
+	params = buildAppServerTurnParams(harness.RunRequest{
+		Preferences: harness.RunPreferences{
 			ApprovalPolicy: "unknown",
 			SandboxPolicy:  "unknown",
 		},
@@ -79,7 +79,7 @@ func TestAppServerTurnNormalizesExecutionPolicies(t *testing.T) {
 }
 
 func TestAppServerResumesThread(t *testing.T) {
-	request := buildAppServerThreadRequest(agent.RunRequest{ResumeID: "thread-123"})
+	request := buildAppServerThreadRequest(harness.RunRequest{ResumeID: "thread-123"})
 	if request.Method != "thread/resume" || request.Params.ThreadID != "thread-123" {
 		t.Fatalf("thread request = %#v", request)
 	}
@@ -87,11 +87,11 @@ func TestAppServerResumesThread(t *testing.T) {
 
 func TestNativePlanTurnUsesCollaborationMode(t *testing.T) {
 	params := buildAppServerTurnParams(
-		agent.RunRequest{Mode: agent.RunModePlan},
+		harness.RunRequest{Mode: harness.RunModePlan},
 		"thread-123",
 		"gpt-5.5",
 	)
-	if params.CollaborationMode.Mode != agent.RunModePlan {
+	if params.CollaborationMode.Mode != harness.RunModePlan {
 		t.Fatalf("collaboration mode = %#v", params.CollaborationMode)
 	}
 	settings := params.CollaborationMode.Settings
@@ -102,10 +102,10 @@ func TestNativePlanTurnUsesCollaborationMode(t *testing.T) {
 
 func TestNativePlanTurnUsesSelectedReasoningPreset(t *testing.T) {
 	params := buildAppServerTurnParams(
-		agent.RunRequest{
-			Mode: agent.RunModePlan,
-			Preferences: agent.RunPreferences{
-				ReasoningEffort: agent.ReasoningEffort("high"),
+		harness.RunRequest{
+			Mode: harness.RunModePlan,
+			Preferences: harness.RunPreferences{
+				ReasoningEffort: harness.ReasoningEffort("high"),
 			},
 		},
 		"thread-123",
@@ -119,12 +119,12 @@ func TestNativePlanTurnUsesSelectedReasoningPreset(t *testing.T) {
 
 func TestNativeDefaultTurnUsesProviderInstructions(t *testing.T) {
 	params := buildAppServerTurnParams(
-		agent.RunRequest{Mode: agent.RunModeDefault},
+		harness.RunRequest{Mode: harness.RunModeDefault},
 		"thread-123",
 		"gpt-5.5",
 	)
 	mode := params.CollaborationMode
-	if mode.Mode != agent.RunModeDefault {
+	if mode.Mode != harness.RunModeDefault {
 		t.Fatalf("collaboration mode = %#v", mode)
 	}
 	settings := mode.Settings
@@ -134,7 +134,7 @@ func TestNativeDefaultTurnUsesProviderInstructions(t *testing.T) {
 }
 
 func TestForkUsesNativeThreadFork(t *testing.T) {
-	request := buildAppServerThreadRequest(agent.RunRequest{ResumeID: "thread-123", Fork: true})
+	request := buildAppServerThreadRequest(harness.RunRequest{ResumeID: "thread-123", Fork: true})
 	if request.Method != "thread/fork" || request.Params.ThreadID != "thread-123" {
 		t.Fatalf("thread request = %#v", request)
 	}

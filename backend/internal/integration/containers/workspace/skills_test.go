@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 )

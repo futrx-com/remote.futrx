@@ -13,7 +13,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -67,18 +67,18 @@ func (g *gate) Blocked() bool { return g.blocked }
 type repairAgent struct {
 	projects          *serviceproject.Service
 	workspace         string
-	requests          []agent.RunRequest
+	requests          []harness.RunRequest
 	fail, leaveBroken bool
 	entered           chan struct{}
 	resume            <-chan struct{}
 }
 
-func (*repairAgent) ID() agent.ProviderID                     { return agent.ProviderCodex }
-func (*repairAgent) Parser(agent.RunRequest) agent.LineParser { return nil }
-func (*repairAgent) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{}, nil
+func (*repairAgent) ID() harness.ProviderID                       { return harness.ProviderCodex }
+func (*repairAgent) Parser(harness.RunRequest) harness.LineParser { return nil }
+func (*repairAgent) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{}, nil
 }
-func (p *repairAgent) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *repairAgent) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	p.requests = append(p.requests, req)
 	if _, err := p.projects.StartForAgent(ctx, serviceproject.ID(req.ProjectID)); err != nil {
 		return err
@@ -101,7 +101,7 @@ func (p *repairAgent) Run(ctx context.Context, req agent.RunRequest, emit func(a
 			return err
 		}
 	}
-	emit(agent.Event{Type: agent.EventRunCompleted, T: time.Now().UnixMilli(), Usage: json.RawMessage(`{"input_tokens":25,"output_tokens":10}`)})
+	emit(harness.Event{Type: harness.EventRunCompleted, T: time.Now().UnixMilli(), Usage: json.RawMessage(`{"input_tokens":25,"output_tokens":10}`)})
 	return nil
 }
 
@@ -152,7 +152,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := chats.Create(ctx, servicechat.Meta{Title: "existing project chat", ProjectID: servicechat.ProjectID(project.ID), Provider: agent.ProviderCodex, AccountID: "saved-account", Model: "chosen-model", Mode: "plan", ApprovalPolicy: "on-request", SandboxPolicy: "workspace-write", Cwd: project.Cwd})
+	source, err := chats.Create(ctx, servicechat.Meta{Title: "existing project chat", ProjectID: servicechat.ProjectID(project.ID), Provider: harness.ProviderCodex, AccountID: "saved-account", Model: "chosen-model", Mode: "plan", ApprovalPolicy: "on-request", SandboxPolicy: "workspace-write", Cwd: project.Cwd})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	provider := &repairAgent{projects: projects, workspace: project.Cwd}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestOneUnavailableContainerDoesNotBlockFleetRecovery(t *testing.T) {
 	f := newFixture(t)
 	unavailable := f.project
 	unavailable.ID = "deadbeef"
-	source, err := f.chats.Create(context.Background(), servicechat.Meta{ProjectID: servicechat.ProjectID(unavailable.ID), Provider: agent.ProviderCodex})
+	source, err := f.chats.Create(context.Background(), servicechat.Meta{ProjectID: servicechat.ProjectID(unavailable.ID), Provider: harness.ProviderCodex})
 	if err != nil {
 		t.Fatal(err)
 	}

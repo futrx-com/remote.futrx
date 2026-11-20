@@ -1,9 +1,9 @@
-package agent
+package harness
 
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 // ProjectWorkspacePath is the stable mount point for a project's workspace

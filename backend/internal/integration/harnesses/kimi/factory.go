@@ -1,8 +1,8 @@
 package kimi
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -12,7 +12,7 @@ import (
 func NewFactory() (agentmodule.Factory, error) {
 	profile := Profile()
 	return agentmodule.NewFactory(agentmodule.Descriptor{
-		ID:                  agent.ProviderKimi,
+		ID:                  harness.ProviderKimi,
 		Label:               "Kimi",
 		ExecutionScopes:     []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
 		Auth:                agentmodule.AuthManagedDevice,
@@ -25,7 +25,7 @@ func NewFactory() (agentmodule.Factory, error) {
 			StreamingPresentation: agentmodule.StreamingBlocks,
 		},
 	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewDeviceBinding(agent.ProviderKimi, NewAuth())
+		binding := agentauth.NewDeviceBinding(harness.ProviderKimi, NewAuth())
 		return agentmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
@@ -42,6 +42,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ agent.Provider             = (*Provider)(nil)
+	_ harness.Provider           = (*Provider)(nil)
 	_ agentmodule.FactoryBuilder = NewFactory
 )

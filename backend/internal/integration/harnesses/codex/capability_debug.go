@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -28,7 +28,7 @@ type debugReasoningItem struct {
 	Description string `json:"description"`
 }
 
-func queryDebugModels(ctx context.Context, req agent.CapabilityRequest) (modelListResponse, error) {
+func queryDebugModels(ctx context.Context, req harness.CapabilityRequest) (modelListResponse, error) {
 	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,

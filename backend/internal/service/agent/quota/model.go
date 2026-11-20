@@ -1,6 +1,6 @@
 package quota
 
-import "github.com/futrx-com/remote.futrx.com/internal/agent"
+import "github.com/futrx-com/remote.futrx.com/internal/harness"
 
 // AccountQuota is every window one provider account has reported.
 type AccountQuota struct {
@@ -11,8 +11,8 @@ type AccountQuota struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Session and Weekly are pointers because "not reported" and "reported
 	// as empty" are different states and only one of them should render.
-	Session *agent.Quota `json:"session,omitempty"`
-	Weekly  *agent.Quota `json:"weekly,omitempty"`
+	Session *harness.Quota `json:"session,omitempty"`
+	Weekly  *harness.Quota `json:"weekly,omitempty"`
 }
 
 // AccountView is one account's plan as the Usage tab reads it.
@@ -39,7 +39,7 @@ func (q AccountQuota) clone() AccountQuota {
 	return q
 }
 
-func cloneWindow(window *agent.Quota) *agent.Quota {
+func cloneWindow(window *harness.Quota) *harness.Quota {
 	if window == nil {
 		return nil
 	}

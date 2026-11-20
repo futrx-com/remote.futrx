@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
@@ -20,12 +20,12 @@ var (
 	ErrMiniMaxRuntimeUnavailable = errors.New("MiniMax runtime model catalog cannot be provisioned")
 )
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req harness.RunRequest) []string {
 	return codexharness.AppServerArgs(miniMaxConfigArgs(req.Model), req.EnableBrowser)
 }
 
 func miniMaxConfigArgs(model string) []string {
-	providerID := string(agent.ProviderMiniMax)
+	providerID := string(harness.ProviderMiniMax)
 	return []string{
 		"-c", `model="` + model + `"`,
 		"-c", `model_provider="` + providerID + `"`,
@@ -40,11 +40,11 @@ func miniMaxConfigArgs(model string) []string {
 
 func (p *Provider) buildCmd(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
 	apiKey string,
 	modelCatalog []byte,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) (*exec.Cmd, error) {
 	if req.ProjectID == "" || p.projectPreparer == nil {
 		return nil, ErrProjectRequired
@@ -52,8 +52,8 @@ func (p *Provider) buildCmd(
 	if apiKey == "" {
 		return nil, ErrMiniMaxAPIKeyMissing
 	}
-	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:      agent.ProjectID(req.ProjectID),
+	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
+		ProjectID:      harness.ProjectID(req.ProjectID),
 		ConversationID: req.ConversationID,
 		EnableBrowser:  req.EnableBrowser,
 	}, emit)

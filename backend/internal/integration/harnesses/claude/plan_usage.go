@@ -16,15 +16,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
 // claudeUsageRequestID names the one control request a usage read sends.
 const claudeUsageRequestID = "remote-plan-usage"
 
-var _ agent.PlanUsageReader = (*Provider)(nil)
+var _ harness.PlanUsageReader = (*Provider)(nil)
 
 // ReadPlanUsage asks Claude Code for each account's plan limits through the
 // get_usage control request its /usage screen is built from. The CLI fetches
@@ -36,8 +36,8 @@ var _ agent.PlanUsageReader = (*Provider)(nil)
 // and a read could refresh the login the chat still uses. The host login is
 // read only while no saved account is active, because only then do chats
 // without a pinned account run on it, and account changes wait for that read.
-func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
-	var usages []agent.AccountPlanUsage
+func (p *Provider) ReadPlanUsage(ctx context.Context) []harness.AccountPlanUsage {
+	var usages []harness.AccountPlanUsage
 	readHost := true
 	if p.accounts != nil {
 		snapshot := p.accounts.AccountsSnapshot()
@@ -54,7 +54,7 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 				return
 			}
 			windows, err := readClaudeUsage(ctx, "")
-			usages = append(usages, agent.AccountPlanUsage{Windows: windows, Err: err})
+			usages = append(usages, harness.AccountPlanUsage{Windows: windows, Err: err})
 		}
 		if p.accounts == nil {
 			readHostLogin()
@@ -68,8 +68,8 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []agent.AccountPlanUsage {
 // readSavedAccountUsage reads one saved account's plan in a private config
 // directory, then offers a login the CLI refreshed to the account's vault
 // record by the same rules as a run.
-func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) agent.AccountPlanUsage {
-	usage := agent.AccountPlanUsage{AccountID: accountID}
+func (p *Provider) readSavedAccountUsage(ctx context.Context, accountID string) harness.AccountPlanUsage {
+	usage := harness.AccountPlanUsage{AccountID: accountID}
 	saved, _, err := p.accounts.CredentialForRun(rbac.ContextWithSystemActor(ctx), accountID)
 	if err != nil {
 		usage.Err = err
@@ -114,7 +114,7 @@ func hostHasSubscriptionLogin() bool {
 // config when configDir is empty, and returns the plan windows its get_usage
 // answer reports. Closing the CLI's input after the answer ends it before any
 // prompt.
-func readClaudeUsage(ctx context.Context, configDir string) ([]agent.Quota, error) {
+func readClaudeUsage(ctx context.Context, configDir string) ([]harness.Quota, error) {
 	ctx, cancel := context.WithTimeout(ctx, configconstants.PlanUsageAccountReadTimeout)
 	defer cancel()
 
@@ -222,17 +222,17 @@ type claudeUsageWindow struct {
 	ResetsAt *string `json:"resets_at"`
 }
 
-func (r claudeUsageReport) windows(now time.Time) []agent.Quota {
+func (r claudeUsageReport) windows(now time.Time) []harness.Quota {
 	if !r.RateLimitsAvailable || r.RateLimits == nil {
 		return nil
 	}
-	var windows []agent.Quota
+	var windows []harness.Quota
 	for _, pair := range []struct {
-		window agent.QuotaWindow
+		window harness.QuotaWindow
 		source *claudeUsageWindow
 	}{
-		{agent.QuotaWindowSession, r.RateLimits.FiveHour},
-		{agent.QuotaWindowWeekly, r.RateLimits.SevenDay},
+		{harness.QuotaWindowSession, r.RateLimits.FiveHour},
+		{harness.QuotaWindowWeekly, r.RateLimits.SevenDay},
 	} {
 		// Like /usage, a window without a utilization is not shown at all.
 		source := pair.source
@@ -241,7 +241,7 @@ func (r claudeUsageReport) windows(now time.Time) []agent.Quota {
 			continue
 		}
 		used := *source.Utilization
-		quota := agent.Quota{Window: pair.window, UsedPercent: &used, MeasuredAt: now.UnixMilli()}
+		quota := harness.Quota{Window: pair.window, UsedPercent: &used, MeasuredAt: now.UnixMilli()}
 		if source.ResetsAt != nil {
 			if resetsAt, err := time.Parse(time.RFC3339Nano, *source.ResetsAt); err == nil {
 				quota.ResetsAt = resetsAt.Unix()

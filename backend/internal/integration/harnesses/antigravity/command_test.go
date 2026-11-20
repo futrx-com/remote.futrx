@@ -9,15 +9,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 func TestArgsComposition(t *testing.T) {
 	p := &Provider{}
 
-	base := p.args(agent.RunRequest{Prompt: "do the thing"})
+	base := p.args(harness.RunRequest{Prompt: "do the thing"})
 	joined := strings.Join(base, " ")
 	if !strings.Contains(joined, "--print do the thing") {
 		t.Fatalf("args missing print prompt: %v", base)
@@ -32,12 +32,12 @@ func TestArgsComposition(t *testing.T) {
 		t.Fatalf("unexpected optional flags in %v", base)
 	}
 
-	full := p.args(agent.RunRequest{
+	full := p.args(harness.RunRequest{
 		Prompt:      "next",
 		Model:       "gemini-3-pro",
-		Mode:        agent.RunModePlan,
+		Mode:        harness.RunModePlan,
 		ResumeID:    "abc-123",
-		Preferences: agent.RunPreferences{ReasoningEffort: "xhigh"},
+		Preferences: harness.RunPreferences{ReasoningEffort: "xhigh"},
 	})
 	joined = strings.Join(full, " ")
 	for _, want := range []string{
@@ -56,7 +56,7 @@ func TestArgsComposition(t *testing.T) {
 }
 
 func TestEffortFlagClamping(t *testing.T) {
-	tests := map[agent.ReasoningEffort]string{
+	tests := map[harness.ReasoningEffort]string{
 		"":        "",
 		"none":    "low",
 		"minimal": "low",
@@ -75,7 +75,7 @@ func TestEffortFlagClamping(t *testing.T) {
 }
 
 func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
-	project := agent.Project{
+	project := harness.Project{
 		ID:            "project-id",
 		ContainerName: "antigravity-project",
 		Status:        "stopped",
@@ -92,7 +92,7 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 	runtime, err := catalog.Build(agentmodule.BuildDependencies{
 		Projects: antigravityTestProjects{
 			project: project,
-			secrets: []agent.ProjectSecret{
+			secrets: []harness.ProjectSecret{
 				{Key: "REMOTE_APPLICATION_API", Value: "https://attacker.invalid"},
 				{Key: "SAFE_SECRET", Value: "safe"},
 			},
@@ -103,8 +103,8 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := runtime.Lookup(agent.ProviderAntigravity).(*Provider)
-	request := agent.RunRequest{
+	provider := runtime.Lookup(harness.ProviderAntigravity).(*Provider)
+	request := harness.RunRequest{
 		ProjectID:     string(project.ID),
 		Prompt:        "test",
 		EnableBrowser: true,
@@ -117,7 +117,7 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 		context.Background(),
 		request,
 		provider.args(request),
-		func(event agent.Event) { subtypes = append(subtypes, event.Subtype) },
+		func(event harness.Event) { subtypes = append(subtypes, event.Subtype) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -161,21 +161,21 @@ type antigravityPreparationCalls struct {
 }
 
 type antigravityTestProjects struct {
-	project agent.Project
-	secrets []agent.ProjectSecret
+	project harness.Project
+	secrets []harness.ProjectSecret
 	calls   *antigravityPreparationCalls
 }
 
-func (f antigravityTestProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f antigravityTestProjects) Get(context.Context, harness.ProjectID) (harness.Project, error) {
 	return f.project, nil
 }
 
-func (f antigravityTestProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f antigravityTestProjects) Start(context.Context, harness.ProjectID) (harness.Project, error) {
 	f.calls.start++
 	return f.project, nil
 }
 
-func (f antigravityTestProjects) ListSecrets(context.Context, agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (f antigravityTestProjects) ListSecrets(context.Context, harness.ProjectID) ([]harness.ProjectSecret, error) {
 	return f.secrets, nil
 }
 
@@ -295,12 +295,12 @@ func TestInstallScriptPinsVersionedRelease(t *testing.T) {
 }
 
 func TestParserEmitsTextDeltas(t *testing.T) {
-	parser := NewParser(agent.RunRequest{ConversationID: "c1"})
+	parser := NewParser(harness.RunRequest{ConversationID: "c1"})
 	events, err := parser.ParseLine([]byte("hello world"))
 	if err != nil || len(events) != 1 {
 		t.Fatalf("ParseLine = (%v, %v)", events, err)
 	}
-	if events[0].Type != agent.EventAssistantTextDelta || events[0].Text != "hello world\n" {
+	if events[0].Type != harness.EventAssistantTextDelta || events[0].Text != "hello world\n" {
 		t.Fatalf("unexpected event: %#v", events[0])
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -42,7 +42,7 @@ auth)
 esac
 `
 
-func usageWindows(windows []agent.Quota) []string {
+func usageWindows(windows []harness.Quota) []string {
 	var out []string
 	for _, window := range windows {
 		entry := string(window.Window) + "="
@@ -75,7 +75,7 @@ func TestReadPlanUsageReadsEverySavedAccountInItsOwnHome(t *testing.T) {
 	}}
 	provider := newTestRuntime(agentmodule.BuildDependencies{
 		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
-	}).Lookup(agent.ProviderClaude).(*Provider)
+	}).Lookup(harness.ProviderClaude).(*Provider)
 
 	usages := provider.ReadPlanUsage(context.Background())
 	if len(usages) != 3 {
@@ -131,7 +131,7 @@ func TestReadPlanUsageReadsTheHostLoginOnlyWhileNoAccountIsActive(t *testing.T) 
 			store := &memoryAccountStore{accounts: test.accounts}
 			provider := newTestRuntime(agentmodule.BuildDependencies{
 				Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
-			}).Lookup(agent.ProviderClaude).(*Provider)
+			}).Lookup(harness.ProviderClaude).(*Provider)
 			var got []string
 			for _, usage := range provider.ReadPlanUsage(context.Background()) {
 				entry := usage.AccountID + "="
@@ -153,7 +153,7 @@ func TestReadPlanUsageSkipsAHostWithoutASubscriptionLogin(t *testing.T) {
 	host := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", host)
 	writeHostFiles(t, host, `{"mcpOAuth":{}}`, `{}`)
-	provider := newTestRuntime(agentmodule.BuildDependencies{}).Lookup(agent.ProviderClaude).(*Provider)
+	provider := newTestRuntime(agentmodule.BuildDependencies{}).Lookup(harness.ProviderClaude).(*Provider)
 	if usages := provider.ReadPlanUsage(context.Background()); len(usages) != 0 {
 		t.Fatalf("usages = %+v", usages)
 	}

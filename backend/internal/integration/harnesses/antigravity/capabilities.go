@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
-func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	environment := []string{"HOME=" + containerAgentHome}
 
 	modelsCmd := harnessruntime.NewCapabilityCommand(ctx, req, environment, "agy", "models")
@@ -23,7 +23,7 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 	}
 	caps := parseCLIOutputCatalog(string(modelsOutput), string(helpOutput))
 	if modelsErr != nil {
-		caps.Source = agent.CapabilitySourceFallback
+		caps.Source = harness.CapabilitySourceFallback
 		caps.Warning = "Sign in to Antigravity in this project to load its model catalog"
 		caps.UnavailableReason = "Antigravity is not signed in on the host."
 		if req.ContainerName != "" {
@@ -34,19 +34,19 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 	return caps, nil
 }
 
-func fallbackCapabilities() agent.Capabilities {
-	reasoning := []agent.CapabilityOption{agent.AutoOption()}
+func fallbackCapabilities() harness.Capabilities {
+	reasoning := []harness.CapabilityOption{harness.AutoOption()}
 	for _, effort := range []string{"low", "medium", "high"} {
-		reasoning = append(reasoning, agent.CapabilityOption{Value: effort, Label: capabilityLabel(effort)})
+		reasoning = append(reasoning, harness.CapabilityOption{Value: effort, Label: capabilityLabel(effort)})
 	}
-	models := agent.WithAutoModel(nil, "Antigravity default")
+	models := harness.WithAutoModel(nil, "Antigravity default")
 	models[0].ReasoningEfforts = reasoning
-	return agent.Capabilities{
-		Provider:    agent.ProviderAntigravity,
+	return harness.Capabilities{
+		Provider:    harness.ProviderAntigravity,
 		Label:       "Antigravity",
-		Source:      agent.CapabilitySourceFallback,
+		Source:      harness.CapabilitySourceFallback,
 		Models:      models,
-		Modes:       agent.ProviderModes(false),
-		DefaultMode: agent.RunModeDefault,
+		Modes:       harness.ProviderModes(false),
+		DefaultMode: harness.RunModeDefault,
 	}
 }

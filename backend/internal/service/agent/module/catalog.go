@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -20,21 +20,21 @@ var (
 // capability views.
 type Catalog struct {
 	factories []Factory
-	byID      map[agent.ProviderID]int
+	byID      map[harness.ProviderID]int
 }
 
 func NewCatalog(factories ...Factory) (*Catalog, error) {
 	catalog := &Catalog{
 		factories: append([]Factory(nil), factories...),
-		byID:      make(map[agent.ProviderID]int, len(factories)),
+		byID:      make(map[harness.ProviderID]int, len(factories)),
 	}
 	if len(catalog.factories) == 0 {
 		return nil, fmt.Errorf("%w: no factories", ErrInvalidCatalog)
 	}
-	stateDevices := make(map[string]agent.ProviderID)
-	stateHosts := make(map[string]agent.ProviderID)
-	stateTargets := make(map[string]agent.ProviderID)
-	var defaultProvider agent.ProviderID
+	stateDevices := make(map[string]harness.ProviderID)
+	stateHosts := make(map[string]harness.ProviderID)
+	stateTargets := make(map[string]harness.ProviderID)
+	var defaultProvider harness.ProviderID
 	for index, factory := range catalog.factories {
 		descriptor := factory.Descriptor()
 		if err := validateDescriptor(descriptor, factory.profile); err != nil {
@@ -84,7 +84,7 @@ func statePathsOverlap(left, right string) bool {
 	return left == right || strings.HasPrefix(left, right+"/") || strings.HasPrefix(right, left+"/")
 }
 
-func duplicateStateMountError(provider, owner agent.ProviderID, field, value string) error {
+func duplicateStateMountError(provider, owner harness.ProviderID, field, value string) error {
 	return fmt.Errorf(
 		"%w: providers %q and %q share persistent-state %s %q",
 		ErrInvalidCatalog,
@@ -110,7 +110,7 @@ func (c *Catalog) Descriptor(provider string) (Descriptor, bool) {
 	if c == nil {
 		return Descriptor{}, false
 	}
-	index, ok := c.byID[agent.ProviderID(provider)]
+	index, ok := c.byID[harness.ProviderID(provider)]
 	if !ok {
 		return Descriptor{}, false
 	}
@@ -121,7 +121,7 @@ func (c *Catalog) HasProvider(provider string) bool {
 	if c == nil {
 		return false
 	}
-	_, ok := c.byID[agent.ProviderID(provider)]
+	_, ok := c.byID[harness.ProviderID(provider)]
 	return ok
 }
 
@@ -144,11 +144,11 @@ func (c *Catalog) SupportsScope(provider string, scope ExecutionScope) bool {
 // DefaultProvider returns the explicitly preferred provider for a scope, or
 // the first compatible module when no preference is declared. Catalog order
 // is deterministic, so this fallback is stable.
-func (c *Catalog) DefaultProvider(scope ExecutionScope) agent.ProviderID {
+func (c *Catalog) DefaultProvider(scope ExecutionScope) harness.ProviderID {
 	if c == nil {
 		return ""
 	}
-	var first agent.ProviderID
+	var first harness.ProviderID
 	for _, factory := range c.factories {
 		descriptor := factory.Descriptor()
 		if !c.SupportsScope(string(descriptor.ID), scope) {
@@ -214,7 +214,7 @@ func (c *Catalog) workspaceSkillHome(provider string) string {
 	if c == nil {
 		return ""
 	}
-	index, ok := c.byID[agent.ProviderID(provider)]
+	index, ok := c.byID[harness.ProviderID(provider)]
 	if !ok {
 		return ""
 	}
@@ -267,7 +267,7 @@ func (c *Catalog) HostProfiles() []provisioning.Profile {
 // components built from different catalogs.
 type Runtime struct {
 	catalog   *Catalog
-	providers *agent.Registry
+	providers *harness.Registry
 	auth      *agentauth.Registry
 }
 
@@ -275,7 +275,7 @@ func (c *Catalog) Build(deps BuildDependencies) (*Runtime, error) {
 	if c == nil {
 		return nil, fmt.Errorf("%w: catalog is nil", ErrInvalidCatalog)
 	}
-	providers := agent.NewRegistry()
+	providers := harness.NewRegistry()
 	auth := agentauth.NewRegistry()
 	for _, factory := range c.factories {
 		components, err := factory.buildComponents(deps)
@@ -295,7 +295,7 @@ func (c *Catalog) Build(deps BuildDependencies) (*Runtime, error) {
 }
 
 // Lookup returns a configured provider by stable ID.
-func (r *Runtime) Lookup(id agent.ProviderID) agent.Provider {
+func (r *Runtime) Lookup(id harness.ProviderID) harness.Provider {
 	if r == nil {
 		return nil
 	}
@@ -303,7 +303,7 @@ func (r *Runtime) Lookup(id agent.ProviderID) agent.Provider {
 }
 
 // CapabilityProviders returns providers in validated module order.
-func (r *Runtime) CapabilityProviders() []agent.CapabilityProvider {
+func (r *Runtime) CapabilityProviders() []harness.CapabilityProvider {
 	if r == nil {
 		return nil
 	}
@@ -312,7 +312,7 @@ func (r *Runtime) CapabilityProviders() []agent.CapabilityProvider {
 
 // PlanUsageReaders returns the providers that can read their accounts' plan
 // limits on demand, in validated module order.
-func (r *Runtime) PlanUsageReaders() []agent.PlanUsageReader {
+func (r *Runtime) PlanUsageReaders() []harness.PlanUsageReader {
 	if r == nil {
 		return nil
 	}
@@ -326,7 +326,7 @@ func (r *Runtime) Bindings() []agentauth.Binding {
 	return r.auth.Bindings()
 }
 
-func (r *Runtime) AuthBinding(id agent.ProviderID) (agentauth.Binding, bool) {
+func (r *Runtime) AuthBinding(id harness.ProviderID) (agentauth.Binding, bool) {
 	if r == nil {
 		return agentauth.Binding{}, false
 	}
@@ -363,7 +363,7 @@ func (r *Runtime) SupportsScope(provider string, scope ExecutionScope) bool {
 	return r != nil && r.catalog.SupportsScope(provider, scope)
 }
 
-func (r *Runtime) DefaultProvider(scope ExecutionScope) agent.ProviderID {
+func (r *Runtime) DefaultProvider(scope ExecutionScope) harness.ProviderID {
 	if r == nil {
 		return ""
 	}

@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type noOpParser struct{}
 
-func (noOpParser) ParseLine([]byte) ([]agent.Event, error) { return nil, nil }
+func (noOpParser) ParseLine([]byte) ([]harness.Event, error) { return nil, nil }
 
 func TestRunProcessReturnsCapturedStderr(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "echo no rollout found for thread >&2; exit 1")

@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestAppServerSubagentTrackerCapturesMCPToolDetails(t *testing.T) {
-	tracker := newAppServerSubagentTracker(newAppServerEventParser(agent.RunRequest{
-		Provider:       agent.ProviderCodex,
+	tracker := newAppServerSubagentTracker(newAppServerEventParser(harness.RunRequest{
+		Provider:       harness.ProviderCodex,
 		ConversationID: "chat-1",
 	}, "Codex"))
 	tracker.ParseNotification("parent", "item/started", json.RawMessage(`{
@@ -25,7 +25,7 @@ func TestAppServerSubagentTrackerCapturesMCPToolDetails(t *testing.T) {
 			"result":{"content":"complete output"}
 		}
 	}`))
-	if len(events) != 1 || events[0].Type != agent.EventCollaboration {
+	if len(events) != 1 || events[0].Type != harness.EventCollaboration {
 		t.Fatalf("events = %#v", events)
 	}
 	var data struct {

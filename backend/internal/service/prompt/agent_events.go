@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 )
@@ -15,10 +15,10 @@ import (
 func (rnr *Service) emitAgentEvent(
 	ctx context.Context,
 	id servicechat.ID,
-	ev agent.Event,
+	ev harness.Event,
 	emit func(ChatEvent),
 ) {
-	if ev.Type == agent.EventSessionUpdated && ev.SessionID != "" {
+	if ev.Type == harness.EventSessionUpdated && ev.SessionID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			m.SetSessionID(servicechat.Provider(ev.Provider), ev.SessionID)
 			m.ForkPending = false
@@ -34,14 +34,14 @@ func (rnr *Service) emitAgentEvent(
 	}
 }
 
-func withDefaultProvider(ev agent.Event, provider agent.ProviderID) agent.Event {
+func withDefaultProvider(ev harness.Event, provider harness.ProviderID) harness.Event {
 	if ev.Provider == "" {
 		ev.Provider = provider
 	}
 	return ev
 }
 
-func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
+func chatEventFromAgentEvent(ev harness.Event) (ChatEvent, bool) {
 	t := ev.T
 	if t == 0 {
 		t = time.Now().UnixMilli()
@@ -54,70 +54,70 @@ func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
 		Status:        ev.Status,
 	}
 	switch ev.Type {
-	case agent.EventSessionUpdated:
+	case harness.EventSessionUpdated:
 		out.Type = "session"
 		out.SetSession(servicechat.Provider(ev.Provider), ev.SessionID)
-	case agent.EventSystem:
+	case harness.EventSystem:
 		out.Type = "system"
 		out.Subtype = ev.Subtype
 		out.Data = ev.Data
-	case agent.EventAssistantTextDelta:
+	case harness.EventAssistantTextDelta:
 		out.Type = "assistant_text"
 		out.Text = ev.Text
 		out.MessageID = agentEventMessageID(ev)
-	case agent.EventReasoningDelta:
+	case harness.EventReasoningDelta:
 		out.Type = "thinking"
 		out.Text = ev.Text
 		out.MessageID = agentEventMessageID(ev)
-	case agent.EventToolStarted:
+	case harness.EventToolStarted:
 		out.Type = "tool_use_start"
 		out.ID = ev.ItemID
 		out.Name = ev.ToolName
 		out.Input = ev.Input
-	case agent.EventToolCompleted:
+	case harness.EventToolCompleted:
 		out.Type = "tool_use_end"
 		out.ID = ev.ItemID
 		out.Output = ev.Output
 		out.IsError = ev.IsError
-	case agent.EventInteractionRequest:
+	case harness.EventInteractionRequest:
 		out.Type = "interaction_request"
 		out.ID = ev.InteractionID
 		out.Name = ev.ToolName
 		out.Input = ev.Input
-	case agent.EventInteractionDone:
+	case harness.EventInteractionDone:
 		out.Type = "interaction_resolved"
 		out.ID = ev.InteractionID
 		out.Name = ev.ToolName
 		out.Data = ev.Data
-	case agent.EventTurnStatus, agent.EventRunInterrupted:
+	case harness.EventTurnStatus, harness.EventRunInterrupted:
 		out.Type = "turn_status"
 		out.Provider = servicechat.Provider(ev.Provider)
 		out.Data = ev.Data
-		if ev.Type == agent.EventRunInterrupted && out.Status == "" {
+		if ev.Type == harness.EventRunInterrupted && out.Status == "" {
 			out.Status = "interrupted"
 		}
-	case agent.EventCollaboration:
+	case harness.EventCollaboration:
 		out.Type = "collaboration"
 		out.ID = ev.ItemID
 		out.Name = ev.ToolName
 		out.Data = ev.Data
-	case agent.EventProviderNative:
+	case harness.EventProviderNative:
 		out.Type = "provider_event"
 		if ev.Native != nil {
 			out.Name = ev.Native.Method
 		}
 		out.Data = ev.Data
-	case agent.EventUsageUpdated:
+	case harness.EventUsageUpdated:
 		out.Type = "usage_update"
 		out.Usage = ev.Usage
-	case agent.EventRunCompleted:
+	case harness.EventRunCompleted:
 		out.Type = "complete"
 		out.NotificationSummary = ev.NotificationSummary
 		// Persist the provider per turn. A chat can switch agents, so its current
 		// metadata is not sufficient for an offline usage-ledger rebuild.
 		out.Provider = servicechat.Provider(ev.Provider)
 		out.Usage = ev.Usage
-	case agent.EventRunFailed, agent.EventError:
+	case harness.EventRunFailed, harness.EventError:
 		out.Type = "error"
 		out.Message = ev.Message
 	default:
@@ -126,7 +126,7 @@ func chatEventFromAgentEvent(ev agent.Event) (ChatEvent, bool) {
 	return out, true
 }
 
-func agentEventMessageID(event agent.Event) string {
+func agentEventMessageID(event harness.Event) string {
 	if event.MessageID != "" {
 		return event.MessageID
 	}
@@ -151,8 +151,8 @@ type ledgerRun struct {
 // It is separate from recordRunUsage because the two measure different things:
 // the ledger counts what this platform spent, and this is the vendor saying
 // how much of the account's plan is left across everywhere it is used.
-func (rnr *Service) recordQuota(ctx context.Context, ev agent.Event) {
-	if rnr.quota == nil || ev.Type != agent.EventQuotaUpdated || ev.Quota == nil {
+func (rnr *Service) recordQuota(ctx context.Context, ev harness.Event) {
+	if rnr.quota == nil || ev.Type != harness.EventQuotaUpdated || ev.Quota == nil {
 		return
 	}
 	// A cancelled prompt must not throw away a reading that arrived before the
@@ -164,8 +164,8 @@ func (rnr *Service) recordQuota(ctx context.Context, ev agent.Event) {
 // runs are recorded: a failed turn's token counts are not persisted in the
 // chat event log, so counting them here would make the ledger impossible to
 // rebuild from disk.
-func (rnr *Service) recordRunUsage(ctx context.Context, run ledgerRun, ev agent.Event) {
-	if rnr.usage == nil || ev.Type != agent.EventRunCompleted {
+func (rnr *Service) recordRunUsage(ctx context.Context, run ledgerRun, ev harness.Event) {
+	if rnr.usage == nil || ev.Type != harness.EventRunCompleted {
 		return
 	}
 	at := ev.T

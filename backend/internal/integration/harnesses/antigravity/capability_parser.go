@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var (
@@ -14,30 +14,30 @@ var (
 	cliModeChoicesPattern   = regexp.MustCompile(`(?im)--mode\s+.*?\(([^)]*)\)`)
 )
 
-func parseCLIOutputCatalog(modelsOutput, help string) agent.Capabilities {
+func parseCLIOutputCatalog(modelsOutput, help string) harness.Capabilities {
 	efforts := parseCLIChoices(cliEffortChoicesPattern, help)
-	reasoning := make([]agent.CapabilityOption, 0, len(efforts)+1)
+	reasoning := make([]harness.CapabilityOption, 0, len(efforts)+1)
 	if len(efforts) > 0 {
-		reasoning = append(reasoning, agent.AutoOption())
+		reasoning = append(reasoning, harness.AutoOption())
 		for _, effort := range efforts {
-			reasoning = append(reasoning, agent.CapabilityOption{Value: effort, Label: capabilityLabel(effort)})
+			reasoning = append(reasoning, harness.CapabilityOption{Value: effort, Label: capabilityLabel(effort)})
 		}
 	}
 	modelIDs := parseCLIModelIDs(modelsOutput)
-	models := make([]agent.ModelCapability, 0, len(modelIDs))
+	models := make([]harness.ModelCapability, 0, len(modelIDs))
 	for _, id := range modelIDs {
-		models = append(models, agent.ModelCapability{
-			ID: id, Label: id, ReasoningEfforts: append([]agent.CapabilityOption(nil), reasoning...),
+		models = append(models, harness.ModelCapability{
+			ID: id, Label: id, ReasoningEfforts: append([]harness.CapabilityOption(nil), reasoning...),
 		})
 	}
 	modes := parseCLIChoices(cliModeChoicesPattern, help)
-	return agent.Capabilities{
-		Provider:    agent.ProviderAntigravity,
+	return harness.Capabilities{
+		Provider:    harness.ProviderAntigravity,
 		Label:       "Antigravity",
-		Source:      agent.CapabilitySourceLive,
-		Models:      agent.WithAutoModel(models, "Antigravity default"),
-		Modes:       agent.ProviderModes(containsCLIChoice(modes, string(agent.RunModePlan))),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceLive,
+		Models:      harness.WithAutoModel(models, "Antigravity default"),
+		Modes:       harness.ProviderModes(containsCLIChoice(modes, string(harness.RunModePlan))),
+		DefaultMode: harness.RunModeDefault,
 	}
 }
 
@@ -96,7 +96,7 @@ func uniqueCLIValues(values []string) []string {
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		value = agent.NormalizeCapabilityValue(value)
+		value = harness.NormalizeCapabilityValue(value)
 		if value == "" || seen[value] {
 			continue
 		}

@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type appServerScanResult struct {
@@ -22,7 +22,7 @@ type appServerScanResult struct {
 // run state machine consumes decoded envelopes without managing OS resources.
 type appServerProcess struct {
 	cmd           *exec.Cmd
-	provider      agent.ProviderID
+	provider      harness.ProviderID
 	providerLabel string
 	logID         string
 
@@ -34,7 +34,7 @@ type appServerProcess struct {
 
 func newAppServerProcess(
 	cmd *exec.Cmd,
-	provider agent.ProviderID,
+	provider harness.ProviderID,
 	providerLabel string,
 	logID string,
 ) *appServerProcess {
@@ -127,7 +127,7 @@ func (process *appServerProcess) abort() {
 	_, _ = process.wait()
 }
 
-func captureAppServerStderr(reader io.Reader, provider agent.ProviderID, logID string, done chan<- string) {
+func captureAppServerStderr(reader io.Reader, provider harness.ProviderID, logID string, done chan<- string) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(
 		make([]byte, configconstants.CodexHarnessStderrInitialBufferSize),

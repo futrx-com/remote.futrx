@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
     paths:
-      - backend/internal/agent/provisioning/versions.env
+      - backend/internal/harness/provisioning/versions.env
       - vendors/publish-playwright-assets.sh
       - .github/workflows/vendor-playwright.yml
 

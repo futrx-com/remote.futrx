@@ -3,7 +3,7 @@ package claude
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // TestTheFiveHourWindowIsRead uses the exact line the CLI emitted on this
@@ -11,13 +11,13 @@ import (
 func TestTheFiveHourWindowIsRead(t *testing.T) {
 	line := `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1787563200,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false},"uuid":"4d7f37b1","session_id":"92387bf9"}`
 
-	events, err := NewParser(agent.RunRequest{}).ParseLine([]byte(line))
+	events, err := NewParser(harness.RunRequest{}).ParseLine([]byte(line))
 	if err != nil {
 		t.Fatalf("Parse() = %v", err)
 	}
 	quota := onlyQuota(t, events)
 
-	if quota.Window != agent.QuotaWindowSession {
+	if quota.Window != harness.QuotaWindowSession {
 		t.Errorf("window = %q, want the session window", quota.Window)
 	}
 	if quota.ResetsAt != 1787563200 {
@@ -39,13 +39,13 @@ func TestTheFiveHourWindowIsRead(t *testing.T) {
 func TestTheWeeklyWindowIsRead(t *testing.T) {
 	line := `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1788000000,"rateLimitType":"seven_day","utilization":0.82}}`
 
-	events, err := NewParser(agent.RunRequest{}).ParseLine([]byte(line))
+	events, err := NewParser(harness.RunRequest{}).ParseLine([]byte(line))
 	if err != nil {
 		t.Fatalf("Parse() = %v", err)
 	}
 	quota := onlyQuota(t, events)
 
-	if quota.Window != agent.QuotaWindowWeekly {
+	if quota.Window != harness.QuotaWindowWeekly {
 		t.Errorf("window = %q, want the weekly window", quota.Window)
 	}
 	if quota.UsedPercent == nil || *quota.UsedPercent != 82 {
@@ -62,12 +62,12 @@ func TestTheWeeklyWindowIsRead(t *testing.T) {
 func TestAnUnknownWindowIsDropped(t *testing.T) {
 	line := `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"thirty_day"}}`
 
-	events, err := NewParser(agent.RunRequest{}).ParseLine([]byte(line))
+	events, err := NewParser(harness.RunRequest{}).ParseLine([]byte(line))
 	if err != nil {
 		t.Fatalf("Parse() = %v", err)
 	}
 	for _, ev := range events {
-		if ev.Type == agent.EventQuotaUpdated {
+		if ev.Type == harness.EventQuotaUpdated {
 			t.Fatalf("an unrecognized window was stored as %+v", ev.Quota)
 		}
 	}
@@ -81,23 +81,23 @@ func TestAMalformedPayloadIsIgnored(t *testing.T) {
 		`{"type":"rate_limit_event","rate_limit_info":"not an object"}`,
 		`{"type":"rate_limit_event","rate_limit_info":{}}`,
 	} {
-		events, err := NewParser(agent.RunRequest{}).ParseLine([]byte(line))
+		events, err := NewParser(harness.RunRequest{}).ParseLine([]byte(line))
 		if err != nil {
 			t.Fatalf("Parse(%s) = %v, want the line ignored", line, err)
 		}
 		for _, ev := range events {
-			if ev.Type == agent.EventQuotaUpdated {
+			if ev.Type == harness.EventQuotaUpdated {
 				t.Errorf("Parse(%s) produced a reading: %+v", line, ev.Quota)
 			}
 		}
 	}
 }
 
-func onlyQuota(t *testing.T, events []agent.Event) agent.Quota {
+func onlyQuota(t *testing.T, events []harness.Event) harness.Quota {
 	t.Helper()
-	var found *agent.Quota
+	var found *harness.Quota
 	for _, ev := range events {
-		if ev.Type != agent.EventQuotaUpdated {
+		if ev.Type != harness.EventQuotaUpdated {
 			continue
 		}
 		if found != nil {

@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
@@ -33,8 +33,8 @@ func TestFactoryRequiresMiniMaxAccountUseBeforeModelDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := runtime.Lookup(agent.ProviderMiniMax)
-	if err := provider.Run(context.Background(), agent.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
+	provider := runtime.Lookup(harness.ProviderMiniMax)
+	if err := provider.Run(context.Background(), harness.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("denied run reached model discovery: %v", err)
 	}
 	if len(deny.checks) != 1 || deny.checks[0].Permission != agentauth.PermissionAccountUse || deny.checks[0].Scope != rbac.ProviderAccountScope("minimax", "") {
@@ -63,14 +63,14 @@ func (s *revokingAPIKeySource) RequireRunAccess(_ context.Context, id string) er
 func TestRunPinsResolvedMiniMaxAccountAndRechecksBeforeProcessStart(t *testing.T) {
 	keys := &revokingAPIKeySource{}
 	provider := newProvider(
-		miniMaxTestPreparer{project: agent.PreparedProject{ContainerName: "project-container"}},
+		miniMaxTestPreparer{project: harness.PreparedProject{ContainerName: "project-container"}},
 		keys,
 		miniMaxTestModels{models: []string{"MiniMax-M2.7"}},
 		&miniMaxTestRuntimeAssets{},
 		"codex",
 		nil,
 	)
-	if err := provider.Run(context.Background(), agent.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
+	if err := provider.Run(context.Background(), harness.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("revoked permission reached process start: %v", err)
 	}
 	if !reflect.DeepEqual(keys.accountIDs, []string{"", "work"}) {

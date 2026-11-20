@@ -7,24 +7,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
 type catalogTestProvider struct {
-	id         agent.ProviderID
-	reportedID agent.ProviderID
+	id         harness.ProviderID
+	reportedID harness.ProviderID
 	label      string
 	mu         sync.Mutex
 	calls      int
-	requests   []agent.CapabilityRequest
+	requests   []harness.CapabilityRequest
 	entered    chan<- struct{}
 	release    <-chan struct{}
 }
 
-func (p *catalogTestProvider) ID() agent.ProviderID { return p.id }
-func (p *catalogTestProvider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *catalogTestProvider) ID() harness.ProviderID { return p.id }
+func (p *catalogTestProvider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	p.mu.Lock()
 	p.calls++
 	p.requests = append(p.requests, req)
@@ -36,16 +36,16 @@ func (p *catalogTestProvider) Capabilities(ctx context.Context, req agent.Capabi
 		select {
 		case <-p.release:
 		case <-ctx.Done():
-			return agent.Capabilities{Provider: p.id, Label: p.label}, ctx.Err()
+			return harness.Capabilities{Provider: p.id, Label: p.label}, ctx.Err()
 		}
 	}
-	return agent.Capabilities{
-		Provider: firstProviderID(p.reportedID, p.id), Label: p.label, Source: agent.CapabilitySourceLive,
-		Models: []agent.ModelCapability{}, Modes: []agent.CapabilityOption{},
+	return harness.Capabilities{
+		Provider: firstProviderID(p.reportedID, p.id), Label: p.label, Source: harness.CapabilitySourceLive,
+		Models: []harness.ModelCapability{}, Modes: []harness.CapabilityOption{},
 	}, nil
 }
 
-func firstProviderID(values ...agent.ProviderID) agent.ProviderID {
+func firstProviderID(values ...harness.ProviderID) harness.ProviderID {
 	for _, value := range values {
 		if value != "" {
 			return value
@@ -61,7 +61,7 @@ func TestListAppliesOneConfiguredTimeoutPerProvider(t *testing.T) {
 		release: make(chan struct{}),
 	}
 	catalog := New(
-		catalogTestRegistry{providers: []agent.CapabilityProvider{provider}},
+		catalogTestRegistry{providers: []harness.CapabilityProvider{provider}},
 		nil,
 		nil,
 		Settings{
@@ -79,16 +79,16 @@ func TestListAppliesOneConfiguredTimeoutPerProvider(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("capability discovery took %s despite configured timeout", elapsed)
 	}
-	if len(items) != 1 || items[0].Source != agent.CapabilitySourceFallback || items[0].Warning == "" {
+	if len(items) != 1 || items[0].Source != harness.CapabilitySourceFallback || items[0].Warning == "" {
 		t.Fatalf("timed-out capabilities = %#v", items)
 	}
 }
 
 type catalogTestRegistry struct {
-	providers []agent.CapabilityProvider
+	providers []harness.CapabilityProvider
 }
 
-func (r catalogTestRegistry) CapabilityProviders() []agent.CapabilityProvider {
+func (r catalogTestRegistry) CapabilityProviders() []harness.CapabilityProvider {
 	return r.providers
 }
 
@@ -96,21 +96,21 @@ type catalogTestProjects struct {
 	project serviceproject.Meta
 }
 
-type catalogTestScopes map[agent.ProviderID]map[agentmodule.ExecutionScope]bool
+type catalogTestScopes map[harness.ProviderID]map[agentmodule.ExecutionScope]bool
 
 func (s catalogTestScopes) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
-	return s[agent.ProviderID(provider)][scope]
+	return s[harness.ProviderID(provider)][scope]
 }
 
-type catalogTestModules map[agent.ProviderID]agentmodule.Descriptor
+type catalogTestModules map[harness.ProviderID]agentmodule.Descriptor
 
 func (m catalogTestModules) Descriptor(provider string) (agentmodule.Descriptor, bool) {
-	descriptor, ok := m[agent.ProviderID(provider)]
+	descriptor, ok := m[harness.ProviderID(provider)]
 	return descriptor, ok
 }
 
 func (m catalogTestModules) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
-	descriptor, ok := m[agent.ProviderID(provider)]
+	descriptor, ok := m[harness.ProviderID(provider)]
 	if !ok {
 		return false
 	}
@@ -131,9 +131,9 @@ func (catalogTestProjects) HasAccess(context.Context, serviceproject.ID, string)
 }
 
 func TestListUsesRegistryOrderProjectContainerAndSharedCache(t *testing.T) {
-	claude := &catalogTestProvider{id: agent.ProviderClaude, label: "Claude"}
-	codex := &catalogTestProvider{id: agent.ProviderCodex, label: "Codex"}
-	registry := catalogTestRegistry{providers: []agent.CapabilityProvider{claude, codex}}
+	claude := &catalogTestProvider{id: harness.ProviderClaude, label: "Claude"}
+	codex := &catalogTestProvider{id: harness.ProviderCodex, label: "Codex"}
+	registry := catalogTestRegistry{providers: []harness.CapabilityProvider{claude, codex}}
 	catalog := New(registry, catalogTestProjects{project: serviceproject.Meta{
 		ID: "abcd", ContainerName: "remote-abcd", Status: serviceproject.StatusRunning,
 	}}, nil, testSettings())
@@ -143,7 +143,7 @@ func TestListUsesRegistryOrderProjectContainerAndSharedCache(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(items) != 2 || items[0].Provider != agent.ProviderClaude || items[1].Provider != agent.ProviderCodex {
+		if len(items) != 2 || items[0].Provider != harness.ProviderClaude || items[1].Provider != harness.ProviderCodex {
 			t.Fatalf("items = %+v", items)
 		}
 	}
@@ -166,7 +166,7 @@ func TestListOnlyDiscoversProvidersDeclaredForRequestedScope(t *testing.T) {
 	host := &catalogTestProvider{id: "host-agent", label: "Host"}
 	project := &catalogTestProvider{id: "project-agent", label: "Project"}
 	catalog := New(
-		catalogTestRegistry{providers: []agent.CapabilityProvider{host, project}},
+		catalogTestRegistry{providers: []harness.CapabilityProvider{host, project}},
 		catalogTestProjects{project: serviceproject.Meta{ID: "abcd", ContainerName: "remote-abcd"}},
 		nil,
 		testSettings(),
@@ -212,7 +212,7 @@ func TestListUsesModuleIdentityAndPublishesDefensiveMetadata(t *testing.T) {
 		},
 	}}
 	catalog := New(
-		catalogTestRegistry{providers: []agent.CapabilityProvider{provider}},
+		catalogTestRegistry{providers: []harness.CapabilityProvider{provider}},
 		nil,
 		nil,
 		testSettings(),
@@ -252,13 +252,13 @@ func TestStreamingPresentationFollowsModulePolicy(t *testing.T) {
 		"token-agent": {ID: "token-agent"},
 	}}
 	for _, testCase := range []struct {
-		provider agent.ProviderID
+		provider harness.ProviderID
 		want     string
 	}{
 		{provider: "block-agent", want: "blocks"},
 		{provider: "token-agent", want: "tokens"},
 	} {
-		capabilities := agent.Capabilities{Provider: testCase.provider}
+		capabilities := harness.Capabilities{Provider: testCase.provider}
 		service.decorate(&capabilities)
 		if capabilities.Features.StreamingPresentation != testCase.want {
 			t.Fatalf("provider %q streaming presentation = %q, want %q", testCase.provider, capabilities.Features.StreamingPresentation, testCase.want)
@@ -270,9 +270,9 @@ func TestListCoalescesOnlyOverlappingRequests(t *testing.T) {
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	provider := &catalogTestProvider{
-		id: agent.ProviderClaude, label: "Claude", entered: entered, release: release,
+		id: harness.ProviderClaude, label: "Claude", entered: entered, release: release,
 	}
-	catalog := New(catalogTestRegistry{providers: []agent.CapabilityProvider{provider}}, nil, nil, testSettings())
+	catalog := New(catalogTestRegistry{providers: []harness.CapabilityProvider{provider}}, nil, nil, testSettings())
 	firstDone := make(chan error, 1)
 	go func() {
 		_, err := catalog.List(context.Background(), ListQuery{})
@@ -318,13 +318,13 @@ func TestListCoalescesOnlyOverlappingRequests(t *testing.T) {
 
 func TestCatalogTTLUsesShortRetryForDegradedResults(t *testing.T) {
 	cache := newCatalogCache(24*time.Hour, 2*time.Hour)
-	if got := cache.ttl([]agent.Capabilities{{Source: agent.CapabilitySourceLive}}); got != 24*time.Hour {
+	if got := cache.ttl([]harness.Capabilities{{Source: harness.CapabilitySourceLive}}); got != 24*time.Hour {
 		t.Fatalf("live TTL = %s", got)
 	}
-	if got := cache.ttl([]agent.Capabilities{{Source: agent.CapabilitySourceFallback}}); got != 2*time.Hour {
+	if got := cache.ttl([]harness.Capabilities{{Source: harness.CapabilitySourceFallback}}); got != 2*time.Hour {
 		t.Fatalf("fallback TTL = %s", got)
 	}
-	if got := cache.ttl([]agent.Capabilities{{Source: agent.CapabilitySourceLive, Warning: "partial"}}); got != 2*time.Hour {
+	if got := cache.ttl([]harness.Capabilities{{Source: harness.CapabilitySourceLive, Warning: "partial"}}); got != 2*time.Hour {
 		t.Fatalf("warning TTL = %s", got)
 	}
 }

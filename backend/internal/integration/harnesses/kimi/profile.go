@@ -3,8 +3,8 @@ package kimi
 import (
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 )
 
 var kimiProfile = provisioning.Profile{
-	ID: string(agent.ProviderKimi),
+	ID: string(harness.ProviderKimi),
 	CLI: provisioning.CLISpec{
 		Name:               "kimi",
 		ImageLabel:         "kimi-code",

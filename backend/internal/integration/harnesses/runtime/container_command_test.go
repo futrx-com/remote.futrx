@@ -5,14 +5,14 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestBuildContainerCommandPreservesEnvironmentOrderAndPrecedence(t *testing.T) {
 	command := BuildContainerCommand(context.Background(), ContainerCommandSpec{
 		ContainerName:     "project-container",
 		PrefixEnvironment: []string{"HOME=/root", "PROVIDER_HOME=/root/.provider"},
-		Secrets: []agent.ProjectSecret{
+		Secrets: []harness.ProjectSecret{
 			{Key: "FIRST_SECRET", Value: "first"},
 			{Key: "EXCLUDED_SECRET", Value: "excluded"},
 			{Key: "RUNTIME_VALUE", Value: "attacker"},

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -48,7 +48,7 @@ func TestMiniMaxContextWindowUsesDocumentedFamilyCapabilities(t *testing.T) {
 
 func TestProviderRequiresConfiguredMiniMaxAPIKey(t *testing.T) {
 	provider := newProvider(
-		miniMaxTestPreparer{project: agent.PreparedProject{ContainerName: "project-container"}},
+		miniMaxTestPreparer{project: harness.PreparedProject{ContainerName: "project-container"}},
 		miniMaxTestAPIKeys{},
 		miniMaxTestModels{},
 		&miniMaxTestRuntimeAssets{},
@@ -64,9 +64,9 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 	runtimeAssets := &miniMaxTestRuntimeAssets{}
 	provider := newProvider(
 		miniMaxTestPreparer{
-			project: agent.PreparedProject{
+			project: harness.PreparedProject{
 				ContainerName: "project-container",
-				Secrets: []agent.ProjectSecret{
+				Secrets: []harness.ProjectSecret{
 					{Key: configconstants.MiniMaxAPIKeyEnvironment, Value: "project-key-must-not-pass"},
 					{Key: "OPENAI_API_KEY", Value: "must-not-pass"},
 					{Key: "HOME", Value: "/workspace/attacker-home"},
@@ -81,7 +81,7 @@ func TestBuildCmdPublishesLiveCatalogAndPreservesManagedSecret(t *testing.T) {
 		newAPIKeyValidator(),
 	)
 	modelCatalog := []byte(`{"models":[{"slug":"MiniMax-M2.7"}]}`)
-	req := agent.RunRequest{
+	req := harness.RunRequest{
 		ProjectID: "project",
 		Model:     "MiniMax-M2.7",
 		RuntimeEnv: map[string]string{
@@ -133,7 +133,7 @@ func TestBuildCmdProcessOutlivesRequestCancellation(t *testing.T) {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	provider := newProvider(
-		miniMaxTestPreparer{project: agent.PreparedProject{ContainerName: "project-container"}},
+		miniMaxTestPreparer{project: harness.PreparedProject{ContainerName: "project-container"}},
 		miniMaxTestAPIKeys{key: "managed-key"},
 		miniMaxTestModels{},
 		&miniMaxTestRuntimeAssets{},
@@ -143,8 +143,8 @@ func TestBuildCmdProcessOutlivesRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd, err := provider.buildCmd(
 		ctx,
-		agent.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
-		provider.args(agent.RunRequest{Model: "MiniMax-M3"}),
+		harness.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
+		provider.args(harness.RunRequest{Model: "MiniMax-M3"}),
 		"managed-key",
 		[]byte(`{"models":[]}`),
 		nil,
@@ -161,7 +161,7 @@ func TestBuildCmdProcessOutlivesRequestCancellation(t *testing.T) {
 
 func TestBuildCmdRequiresRuntimeCatalogProvisioner(t *testing.T) {
 	provider := newProvider(
-		miniMaxTestPreparer{project: agent.PreparedProject{ContainerName: "project-container"}},
+		miniMaxTestPreparer{project: harness.PreparedProject{ContainerName: "project-container"}},
 		miniMaxTestAPIKeys{key: "managed-key"},
 		miniMaxTestModels{},
 		nil,
@@ -170,8 +170,8 @@ func TestBuildCmdRequiresRuntimeCatalogProvisioner(t *testing.T) {
 	)
 	_, err := provider.buildCmd(
 		context.Background(),
-		agent.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
-		provider.args(agent.RunRequest{Model: "MiniMax-M3"}),
+		harness.RunRequest{ProjectID: "project", Model: "MiniMax-M3"},
+		provider.args(harness.RunRequest{Model: "MiniMax-M3"}),
 		"managed-key",
 		[]byte(`{"models":[]}`),
 		nil,
@@ -182,7 +182,7 @@ func TestBuildCmdRequiresRuntimeCatalogProvisioner(t *testing.T) {
 }
 
 func TestArgsWireBrowserThroughCodexHarness(t *testing.T) {
-	args := (&Provider{}).args(agent.RunRequest{Model: "MiniMax-M3", EnableBrowser: true})
+	args := (&Provider{}).args(harness.RunRequest{Model: "MiniMax-M3", EnableBrowser: true})
 	if !slices.Contains(args, `mcp_servers.browser.command="npx"`) {
 		t.Fatalf("browser config = %#v", args)
 	}
@@ -201,15 +201,15 @@ func (s miniMaxTestAPIKeys) APIKeyForRun(_ context.Context, id string) (agentaut
 }
 
 type miniMaxTestPreparer struct {
-	project agent.PreparedProject
+	project harness.PreparedProject
 	err     error
 }
 
 func (p miniMaxTestPreparer) Prepare(
 	context.Context,
-	agent.ProjectPreparationRequest,
-	func(agent.Event),
-) (agent.PreparedProject, error) {
+	harness.ProjectPreparationRequest,
+	func(harness.Event),
+) (harness.PreparedProject, error) {
 	return p.project, p.err
 }
 

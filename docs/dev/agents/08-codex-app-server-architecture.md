@@ -99,7 +99,7 @@ sequenceDiagram
 ```
 
 The prompt service builds a provider-neutral
-[`agent.RunRequest`](../../../backend/internal/agent/model.go). In addition to
+[`harness.RunRequest`](../../../backend/internal/harness/model.go). In addition to
 the prompt, model, mode, session, project, and feature flags, it carries the
 selected reasoning effort, service tier, approval policy, sandbox policy, and
 a receive-only channel for interaction responses.
@@ -114,7 +114,7 @@ transport failure.
 The harness creates a fresh App Server process for each Remote run. Native
 continuity survives because the returned Codex thread ID is stored in chat
 metadata and supplied as `ResumeID` on a later run. A missing resumed thread is
-mapped to `agent.ErrSessionNotFound`, after which the prompt service clears the
+mapped to `harness.ErrSessionNotFound`, after which the prompt service clears the
 stale session and retries with bounded visible history.
 
 ## Identity domains
@@ -130,7 +130,7 @@ Several IDs coexist and are intentionally not interchangeable:
 | Native item ID | Correlates messages, tools, and collaboration updates | Typed event ID and `NativeEnvelope.ItemID` |
 | JSON-RPC request ID | Correlates one server request with exactly one client response | Pending-request map and `InteractionID` |
 
-[`agent.NativeEnvelope`](../../../backend/internal/agent/model.go) is the
+[`harness.NativeEnvelope`](../../../backend/internal/harness/model.go) is the
 lossless correlation record. It carries a schema version, method, native IDs,
 and the original notification params. The request ID is stored as compact JSON
 so numeric `7` and string `"7"` remain different keys.
@@ -344,7 +344,7 @@ starts a separate App Server probe in
 2. send `initialized`;
 3. page through `model/list`;
 4. request `collaborationMode/list`; and
-5. normalize the result into `agent.Capabilities` for the shared cache and
+5. normalize the result into `harness.Capabilities` for the shared cache and
    composer.
 
 Remote retains each model's reasoning efforts, service tiers, defaults, input

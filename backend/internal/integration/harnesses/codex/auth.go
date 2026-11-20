@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -102,7 +102,7 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 	})
 	if vault != nil {
 		accounts, err := vault.Open(context.Background(), agentauth.AccountConfig{
-			Provider:    agent.ProviderCodex,
+			Provider:    harness.ProviderCodex,
 			Label:       "Codex",
 			Credentials: auth.credentials,
 			Login:       accountLoginFlow{auth: auth},

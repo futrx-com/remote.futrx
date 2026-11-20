@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
-func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	kimiHome := containerKimiHome
 	if req.ContainerName == "" {
 		kimiHome = hostKimiHome()
@@ -58,13 +58,13 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 	return caps, nil
 }
 
-func fallbackCapabilities() agent.Capabilities {
-	return agent.Capabilities{
-		Provider:    agent.ProviderKimi,
+func fallbackCapabilities() harness.Capabilities {
+	return harness.Capabilities{
+		Provider:    harness.ProviderKimi,
 		Label:       "Kimi",
-		Source:      agent.CapabilitySourceFallback,
-		Models:      agent.WithAutoModel(nil, "Kimi default"),
-		Modes:       agent.ProviderModes(false),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceFallback,
+		Models:      harness.WithAutoModel(nil, "Kimi default"),
+		Modes:       harness.ProviderModes(false),
+		DefaultMode: harness.RunModeDefault,
 	}
 }

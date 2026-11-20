@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -379,11 +379,11 @@ func TestNewAuthRestoresActiveAccountOverDifferentHostLogin(t *testing.T) {
 
 type memoryAccountStore struct{ accounts agentauth.AccountSet }
 
-func (s *memoryAccountStore) AgentAccounts(context.Context, agent.ProviderID) (agentauth.AccountSet, error) {
+func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (agentauth.AccountSet, error) {
 	return s.accounts.Clone(), nil
 }
 
-func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ agent.ProviderID, accounts agentauth.AccountSet) error {
+func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts agentauth.AccountSet) error {
 	s.accounts = accounts.Clone()
 	return nil
 }

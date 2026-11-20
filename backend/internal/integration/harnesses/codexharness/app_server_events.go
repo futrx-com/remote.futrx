@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type appServerEventParser struct {
-	req           agent.RunRequest
+	req           harness.RunRequest
 	providerLabel string
 	itemText      map[string]string
 	lastUsage     json.RawMessage
@@ -23,7 +23,7 @@ type appServerNativeIDs struct {
 	RequestID string
 }
 
-func newAppServerEventParser(req agent.RunRequest, providerLabel string) *appServerEventParser {
+func newAppServerEventParser(req harness.RunRequest, providerLabel string) *appServerEventParser {
 	return &appServerEventParser{
 		req:           req,
 		providerLabel: providerLabel,
@@ -31,7 +31,7 @@ func newAppServerEventParser(req agent.RunRequest, providerLabel string) *appSer
 	}
 }
 
-func (parser *appServerEventParser) ParseNotification(method string, raw json.RawMessage) []agent.Event {
+func (parser *appServerEventParser) ParseNotification(method string, raw json.RawMessage) []harness.Event {
 	now := time.Now().UnixMilli()
 	switch method {
 	case "account/rateLimits/updated":
@@ -44,9 +44,9 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 			return nil
 		}
 		parser.itemText[params.ItemID] += params.Delta
-		return []agent.Event{parser.event(now, method, agent.EventAssistantTextDelta, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventAssistantTextDelta, raw, func(event *harness.Event) {
 			event.ItemID = params.ItemID
-			event.ItemKind = agent.ItemMessage
+			event.ItemKind = harness.ItemMessage
 			event.Text = params.Delta
 		})}
 
@@ -55,9 +55,9 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 		if json.Unmarshal(raw, &params) != nil || params.Delta == "" {
 			return nil
 		}
-		return []agent.Event{parser.event(now, method, agent.EventReasoningDelta, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventReasoningDelta, raw, func(event *harness.Event) {
 			event.ItemID = params.ItemID
-			event.ItemKind = agent.ItemReasoning
+			event.ItemKind = harness.ItemReasoning
 			event.Text = params.Delta
 		})}
 
@@ -76,7 +76,7 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 		if json.Unmarshal(raw, &params) == nil {
 			parser.lastUsage = params.TokenUsage.Last.normalized(parser.req.Model)
 		}
-		return []agent.Event{parser.event(now, method, agent.EventUsageUpdated, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventUsageUpdated, raw, func(event *harness.Event) {
 			event.Usage = cloneRaw(parser.lastUsage)
 		})}
 
@@ -85,7 +85,7 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 		if json.Unmarshal(raw, &params) != nil {
 			return parser.nativeEvent(now, method, raw)
 		}
-		return []agent.Event{parser.event(now, method, agent.EventTurnStatus, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventTurnStatus, raw, func(event *harness.Event) {
 			event.Status = params.Status.Type
 			if params.Status.Type == "active" && len(params.Status.ActiveFlags) > 0 {
 				event.Status = strings.Join(params.Status.ActiveFlags, ",")
@@ -94,7 +94,7 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 		})}
 
 	case "turn/started":
-		return []agent.Event{parser.event(now, method, agent.EventTurnStatus, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventTurnStatus, raw, func(event *harness.Event) {
 			event.Status = "inProgress"
 			event.Data = cloneRaw(raw)
 		})}
@@ -111,7 +111,7 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 	case "error":
 		var params appServerErrorParams
 		if json.Unmarshal(raw, &params) == nil && strings.TrimSpace(params.Error.Message) != "" {
-			return []agent.Event{parser.event(now, method, agent.EventError, raw, func(event *agent.Event) {
+			return []harness.Event{parser.event(now, method, harness.EventError, raw, func(event *harness.Event) {
 				event.Message = strings.TrimSpace(params.Error.Message)
 				event.IsError = true
 				if params.WillRetry {
@@ -125,7 +125,7 @@ func (parser *appServerEventParser) ParseNotification(method string, raw json.Ra
 	return parser.nativeEvent(now, method, raw)
 }
 
-func (parser *appServerEventParser) turnCompleted(now int64, method string, raw json.RawMessage) []agent.Event {
+func (parser *appServerEventParser) turnCompleted(now int64, method string, raw json.RawMessage) []harness.Event {
 	var params appServerTurnCompletedParams
 	if json.Unmarshal(raw, &params) != nil {
 		return parser.nativeEvent(now, method, raw)
@@ -133,12 +133,12 @@ func (parser *appServerEventParser) turnCompleted(now int64, method string, raw 
 	status := strings.TrimSpace(params.Turn.Status)
 	switch status {
 	case "completed":
-		return []agent.Event{parser.event(now, method, agent.EventRunCompleted, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventRunCompleted, raw, func(event *harness.Event) {
 			event.Status = status
 			event.Usage = cloneRaw(parser.lastUsage)
 		})}
 	case "interrupted":
-		return []agent.Event{parser.event(now, method, agent.EventRunInterrupted, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventRunInterrupted, raw, func(event *harness.Event) {
 			event.Status = status
 			event.Usage = cloneRaw(parser.lastUsage)
 		})}
@@ -147,14 +147,14 @@ func (parser *appServerEventParser) turnCompleted(now int64, method string, raw 
 		if params.Turn.Error != nil && strings.TrimSpace(params.Turn.Error.Message) != "" {
 			message = strings.TrimSpace(params.Turn.Error.Message)
 		}
-		return []agent.Event{parser.event(now, method, agent.EventRunFailed, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventRunFailed, raw, func(event *harness.Event) {
 			event.Status = status
 			event.Message = message
 			event.IsError = true
 			event.Usage = cloneRaw(parser.lastUsage)
 		})}
 	default:
-		return []agent.Event{parser.event(now, method, agent.EventRunFailed, raw, func(event *agent.Event) {
+		return []harness.Event{parser.event(now, method, harness.EventRunFailed, raw, func(event *harness.Event) {
 			event.Status = status
 			event.Message = parser.providerLabel + " turn ended with unknown status: " + status
 			event.IsError = true
@@ -168,27 +168,27 @@ func (parser *appServerEventParser) itemStarted(
 	method string,
 	raw json.RawMessage,
 	item appServerItem,
-) []agent.Event {
+) []harness.Event {
 	switch item.Type {
 	case "commandExecution":
-		return []agent.Event{parser.toolStarted(now, method, raw, item.ID, "Bash", mustJSON(map[string]any{
+		return []harness.Event{parser.toolStarted(now, method, raw, item.ID, "Bash", mustJSON(map[string]any{
 			"command": item.Command,
 		}))}
 	case "fileChange":
-		return []agent.Event{parser.toolStarted(now, method, raw, item.ID, "Patch", mustJSON(map[string]any{
+		return []harness.Event{parser.toolStarted(now, method, raw, item.ID, "Patch", mustJSON(map[string]any{
 			"changes": item.Changes,
 		}))}
 	case "mcpToolCall":
-		return []agent.Event{parser.toolStarted(now, method, raw, item.ID, appServerMCPToolName(item), item.Arguments)}
+		return []harness.Event{parser.toolStarted(now, method, raw, item.ID, appServerMCPToolName(item), item.Arguments)}
 	case "dynamicToolCall":
-		return []agent.Event{parser.toolStarted(now, method, raw, item.ID, joinedToolName(item.Namespace, item.Tool), item.Arguments)}
+		return []harness.Event{parser.toolStarted(now, method, raw, item.ID, joinedToolName(item.Namespace, item.Tool), item.Arguments)}
 	case "collabAgentToolCall":
 		if !projectCollaboration(item) {
 			return parser.nativeEvent(now, method, raw)
 		}
-		return []agent.Event{parser.collaboration(now, method, raw, item)}
+		return []harness.Event{parser.collaboration(now, method, raw, item)}
 	case "webSearch":
-		return []agent.Event{parser.toolStarted(now, method, raw, item.ID, "WebSearch", mustJSON(map[string]any{
+		return []harness.Event{parser.toolStarted(now, method, raw, item.ID, "WebSearch", mustJSON(map[string]any{
 			"query": item.Query, "action": item.Action,
 		}))}
 	default:
@@ -201,25 +201,25 @@ func (parser *appServerEventParser) itemCompleted(
 	method string,
 	raw json.RawMessage,
 	item appServerItem,
-) []agent.Event {
+) []harness.Event {
 	switch item.Type {
 	case "agentMessage", "plan":
 		return parser.completedText(now, method, raw, item)
 	case "commandExecution":
-		return []agent.Event{parser.toolCompleted(
+		return []harness.Event{parser.toolCompleted(
 			now, method, raw, item.ID, item.AggregatedOutput, appServerItemFailed(item),
 		)}
 	case "fileChange":
-		return []agent.Event{parser.toolCompleted(now, method, raw, item.ID, item.Status, appServerItemFailed(item))}
+		return []harness.Event{parser.toolCompleted(now, method, raw, item.ID, item.Status, appServerItemFailed(item))}
 	case "mcpToolCall", "dynamicToolCall":
-		return []agent.Event{parser.toolCompleted(now, method, raw, item.ID, appServerToolOutput(item), appServerItemFailed(item))}
+		return []harness.Event{parser.toolCompleted(now, method, raw, item.ID, appServerToolOutput(item), appServerItemFailed(item))}
 	case "collabAgentToolCall":
 		if !projectCollaboration(item) {
 			return parser.nativeEvent(now, method, raw)
 		}
-		return []agent.Event{parser.collaboration(now, method, raw, item)}
+		return []harness.Event{parser.collaboration(now, method, raw, item)}
 	case "webSearch":
-		return []agent.Event{parser.toolCompleted(now, method, raw, item.ID, item.Query, false)}
+		return []harness.Event{parser.toolCompleted(now, method, raw, item.ID, item.Query, false)}
 	default:
 		return parser.nativeEvent(now, method, raw)
 	}
@@ -235,7 +235,7 @@ func (parser *appServerEventParser) completedText(
 	method string,
 	raw json.RawMessage,
 	item appServerItem,
-) []agent.Event {
+) []harness.Event {
 	if item.Text == "" {
 		return parser.nativeEvent(now, method, raw)
 	}
@@ -248,9 +248,9 @@ func (parser *appServerEventParser) completedText(
 	if delta == "" {
 		return parser.nativeEvent(now, method, raw)
 	}
-	return []agent.Event{parser.event(now, method, agent.EventAssistantTextDelta, raw, func(event *agent.Event) {
+	return []harness.Event{parser.event(now, method, harness.EventAssistantTextDelta, raw, func(event *harness.Event) {
 		event.ItemID = item.ID
-		event.ItemKind = agent.ItemMessage
+		event.ItemKind = harness.ItemMessage
 		event.Text = delta
 	})}
 }
@@ -260,10 +260,10 @@ func (parser *appServerEventParser) collaboration(
 	method string,
 	raw json.RawMessage,
 	item appServerItem,
-) agent.Event {
-	return parser.event(now, method, agent.EventCollaboration, raw, func(event *agent.Event) {
+) harness.Event {
+	return parser.event(now, method, harness.EventCollaboration, raw, func(event *harness.Event) {
 		event.ItemID = item.ID
-		event.ItemKind = agent.ItemToolCall
+		event.ItemKind = harness.ItemToolCall
 		event.ToolName = strings.TrimSpace(item.Tool)
 		event.Status = strings.TrimSpace(item.Status)
 		event.Data = cloneRaw(item.Raw)
@@ -276,10 +276,10 @@ func (parser *appServerEventParser) toolStarted(
 	raw json.RawMessage,
 	id, name string,
 	input json.RawMessage,
-) agent.Event {
-	return parser.event(now, method, agent.EventToolStarted, raw, func(event *agent.Event) {
+) harness.Event {
+	return parser.event(now, method, harness.EventToolStarted, raw, func(event *harness.Event) {
 		event.ItemID = id
-		event.ItemKind = agent.ItemToolCall
+		event.ItemKind = harness.ItemToolCall
 		event.ToolName = strings.TrimSpace(name)
 		if event.ToolName == "" {
 			event.ToolName = parser.providerLabel + "Tool"
@@ -294,17 +294,17 @@ func (parser *appServerEventParser) toolCompleted(
 	raw json.RawMessage,
 	id, output string,
 	isError bool,
-) agent.Event {
-	return parser.event(now, method, agent.EventToolCompleted, raw, func(event *agent.Event) {
+) harness.Event {
+	return parser.event(now, method, harness.EventToolCompleted, raw, func(event *harness.Event) {
 		event.ItemID = id
-		event.ItemKind = agent.ItemToolCall
+		event.ItemKind = harness.ItemToolCall
 		event.Output = output
 		event.IsError = isError
 	})
 }
 
-func (parser *appServerEventParser) nativeEvent(now int64, method string, raw json.RawMessage) []agent.Event {
-	return []agent.Event{parser.event(now, method, agent.EventProviderNative, raw, func(event *agent.Event) {
+func (parser *appServerEventParser) nativeEvent(now int64, method string, raw json.RawMessage) []harness.Event {
+	return []harness.Event{parser.event(now, method, harness.EventProviderNative, raw, func(event *harness.Event) {
 		event.Data = cloneRaw(raw)
 	})}
 }
@@ -312,19 +312,19 @@ func (parser *appServerEventParser) nativeEvent(now int64, method string, raw js
 func (parser *appServerEventParser) event(
 	now int64,
 	method string,
-	eventType agent.EventType,
+	eventType harness.EventType,
 	raw json.RawMessage,
-	configure func(*agent.Event),
-) agent.Event {
+	configure func(*harness.Event),
+) harness.Event {
 	ids := nativeIDs(raw)
-	event := agent.Event{
+	event := harness.Event{
 		T:              now,
 		Type:           eventType,
 		Provider:       parser.req.Provider,
 		ConversationID: parser.req.ConversationID,
 		Raw:            cloneRaw(raw),
-		Native: &agent.NativeEnvelope{
-			SchemaVersion: agent.NativeEnvelopeSchemaVersion,
+		Native: &harness.NativeEnvelope{
+			SchemaVersion: harness.NativeEnvelopeSchemaVersion,
 			Method:        method,
 			ThreadID:      ids.ThreadID,
 			TurnID:        ids.TurnID,
@@ -381,7 +381,7 @@ func cloneRaw(raw json.RawMessage) json.RawMessage {
 }
 
 func (usage appServerTokenUsage) normalized(model string) json.RawMessage {
-	return agent.NormalizeInclusiveInput(agent.Usage{
+	return harness.NormalizeInclusiveInput(harness.Usage{
 		InputTokens:      usage.InputTokens,
 		OutputTokens:     usage.OutputTokens,
 		CacheReadTokens:  usage.CachedInputTokens,

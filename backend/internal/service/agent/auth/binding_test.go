@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type bindingTestStatus struct {
@@ -24,9 +24,9 @@ func TestDeviceBindingPreservesConcreteStatus(t *testing.T) {
 			}
 		},
 	})
-	binding := NewDeviceBinding(agent.ProviderCodex, service)
+	binding := NewDeviceBinding(harness.ProviderCodex, service)
 
-	if binding.ID() != agent.ProviderCodex || binding.Flow() != FlowDevice {
+	if binding.ID() != harness.ProviderCodex || binding.Flow() != FlowDevice {
 		t.Fatalf("binding identity = (%q, %q)", binding.ID(), binding.Flow())
 	}
 	if !binding.Authenticated() {
@@ -101,8 +101,8 @@ func TestBindingsExposeNormalizedSnapshots(t *testing.T) {
 }
 
 func TestExternalBindingDeclaresProviderOwnedAuthentication(t *testing.T) {
-	binding := NewExternalBinding(agent.ProviderAntigravity)
-	if binding.ID() != agent.ProviderAntigravity || binding.Flow() != FlowExternal {
+	binding := NewExternalBinding(harness.ProviderAntigravity)
+	if binding.ID() != harness.ProviderAntigravity || binding.Flow() != FlowExternal {
 		t.Fatalf("binding identity = (%q, %q)", binding.ID(), binding.Flow())
 	}
 	if binding.Available() || binding.Authenticated() || binding.Status() != nil {
@@ -120,12 +120,12 @@ func TestExternalBindingDeclaresProviderOwnedAuthentication(t *testing.T) {
 }
 
 func TestAPIKeyBindingExposesManagedStatusWithoutCredential(t *testing.T) {
-	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{}}
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, allowAccountUse{})
+	store := &apiKeyTestStore{keys: map[harness.ProviderID]string{}}
+	service, err := NewAPIKeyService(context.Background(), harness.ProviderMiniMax, store, nil, allowAccountUse{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	binding := NewAPIKeyBinding(agent.ProviderMiniMax, service)
+	binding := NewAPIKeyBinding(harness.ProviderMiniMax, service)
 	if binding.Flow() != FlowAPIKey || !binding.Available() || binding.Authenticated() {
 		t.Fatalf("binding = %#v", binding)
 	}
@@ -149,7 +149,7 @@ func TestAPIKeyBindingExposesManagedStatusWithoutCredential(t *testing.T) {
 func TestCodeBindingClassifiesConfiguredInputErrors(t *testing.T) {
 	required := errors.New("code required")
 	noSession := errors.New("no session")
-	binding := NewCodeBinding(agent.ProviderClaude, NewCodeService(CodeConfig{
+	binding := NewCodeBinding(harness.ProviderClaude, NewCodeService(CodeConfig{
 		CodeRequired: required,
 		NoSession:    noSession,
 	}))
@@ -165,7 +165,7 @@ func TestCodeBindingClassifiesConfiguredInputErrors(t *testing.T) {
 }
 
 func TestUnavailableBindingRejectsSubscription(t *testing.T) {
-	binding := NewCodeBinding(agent.ProviderClaude, nil)
+	binding := NewCodeBinding(harness.ProviderClaude, nil)
 	if binding.Available() {
 		t.Fatal("nil service binding is available")
 	}

@@ -3,12 +3,12 @@ package codexharness
 import (
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
-func buildAppServerThreadRequest(req agent.RunRequest) appServerThreadRequest {
-	approvalPolicy := agent.NormalizeApprovalPolicy(req.Preferences.ApprovalPolicy)
-	sandboxPolicy := agent.NormalizeSandboxPolicy(req.Preferences.SandboxPolicy)
+func buildAppServerThreadRequest(req harness.RunRequest) appServerThreadRequest {
+	approvalPolicy := harness.NormalizeApprovalPolicy(req.Preferences.ApprovalPolicy)
+	sandboxPolicy := harness.NormalizeSandboxPolicy(req.Preferences.SandboxPolicy)
 	request := appServerThreadRequest{
 		Method: "thread/start",
 		Params: appServerThreadParams{
@@ -39,10 +39,10 @@ func buildAppServerThreadRequest(req agent.RunRequest) appServerThreadRequest {
 	return request
 }
 
-func buildAppServerTurnParams(req agent.RunRequest, threadID, model string) appServerTurnParams {
-	mode := agent.RunModeDefault
-	if req.Mode == agent.RunModePlan {
-		mode = agent.RunModePlan
+func buildAppServerTurnParams(req harness.RunRequest, threadID, model string) appServerTurnParams {
+	mode := harness.RunModeDefault
+	if req.Mode == harness.RunModePlan {
+		mode = harness.RunModePlan
 	}
 	effort := reasoningEffortArg(req.Preferences.ReasoningEffort)
 	var reasoningEffort *string
@@ -50,7 +50,7 @@ func buildAppServerTurnParams(req agent.RunRequest, threadID, model string) appS
 		reasoningEffort = &effort
 	}
 	params := appServerTurnParams{
-		ApprovalPolicy: agent.NormalizeApprovalPolicy(req.Preferences.ApprovalPolicy),
+		ApprovalPolicy: harness.NormalizeApprovalPolicy(req.Preferences.ApprovalPolicy),
 		CollaborationMode: appServerCollaborationMode{
 			Mode: mode,
 			Settings: appServerCollaborationSettings{
@@ -61,7 +61,7 @@ func buildAppServerTurnParams(req agent.RunRequest, threadID, model string) appS
 		Effort:        effort,
 		Input:         []appServerUserInput{{Text: req.Prompt, Type: "text"}},
 		Model:         model,
-		SandboxPolicy: appServerSandboxPolicy{Type: agent.NormalizeSandboxPolicy(req.Preferences.SandboxPolicy)},
+		SandboxPolicy: appServerSandboxPolicy{Type: harness.NormalizeSandboxPolicy(req.Preferences.SandboxPolicy)},
 		ThreadID:      threadID,
 	}
 	if tier := serviceTierArg(req.Preferences.ServiceTier); tier != "" {
@@ -71,7 +71,7 @@ func buildAppServerTurnParams(req agent.RunRequest, threadID, model string) appS
 }
 
 func legacySandboxMode(policy string) string {
-	switch agent.NormalizeSandboxPolicy(policy) {
+	switch harness.NormalizeSandboxPolicy(policy) {
 	case "readOnly":
 		return "read-only"
 	case "dangerFullAccess":
@@ -89,10 +89,10 @@ func sanitizeModel(model string) string {
 	return model
 }
 
-func reasoningEffortArg(effort agent.ReasoningEffort) string {
-	return agent.NormalizeCapabilityValue(string(effort))
+func reasoningEffortArg(effort harness.ReasoningEffort) string {
+	return harness.NormalizeCapabilityValue(string(effort))
 }
 
-func serviceTierArg(tier agent.ServiceTier) string {
-	return agent.NormalizeCapabilityValue(string(tier))
+func serviceTierArg(tier harness.ServiceTier) string {
+	return harness.NormalizeCapabilityValue(string(tier))
 }

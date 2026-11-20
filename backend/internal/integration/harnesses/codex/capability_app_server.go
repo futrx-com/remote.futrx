@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -23,7 +23,7 @@ type rpcResponse struct {
 
 func queryAppServerCapabilities(
 	ctx context.Context,
-	req agent.CapabilityRequest,
+	req harness.CapabilityRequest,
 ) (modelListResponse, collaborationModeListResponse, error) {
 	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,

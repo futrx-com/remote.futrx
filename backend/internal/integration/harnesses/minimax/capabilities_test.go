@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestCapabilitiesExposeDiscoveredMiniMaxModels(t *testing.T) {
@@ -13,12 +13,12 @@ func TestCapabilitiesExposeDiscoveredMiniMaxModels(t *testing.T) {
 		apiKeys: miniMaxTestAPIKeys{key: "sk-cp-key"},
 		models:  miniMaxTestModels{models: []string{"MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5-highspeed"}},
 	}
-	caps, err := provider.Capabilities(context.Background(), agent.CapabilityRequest{})
+	caps, err := provider.Capabilities(context.Background(), harness.CapabilityRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if caps.Provider != agent.ProviderMiniMax || caps.DefaultMode != agent.RunModeDefault ||
-		caps.Source != agent.CapabilitySourceLive {
+	if caps.Provider != harness.ProviderMiniMax || caps.DefaultMode != harness.RunModeDefault ||
+		caps.Source != harness.CapabilitySourceLive {
 		t.Fatalf("capabilities = %#v", caps)
 	}
 	if len(caps.Models) != 4 || caps.Models[0].ID != "" || caps.Models[1].ID != "MiniMax-M3" ||
@@ -35,7 +35,7 @@ func TestCapabilitiesExposeDiscoveredMiniMaxModels(t *testing.T) {
 	if caps.Models[2].DefaultReasoningEffort != "high" || len(caps.Models[2].ReasoningEfforts) != 0 {
 		t.Fatalf("M2.7 reasoning = %#v", caps.Models[2])
 	}
-	if len(caps.Modes) != 2 || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[1].Value != string(harness.RunModePlan) {
 		t.Fatalf("modes = %#v", caps.Modes)
 	}
 }
@@ -45,11 +45,11 @@ func TestCapabilitiesReturnUnpinnedFallbackWhenDiscoveryFails(t *testing.T) {
 		apiKeys: miniMaxTestAPIKeys{key: "sk-cp-key"},
 		models:  miniMaxTestModels{err: ErrMiniMaxModelDiscoveryUnavailable},
 	}
-	caps, err := provider.Capabilities(context.Background(), agent.CapabilityRequest{})
+	caps, err := provider.Capabilities(context.Background(), harness.CapabilityRequest{})
 	if !errors.Is(err, ErrMiniMaxModelDiscoveryUnavailable) {
 		t.Fatalf("error = %v", err)
 	}
-	if caps.Source != agent.CapabilitySourceFallback || len(caps.Models) != 1 || caps.Models[0].ID != "" {
+	if caps.Source != harness.CapabilitySourceFallback || len(caps.Models) != 1 || caps.Models[0].ID != "" {
 		t.Fatalf("fallback = %#v", caps)
 	}
 }
@@ -57,8 +57,8 @@ func TestCapabilitiesReturnUnpinnedFallbackWhenDiscoveryFails(t *testing.T) {
 func TestMiniMaxReasoningEffortUsesPerModelSupport(t *testing.T) {
 	tests := []struct {
 		model string
-		input agent.ReasoningEffort
-		want  agent.ReasoningEffort
+		input harness.ReasoningEffort
+		want  harness.ReasoningEffort
 	}{
 		{model: "MiniMax-M3", input: "", want: "high"},
 		{model: "MiniMax-M3", input: "none", want: "none"},

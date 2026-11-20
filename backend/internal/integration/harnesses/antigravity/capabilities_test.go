@@ -3,7 +3,7 @@ package antigravity
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestParseCapabilitiesFromCLIOutput(t *testing.T) {
@@ -24,7 +24,7 @@ Claude Opus 4.6 (Thinking)
 	if got := caps.Models[1].ReasoningEfforts; len(got) != 4 || got[3].Value != "high" {
 		t.Fatalf("reasoning efforts = %+v", got)
 	}
-	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(harness.RunModeDefault) || caps.Modes[1].Value != string(harness.RunModePlan) {
 		t.Fatalf("modes = %+v", caps.Modes)
 	}
 }

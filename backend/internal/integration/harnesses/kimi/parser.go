@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // Parser converts @moonshot-ai/kimi-code `kimi -p --output-format stream-json`
@@ -17,14 +17,14 @@ import (
 // runs — the parser still forwards a `usage` object opportunistically if a
 // future CLI version starts emitting one on any line.
 type Parser struct {
-	req          agent.RunRequest
+	req          harness.RunRequest
 	sawSessionID string
-	sawUsage     agent.Usage
+	sawUsage     harness.Usage
 }
 
-func NewParser(req agent.RunRequest) *Parser {
+func NewParser(req harness.RunRequest) *Parser {
 	if req.Provider == "" {
-		req.Provider = agent.ProviderKimi
+		req.Provider = harness.ProviderKimi
 	}
 	return &Parser{req: req, sawSessionID: req.ResumeID}
 }
@@ -49,7 +49,7 @@ type wireToolCall struct {
 	} `json:"function"`
 }
 
-func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
+func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 	rawLine := append(json.RawMessage(nil), line...)
 	var raw wireMsg
 	if err := json.Unmarshal(line, &raw); err != nil {
@@ -57,9 +57,9 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	}
 
 	now := time.Now().UnixMilli()
-	events := make([]agent.Event, 0, 2)
+	events := make([]harness.Event, 0, 2)
 
-	if usage, ok := agent.ParseUsage(raw.Usage); ok {
+	if usage, ok := harness.ParseUsage(raw.Usage); ok {
 		p.sawUsage = usage
 	}
 	if raw.Model != "" {
@@ -72,7 +72,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		if raw.Type == "session.resume_hint" {
 			if raw.SessionID != "" && raw.SessionID != p.sawSessionID {
 				p.sawSessionID = raw.SessionID
-				events = append(events, p.event(now, agent.EventSessionUpdated, rawLine, func(ev *agent.Event) {
+				events = append(events, p.event(now, harness.EventSessionUpdated, rawLine, func(ev *harness.Event) {
 					ev.SessionID = raw.SessionID
 				}))
 			}
@@ -80,22 +80,22 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 			// de-facto end of the run. Usage is normally absent, so the event
 			// carries the model alone and cost stays unknown downstream.
 			usage := p.runUsage()
-			events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
+			events = append(events, p.event(now, harness.EventRunCompleted, rawLine, func(ev *harness.Event) {
 				ev.Usage = usage.Raw()
 			}))
 		}
 
 	case "assistant":
 		if text := decodeContent(raw.Content); text != "" {
-			events = append(events, p.event(now, agent.EventAssistantTextDelta, rawLine, func(ev *agent.Event) {
-				ev.ItemKind = agent.ItemMessage
+			events = append(events, p.event(now, harness.EventAssistantTextDelta, rawLine, func(ev *harness.Event) {
+				ev.ItemKind = harness.ItemMessage
 				ev.Text = text
 			}))
 		}
 		for _, tc := range raw.ToolCalls {
 			tc := tc
-			events = append(events, p.event(now, agent.EventToolStarted, rawLine, func(ev *agent.Event) {
-				ev.ItemKind = agent.ItemToolCall
+			events = append(events, p.event(now, harness.EventToolStarted, rawLine, func(ev *harness.Event) {
+				ev.ItemKind = harness.ItemToolCall
 				ev.ItemID = tc.ID
 				ev.ToolName = strings.TrimSpace(tc.Function.Name)
 				if ev.ToolName == "" {
@@ -110,8 +110,8 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		}
 
 	case "tool":
-		events = append(events, p.event(now, agent.EventToolCompleted, rawLine, func(ev *agent.Event) {
-			ev.ItemKind = agent.ItemToolCall
+		events = append(events, p.event(now, harness.EventToolCompleted, rawLine, func(ev *harness.Event) {
+			ev.ItemKind = harness.ItemToolCall
 			ev.ItemID = raw.ToolCallID
 			ev.Output = decodeContent(raw.Content)
 		}))
@@ -123,7 +123,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 // runUsage returns whatever the stream disclosed about this turn, falling
 // back to the requested model so a kimi run is still attributable even when
 // no token counts exist.
-func (p *Parser) runUsage() agent.Usage {
+func (p *Parser) runUsage() harness.Usage {
 	usage := p.sawUsage
 	if usage.Model == "" {
 		usage.Model = p.req.Model
@@ -131,11 +131,11 @@ func (p *Parser) runUsage() agent.Usage {
 	return usage
 }
 
-func (p *Parser) event(now int64, type_ agent.EventType, raw json.RawMessage, fn func(*agent.Event)) agent.Event {
-	ev := agent.Event{
+func (p *Parser) event(now int64, type_ harness.EventType, raw json.RawMessage, fn func(*harness.Event)) harness.Event {
+	ev := harness.Event{
 		T:              now,
 		Type:           type_,
-		Provider:       agent.ProviderKimi,
+		Provider:       harness.ProviderKimi,
 		ConversationID: p.req.ConversationID,
 		Raw:            raw,
 	}

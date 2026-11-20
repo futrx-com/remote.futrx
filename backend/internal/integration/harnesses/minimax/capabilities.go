@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
-func (p *Provider) Capabilities(ctx context.Context, _ agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *Provider) Capabilities(ctx context.Context, _ harness.CapabilityRequest) (harness.Capabilities, error) {
 	if p.apiKeys == nil || p.models == nil {
 		caps := fallbackCapabilities()
 		caps.Warning = "MiniMax models could not be read from the provider"
@@ -28,10 +28,10 @@ func (p *Provider) Capabilities(ctx context.Context, _ agent.CapabilityRequest) 
 		return caps, fmt.Errorf("minimax capability discovery: %w", err)
 	}
 
-	models := make([]agent.ModelCapability, 0, len(modelIDs))
+	models := make([]harness.ModelCapability, 0, len(modelIDs))
 	for index, id := range modelIDs {
 		reasoning, defaultReasoning := miniMaxReasoningCapabilities(id)
-		models = append(models, agent.ModelCapability{
+		models = append(models, harness.ModelCapability{
 			ID:                     id,
 			Label:                  id,
 			Description:            configconstants.MiniMaxLabel,
@@ -41,33 +41,33 @@ func (p *Provider) Capabilities(ctx context.Context, _ agent.CapabilityRequest) 
 		})
 	}
 
-	return agent.Capabilities{
-		Provider:    agent.ProviderMiniMax,
+	return harness.Capabilities{
+		Provider:    harness.ProviderMiniMax,
 		Label:       configconstants.MiniMaxLabel,
-		Source:      agent.CapabilitySourceLive,
-		Models:      agent.WithAutoModel(models, configconstants.MiniMaxAutoModelLabel),
-		Modes:       agent.ProviderModes(true),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceLive,
+		Models:      harness.WithAutoModel(models, configconstants.MiniMaxAutoModelLabel),
+		Modes:       harness.ProviderModes(true),
+		DefaultMode: harness.RunModeDefault,
 	}, nil
 }
 
-func fallbackCapabilities() agent.Capabilities {
-	return agent.Capabilities{
-		Provider:    agent.ProviderMiniMax,
+func fallbackCapabilities() harness.Capabilities {
+	return harness.Capabilities{
+		Provider:    harness.ProviderMiniMax,
 		Label:       configconstants.MiniMaxLabel,
-		Source:      agent.CapabilitySourceFallback,
-		Models:      agent.WithAutoModel(nil, configconstants.MiniMaxAutoModelLabel),
-		Modes:       agent.ProviderModes(true),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceFallback,
+		Models:      harness.WithAutoModel(nil, configconstants.MiniMaxAutoModelLabel),
+		Modes:       harness.ProviderModes(true),
+		DefaultMode: harness.RunModeDefault,
 	}
 }
 
-func miniMaxReasoningCapabilities(model string) ([]agent.CapabilityOption, agent.ReasoningEffort) {
+func miniMaxReasoningCapabilities(model string) ([]harness.CapabilityOption, harness.ReasoningEffort) {
 	if !miniMaxSupportsThinkingToggle(model) {
 		return nil, configconstants.MiniMaxReasoningAdaptive
 	}
-	return []agent.CapabilityOption{
-		agent.AutoOption(),
+	return []harness.CapabilityOption{
+		harness.AutoOption(),
 		{
 			Value:       configconstants.MiniMaxReasoningDisabled,
 			Label:       configconstants.MiniMaxReasoningDisabledLabel,
@@ -81,7 +81,7 @@ func miniMaxReasoningCapabilities(model string) ([]agent.CapabilityOption, agent
 	}, configconstants.MiniMaxReasoningAdaptive
 }
 
-func miniMaxReasoningEffort(model string, effort agent.ReasoningEffort) agent.ReasoningEffort {
+func miniMaxReasoningEffort(model string, effort harness.ReasoningEffort) harness.ReasoningEffort {
 	if miniMaxSupportsThinkingToggle(model) &&
 		strings.EqualFold(strings.TrimSpace(string(effort)), configconstants.MiniMaxReasoningDisabled) {
 		return configconstants.MiniMaxReasoningDisabled

@@ -211,7 +211,7 @@ execution.
 Provider-specific commands, protocols, parsers, credentials, capability
 probes, and profiles live in the concrete
 [`integration/harnesses`](backend/internal/integration/harnesses) adapters. Neutral
-provider contracts remain in [`agent`](backend/internal/agent), and shared project
+provider contracts remain in [`harness`](backend/internal/harness), and shared project
 start/provision/secret orchestration lives in
 [`service/agent/execution`](backend/internal/service/agent/execution), while
 [`integration/harnesses/runtime`](backend/internal/integration/harnesses/runtime)
@@ -224,7 +224,7 @@ The explicit composition root in
 `NewFactory` functions in deterministic order. There is no backend discovery or
 package `init` registration. `service.New` passes application-facing
 `module.BuildDependencies`—the narrow
-[`ProjectResolver`](backend/internal/agent/project.go), full container ports,
+[`ProjectResolver`](backend/internal/harness/project.go), full container ports,
 and global credential-sync timeout—to `Catalog.Build`. For every project-scoped
 module, `module.Factory` constructs `execution.Preparer` from a deep clone of
 the validated profile and the provider's `ProjectPreparationPolicy`. It then
@@ -442,7 +442,7 @@ Deployment is a single-box, root-driven, idempotent-converge model ([deep dive](
   creates a GitHub Release for a semantic-version tag after classifying it.
   Production changes are applied separately by an operator through Remote's
   updater or `infra/update.sh`.
-- **Version pinning:** core pins for agent CLIs, the host toolchain, and Playwright/Chrome-for-Testing live in one manifest ([`versions.env`](backend/internal/agent/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. Applications pin their own dependencies. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
+- **Version pinning:** core pins for agent CLIs, the host toolchain, and Playwright/Chrome-for-Testing live in one manifest ([`versions.env`](backend/internal/harness/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. Applications pin their own dependencies. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
 
 The security consequences of applying unsigned update refs as root and of
 unverified upstream fetches are covered in the

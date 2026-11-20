@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -87,7 +87,7 @@ func TestMiniMaxUsesExplicitPercentagesAndOnlyReportedWindows(t *testing.T) {
 		windows[0].ResetsAt != now.Unix()+60 {
 		t.Fatalf("windows = %#v, err = %v", windows, err)
 	}
-	if windows[0].Window != agent.QuotaWindowSession {
+	if windows[0].Window != harness.QuotaWindowSession {
 		t.Fatalf("window = %q", windows[0].Window)
 	}
 	if _, err := miniMaxPlanWindows([]json.RawMessage{json.RawMessage(`{"model_name":"general","current_interval_total_count":1500}`)}, now); err == nil {

@@ -1,4 +1,4 @@
-package agent
+package harness
 
 // LineParser converts one provider-native JSONL/stdout line into zero or more
 // normalized agent events.

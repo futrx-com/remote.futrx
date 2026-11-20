@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
@@ -175,7 +175,7 @@ func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 			Credential: []byte(`{"auth_mode":"chatgpt","token":"secret"}`),
 		}},
 	}
-	if err := store.SaveAgentAccounts(context.Background(), agent.ProviderCodex, want); err != nil {
+	if err := store.SaveAgentAccounts(context.Background(), harness.ProviderCodex, want); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, agentAccountsFile))
@@ -185,7 +185,7 @@ func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("%s mode = %o, want 600", agentAccountsFile, got)
 	}
-	got, err := store.AgentAccounts(context.Background(), agent.ProviderCodex)
+	got, err := store.AgentAccounts(context.Background(), harness.ProviderCodex)
 	if err != nil {
 		t.Fatal(err)
 	}

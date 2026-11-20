@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -13,11 +13,11 @@ import (
 // kimi-code reads its OAuth credentials, config, and sessions.
 const containerKimiHome = "/root/.kimi-code"
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req harness.RunRequest) []string {
 	// kimi-code takes the prompt as a positional argument (NOT stdin). Print
 	// mode (`-p`) supplies the provider's normal non-interactive behavior.
 	args := []string{"-p", req.Prompt, "--output-format", "stream-json"}
-	if req.Mode == agent.RunModePlan {
+	if req.Mode == harness.RunModePlan {
 		args = append(args, "--plan")
 	}
 	if model := normalizeKimiModel(req.Model); model != "" {
@@ -31,9 +31,9 @@ func (p *Provider) args(req agent.RunRequest) []string {
 
 func (p *Provider) buildCmd(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
 	if cwd == "" {
@@ -47,12 +47,12 @@ func (p *Provider) buildCmd(
 		cmd := exec.CommandContext(ctx, "kimi", args...)
 		cmd.Dir = cwd
 		cmd.Env = append(os.Environ(), "KIMI_CODE_HOME="+hostKimiHome())
-		cmd.Env = agent.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
+		cmd.Env = harness.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
 		return cmd, "", nil
 	}
 
-	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:      agent.ProjectID(req.ProjectID),
+	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
+		ProjectID:      harness.ProjectID(req.ProjectID),
 		ConversationID: req.ConversationID,
 		EnableBrowser:  req.EnableBrowser,
 	}, emit)

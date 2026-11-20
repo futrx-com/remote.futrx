@@ -133,7 +133,7 @@ inert: it will not be installed, discovered, authenticated, selected, or run.
 Incoming chat/settings IDs are normalized with `strings.TrimSpace` plus
 lowercase. A factory's descriptor ID is not rewritten: it must already match
 the grammar implemented by
-[`agent.ValidProviderID`](../../../backend/internal/agent/identity.go), beginning
+[`harness.ValidProviderID`](../../../backend/internal/harness/identity.go), beginning
 with `a-z` and followed only by `a-z`, `0-9`, or `-`. IDs are used in route
 segments and persisted maps, so changing an ID is a data migration, not a
 cosmetic rename.
@@ -382,7 +382,7 @@ cross several layers, but each piece still has one role:
 | Question | Correct extension point |
 | --- | --- |
 | Must generic consumers know a stable provider promise before execution? | Add the smallest precise field or strategy to `module.Descriptor.Features`. |
-| Does support vary with CLI version, account, project, or environment? | Add normalized data to `agent.Capabilities` and discover it in each provider capability adapter. |
+| Does support vary with CLI version, account, project, or environment? | Add normalized data to `harness.Capabilities` and discover it in each provider capability adapter. |
 | Does Remote own a workflow, authorization decision, state transition, or lifecycle? | Add an application service under `internal/service`; depend on a narrow provider-neutral port when native work is required. |
 | Is this native CLI syntax, protocol, input translation, or output translation? | Keep it in `internal/integration/harnesses/<provider>`. Output parsers translate native output only. |
 | Does a run require files, packages, credentials, durable directories, or container preparation? | Extend the provisioning profile or shared preparer policy instead of copying setup into provider command code. |
@@ -401,9 +401,9 @@ Use this sequence:
    types; for example, do not represent a one-turn action as a durable chat
    preference.
 2. **Choose the neutral contract.** Put shared request/result data in
-   `internal/agent` only when application policy and concrete adapters both need
+   `internal/harness` only when application policy and concrete adapters both need
    it. Introduce a role-specific interface rather than adding unrelated methods
-   to `agent.Provider`. An interface needs a real policy/detail boundary, test
+   to `harness.Provider`. An interface needs a real policy/detail boundary, test
    seam, or multiple implementations.
 3. **Declare only shared policy.** Use a boolean for a true yes/no promise, a
    strategy enum when supported providers deliver the behavior differently, or

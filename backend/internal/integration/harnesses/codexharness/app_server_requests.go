@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type appServerRequestHandler struct {
-	req     agent.RunRequest
-	emit    func(agent.Event)
+	req     harness.RunRequest
+	emit    func(harness.Event)
 	write   func(any) error
 	pending map[string]appServerPendingRequest
 }
@@ -25,8 +25,8 @@ type appServerPendingRequest struct {
 }
 
 func newAppServerRequestHandler(
-	req agent.RunRequest,
-	emit func(agent.Event),
+	req harness.RunRequest,
+	emit func(harness.Event),
 	write func(any) error,
 ) *appServerRequestHandler {
 	return &appServerRequestHandler{
@@ -51,19 +51,19 @@ func (handler *appServerRequestHandler) Handle(envelope appServerEnvelope) error
 
 	ids := nativeIDs(envelope.Params)
 	handler.pending[requestID] = appServerPendingRequest{envelope: envelope, createdAt: time.Now()}
-	handler.emit(agent.Event{
+	handler.emit(harness.Event{
 		T:              time.Now().UnixMilli(),
-		Type:           agent.EventInteractionRequest,
+		Type:           harness.EventInteractionRequest,
 		Provider:       handler.req.Provider,
 		ConversationID: handler.req.ConversationID,
 		ItemID:         ids.ItemID,
-		ItemKind:       agent.ItemToolCall,
+		ItemKind:       harness.ItemToolCall,
 		ToolName:       envelope.Method,
 		Input:          cloneRaw(envelope.Params),
 		InteractionID:  requestID,
 		Status:         interactionKind(envelope.Method),
-		Native: &agent.NativeEnvelope{
-			SchemaVersion: agent.NativeEnvelopeSchemaVersion,
+		Native: &harness.NativeEnvelope{
+			SchemaVersion: harness.NativeEnvelopeSchemaVersion,
 			Method:        envelope.Method,
 			ThreadID:      ids.ThreadID,
 			TurnID:        ids.TurnID,
@@ -75,7 +75,7 @@ func (handler *appServerRequestHandler) Handle(envelope appServerEnvelope) error
 	return nil
 }
 
-func (handler *appServerRequestHandler) Respond(response agent.InteractionResponse) error {
+func (handler *appServerRequestHandler) Respond(response harness.InteractionResponse) error {
 	pending, ok := handler.pending[response.ID]
 	if !ok {
 		return fmt.Errorf("%w: %s", errors.New("unknown app-server interaction"), response.ID)
@@ -156,7 +156,7 @@ func recordedAnswers(request appServerEnvelope, result json.RawMessage) json.Raw
 	return data
 }
 
-func (handler *appServerRequestHandler) Resolve(params json.RawMessage) *agent.Event {
+func (handler *appServerRequestHandler) Resolve(params json.RawMessage) *harness.Event {
 	var resolved appServerRequestResolvedParams
 	if err := json.Unmarshal(params, &resolved); err != nil {
 		return nil
@@ -197,19 +197,19 @@ func (handler *appServerRequestHandler) resolvedEvent(
 	request appServerEnvelope,
 	requestID string,
 	status string,
-) agent.Event {
+) harness.Event {
 	ids := nativeIDs(request.Params)
-	return agent.Event{
+	return harness.Event{
 		T:              time.Now().UnixMilli(),
-		Type:           agent.EventInteractionDone,
+		Type:           harness.EventInteractionDone,
 		Provider:       handler.req.Provider,
 		ConversationID: handler.req.ConversationID,
 		ItemID:         ids.ItemID,
 		ToolName:       request.Method,
 		InteractionID:  requestID,
 		Status:         status,
-		Native: &agent.NativeEnvelope{
-			SchemaVersion: agent.NativeEnvelopeSchemaVersion,
+		Native: &harness.NativeEnvelope{
+			SchemaVersion: harness.NativeEnvelopeSchemaVersion,
 			Method:        "serverRequest/resolved",
 			ThreadID:      ids.ThreadID,
 			TurnID:        ids.TurnID,

@@ -5,24 +5,24 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
-func respondToRequest(t *testing.T, method, params, result string) agent.Event {
+func respondToRequest(t *testing.T, method, params, result string) harness.Event {
 	t.Helper()
-	var events []agent.Event
+	var events []harness.Event
 	handler := newAppServerRequestHandler(
-		agent.RunRequest{ConversationID: "chat-1"},
-		func(event agent.Event) { events = append(events, event) },
+		harness.RunRequest{ConversationID: "chat-1"},
+		func(event harness.Event) { events = append(events, event) },
 		func(any) error { return nil },
 	)
 	if err := handler.Handle(appServerEnvelope{ID: []byte("7"), Method: method, Params: []byte(params)}); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Respond(agent.InteractionResponse{ID: "7", Result: []byte(result)}); err != nil {
+	if err := handler.Respond(harness.InteractionResponse{ID: "7", Result: []byte(result)}); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 2 || events[1].Type != agent.EventInteractionDone {
+	if len(events) != 2 || events[1].Type != harness.EventInteractionDone {
 		t.Fatalf("events = %#v", events)
 	}
 	return events[1]

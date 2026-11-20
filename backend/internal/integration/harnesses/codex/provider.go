@@ -5,15 +5,15 @@ import (
 	"log"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type Provider struct {
-	projectPreparer       agent.ProjectPreparer
+	projectPreparer       harness.ProjectPreparer
 	credentialCollector   provisioning.CredentialCollector
 	profile               provisioning.Profile
 	credentialSyncTimeout time.Duration
@@ -22,7 +22,7 @@ type Provider struct {
 }
 
 func newProvider(
-	projectPreparer agent.ProjectPreparer,
+	projectPreparer harness.ProjectPreparer,
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
@@ -37,15 +37,15 @@ func newProvider(
 	}
 }
 
-func (p *Provider) ID() agent.ProviderID {
-	return agent.ProviderCodex
+func (p *Provider) ID() harness.ProviderID {
+	return harness.ProviderCodex
 }
 
-func (p *Provider) Parser(req agent.RunRequest) agent.LineParser {
+func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 	return NewParser(req)
 }
 
-func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	var run *accountRun
 	var releaseAccount func()
 	if p.accounts != nil {
@@ -70,13 +70,13 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 		}
 	}
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	if run != nil {
 		emit = harnessruntime.EmitForAccount(emit, run.saved.AccountID)
 	}
 	if req.Provider == "" {
-		req.Provider = agent.ProviderCodex
+		req.Provider = harness.ProviderCodex
 	}
 
 	cmd, containerName, err := p.buildCmdForAccount(ctx, req, p.args(req), emit, run)

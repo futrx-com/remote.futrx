@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -48,7 +48,7 @@ done
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-func planUsageSummary(usages []agent.AccountPlanUsage) []string {
+func planUsageSummary(usages []harness.AccountPlanUsage) []string {
 	var out []string
 	for _, usage := range usages {
 		entry := usage.AccountID + ":"

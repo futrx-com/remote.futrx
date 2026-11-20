@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -79,7 +79,7 @@ func (c *modelCatalogClient) Models(ctx context.Context, key string) ([]string, 
 	models := make([]string, 0, len(catalog.Data))
 	seen := make(map[string]struct{}, len(catalog.Data))
 	for _, item := range catalog.Data {
-		id := agent.NormalizeModelID(item.ID)
+		id := harness.NormalizeModelID(item.ID)
 		if !isMiniMaxLanguageModel(id) {
 			continue
 		}
@@ -110,7 +110,7 @@ func resolveMiniMaxModel(models []string, requested string) (string, error) {
 		}
 		return models[0], nil
 	}
-	requested = agent.NormalizeModelID(requested)
+	requested = harness.NormalizeModelID(requested)
 	if requested == "" {
 		return "", ErrMiniMaxModelUnavailable
 	}

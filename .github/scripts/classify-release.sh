@@ -58,7 +58,7 @@ if [ -n "$previous" ] && [ "${previous%.*}" = "$current_train" ]; then
         infra/templates \
         infra/launcher \
 		infra/versions.env \
-		backend/internal/agent/provisioning \
+		backend/internal/harness/provisioning \
 		':(glob)backend/internal/integration/harnesses/*/assets/**' \
 		':(glob)backend/internal/integration/harnesses/*/factory*.go' \
 		':(glob)backend/internal/integration/harnesses/*/profile*.go' \

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 )
@@ -91,7 +91,7 @@ func (s *Store) SaveOAuthConfig(ctx context.Context, cfg serviceauth.OAuthConfig
 	return s.writeJSONLocked("oauth.json", cfg)
 }
 
-func (s *Store) AgentAPIKey(ctx context.Context, provider agent.ProviderID) (string, error) {
+func (s *Store) AgentAPIKey(ctx context.Context, provider harness.ProviderID) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
@@ -109,7 +109,7 @@ func (s *Store) AgentAPIKey(ctx context.Context, provider agent.ProviderID) (str
 	return keys[string(provider)], nil
 }
 
-func (s *Store) SaveAgentAPIKey(ctx context.Context, provider agent.ProviderID, key string) error {
+func (s *Store) SaveAgentAPIKey(ctx context.Context, provider harness.ProviderID, key string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -129,7 +129,7 @@ func (s *Store) SaveAgentAPIKey(ctx context.Context, provider agent.ProviderID, 
 	return s.writeJSONLocked(agentAPIKeysFile, keys)
 }
 
-func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider agent.ProviderID) error {
+func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider harness.ProviderID) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -163,7 +163,7 @@ func (s *Store) agentAPIKeysLocked() (map[string]string, error) {
 	return keys, nil
 }
 
-func (s *Store) AgentAccounts(ctx context.Context, provider agent.ProviderID) (agentauth.AccountSet, error) {
+func (s *Store) AgentAccounts(ctx context.Context, provider harness.ProviderID) (agentauth.AccountSet, error) {
 	select {
 	case <-ctx.Done():
 		return agentauth.AccountSet{}, ctx.Err()
@@ -181,7 +181,7 @@ func (s *Store) AgentAccounts(ctx context.Context, provider agent.ProviderID) (a
 	return document.Providers[string(provider)].Clone(), nil
 }
 
-func (s *Store) SaveAgentAccounts(ctx context.Context, provider agent.ProviderID, accounts agentauth.AccountSet) error {
+func (s *Store) SaveAgentAccounts(ctx context.Context, provider harness.ProviderID, accounts agentauth.AccountSet) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // accountValidationTimeout bounds provider validation of a credential that
@@ -67,7 +67,7 @@ type AccountLogin interface {
 
 // AccountConfig describes one provider's saved accounts.
 type AccountConfig struct {
-	Provider agent.ProviderID
+	Provider harness.ProviderID
 	// Label names the provider in user-facing errors, such as "Codex".
 	Label       string
 	Credentials AccountCredentials

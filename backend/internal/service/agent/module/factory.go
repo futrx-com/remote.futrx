@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentexecution "github.com/futrx-com/remote.futrx.com/internal/service/agent/execution"
 )
@@ -82,7 +82,7 @@ type APIKeyAuth struct {
 // policy and presentation. Installation and filesystem policy is deliberately
 // kept in the factory's separate provisioning profile.
 type Descriptor struct {
-	ID                  agent.ProviderID
+	ID                  harness.ProviderID
 	Label               string
 	Default             bool
 	ExecutionScopes     []ExecutionScope
@@ -97,7 +97,7 @@ type Descriptor struct {
 // BuildDependencies are application-owned collaborators supplied once when a
 // catalog builds its runtime. Factory owns their provider-specific projection.
 type BuildDependencies struct {
-	Projects              agent.ProjectResolver
+	Projects              harness.ProjectResolver
 	Containers            provisioning.ContainerDependencies
 	APIKeys               agentauth.APIKeyStore
 	Accounts              *agentauth.AccountVault
@@ -109,7 +109,7 @@ type BuildDependencies struct {
 // provider build callback. Project adapters receive a shared preparer rather
 // than the resolver and provisioning workflow separately.
 type Dependencies struct {
-	ProjectPreparer       agent.ProjectPreparer
+	ProjectPreparer       harness.ProjectPreparer
 	CredentialCollector   provisioning.CredentialCollector
 	RuntimeAssets         provisioning.RuntimeAssetProvisioner
 	APIKeys               agentauth.APIKeyStore
@@ -142,7 +142,7 @@ type ProjectPreparationPolicy struct {
 // Components are the runtime objects produced by a module. Auth is nil only
 // when the descriptor explicitly declares AuthNone.
 type Components struct {
-	Provider agent.Provider
+	Provider harness.Provider
 	Auth     *agentauth.Binding
 }
 
@@ -309,7 +309,7 @@ func supportsExecutionScope(descriptor Descriptor, scope ExecutionScope) bool {
 
 func validateDescriptor(descriptor Descriptor, profile *provisioning.Profile) error {
 	id := string(descriptor.ID)
-	if !agent.ValidProviderID(descriptor.ID) {
+	if !harness.ValidProviderID(descriptor.ID) {
 		return fmt.Errorf("%w: provider ID %q is invalid", ErrInvalidFactory, id)
 	}
 	if strings.TrimSpace(descriptor.Label) == "" {
@@ -373,7 +373,7 @@ func validateScopes(descriptor Descriptor, profile *provisioning.Profile) error 
 	return nil
 }
 
-func validateProfile(id agent.ProviderID, profile *provisioning.Profile, projectScoped bool) error {
+func validateProfile(id harness.ProviderID, profile *provisioning.Profile, projectScoped bool) error {
 	if profile.ID != string(id) {
 		return fmt.Errorf("%w: provider %q has profile %q", ErrInvalidFactory, id, profile.ID)
 	}

@@ -7,9 +7,9 @@ normalizes those answers, and exposes one catalog to every client.
 
 The main contracts are:
 
-- [`agent.CapabilityProvider`](../../../backend/internal/agent/model.go) and the
+- [`harness.CapabilityProvider`](../../../backend/internal/harness/model.go) and the
   normalized models in
-  [`capability_model.go`](../../../backend/internal/agent/capability_model.go);
+  [`capability_model.go`](../../../backend/internal/harness/capability_model.go);
 - the host/container command boundary in
   [`integration/harnesses/runtime/capability_command.go`](../../../backend/internal/integration/harnesses/runtime/capability_command.go);
 - aggregation, authorization, deadlines, and descriptor decoration in
@@ -61,7 +61,7 @@ A project capability request does **not** start a stopped or missing container.
 The adapters still run their `lxc exec` probes, which normally produce
 fallback/degraded results. Start the project first, then refresh.
 
-Capability discovery deliberately bypasses `agent.ProjectPreparer` and
+Capability discovery deliberately bypasses `harness.ProjectPreparer` and
 `runtime.BuildContainerCommand`: it does not reconcile lifecycle, provision
 CLIs or credentials, publish workspace assets, or load project secrets.
 Provider probes use

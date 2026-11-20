@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var (
@@ -13,26 +13,26 @@ var (
 	effortCommandPattern = regexp.MustCompile(`(?is)/effort\s+<([^>]+)>`)
 )
 
-func parseHelpEfforts(help string) []agent.CapabilityOption {
+func parseHelpEfforts(help string) []harness.CapabilityOption {
 	efforts := parseHelpChoiceValues(effortPattern, help)
 	return reasoningOptions(efforts)
 }
 
-func parseEffortCommandOptions(output string) []agent.CapabilityOption {
+func parseEffortCommandOptions(output string) []harness.CapabilityOption {
 	efforts := parseHelpChoiceValues(effortCommandPattern, output)
 	return reasoningOptions(efforts)
 }
 
-func reasoningOptions(efforts []string) []agent.CapabilityOption {
+func reasoningOptions(efforts []string) []harness.CapabilityOption {
 	if len(efforts) == 0 {
 		return nil
 	}
-	reasoning := []agent.CapabilityOption{agent.AutoOption()}
+	reasoning := []harness.CapabilityOption{harness.AutoOption()}
 	for _, effort := range efforts {
 		if effort == "auto" {
 			continue
 		}
-		reasoning = append(reasoning, agent.CapabilityOption{
+		reasoning = append(reasoning, harness.CapabilityOption{
 			Value: effort,
 			Label: optionLabel(effort),
 		})
@@ -55,7 +55,7 @@ func uniqueHelpValues(values []string) []string {
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(values))
 	for _, value := range values {
-		value = agent.NormalizeCapabilityValue(strings.Trim(value, "'\""))
+		value = harness.NormalizeCapabilityValue(strings.Trim(value, "'\""))
 		if value == "" || seen[value] {
 			continue
 		}

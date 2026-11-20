@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 )
 
@@ -17,14 +17,14 @@ func (f apiKeyAccountAuthorizer) Require(ctx context.Context, check rbac.Check) 
 
 func newAuthorizedAPIKeyService(t *testing.T, authorizer AccountAuthorizer, named bool) *APIKeyService {
 	t.Helper()
-	store := &apiKeyTestStore{keys: map[agent.ProviderID]string{agent.ProviderMiniMax: "legacy-key"}}
-	service, err := NewAPIKeyService(context.Background(), agent.ProviderMiniMax, store, nil, authorizer)
+	store := &apiKeyTestStore{keys: map[harness.ProviderID]string{harness.ProviderMiniMax: "legacy-key"}}
+	service, err := NewAPIKeyService(context.Background(), harness.ProviderMiniMax, store, nil, authorizer)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if named {
-		accounts := &fakeAccountStore{sets: map[agent.ProviderID]AccountSet{
-			agent.ProviderMiniMax: {
+		accounts := &fakeAccountStore{sets: map[harness.ProviderID]AccountSet{
+			harness.ProviderMiniMax: {
 				ActiveAccountID: "work",
 				Accounts: []AccountRecord{
 					{ID: "work", Label: "Work", Credential: []byte(`"work-key"`)},
@@ -101,8 +101,8 @@ func TestAPIKeyRunAccessKeepsAcquiredDefaultScopeAfterAccountMigration(t *testin
 	}
 	// A named default is configured during run setup. Its grant cannot
 	// authorize the previously acquired key's now-denied default scope.
-	accounts := &fakeAccountStore{sets: map[agent.ProviderID]AccountSet{
-		agent.ProviderMiniMax: {
+	accounts := &fakeAccountStore{sets: map[harness.ProviderID]AccountSet{
+		harness.ProviderMiniMax: {
 			ActiveAccountID: "work",
 			Accounts:        []AccountRecord{{ID: "work", Label: "Work", Credential: []byte(`"work-key"`)}},
 		},

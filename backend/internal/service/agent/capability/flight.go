@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // catalogFlights coalesces simultaneous discovery requests for the same
@@ -19,7 +19,7 @@ type catalogFlights struct {
 
 type catalogFlight struct {
 	done   chan struct{}
-	result []agent.Capabilities
+	result []harness.Capabilities
 	err    error
 }
 
@@ -30,8 +30,8 @@ func newCatalogFlights() *catalogFlights {
 func (f *catalogFlights) do(
 	ctx context.Context,
 	key string,
-	discover func(context.Context) ([]agent.Capabilities, error),
-) ([]agent.Capabilities, error) {
+	discover func(context.Context) ([]harness.Capabilities, error),
+) ([]harness.Capabilities, error) {
 	f.mu.Lock()
 	if running, ok := f.entries[key]; ok {
 		f.mu.Unlock()
@@ -60,8 +60,8 @@ func (f *catalogFlights) do(
 	return cloneCapabilities(running.result), running.err
 }
 
-func cloneCapabilities(input []agent.Capabilities) []agent.Capabilities {
-	output := make([]agent.Capabilities, len(input))
+func cloneCapabilities(input []harness.Capabilities) []harness.Capabilities {
+	output := make([]harness.Capabilities, len(input))
 	for index, caps := range input {
 		output[index] = caps.Clone()
 	}

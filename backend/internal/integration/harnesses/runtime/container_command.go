@@ -4,7 +4,7 @@ import (
 	"context"
 	"os/exec"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // ContainerCommandSpec is the provider-owned portion of one lxc exec command.
@@ -14,7 +14,7 @@ type ContainerCommandSpec struct {
 	ContainerName      string
 	WorkingDirectory   string
 	PrefixEnvironment  []string
-	Secrets            []agent.ProjectSecret
+	Secrets            []harness.ProjectSecret
 	ExcludedSecrets    []string
 	SuffixEnvironment  []string
 	RuntimeEnvironment map[string]string
@@ -28,7 +28,7 @@ type ContainerCommandSpec struct {
 func BuildContainerCommand(ctx context.Context, spec ContainerCommandSpec) *exec.Cmd {
 	workingDirectory := spec.WorkingDirectory
 	if workingDirectory == "" {
-		workingDirectory = agent.ProjectWorkspacePath
+		workingDirectory = harness.ProjectWorkspacePath
 	}
 	args := []string{"exec", "--cwd", workingDirectory}
 	for _, entry := range spec.PrefixEnvironment {
@@ -50,7 +50,7 @@ func BuildContainerCommand(ctx context.Context, spec ContainerCommandSpec) *exec
 	for _, entry := range spec.SuffixEnvironment {
 		args = append(args, "--env", entry)
 	}
-	for _, entry := range agent.RuntimeEnvironment(spec.RuntimeEnvironment) {
+	for _, entry := range harness.RuntimeEnvironment(spec.RuntimeEnvironment) {
 		args = append(args, "--env", entry)
 	}
 	args = append(args, spec.ContainerName, "--", spec.Binary)

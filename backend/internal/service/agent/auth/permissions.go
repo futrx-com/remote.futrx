@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 )
 
@@ -21,7 +21,7 @@ type AccountAuthorizer interface {
 	Require(context.Context, rbac.Check) error
 }
 
-func RequireAccountUse(ctx context.Context, authorizer AccountAuthorizer, provider agent.ProviderID, accountID string) error {
+func RequireAccountUse(ctx context.Context, authorizer AccountAuthorizer, provider harness.ProviderID, accountID string) error {
 	if authorizer == nil {
 		return rbac.ErrDenied
 	}

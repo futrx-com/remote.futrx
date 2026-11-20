@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
@@ -32,11 +32,11 @@ func actor(email string) context.Context {
 	return rbac.ContextWithActor(context.Background(), rbac.UserActor(email))
 }
 func TestAccountPolicyUsesExistingRolesScopesAndPersistence(t *testing.T) {
-	for _, provider := range []agent.ProviderID{agent.ProviderClaude, agent.ProviderCodex, agent.ProviderMiniMax} {
+	for _, provider := range []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderMiniMax} {
 		t.Run(string(provider), func(t *testing.T) { testSavedAccountPolicy(t, provider) })
 	}
 }
-func testSavedAccountPolicy(t *testing.T, provider agent.ProviderID) {
+func testSavedAccountPolicy(t *testing.T, provider harness.ProviderID) {
 	dir := t.TempDir()
 	repo, err := filepermissions.New(dir)
 	if err != nil {
@@ -82,9 +82,9 @@ func testSavedAccountPolicy(t *testing.T, provider agent.ProviderID) {
 		t.Fatalf("visible metadata: %s", encoded)
 	}
 	// Sharing an account ID or harness must never share the grant.
-	other := agent.ProviderCodex
+	other := harness.ProviderCodex
 	if provider == other {
-		other = agent.ProviderMiniMax
+		other = harness.ProviderMiniMax
 	}
 	if err := agentauth.RequireAccountUse(member, policy, other, "team"); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("provider scope isolation: %v", err)
@@ -126,8 +126,8 @@ func testSavedAccountPolicy(t *testing.T, provider agent.ProviderID) {
 	}
 }
 func TestAccountAccessFailsClosedWithoutPolicy(t *testing.T) {
-	access := New(nil, []agentauth.Binding{agentauth.NewExternalBinding(agent.ProviderClaude)})
-	if _, err := access.Resolve(actor("member@example.com"), agent.ProviderClaude, ""); !errors.Is(err, rbac.ErrDenied) {
+	access := New(nil, []agentauth.Binding{agentauth.NewExternalBinding(harness.ProviderClaude)})
+	if _, err := access.Resolve(actor("member@example.com"), harness.ProviderClaude, ""); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("missing policy: %v", err)
 	}
 	for _, id := range []string{"claude:", "claude:../bad", "claude:a:b", "CLAUDE:one"} {

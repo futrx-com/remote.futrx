@@ -8,30 +8,30 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req harness.RunRequest) []string {
 	return codexharness.AppServerArgs(nil, req.EnableBrowser)
 }
 
 func (p *Provider) buildCmd(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) (*exec.Cmd, string, error) {
 	return p.buildCmdForAccount(ctx, req, args, emit, nil)
 }
 
 func (p *Provider) buildCmdForAccount(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 	run *accountRun,
 ) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
@@ -56,7 +56,7 @@ func (p *Provider) buildCmdForAccount(
 		// runAppServer to send turn/interrupt and receive the terminal status.
 		cmd := exec.CommandContext(context.WithoutCancel(ctx), "codex", args...)
 		cmd.Dir = cwd
-		cmd.Env = agent.WithRuntimeEnvironment(env, req.RuntimeEnv)
+		cmd.Env = harness.WithRuntimeEnvironment(env, req.RuntimeEnv)
 		return cmd, "", nil
 	}
 
@@ -65,8 +65,8 @@ func (p *Provider) buildCmdForAccount(
 		value := run.credentials.Clone()
 		credentials = &value
 	}
-	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:      agent.ProjectID(req.ProjectID),
+	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
+		ProjectID:      harness.ProjectID(req.ProjectID),
 		ConversationID: req.ConversationID,
 		EnableBrowser:  req.EnableBrowser,
 		Credentials:    credentials,

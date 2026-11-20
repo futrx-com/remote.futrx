@@ -1,8 +1,8 @@
 package claude
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -16,7 +16,7 @@ func NewFactory() (agentmodule.Factory, error) {
 	profile.Credentials.Files[0].HostPath = claudeGlobalConfigPath()
 	profile.Credentials.Files[1].HostPath = claudeCredentialPath()
 	return agentmodule.NewFactory(agentmodule.Descriptor{
-		ID:                  agent.ProviderClaude,
+		ID:                  harness.ProviderClaude,
 		Label:               "Claude",
 		ExecutionScopes:     []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
 		Auth:                agentmodule.AuthManagedCode,
@@ -37,7 +37,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		if err != nil {
 			return agentmodule.Components{}, err
 		}
-		binding := agentauth.NewCodeBinding(agent.ProviderClaude, auth.code)
+		binding := agentauth.NewCodeBinding(harness.ProviderClaude, auth.code)
 		// A nil *AccountService in the interface would read as available.
 		if auth.accounts != nil {
 			binding = binding.WithAccounts(auth.accounts)
@@ -59,6 +59,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ agent.Provider             = (*Provider)(nil)
+	_ harness.Provider           = (*Provider)(nil)
 	_ agentmodule.FactoryBuilder = NewFactory
 )

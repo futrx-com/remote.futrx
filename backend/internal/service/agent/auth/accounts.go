@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var (
@@ -53,8 +53,8 @@ type AccountSet struct {
 // write through it; provider integrations interpret and validate Credential
 // through their provider-specific adapters.
 type AccountStore interface {
-	AgentAccounts(context.Context, agent.ProviderID) (AccountSet, error)
-	SaveAgentAccounts(context.Context, agent.ProviderID, AccountSet) error
+	AgentAccounts(context.Context, harness.ProviderID) (AccountSet, error)
+	SaveAgentAccounts(context.Context, harness.ProviderID, AccountSet) error
 }
 
 // ValidatedAccount is what a provider learned while validating a credential.

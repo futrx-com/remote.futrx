@@ -3,7 +3,7 @@ package minimax
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -14,7 +14,7 @@ func TestFactoryDeclaresProjectCodexHarnessFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 	descriptor := factory.Descriptor()
-	if descriptor.ID != agent.ProviderMiniMax || descriptor.Label != "MiniMax" || descriptor.Default {
+	if descriptor.ID != harness.ProviderMiniMax || descriptor.Label != "MiniMax" || descriptor.Default {
 		t.Fatalf("descriptor = %#v", descriptor)
 	}
 	if len(descriptor.ExecutionScopes) != 1 || descriptor.ExecutionScopes[0] != agentmodule.ScopeProject {
@@ -42,11 +42,11 @@ func TestFactoryDeclaresProjectCodexHarnessFeatures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := runtime.Lookup(agent.ProviderMiniMax)
-	if provider == nil || provider.ID() != agent.ProviderMiniMax {
+	provider := runtime.Lookup(harness.ProviderMiniMax)
+	if provider == nil || provider.ID() != harness.ProviderMiniMax {
 		t.Fatalf("provider = %#v", provider)
 	}
-	binding, ok := runtime.AuthBinding(agent.ProviderMiniMax)
+	binding, ok := runtime.AuthBinding(harness.ProviderMiniMax)
 	if !ok || binding.Flow() != agentauth.FlowAPIKey {
 		t.Fatalf("binding = (%#v, %t)", binding, ok)
 	}

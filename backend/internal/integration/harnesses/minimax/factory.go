@@ -3,9 +3,9 @@ package minimax
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -15,7 +15,7 @@ import (
 func NewFactory() (agentmodule.Factory, error) {
 	profile := Profile()
 	return agentmodule.NewFactory(agentmodule.Descriptor{
-		ID:               agent.ProviderMiniMax,
+		ID:               harness.ProviderMiniMax,
 		Label:            configconstants.MiniMaxLabel,
 		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeProject},
 		Auth:             agentmodule.AuthManagedAPIKey,
@@ -37,7 +37,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		tokenPlans := newAPIKeyValidator()
 		apiKeys, err := agentauth.NewAPIKeyService(
 			context.Background(),
-			agent.ProviderMiniMax,
+			harness.ProviderMiniMax,
 			deps.APIKeys,
 			tokenPlans,
 			deps.AccountAuthorizer,
@@ -48,7 +48,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		if err := apiKeys.EnableAccounts(context.Background(), deps.Accounts, configconstants.MiniMaxLabel); err != nil {
 			return agentmodule.Components{}, err
 		}
-		binding := agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys)
+		binding := agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys)
 		return agentmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
@@ -68,6 +68,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ agent.Provider             = (*Provider)(nil)
+	_ harness.Provider           = (*Provider)(nil)
 	_ agentmodule.FactoryBuilder = NewFactory
 )

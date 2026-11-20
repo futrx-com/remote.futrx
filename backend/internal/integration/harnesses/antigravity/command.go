@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -15,13 +15,13 @@ import (
 // well before this backstop.
 const printTimeout = "240m"
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req harness.RunRequest) []string {
 	// agy takes the prompt via --print (positional value). Default mode disables
 	// interactive permission prompts for headless execution. Plan uses agy's
 	// native mode and deliberately omits that bypass.
 	args := []string{"--print", req.Prompt, "--print-timeout", printTimeout}
-	if req.Mode == agent.RunModePlan {
-		args = append(args, "--mode", string(agent.RunModePlan))
+	if req.Mode == harness.RunModePlan {
+		args = append(args, "--mode", string(harness.RunModePlan))
 	} else {
 		args = append(args, "--dangerously-skip-permissions")
 	}
@@ -39,7 +39,7 @@ func (p *Provider) args(req agent.RunRequest) []string {
 
 // effortFlag preserves the legacy mappings for Remote's older shared effort
 // ladder, then forwards any other syntactically safe value.
-func effortFlag(effort agent.ReasoningEffort) string {
+func effortFlag(effort harness.ReasoningEffort) string {
 	switch strings.ToLower(strings.TrimSpace(string(effort))) {
 	case "none", "minimal", "low":
 		return "low"
@@ -48,15 +48,15 @@ func effortFlag(effort agent.ReasoningEffort) string {
 	case "high", "xhigh":
 		return "high"
 	default:
-		return agent.NormalizeCapabilityValue(string(effort))
+		return harness.NormalizeCapabilityValue(string(effort))
 	}
 }
 
 func (p *Provider) buildCmd(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
 	if cwd == "" {
@@ -69,12 +69,12 @@ func (p *Provider) buildCmd(
 	if req.ProjectID == "" || p.projectPreparer == nil {
 		cmd := exec.CommandContext(ctx, "agy", args...)
 		cmd.Dir = cwd
-		cmd.Env = agent.WithRuntimeEnvironment(os.Environ(), req.RuntimeEnv)
+		cmd.Env = harness.WithRuntimeEnvironment(os.Environ(), req.RuntimeEnv)
 		return cmd, "", nil
 	}
 
-	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:      agent.ProjectID(req.ProjectID),
+	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
+		ProjectID:      harness.ProjectID(req.ProjectID),
 		ConversationID: req.ConversationID,
 		EnableBrowser:  req.EnableBrowser,
 	}, emit)

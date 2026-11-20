@@ -3,7 +3,7 @@ package codexharness
 import (
 	"encoding/json"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type appServerEnvelope struct {
@@ -62,7 +62,7 @@ type appServerTurnParams struct {
 }
 
 type appServerCollaborationMode struct {
-	Mode     agent.RunMode                  `json:"mode"`
+	Mode     harness.RunMode                `json:"mode"`
 	Settings appServerCollaborationSettings `json:"settings"`
 }
 

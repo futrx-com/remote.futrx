@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
@@ -73,7 +73,7 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 	if h.accountAccess != nil {
 		visible := make([]agentquota.AccountView, 0, len(accounts))
 		for _, a := range accounts {
-			allowed, err := h.accountAccess.CanViewAccount(r.Context(), agent.ProviderID(a.Provider), a.AccountID)
+			allowed, err := h.accountAccess.CanViewAccount(r.Context(), harness.ProviderID(a.Provider), a.AccountID)
 			if err != nil {
 				sendPermissionsError(w, err)
 				return

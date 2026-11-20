@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
@@ -15,34 +15,34 @@ const signInHint = "antigravity is not signed in — open this chat's Terminal a
 
 type Provider struct {
 	accountAuthorizer agentauth.AccountAuthorizer
-	projectPreparer   agent.ProjectPreparer
+	projectPreparer   harness.ProjectPreparer
 	binary            string
 }
 
-func newProvider(projectPreparer agent.ProjectPreparer, binary string, accountAuthorizer agentauth.AccountAuthorizer) *Provider {
+func newProvider(projectPreparer harness.ProjectPreparer, binary string, accountAuthorizer agentauth.AccountAuthorizer) *Provider {
 	return &Provider{projectPreparer: projectPreparer, binary: binary, accountAuthorizer: accountAuthorizer}
 }
 
-func (p *Provider) ID() agent.ProviderID {
-	return agent.ProviderAntigravity
+func (p *Provider) ID() harness.ProviderID {
+	return harness.ProviderAntigravity
 }
 
-func (p *Provider) Parser(req agent.RunRequest) agent.LineParser {
+func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 	return NewParser(req)
 }
 
-func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderAntigravity, ""); err != nil {
+func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
 		return err
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
 		return agentauth.ErrAccountNotFound
 	}
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	if req.Provider == "" {
-		req.Provider = agent.ProviderAntigravity
+		req.Provider = harness.ProviderAntigravity
 	}
 	// agy has no fork primitive; a forked chat simply starts fresh.
 	if req.Fork {
@@ -54,7 +54,7 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 		return err
 	}
 
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderAntigravity, ""); err != nil {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
 		return err
 	}
 	store := conversationStore{containerName: containerName}
@@ -75,22 +75,22 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 		if isSignInError(output) {
 			message = signInHint
 		}
-		emit(agent.Event{
+		emit(harness.Event{
 			T:              time.Now().UnixMilli(),
-			Type:           agent.EventRunFailed,
-			Provider:       agent.ProviderAntigravity,
+			Type:           harness.EventRunFailed,
+			Provider:       harness.ProviderAntigravity,
 			ConversationID: req.ConversationID,
 			Message:        message,
 		})
-		return agent.ErrRunFailed
+		return harness.ErrRunFailed
 	}
 
 	if req.ResumeID == "" {
 		if id := store.newConversation(ctx, before); id != "" {
-			emit(agent.Event{
+			emit(harness.Event{
 				T:              time.Now().UnixMilli(),
-				Type:           agent.EventSessionUpdated,
-				Provider:       agent.ProviderAntigravity,
+				Type:           harness.EventSessionUpdated,
+				Provider:       harness.ProviderAntigravity,
 				ConversationID: req.ConversationID,
 				SessionID:      id,
 			})
@@ -98,12 +98,12 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	}
 	// agy print mode reports no tokens and no price, so the completion event
 	// carries the model alone; cost is recorded as unknown downstream.
-	emit(agent.Event{
+	emit(harness.Event{
 		T:              time.Now().UnixMilli(),
-		Type:           agent.EventRunCompleted,
-		Provider:       agent.ProviderAntigravity,
+		Type:           harness.EventRunCompleted,
+		Provider:       harness.ProviderAntigravity,
 		ConversationID: req.ConversationID,
-		Usage:          agent.Usage{Model: req.Model}.Raw(),
+		Usage:          harness.Usage{Model: req.Model}.Raw(),
 	})
 	return nil
 }

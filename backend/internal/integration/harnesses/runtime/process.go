@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type ProcessOptions struct {
 	Name               string
 	LogID              string
-	Provider           agent.ProviderID
+	Provider           harness.ProviderID
 	ConversationID     string
 	StdoutMaxLineBytes int
 	StderrMaxLineBytes int
@@ -41,12 +41,12 @@ func ErrorStderr(err error) string {
 func RunProcess(
 	ctx context.Context,
 	cmd *exec.Cmd,
-	parser agent.LineParser,
-	emit func(agent.Event),
+	parser harness.LineParser,
+	emit func(harness.Event),
 	opts ProcessOptions,
 ) error {
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	if parser == nil {
 		return errors.New("agent parser is required")
@@ -102,16 +102,16 @@ func RunProcess(
 			continue
 		}
 		for _, ev := range events {
-			if ev.Type == agent.EventRunFailed {
+			if ev.Type == harness.EventRunFailed {
 				runFailed = true
 			}
 			emit(ev)
 		}
 	}
 	if err := sc.Err(); err != nil && ctx.Err() == nil {
-		emit(agent.Event{
+		emit(harness.Event{
 			T:              time.Now().UnixMilli(),
-			Type:           agent.EventError,
+			Type:           harness.EventError,
 			Provider:       opts.Provider,
 			ConversationID: opts.ConversationID,
 			Message:        "stdout: " + err.Error(),
@@ -126,7 +126,7 @@ func RunProcess(
 		return nil
 	}
 	if err != nil && runFailed {
-		return &ProcessError{Err: agent.ErrRunFailed, Stderr: stderrText}
+		return &ProcessError{Err: harness.ErrRunFailed, Stderr: stderrText}
 	}
 	if err != nil {
 		return &ProcessError{Err: err, Stderr: stderrText}

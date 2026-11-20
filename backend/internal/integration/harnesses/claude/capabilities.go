@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -18,11 +18,11 @@ const ultracodeEffort = "ultracode"
 var claudeModelVersionPattern = regexp.MustCompile(`(?i)\b(fable|opus|sonnet|haiku)\s+(\d+)(?:\.(\d+))?`)
 
 type effortDiscoveryResult struct {
-	options []agent.CapabilityOption
+	options []harness.CapabilityOption
 	err     error
 }
 
-func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	// Effort and model commands are independent local CLI probes. Run them in
 	// parallel so detecting Ultracode does not add another startup delay to the
 	// first uncached catalog request.
@@ -53,7 +53,7 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 	return caps, nil
 }
 
-func queryHelpEffortOptions(ctx context.Context, req agent.CapabilityRequest) []agent.CapabilityOption {
+func queryHelpEffortOptions(ctx context.Context, req harness.CapabilityRequest) []harness.CapabilityOption {
 	helpCmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
@@ -65,16 +65,16 @@ func queryHelpEffortOptions(ctx context.Context, req agent.CapabilityRequest) []
 	return parseHelpEfforts(string(helpOutput))
 }
 
-func fallbackCapabilities() agent.Capabilities {
+func fallbackCapabilities() harness.Capabilities {
 	return buildCapabilities(fallbackModelCatalog(), fallbackReasoningOptions())
 }
 
-func buildCapabilities(catalog claudeModelCatalog, reasoning []agent.CapabilityOption) agent.Capabilities {
+func buildCapabilities(catalog claudeModelCatalog, reasoning []harness.CapabilityOption) harness.Capabilities {
 	if len(reasoning) == 0 {
 		reasoning = fallbackReasoningOptions()
 	}
-	models := make([]agent.ModelCapability, 0, len(catalog.Selections)+1)
-	models = append(models, agent.ModelCapability{
+	models := make([]harness.ModelCapability, 0, len(catalog.Selections)+1)
+	models = append(models, harness.ModelCapability{
 		ID:               "",
 		Label:            autoModelLabel(catalog.DefaultLabel),
 		Description:      "Use the model selected by Claude Code for this account",
@@ -82,7 +82,7 @@ func buildCapabilities(catalog claudeModelCatalog, reasoning []agent.CapabilityO
 		ServiceTiers:     fastModeOptions(),
 	})
 	for _, selection := range catalog.Selections {
-		model := agent.ModelCapability{
+		model := harness.ModelCapability{
 			ID:               selection.ID,
 			Label:            selection.Label,
 			Description:      selection.Description,
@@ -93,13 +93,13 @@ func buildCapabilities(catalog claudeModelCatalog, reasoning []agent.CapabilityO
 		}
 		models = append(models, model)
 	}
-	return agent.Capabilities{
-		Provider:    agent.ProviderClaude,
+	return harness.Capabilities{
+		Provider:    harness.ProviderClaude,
 		Label:       "Claude",
 		Source:      catalog.Source,
 		Models:      models,
-		Modes:       agent.ProviderModes(true),
-		DefaultMode: agent.RunModeDefault,
+		Modes:       harness.ProviderModes(true),
+		DefaultMode: harness.RunModeDefault,
 	}
 }
 
@@ -108,15 +108,15 @@ func buildCapabilities(catalog claudeModelCatalog, reasoning []agent.CapabilityO
 // setting layered on xhigh rather than an API effort level, so it is offered
 // only when the resolved model supports xhigh.
 func reasoningOptionsForModel(
-	options []agent.CapabilityOption,
+	options []harness.CapabilityOption,
 	modelLabel string,
-) []agent.CapabilityOption {
+) []harness.CapabilityOption {
 	supportsEffort, supportsXHigh, knownModel := claudeModelEffortSupport(modelLabel)
 	if knownModel && !supportsEffort {
-		return []agent.CapabilityOption{}
+		return []harness.CapabilityOption{}
 	}
 
-	result := make([]agent.CapabilityOption, 0, len(options)+1)
+	result := make([]harness.CapabilityOption, 0, len(options)+1)
 	hasXHigh := false
 	hasUltracode := false
 	for _, option := range options {
@@ -135,7 +135,7 @@ func reasoningOptionsForModel(
 		result = append(result, option)
 	}
 	if supportsXHigh && hasXHigh && hasUltracode {
-		result = append(result, agent.CapabilityOption{
+		result = append(result, harness.CapabilityOption{
 			Value:       ultracodeEffort,
 			Label:       "Ultracode",
 			Description: "XHigh effort with automatic dynamic-workflow orchestration (session only)",
@@ -200,17 +200,17 @@ func modelVersionEffortSupport(family string, major, minor int) (bool, bool) {
 	}
 }
 
-func fallbackReasoningOptions() []agent.CapabilityOption {
-	reasoning := []agent.CapabilityOption{agent.AutoOption()}
+func fallbackReasoningOptions() []harness.CapabilityOption {
+	reasoning := []harness.CapabilityOption{harness.AutoOption()}
 	for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
-		reasoning = append(reasoning, agent.CapabilityOption{Value: effort, Label: optionLabel(effort)})
+		reasoning = append(reasoning, harness.CapabilityOption{Value: effort, Label: optionLabel(effort)})
 	}
 	return reasoning
 }
 
-func fastModeOptions() []agent.CapabilityOption {
-	return []agent.CapabilityOption{
-		agent.AutoOption(),
+func fastModeOptions() []harness.CapabilityOption {
+	return []harness.CapabilityOption{
+		harness.AutoOption(),
 		{
 			Value:       fastServiceTier,
 			Label:       "Fast",

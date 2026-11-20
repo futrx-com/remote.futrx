@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -30,11 +30,11 @@ const (
 
 type appServerRun struct {
 	ctx           context.Context
-	req           agent.RunRequest
+	req           harness.RunRequest
 	providerLabel string
 	process       *appServerProcess
 
-	emit               func(agent.Event)
+	emit               func(harness.Event)
 	eventParser        *appServerEventParser
 	subagents          *appServerSubagentTracker
 	requestHandler     *appServerRequestHandler
@@ -46,8 +46,8 @@ type appServerRun struct {
 	interrupted        bool
 	runFailed          bool
 	protocolErr        error
-	terminalEvent      *agent.Event
-	openCollaborations map[string]agent.Event
+	terminalEvent      *harness.Event
+	openCollaborations map[string]harness.Event
 }
 
 // Run owns one Codex app-server process for one Remote turn. Provider adapters
@@ -56,12 +56,12 @@ type appServerRun struct {
 func Run(
 	ctx context.Context,
 	cmd *exec.Cmd,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	providerLabel string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) error {
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	return newAppServerRun(ctx, cmd, req, providerLabel, emit).execute()
 }
@@ -69,9 +69,9 @@ func Run(
 func newAppServerRun(
 	ctx context.Context,
 	cmd *exec.Cmd,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	providerLabel string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) *appServerRun {
 	return &appServerRun{
 		ctx:                ctx,
@@ -79,7 +79,7 @@ func newAppServerRun(
 		providerLabel:      providerLabel,
 		emit:               emit,
 		process:            newAppServerProcess(cmd, req.Provider, providerLabel, req.ConversationID),
-		openCollaborations: make(map[string]agent.Event),
+		openCollaborations: make(map[string]harness.Event),
 	}
 }
 
@@ -295,29 +295,29 @@ func (run *appServerRun) handleNotification(envelope appServerEnvelope) {
 	}
 }
 
-func isTerminalEvent(eventType agent.EventType) bool {
+func isTerminalEvent(eventType harness.EventType) bool {
 	switch eventType {
-	case agent.EventRunCompleted, agent.EventRunFailed, agent.EventRunInterrupted:
+	case harness.EventRunCompleted, harness.EventRunFailed, harness.EventRunInterrupted:
 		return true
 	default:
 		return false
 	}
 }
 
-func (run *appServerRun) beginTerminal(event agent.Event) {
+func (run *appServerRun) beginTerminal(event harness.Event) {
 	if run.terminal {
 		return
 	}
 	run.terminal = true
-	run.runFailed = event.Type == agent.EventRunFailed
-	run.interrupted = event.Type == agent.EventRunInterrupted
+	run.runFailed = event.Type == harness.EventRunFailed
+	run.interrupted = event.Type == harness.EventRunInterrupted
 	run.terminalEvent = &event
 	run.requestHandler.ResolveAll("turn_ended")
 	run.process.closeInput()
 }
 
-func (run *appServerRun) trackCollaboration(event agent.Event) {
-	if event.Type != agent.EventCollaboration || event.ItemID == "" {
+func (run *appServerRun) trackCollaboration(event harness.Event) {
+	if event.Type != harness.EventCollaboration || event.ItemID == "" {
 		return
 	}
 	if event.Native != nil && event.Native.Method == "item/completed" {
@@ -404,7 +404,7 @@ func (run *appServerRun) maybeInterrupt() error {
 func (run *appServerRun) responseError(responseID appServerRequestID, message string) error {
 	message = strings.TrimSpace(message)
 	if responseID == appServerThreadRequestID && run.req.ResumeID != "" && isMissingThread(message) {
-		return fmt.Errorf("%w: %s", agent.ErrSessionNotFound, message)
+		return fmt.Errorf("%w: %s", harness.ErrSessionNotFound, message)
 	}
 	return fmt.Errorf("%s app-server request %d: %s", run.providerLabel, responseID, message)
 }
@@ -438,9 +438,9 @@ func (run *appServerRun) handleResponse(responseID appServerRequestID, resultJSO
 		// Carry that model into the completion usage persisted for rebuilds.
 		run.eventParser.req.Model = result.Model
 		if result.Thread.ID != run.req.ResumeID {
-			run.emit(agent.Event{
+			run.emit(harness.Event{
 				T:              time.Now().UnixMilli(),
-				Type:           agent.EventSessionUpdated,
+				Type:           harness.EventSessionUpdated,
 				Provider:       run.req.Provider,
 				ConversationID: run.req.ConversationID,
 				SessionID:      result.Thread.ID,
@@ -511,7 +511,7 @@ func (run *appServerRun) finish() error {
 		return &harnessruntime.ProcessError{Err: run.protocolErr, Stderr: stderrText}
 	}
 	if run.runFailed {
-		return &harnessruntime.ProcessError{Err: agent.ErrRunFailed, Stderr: stderrText}
+		return &harnessruntime.ProcessError{Err: harness.ErrRunFailed, Stderr: stderrText}
 	}
 	if run.interrupted {
 		return nil

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type modelListResponse struct {
@@ -81,7 +81,7 @@ func (item *collaborationModeItem) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest) (agent.Capabilities, error) {
+func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	models, modes, err := queryAppServerCapabilities(ctx, req)
 	if err == nil {
 		return buildCapabilities(models, modes), nil
@@ -102,8 +102,8 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 	return caps, fmt.Errorf("codex capability discovery: %w", errors.Join(err, debugErr))
 }
 
-func buildCapabilities(models modelListResponse, providerModes collaborationModeListResponse) agent.Capabilities {
-	items := make([]agent.ModelCapability, 0, len(models.Data))
+func buildCapabilities(models modelListResponse, providerModes collaborationModeListResponse) harness.Capabilities {
+	items := make([]harness.ModelCapability, 0, len(models.Data))
 	for _, raw := range models.Data {
 		id := strings.TrimSpace(raw.Model)
 		if id == "" {
@@ -112,7 +112,7 @@ func buildCapabilities(models modelListResponse, providerModes collaborationMode
 		if id == "" {
 			continue
 		}
-		model := agent.ModelCapability{
+		model := harness.ModelCapability{
 			ID:                     id,
 			Label:                  firstNonEmpty(raw.DisplayName, id),
 			Description:            raw.Description,
@@ -130,39 +130,39 @@ func buildCapabilities(models modelListResponse, providerModes collaborationMode
 			Raw:                    cloneRaw(raw.Raw),
 		}
 		if len(raw.SupportedReasoningEfforts) > 0 {
-			model.ReasoningEfforts = append(model.ReasoningEfforts, agent.AutoOption())
+			model.ReasoningEfforts = append(model.ReasoningEfforts, harness.AutoOption())
 		}
 		for _, effort := range raw.SupportedReasoningEfforts {
-			model.ReasoningEfforts = append(model.ReasoningEfforts, agent.CapabilityOption{
+			model.ReasoningEfforts = append(model.ReasoningEfforts, harness.CapabilityOption{
 				Value: effort.ReasoningEffort, Label: effortLabel(effort.ReasoningEffort), Description: effort.Description,
 			})
 		}
 		if len(raw.ServiceTiers) > 0 {
-			model.ServiceTiers = append(model.ServiceTiers, agent.AutoOption())
+			model.ServiceTiers = append(model.ServiceTiers, harness.AutoOption())
 		}
 		for _, tier := range raw.ServiceTiers {
-			model.ServiceTiers = append(model.ServiceTiers, agent.CapabilityOption{
+			model.ServiceTiers = append(model.ServiceTiers, harness.CapabilityOption{
 				Value: tier.ID, Label: firstNonEmpty(tier.Name, tier.ID), Description: tier.Description,
 			})
 		}
 		items = append(items, model)
 	}
 	modes := collaborationModeOptions(providerModes)
-	return agent.Capabilities{
-		Provider:    agent.ProviderCodex,
+	return harness.Capabilities{
+		Provider:    harness.ProviderCodex,
 		Label:       "Codex",
-		Source:      agent.CapabilitySourceLive,
-		Models:      agent.WithAutoModel(items, "Codex default"),
+		Source:      harness.CapabilitySourceLive,
+		Models:      harness.WithAutoModel(items, "Codex default"),
 		Modes:       modes,
-		DefaultMode: agent.RunModeDefault,
+		DefaultMode: harness.RunModeDefault,
 	}
 }
 
-func collaborationModeOptions(providerModes collaborationModeListResponse) []agent.CapabilityOption {
-	options := make([]agent.CapabilityOption, 0, len(providerModes.Data))
+func collaborationModeOptions(providerModes collaborationModeListResponse) []harness.CapabilityOption {
+	options := make([]harness.CapabilityOption, 0, len(providerModes.Data))
 	seen := make(map[string]struct{}, len(providerModes.Data))
 	for _, mode := range providerModes.Data {
-		value := agent.NormalizeCapabilityValue(mode.Mode)
+		value := harness.NormalizeCapabilityValue(mode.Mode)
 		if value == "" {
 			continue
 		}
@@ -170,7 +170,7 @@ func collaborationModeOptions(providerModes collaborationModeListResponse) []age
 			continue
 		}
 		seen[value] = struct{}{}
-		options = append(options, agent.CapabilityOption{
+		options = append(options, harness.CapabilityOption{
 			Value:           value,
 			Label:           firstNonEmpty(mode.Name, effortLabel(value)),
 			Model:           mode.Model,
@@ -179,19 +179,19 @@ func collaborationModeOptions(providerModes collaborationModeListResponse) []age
 		})
 	}
 	if len(options) == 0 {
-		return agent.ProviderModes(false)
+		return harness.ProviderModes(false)
 	}
 	return options
 }
 
-func fallbackCapabilities() agent.Capabilities {
-	return agent.Capabilities{
-		Provider:    agent.ProviderCodex,
+func fallbackCapabilities() harness.Capabilities {
+	return harness.Capabilities{
+		Provider:    harness.ProviderCodex,
 		Label:       "Codex",
-		Source:      agent.CapabilitySourceFallback,
-		Models:      agent.WithAutoModel(nil, "Codex default"),
-		Modes:       agent.ProviderModes(false),
-		DefaultMode: agent.RunModeDefault,
+		Source:      harness.CapabilitySourceFallback,
+		Models:      harness.WithAutoModel(nil, "Codex default"),
+		Modes:       harness.ProviderModes(false),
+		DefaultMode: harness.RunModeDefault,
 	}
 }
 

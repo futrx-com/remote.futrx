@@ -3,8 +3,8 @@ package codex
 import (
 	"path/filepath"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
@@ -18,7 +18,7 @@ func NewFactory() (agentmodule.Factory, error) {
 	profile.Credentials.HostDir = filepath.Dir(credentialPath)
 	profile.Credentials.Files[0].HostPath = credentialPath
 	return agentmodule.NewFactory(agentmodule.Descriptor{
-		ID:                  agent.ProviderCodex,
+		ID:                  harness.ProviderCodex,
 		Label:               "Codex",
 		Default:             true,
 		ExecutionScopes:     []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
@@ -41,7 +41,7 @@ func NewFactory() (agentmodule.Factory, error) {
 		if err != nil {
 			return agentmodule.Components{}, err
 		}
-		binding := agentauth.NewDeviceBinding(agent.ProviderCodex, auth.device).WithWarning(func() string {
+		binding := agentauth.NewDeviceBinding(harness.ProviderCodex, auth.device).WithWarning(func() string {
 			if auth.Status().UsesAPIKey {
 				return "Codex is logged in with an API key. Sign in with ChatGPT to use subscription limits."
 			}
@@ -72,6 +72,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ agent.Provider             = (*Provider)(nil)
+	_ harness.Provider           = (*Provider)(nil)
 	_ agentmodule.FactoryBuilder = NewFactory
 )

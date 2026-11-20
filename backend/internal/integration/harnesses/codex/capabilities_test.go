@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestReadAppServerCapabilitiesPaginatesModelCatalog(t *testing.T) {
@@ -24,7 +24,7 @@ func TestReadAppServerCapabilitiesPaginatesModelCatalog(t *testing.T) {
 	if len(models.Data) != 2 || models.Data[0].ID != "first" || models.Data[1].ID != "second" {
 		t.Fatalf("models = %+v", models.Data)
 	}
-	if len(modes.Data) != 2 || modes.Data[1].Mode != string(agent.RunModePlan) || modes.Data[1].Model != "gpt-plan" {
+	if len(modes.Data) != 2 || modes.Data[1].Mode != string(harness.RunModePlan) || modes.Data[1].Model != "gpt-plan" {
 		t.Fatalf("modes = %+v", modes.Data)
 	}
 
@@ -73,9 +73,9 @@ func TestBuildCapabilitiesPreservesPerModelControls(t *testing.T) {
 	})
 	modes := collaborationModeListResponse{}
 	modes.Data = append(modes.Data,
-		collaborationModeItem{Name: "Default", Mode: string(agent.RunModeDefault)},
+		collaborationModeItem{Name: "Default", Mode: string(harness.RunModeDefault)},
 		collaborationModeItem{
-			Name: "Plan", Mode: string(agent.RunModePlan), Model: "gpt-next",
+			Name: "Plan", Mode: string(harness.RunModePlan), Model: "gpt-next",
 			ReasoningEffort: "medium", Raw: json.RawMessage(`{"futureField":true}`),
 		},
 	)
@@ -93,7 +93,7 @@ func TestBuildCapabilitiesPreservesPerModelControls(t *testing.T) {
 	if got := caps.Models[1]; !got.SupportsPersonality || got.MultiAgentVersion != "v2" || len(got.InputModalities) != 2 || !json.Valid(got.Raw) {
 		t.Fatalf("model metadata = %+v", got)
 	}
-	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(harness.RunModeDefault) || caps.Modes[1].Value != string(harness.RunModePlan) {
 		t.Fatalf("modes = %+v", caps.Modes)
 	}
 	if caps.Modes[1].Model != "gpt-next" || caps.Modes[1].ReasoningEffort != "medium" || !json.Valid(caps.Modes[1].Raw) {

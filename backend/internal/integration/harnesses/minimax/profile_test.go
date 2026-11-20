@@ -3,7 +3,7 @@ package minimax
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 func TestProfileUsesIsolatedCodexHome(t *testing.T) {

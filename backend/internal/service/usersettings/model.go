@@ -3,8 +3,8 @@ package usersettings
 import (
 	"errors"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var (
@@ -42,14 +42,14 @@ type Appearance struct {
 	Theme Theme `json:"theme"`
 }
 
-type ChatProvider = agent.ProviderID
+type ChatProvider = harness.ProviderID
 
 const (
-	ChatProviderClaude      = agent.ProviderClaude
-	ChatProviderCodex       = agent.ProviderCodex
-	ChatProviderMiniMax     = agent.ProviderMiniMax
-	ChatProviderKimi        = agent.ProviderKimi
-	ChatProviderAntigravity = agent.ProviderAntigravity
+	ChatProviderClaude      = harness.ProviderClaude
+	ChatProviderCodex       = harness.ProviderCodex
+	ChatProviderMiniMax     = harness.ProviderMiniMax
+	ChatProviderKimi        = harness.ProviderKimi
+	ChatProviderAntigravity = harness.ProviderAntigravity
 )
 
 type ChatMode string
@@ -147,7 +147,7 @@ func ValidTheme(theme Theme) bool {
 }
 
 func ValidChatProvider(provider ChatProvider) bool {
-	return agent.ValidProviderID(provider)
+	return harness.ValidProviderID(provider)
 }
 
 func ValidChatMode(mode ChatMode) bool {
@@ -160,17 +160,17 @@ func ValidChatMode(mode ChatMode) bool {
 }
 
 func ValidReasoningEffort(effort ReasoningEffort) bool {
-	return agent.ValidPreferenceValue(string(effort))
+	return harness.ValidPreferenceValue(string(effort))
 }
 
 func ValidServiceTier(tier ServiceTier) bool {
-	return agent.ValidPreferenceValue(string(tier))
+	return harness.ValidPreferenceValue(string(tier))
 }
 
 func ValidApprovalPolicy(policy ApprovalPolicy) bool {
-	return agent.ValidApprovalPolicy(string(policy))
+	return harness.ValidApprovalPolicy(string(policy))
 }
 
 func ValidSandboxPolicy(policy SandboxPolicy) bool {
-	return agent.ValidSandboxPolicy(string(policy))
+	return harness.ValidSandboxPolicy(string(policy))
 }

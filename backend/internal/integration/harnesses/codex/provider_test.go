@@ -12,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentexecution "github.com/futrx-com/remote.futrx.com/internal/service/agent/execution"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 func newTestProvider(
-	projects agent.ProjectResolver,
+	projects harness.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
 	factory, err := NewFactory()
@@ -39,7 +39,7 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	return runtime.Lookup(agent.ProviderCodex).(*Provider)
+	return runtime.Lookup(harness.ProviderCodex).(*Provider)
 }
 
 func TestFactoryDeclaresCodexHarnessExecutionPolicies(t *testing.T) {
@@ -74,7 +74,7 @@ func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding, ok := runtime.AuthBinding(agent.ProviderCodex)
+			binding, ok := runtime.AuthBinding(harness.ProviderCodex)
 			if !ok {
 				t.Fatal("Codex has no auth binding")
 			}
@@ -82,7 +82,7 @@ func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
 			if binding.AccountsAvailable() != want || (binding.Snapshot().Accounts != nil) != want {
 				t.Fatalf("accounts available = %v, want %v", binding.AccountsAvailable(), want)
 			}
-			if provider := runtime.Lookup(agent.ProviderCodex).(*Provider); (provider.accounts != nil) != want {
+			if provider := runtime.Lookup(harness.ProviderCodex).(*Provider); (provider.accounts != nil) != want {
 				t.Fatalf("provider accounts = %v, want attached %v", provider.accounts, want)
 			}
 		})
@@ -91,7 +91,7 @@ func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
 
 func TestArgsUseCodexAppServer(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{Model: "gpt-5.5 [fast]"})
+	args := provider.args(harness.RunRequest{Model: "gpt-5.5 [fast]"})
 
 	want := []string{"app-server"}
 	if !slices.Equal(args, want) {
@@ -133,7 +133,7 @@ func TestCodexAuthEnvForOverridesInheritedCredentialHome(t *testing.T) {
 
 func TestArgsIncludeBrowserMCPConfig(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{EnableBrowser: true})
+	args := provider.args(harness.RunRequest{EnableBrowser: true})
 
 	want := []string{
 		"app-server",
@@ -170,24 +170,24 @@ func TestContainerCredentialsRejectAPIKeyAuthBeforeProvisioning(t *testing.T) {
 	credentials := &fakeCodexCredentials{}
 	profile := Profile()
 	profile.Credentials.Files[0].HostPath = authPath
-	project := agent.Project{
-		ID:            agent.ProjectID("project-id"),
+	project := harness.Project{
+		ID:            harness.ProjectID("project-id"),
 		ContainerName: "project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	preparer := agentexecution.New(
 		fakeCodexProjects{project: project},
 		codexContainerDependencies(credentials, &fakeCodexBrowser{}),
 		agentexecution.Options{
-			Provider:          agent.ProviderCodex,
+			Provider:          harness.ProviderCodex,
 			Profile:           profile,
 			BeforeCredentials: validateSubscriptionCredentials,
 		},
 	)
 
-	_, err := preparer.Prepare(context.Background(), agent.ProjectPreparationRequest{
+	_, err := preparer.Prepare(context.Background(), harness.ProjectPreparationRequest{
 		ProjectID: project.ID,
-	}, func(agent.Event) {})
+	}, func(harness.Event) {})
 	if !errors.Is(err, ErrCodexAPIKeyAuth) {
 		t.Fatalf("prepare project error = %v, want %v", err, ErrCodexAPIKeyAuth)
 	}
@@ -213,17 +213,17 @@ func TestProfileReturnsIndependentProvisioningPolicy(t *testing.T) {
 }
 
 func TestBuildCmdProvisionsBrowserMCPOnlyWhenEnabled(t *testing.T) {
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "browser-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	projects := fakeCodexProjects{project: project}
 
 	withoutBrowser := &fakeCodexBrowser{}
 	provider := newTestProvider(projects, codexContainerDependencies(nil, withoutBrowser))
-	req := agent.RunRequest{ProjectID: string(project.ID)}
-	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {}); err != nil {
+	req := harness.RunRequest{ProjectID: string(project.ID)}
+	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {}); err != nil {
 		t.Fatal(err)
 	}
 	if withoutBrowser.agentBrowserMCPCalls != 0 {
@@ -236,7 +236,7 @@ func TestBuildCmdProvisionsBrowserMCPOnlyWhenEnabled(t *testing.T) {
 	withBrowser := &fakeCodexBrowser{}
 	provider = newTestProvider(projects, codexContainerDependencies(nil, withBrowser))
 	req.EnableBrowser = true
-	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {}); err != nil {
+	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {}); err != nil {
 		t.Fatal(err)
 	}
 	if withBrowser.agentBrowserMCPCalls != 1 {
@@ -255,12 +255,12 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 
 	t.Setenv("CODEX_HOME", t.TempDir())
 	hostProvider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	hostRequest := agent.RunRequest{Cwd: t.TempDir(), RuntimeEnv: runtimeEnv}
+	hostRequest := harness.RunRequest{Cwd: t.TempDir(), RuntimeEnv: runtimeEnv}
 	hostCmd, containerName, err := hostProvider.buildCmd(
 		context.Background(),
 		hostRequest,
 		hostProvider.args(hostRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -274,22 +274,22 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		}
 	}
 
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "schedule-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	containerProvider := newTestProvider(
 		fakeCodexProjects{
 			project: project,
-			secrets: []agent.ProjectSecret{{
+			secrets: []harness.ProjectSecret{{
 				Key:   "REMOTE_APPLICATION_API",
 				Value: "https://attacker.invalid",
 			}},
 		},
 		codexContainerDependencies(nil, &fakeCodexBrowser{}),
 	)
-	containerRequest := agent.RunRequest{
+	containerRequest := harness.RunRequest{
 		ProjectID:  string(project.ID),
 		RuntimeEnv: runtimeEnv,
 	}
@@ -297,7 +297,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		context.Background(),
 		containerRequest,
 		containerProvider.args(containerRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -314,16 +314,16 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 }
 
 func TestBuildCmdReconcilesContainerEvenWhenCachedStatusIsRunning(t *testing.T) {
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "recycled-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	startCalls := 0
 	provider := newTestProvider(fakeCodexProjects{project: project, startCalls: &startCalls}, provisioning.ContainerDependencies{})
-	req := agent.RunRequest{ProjectID: string(project.ID)}
+	req := harness.RunRequest{ProjectID: string(project.ID)}
 
-	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {}); err != nil {
+	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {}); err != nil {
 		t.Fatal(err)
 	}
 	if startCalls != 1 {
@@ -354,14 +354,14 @@ func TestContainerRunKeepsOnlyTheActiveAccountsLogin(t *testing.T) {
 		return agentauth.ValidatedAccount{Email: "personal@example.test", PlanType: "plus", Credential: refreshed}, nil
 	}
 
-	project := agent.Project{ID: agent.ProjectID("abcd"), ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	project := harness.Project{ID: harness.ProjectID("abcd"), ContainerName: "account-project", Status: harness.ProjectStatusRunning}
 	credentials := &fakeCodexCredentials{}
 	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(credentials, &fakeCodexBrowser{}))
 	provider.accounts = auth.accounts
 	run := func(synced json.RawMessage) {
 		t.Helper()
 		credentials.synced = synced
-		err := provider.Run(context.Background(), agent.RunRequest{
+		err := provider.Run(context.Background(), harness.RunRequest{
 			ProjectID: string(project.ID), ConversationID: "chat-1", Prompt: "hello",
 		}, nil)
 		if err != nil {
@@ -414,22 +414,22 @@ func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
 		ActiveAccountID: "personal",
 		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
 	}}
-	project := agent.Project{ID: agent.ProjectID("abcd"), ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	project := harness.Project{ID: harness.ProjectID("abcd"), ContainerName: "account-project", Status: harness.ProjectStatusRunning}
 	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(&fakeCodexCredentials{}, &fakeCodexBrowser{}))
 	provider.accounts = newTestAuth(t, store).accounts
 
-	var quotas []agent.Event
-	err := provider.Run(context.Background(), agent.RunRequest{
+	var quotas []harness.Event
+	err := provider.Run(context.Background(), harness.RunRequest{
 		ProjectID: string(project.ID), ConversationID: "chat-1", Prompt: "hello",
-	}, func(event agent.Event) {
-		if event.Type == agent.EventQuotaUpdated {
+	}, func(event harness.Event) {
+		if event.Type == harness.EventQuotaUpdated {
 			quotas = append(quotas, event)
 		}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(quotas) != 1 || quotas[0].Provider != agent.ProviderCodex || quotas[0].AccountID != "personal" ||
+	if len(quotas) != 1 || quotas[0].Provider != harness.ProviderCodex || quotas[0].AccountID != "personal" ||
 		quotas[0].Quota == nil || *quotas[0].Quota.UsedPercent != 25 {
 		t.Fatalf("quota events = %#v; want one reading for the personal account", quotas)
 	}
@@ -438,11 +438,11 @@ func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
 func TestAccountRunHomesSeparateChats(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	saved := agentauth.RunCredential{AccountID: "personal", Credential: codexTestCredential("personal", "token")}
-	first, err := newAccountRun(agent.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
+	first, err := newAccountRun(harness.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := newAccountRun(agent.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
+	second, err := newAccountRun(harness.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,10 +455,10 @@ func TestAccountRunHomesSeparateChats(t *testing.T) {
 
 func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
-	project := agent.Project{ID: "project", ContainerName: "account-project", Status: agent.ProjectStatusRunning}
+	project := harness.Project{ID: "project", ContainerName: "account-project", Status: harness.ProjectStatusRunning}
 	credentials := &fakeCodexCredentials{}
 	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(credentials, &fakeCodexBrowser{}))
-	req := agent.RunRequest{ProjectID: string(project.ID), ConversationID: "chat-one"}
+	req := harness.RunRequest{ProjectID: string(project.ID), ConversationID: "chat-one"}
 	run, err := newAccountRun(req, agentauth.RunCredential{
 		AccountID: "personal", Credential: codexTestCredential("personal", "token"),
 	})
@@ -515,23 +515,23 @@ done
 }
 
 type fakeCodexProjects struct {
-	project    agent.Project
+	project    harness.Project
 	startCalls *int
-	secrets    []agent.ProjectSecret
+	secrets    []harness.ProjectSecret
 }
 
-func (f fakeCodexProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f fakeCodexProjects) Get(context.Context, harness.ProjectID) (harness.Project, error) {
 	return f.project, nil
 }
 
-func (f fakeCodexProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f fakeCodexProjects) Start(context.Context, harness.ProjectID) (harness.Project, error) {
 	if f.startCalls != nil {
 		(*f.startCalls)++
 	}
 	return f.project, nil
 }
 
-func (f fakeCodexProjects) ListSecrets(context.Context, agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (f fakeCodexProjects) ListSecrets(context.Context, harness.ProjectID) ([]harness.ProjectSecret, error) {
 	return f.secrets, nil
 }
 

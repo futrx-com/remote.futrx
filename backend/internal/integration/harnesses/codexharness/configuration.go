@@ -4,8 +4,8 @@
 package codexharness
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 // NewCLISpec returns the shared Codex CLI installation policy used by

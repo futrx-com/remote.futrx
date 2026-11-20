@@ -7,7 +7,7 @@ provisioning profiles without maintaining separate provider lists.
 
 ## Contract layers
 
-The narrow runtime contract is [`agent.Provider`](../../../backend/internal/agent/model.go):
+The narrow runtime contract is [`harness.Provider`](../../../backend/internal/harness/model.go):
 
 ```go
 type Provider interface {
@@ -96,7 +96,7 @@ Application startup begins this flow in
 [`backend/cmd/remote/main.go`](../../../backend/cmd/remote/main.go). The command
 also gives `Catalog.Profiles()` to the project container stack. During service
 composition, [`services.go`](../../../backend/internal/service/services.go)
-adapts project services to the narrow `agent.ProjectResolver`, calls
+adapts project services to the narrow `harness.ProjectResolver`, calls
 `Catalog.Build`, and distributes the resulting `Runtime` through narrow
 consumer interfaces. The provider and auth registries remain private inside
 the runtime, so callers cannot combine components built from different
@@ -170,9 +170,9 @@ for every descriptor field's downstream effect.
 
 ## Main source locations
 
-- [`backend/internal/agent/model.go`](../../../backend/internal/agent/model.go)
-- [`backend/internal/agent/identity.go`](../../../backend/internal/agent/identity.go)
-- [`backend/internal/agent/registry.go`](../../../backend/internal/agent/registry.go)
+- [`backend/internal/harness/model.go`](../../../backend/internal/harness/model.go)
+- [`backend/internal/harness/identity.go`](../../../backend/internal/harness/identity.go)
+- [`backend/internal/harness/registry.go`](../../../backend/internal/harness/registry.go)
 - [`backend/internal/integration/harnesses/`](../../../backend/internal/integration/harnesses)
 - [`backend/internal/service/agent/module/factory.go`](../../../backend/internal/service/agent/module/factory.go)
 - [`backend/internal/service/agent/module/catalog.go`](../../../backend/internal/service/agent/module/catalog.go)

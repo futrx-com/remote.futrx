@@ -8,22 +8,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type testProvider struct {
-	id agent.ProviderID
+	id harness.ProviderID
 }
 
-func (p testProvider) ID() agent.ProviderID { return p.id }
+func (p testProvider) ID() harness.ProviderID { return p.id }
 
-func (p testProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: p.id}, nil
+func (p testProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: p.id}, nil
 }
 
-func (p testProvider) Run(context.Context, agent.RunRequest, func(agent.Event)) error {
+func (p testProvider) Run(context.Context, harness.RunRequest, func(harness.Event)) error {
 	return nil
 }
 
@@ -509,15 +509,15 @@ type bindingTestAuthStatus struct {
 
 type moduleTestProjects struct{}
 
-func (moduleTestProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
-	return agent.Project{}, nil
+func (moduleTestProjects) Get(context.Context, harness.ProjectID) (harness.Project, error) {
+	return harness.Project{}, nil
 }
 
-func (moduleTestProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
-	return agent.Project{}, nil
+func (moduleTestProjects) Start(context.Context, harness.ProjectID) (harness.Project, error) {
+	return harness.Project{}, nil
 }
 
-func (moduleTestProjects) ListSecrets(context.Context, agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (moduleTestProjects) ListSecrets(context.Context, harness.ProjectID) ([]harness.ProjectSecret, error) {
 	return nil, nil
 }
 
@@ -553,7 +553,7 @@ func TestCatalogReturnsDefensiveOrderedSnapshots(t *testing.T) {
 	firstProfile.BrowserMCPTemplates[0].Content[0] = 'x'
 
 	descriptors := catalog.Descriptors()
-	if got := []agent.ProviderID{descriptors[0].ID, descriptors[1].ID}; !slices.Equal(got, []agent.ProviderID{"first-agent", "second-agent"}) {
+	if got := []harness.ProviderID{descriptors[0].ID, descriptors[1].ID}; !slices.Equal(got, []harness.ProviderID{"first-agent", "second-agent"}) {
 		t.Fatalf("descriptor order = %v", got)
 	}
 	descriptors[0].ExecutionScopes[0] = "changed-again"
@@ -656,7 +656,7 @@ func TestCatalogSeparatesHostAndProjectProvisioningProfiles(t *testing.T) {
 	}
 }
 
-func newTestFactory(t *testing.T, id agent.ProviderID) Factory {
+func newTestFactory(t *testing.T, id harness.ProviderID) Factory {
 	t.Helper()
 	descriptor := testDescriptor(id)
 	profile := testProfile(id)
@@ -667,14 +667,14 @@ func newTestFactory(t *testing.T, id agent.ProviderID) Factory {
 	return factory
 }
 
-func testBuild(id agent.ProviderID) BuildFunc {
+func testBuild(id harness.ProviderID) BuildFunc {
 	return func(Dependencies, *provisioning.Profile) (Components, error) {
 		binding := agentauth.NewExternalBinding(id)
 		return Components{Provider: testProvider{id: id}, Auth: &binding}, nil
 	}
 }
 
-func testDescriptor(id agent.ProviderID) Descriptor {
+func testDescriptor(id harness.ProviderID) Descriptor {
 	return Descriptor{
 		ID:               id,
 		Label:            strings.ToUpper(string(id[:1])) + string(id[1:]),
@@ -689,7 +689,7 @@ func testDescriptor(id agent.ProviderID) Descriptor {
 	}
 }
 
-func testProfile(id agent.ProviderID) provisioning.Profile {
+func testProfile(id harness.ProviderID) provisioning.Profile {
 	return provisioning.Profile{
 		ID: string(id),
 		CLI: provisioning.CLISpec{

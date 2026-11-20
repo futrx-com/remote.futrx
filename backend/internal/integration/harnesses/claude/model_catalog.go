@@ -8,14 +8,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
 const modelResolutionWorkers = 4
 
 type claudeModelCatalog struct {
-	Source       agent.CapabilitySource
+	Source       harness.CapabilitySource
 	DefaultLabel string
 	Selections   []claudeModelSelection
 }
@@ -33,7 +33,7 @@ type modelCommandResponse struct {
 
 func queryModelCatalog(
 	ctx context.Context,
-	req agent.CapabilityRequest,
+	req harness.CapabilityRequest,
 ) (claudeModelCatalog, bool, error) {
 	result, err := runModelCommand(ctx, req, "")
 	if err != nil {
@@ -86,7 +86,7 @@ func queryModelCatalog(
 	}
 
 	return claudeModelCatalog{
-		Source:       agent.CapabilitySourceLive,
+		Source:       harness.CapabilitySourceLive,
 		DefaultLabel: defaultLabel,
 		Selections:   selections,
 	}, fullyResolved, nil
@@ -94,7 +94,7 @@ func queryModelCatalog(
 
 func runModelCommand(
 	ctx context.Context,
-	req agent.CapabilityRequest,
+	req harness.CapabilityRequest,
 	selection string,
 ) (string, error) {
 	args := []string{"-p", "--no-session-persistence", "--output-format", "json"}
@@ -152,7 +152,7 @@ func parseModelCatalogResult(result string) (string, []string, error) {
 	return defaultLabel, selections, nil
 }
 
-func resolveModelLabel(ctx context.Context, req agent.CapabilityRequest, selection string) (string, error) {
+func resolveModelLabel(ctx context.Context, req harness.CapabilityRequest, selection string) (string, error) {
 	result, err := runModelCommand(ctx, req, selection)
 	if err != nil {
 		return "", err
@@ -185,12 +185,12 @@ func normalizeModelSelection(value string) string {
 	value = strings.TrimSpace(value)
 	if strings.HasSuffix(value, "[1m]") {
 		base := strings.TrimSuffix(value, "[1m]")
-		if agent.NormalizeModelID(base) != "" {
+		if harness.NormalizeModelID(base) != "" {
 			return base + "[1m]"
 		}
 		return ""
 	}
-	return agent.NormalizeModelID(value)
+	return harness.NormalizeModelID(value)
 }
 
 func contextualModelLabel(selection, resolved string, labels map[string]string) string {
@@ -229,7 +229,7 @@ func fallbackModelCatalog() claudeModelCatalog {
 		})
 	}
 	return claudeModelCatalog{
-		Source:       agent.CapabilitySourceFallback,
+		Source:       harness.CapabilitySourceFallback,
 		DefaultLabel: "Opus 5 (1M context)",
 		Selections:   selections,
 	}

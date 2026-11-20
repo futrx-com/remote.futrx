@@ -26,8 +26,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // Repository persists readings across restarts.
@@ -45,7 +45,7 @@ type Service struct {
 
 // New loads saved readings from store and asks readers for live plan limits
 // whenever Refresh finds the last answer out of date.
-func New(ctx context.Context, store Repository, readers ...agent.PlanUsageReader) *Service {
+func New(ctx context.Context, store Repository, readers ...harness.PlanUsageReader) *Service {
 	readings := newAccountReadings(ctx, store)
 	return &Service{
 		readings: readings,
@@ -65,7 +65,7 @@ func New(ctx context.Context, store Repository, readers ...agent.PlanUsageReader
 // Persisting is synchronous but best effort. Losing the last reading of a
 // window costs a stale dashboard until the next observation, while failing a
 // turn over it would cost the operator their actual work.
-func (s *Service) Record(ctx context.Context, provider agent.ProviderID, accountID string, quota agent.Quota) {
+func (s *Service) Record(ctx context.Context, provider harness.ProviderID, accountID string, quota harness.Quota) {
 	if s == nil {
 		return
 	}

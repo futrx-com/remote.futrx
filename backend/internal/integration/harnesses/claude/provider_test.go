@@ -8,20 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
 func newTestProvider(
-	projects agent.ProjectResolver,
+	projects harness.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
 	return newTestRuntime(agentmodule.BuildDependencies{
 		Projects:   projects,
 		Containers: dependencies,
-	}).Lookup(agent.ProviderClaude).(*Provider)
+	}).Lookup(harness.ProviderClaude).(*Provider)
 }
 
 func newTestRuntime(dependencies agentmodule.BuildDependencies) *agentmodule.Runtime {
@@ -53,11 +53,11 @@ func TestFactoryOffersSavedAccountsOnlyWithAVault(t *testing.T) {
 		{vault: agentauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{}), want: true},
 	} {
 		runtime := newTestRuntime(agentmodule.BuildDependencies{Accounts: test.vault})
-		binding, ok := runtime.AuthBinding(agent.ProviderClaude)
+		binding, ok := runtime.AuthBinding(harness.ProviderClaude)
 		if !ok || binding.AccountsAvailable() != test.want {
 			t.Fatalf("vault %v: accounts available = %v, want %v", test.vault != nil, binding.AccountsAvailable(), test.want)
 		}
-		if provider := runtime.Lookup(agent.ProviderClaude).(*Provider); (provider.accounts != nil) != test.want {
+		if provider := runtime.Lookup(harness.ProviderClaude).(*Provider); (provider.accounts != nil) != test.want {
 			t.Fatalf("vault %v: provider accounts = %v", test.vault != nil, provider.accounts)
 		}
 	}
@@ -90,12 +90,12 @@ esac
 	}}
 	provider := newTestRuntime(agentmodule.BuildDependencies{
 		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
-	}).Lookup(agent.ProviderClaude).(*Provider)
+	}).Lookup(harness.ProviderClaude).(*Provider)
 	run := func(token, account string) {
 		t.Helper()
 		t.Setenv("FAKE_CLAUDE_TOKEN", token)
 		t.Setenv("FAKE_CLAUDE_ACCOUNT", account)
-		if err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, nil); err != nil {
+		if err := provider.Run(context.Background(), harness.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, nil); err != nil {
 			t.Fatalf("run: %v", err)
 		}
 	}
@@ -149,10 +149,10 @@ esac
 		{"host login", agentmodule.BuildDependencies{}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			provider := newTestRuntime(test.dependencies).Lookup(agent.ProviderClaude).(*Provider)
-			var quotas []agent.Event
-			err := provider.Run(context.Background(), agent.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, func(event agent.Event) {
-				if event.Type == agent.EventQuotaUpdated {
+			provider := newTestRuntime(test.dependencies).Lookup(harness.ProviderClaude).(*Provider)
+			var quotas []harness.Event
+			err := provider.Run(context.Background(), harness.RunRequest{Cwd: t.TempDir(), Prompt: "hello"}, func(event harness.Event) {
+				if event.Type == harness.EventQuotaUpdated {
 					quotas = append(quotas, event)
 				}
 			})
@@ -160,7 +160,7 @@ esac
 				t.Fatalf("run: %v", err)
 			}
 			if len(quotas) != 1 || quotas[0].AccountID != test.want ||
-				quotas[0].Quota == nil || quotas[0].Quota.Window != agent.QuotaWindowSession {
+				quotas[0].Quota == nil || quotas[0].Quota.Window != harness.QuotaWindowSession {
 				t.Fatalf("quota events = %#v; want one session window for account %q", quotas, test.want)
 			}
 		})
@@ -173,11 +173,11 @@ func TestAccountRunHomesSeparateChats(t *testing.T) {
 		AccountID:  "one",
 		Credential: testClaudeCredential("saved", "uuid-one", "one@example.test"),
 	}
-	first, err := newAccountRun(agent.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
+	first, err := newAccountRun(harness.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := newAccountRun(agent.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
+	second, err := newAccountRun(harness.RunRequest{ConversationID: "chat-two", ProjectID: "project"}, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestAccountRunHomesSeparateChats(t *testing.T) {
 
 func TestArgsUseDesktopLikeClaudeHeadlessMode(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{Model: "sonnet[1m]", ResumeID: "session-123"})
+	args := provider.args(harness.RunRequest{Model: "sonnet[1m]", ResumeID: "session-123"})
 
 	want := []string{
 		"-p",
@@ -218,10 +218,10 @@ func TestArgsUseDesktopLikeClaudeHeadlessMode(t *testing.T) {
 
 func TestArgsUseNativePlanModeWithoutPermissionBypass(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{Mode: agent.RunModePlan})
+	args := provider.args(harness.RunRequest{Mode: harness.RunModePlan})
 
 	modeIndex := slices.Index(args, "--permission-mode")
-	if modeIndex < 0 || modeIndex+1 >= len(args) || args[modeIndex+1] != string(agent.RunModePlan) {
+	if modeIndex < 0 || modeIndex+1 >= len(args) || args[modeIndex+1] != string(harness.RunModePlan) {
 		t.Fatalf("native Plan mode missing: %#v", args)
 	}
 	if slices.Contains(args, "--dangerously-skip-permissions") {
@@ -231,12 +231,12 @@ func TestArgsUseNativePlanModeWithoutPermissionBypass(t *testing.T) {
 
 func TestArgsIncludeBrowserMCPConfigOnlyWhenEnabled(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	withoutBrowser := provider.args(agent.RunRequest{})
+	withoutBrowser := provider.args(harness.RunRequest{})
 	if slices.Contains(withoutBrowser, "--mcp-config") {
 		t.Fatalf("unexpected browser MCP config: %#v", withoutBrowser)
 	}
 
-	withBrowser := provider.args(agent.RunRequest{EnableBrowser: true})
+	withBrowser := provider.args(harness.RunRequest{EnableBrowser: true})
 	configIndex := slices.Index(withBrowser, "--mcp-config")
 	if configIndex < 0 || configIndex+1 >= len(withBrowser) {
 		t.Fatalf("missing --mcp-config pair: %#v", withBrowser)
@@ -248,9 +248,9 @@ func TestArgsIncludeBrowserMCPConfigOnlyWhenEnabled(t *testing.T) {
 
 func TestArgsIncludeReasoningEffort(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{
+	args := provider.args(harness.RunRequest{
 		Model: "opus",
-		Preferences: agent.RunPreferences{
+		Preferences: harness.RunPreferences{
 			ReasoningEffort: "max",
 		},
 	})
@@ -266,9 +266,9 @@ func TestArgsIncludeReasoningEffort(t *testing.T) {
 
 func TestArgsEnableUltracodeForRun(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{
+	args := provider.args(harness.RunRequest{
 		Model: "opus",
-		Preferences: agent.RunPreferences{
+		Preferences: harness.RunPreferences{
 			ReasoningEffort: ultracodeEffort,
 		},
 	})
@@ -284,9 +284,9 @@ func TestArgsEnableUltracodeForRun(t *testing.T) {
 
 func TestArgsIgnoreInvalidReasoningEffort(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{
+	args := provider.args(harness.RunRequest{
 		Model: "opus",
-		Preferences: agent.RunPreferences{
+		Preferences: harness.RunPreferences{
 			ReasoningEffort: "extreme;invalid",
 		},
 	})
@@ -297,10 +297,10 @@ func TestArgsIgnoreInvalidReasoningEffort(t *testing.T) {
 
 func TestArgsEnableFastModeForRun(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{
+	args := provider.args(harness.RunRequest{
 		Model: "opus",
-		Preferences: agent.RunPreferences{
-			ServiceTier: agent.ServiceTier(fastServiceTier),
+		Preferences: harness.RunPreferences{
+			ServiceTier: harness.ServiceTier(fastServiceTier),
 		},
 	})
 
@@ -315,8 +315,8 @@ func TestArgsEnableFastModeForRun(t *testing.T) {
 
 func TestArgsIgnoreUnsupportedServiceTier(t *testing.T) {
 	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	args := provider.args(agent.RunRequest{
-		Preferences: agent.RunPreferences{ServiceTier: "priority"},
+	args := provider.args(harness.RunRequest{
+		Preferences: harness.RunPreferences{ServiceTier: "priority"},
 	})
 	if slices.Contains(args, "--settings") {
 		t.Fatalf("unexpected --settings for unsupported service tier: %#v", args)
@@ -324,17 +324,17 @@ func TestArgsIgnoreUnsupportedServiceTier(t *testing.T) {
 }
 
 func TestBuildCmdProvisionsBrowserMCPOnlyWhenEnabled(t *testing.T) {
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "browser-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	projects := fakeClaudeProjects{project: project}
 
 	withoutBrowser := &fakeClaudeBrowser{}
 	provider := newTestProvider(projects, claudeContainerDependencies(withoutBrowser))
-	req := agent.RunRequest{ProjectID: string(project.ID)}
-	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {}); err != nil {
+	req := harness.RunRequest{ProjectID: string(project.ID)}
+	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {}); err != nil {
 		t.Fatal(err)
 	}
 	if withoutBrowser.agentBrowserMCPCalls != 0 {
@@ -347,7 +347,7 @@ func TestBuildCmdProvisionsBrowserMCPOnlyWhenEnabled(t *testing.T) {
 	withBrowser := &fakeClaudeBrowser{}
 	provider = newTestProvider(projects, claudeContainerDependencies(withBrowser))
 	req.EnableBrowser = true
-	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {}); err != nil {
+	if _, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {}); err != nil {
 		t.Fatal(err)
 	}
 	if withBrowser.agentBrowserMCPCalls != 1 {
@@ -365,12 +365,12 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	}
 
 	hostProvider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	hostRequest := agent.RunRequest{Cwd: t.TempDir(), RuntimeEnv: runtimeEnv}
+	hostRequest := harness.RunRequest{Cwd: t.TempDir(), RuntimeEnv: runtimeEnv}
 	hostCmd, containerName, err := hostProvider.buildCmd(
 		context.Background(),
 		hostRequest,
 		hostProvider.args(hostRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -384,22 +384,22 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		}
 	}
 
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "schedule-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	containerProvider := newTestProvider(
 		fakeClaudeProjects{
 			project: project,
-			secrets: []agent.ProjectSecret{{
+			secrets: []harness.ProjectSecret{{
 				Key:   "REMOTE_APPLICATION_API",
 				Value: "https://attacker.invalid",
 			}},
 		},
 		claudeContainerDependencies(&fakeClaudeBrowser{}),
 	)
-	containerRequest := agent.RunRequest{
+	containerRequest := harness.RunRequest{
 		ProjectID:  string(project.ID),
 		RuntimeEnv: runtimeEnv,
 	}
@@ -407,7 +407,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		context.Background(),
 		containerRequest,
 		containerProvider.args(containerRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -424,18 +424,18 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 }
 
 func TestBuildCmdRejectsPartialContainerDependencies(t *testing.T) {
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "partial-dependencies",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	provider := newTestProvider(
 		fakeClaudeProjects{project: project},
 		provisioning.ContainerDependencies{CLI: fakeClaudeCLI{}},
 	)
-	req := agent.RunRequest{ProjectID: string(project.ID)}
+	req := harness.RunRequest{ProjectID: string(project.ID)}
 
-	_, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(agent.Event) {})
+	_, _, err := provider.buildCmd(context.Background(), req, provider.args(req), func(harness.Event) {})
 	if err == nil {
 		t.Fatal("expected partial container dependencies to fail")
 	}
@@ -446,19 +446,19 @@ func TestBuildCmdRejectsPartialContainerDependencies(t *testing.T) {
 }
 
 type fakeClaudeProjects struct {
-	project agent.Project
-	secrets []agent.ProjectSecret
+	project harness.Project
+	secrets []harness.ProjectSecret
 }
 
-func (f fakeClaudeProjects) Get(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f fakeClaudeProjects) Get(context.Context, harness.ProjectID) (harness.Project, error) {
 	return f.project, nil
 }
 
-func (f fakeClaudeProjects) Start(context.Context, agent.ProjectID) (agent.Project, error) {
+func (f fakeClaudeProjects) Start(context.Context, harness.ProjectID) (harness.Project, error) {
 	return f.project, nil
 }
 
-func (f fakeClaudeProjects) ListSecrets(context.Context, agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (f fakeClaudeProjects) ListSecrets(context.Context, harness.ProjectID) ([]harness.ProjectSecret, error) {
 	return f.secrets, nil
 }
 

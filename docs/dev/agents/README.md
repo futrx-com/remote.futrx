@@ -50,7 +50,7 @@ parsers, authentication adapter, capability discovery, and provisioning
 policy. Shared services enforce scope and feature declarations and apply
 provisioning without provider-specific branches.
 
-The package boundary is intentional: `internal/agent` contains provider-neutral
+The package boundary is intentional: `internal/harness` contains provider-neutral
 contracts and provisioning policy types; `internal/integration/harnesses`
 contains concrete CLI, protocol, parser, auth, and profile adapters plus their
 shared process/LXC execution mechanics; `internal/service/agent` contains cross-provider
@@ -68,8 +68,8 @@ independent parser families:
 
 | Path | Provider-native input | Normalized output | Consumer |
 | --- | --- | --- | --- |
-| Agent run | JSONL, JSON-RPC notifications, or raw stdout | `agent.Event` | Prompt service, chat store, WebSocket clients |
-| Capability discovery | Model/help/config output from the installed CLI | `agent.Capabilities` | Capability cache, API, composer controls |
+| Agent run | JSONL, JSON-RPC notifications, or raw stdout | `harness.Event` | Prompt service, chat store, WebSocket clients |
+| Capability discovery | Model/help/config output from the installed CLI | `harness.Capabilities` | Capability cache, API, composer controls |
 
 A provider may use the shared line-process runner, own a JSON-RPC loop, or
 stream raw chunks. It must still emit the same provider-neutral contracts.

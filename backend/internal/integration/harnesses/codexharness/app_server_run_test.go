@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestRunAppServerStreamsNativePlanTurn(t *testing.T) {
@@ -39,22 +39,22 @@ while IFS= read -r line; do
   esac
 done`
 
-	var events []agent.Event
+	var events []harness.Event
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{
-			Provider:       agent.ProviderMiniMax,
+		harness.RunRequest{
+			Provider:       harness.ProviderMiniMax,
 			ConversationID: "chat-1",
-			Mode:           agent.RunModePlan,
+			Mode:           harness.RunModePlan,
 			Prompt:         "plan it",
-			Preferences: agent.RunPreferences{
+			Preferences: harness.RunPreferences{
 				ApprovalPolicy: "never",
 				SandboxPolicy:  "readOnly",
 			},
 		},
 		"MiniMax",
-		func(event agent.Event) { events = append(events, event) },
+		func(event harness.Event) { events = append(events, event) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -63,23 +63,23 @@ done`
 		t.Fatalf("events = %#v", events)
 	}
 	for _, event := range events {
-		if event.Provider != agent.ProviderMiniMax {
+		if event.Provider != harness.ProviderMiniMax {
 			t.Fatalf("event provider = %q, want minimax: %#v", event.Provider, event)
 		}
 	}
-	if events[0].Type != agent.EventSessionUpdated || events[0].SessionID != "thread-new" {
+	if events[0].Type != harness.EventSessionUpdated || events[0].SessionID != "thread-new" {
 		t.Fatalf("session event = %#v", events[0])
 	}
-	if events[1].Type != agent.EventAssistantTextDelta || events[1].Text != "Native plan" {
+	if events[1].Type != harness.EventAssistantTextDelta || events[1].Text != "Native plan" {
 		t.Fatalf("plan event = %#v", events[1])
 	}
-	if events[2].Type != agent.EventUsageUpdated {
+	if events[2].Type != harness.EventUsageUpdated {
 		t.Fatalf("usage event = %#v", events[2])
 	}
-	if events[3].Type != agent.EventRunCompleted {
+	if events[3].Type != harness.EventRunCompleted {
 		t.Fatalf("completion event = %#v", events[3])
 	}
-	usage, ok := agent.ParseUsage(events[3].Usage)
+	usage, ok := harness.ParseUsage(events[3].Usage)
 	if !ok || usage.Model != "gpt-test" || usage.InputTokens != 7 ||
 		usage.CacheReadTokens != 3 || usage.OutputTokens != 4 {
 		t.Fatalf("completion usage = %#v (ok=%t)", usage, ok)
@@ -109,25 +109,25 @@ while IFS= read -r line; do
   esac
 done`
 
-	var events []agent.Event
+	var events []harness.Event
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderCodex, ConversationID: "chat-1", Prompt: "delegate"},
+		harness.RunRequest{Provider: harness.ProviderCodex, ConversationID: "chat-1", Prompt: "delegate"},
 		"Codex",
-		func(event agent.Event) { events = append(events, event) },
+		func(event harness.Event) { events = append(events, event) },
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var assistantText strings.Builder
-	var completions []agent.Event
+	var completions []harness.Event
 	for _, event := range events {
-		if event.Type == agent.EventAssistantTextDelta {
+		if event.Type == harness.EventAssistantTextDelta {
 			assistantText.WriteString(event.Text)
 		}
-		if event.Type == agent.EventRunCompleted {
+		if event.Type == harness.EventRunCompleted {
 			completions = append(completions, event)
 		}
 	}
@@ -137,7 +137,7 @@ done`
 	if len(completions) != 1 || completions[0].Native == nil || completions[0].Native.ThreadID != "parent-thread" {
 		t.Fatalf("run completions = %#v", completions)
 	}
-	usage, ok := agent.ParseUsage(completions[0].Usage)
+	usage, ok := harness.ParseUsage(completions[0].Usage)
 	if !ok || usage.InputTokens != 10 || usage.CacheReadTokens != 2 || usage.OutputTokens != 4 {
 		t.Fatalf("parent completion usage = %#v (ok=%t)", usage, ok)
 	}
@@ -173,7 +173,7 @@ done`
 		!started || !completed || !timed || completedAt < startedAt || duration < 0 {
 		t.Fatalf("subagent tool detail = %#v", tool)
 	}
-	if events[len(events)-1].Type != agent.EventRunCompleted {
+	if events[len(events)-1].Type != harness.EventRunCompleted {
 		t.Fatalf("parent completion was not the final event: %#v", events)
 	}
 }
@@ -194,13 +194,13 @@ while IFS= read -r line; do
   esac
 done`
 
-	var events []agent.Event
+	var events []harness.Event
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderCodex, ConversationID: "chat-1", Prompt: "wait"},
+		harness.RunRequest{Provider: harness.ProviderCodex, ConversationID: "chat-1", Prompt: "wait"},
 		"Codex",
-		func(event agent.Event) { events = append(events, event) },
+		func(event harness.Event) { events = append(events, event) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -216,7 +216,7 @@ done`
 	if collaborations[1].Native == nil || collaborations[1].Native.Method != "item/completed" {
 		t.Fatalf("late completion was not preserved as native: %#v", collaborations[1])
 	}
-	if events[len(events)-1].Type != agent.EventRunCompleted {
+	if events[len(events)-1].Type != harness.EventRunCompleted {
 		t.Fatalf("terminal event must follow the drained item completion: %#v", events)
 	}
 }
@@ -236,13 +236,13 @@ while IFS= read -r line; do
   esac
 done`
 
-	var events []agent.Event
+	var events []harness.Event
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderCodex, ConversationID: "chat-1", Prompt: "wait"},
+		harness.RunRequest{Provider: harness.ProviderCodex, ConversationID: "chat-1", Prompt: "wait"},
 		"Codex",
-		func(event agent.Event) { events = append(events, event) },
+		func(event harness.Event) { events = append(events, event) },
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -263,15 +263,15 @@ done`
 	if data["remoteResolution"] != "missingItemCompletion" || data["status"] != "turnEnded" {
 		t.Fatalf("synthetic resolution data = %#v", data)
 	}
-	if events[len(events)-1].Type != agent.EventRunCompleted {
+	if events[len(events)-1].Type != harness.EventRunCompleted {
 		t.Fatalf("terminal event must follow collaboration reconciliation: %#v", events)
 	}
 }
 
-func collaborationEvents(events []agent.Event) []agent.Event {
-	var collaborations []agent.Event
+func collaborationEvents(events []harness.Event) []harness.Event {
+	var collaborations []harness.Event
 	for _, event := range events {
-		if event.Type == agent.EventCollaboration {
+		if event.Type == harness.EventCollaboration {
 			collaborations = append(collaborations, event)
 		}
 	}
@@ -290,29 +290,29 @@ done`
 	err := Run(
 		context.Background(),
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderCodex, ResumeID: "missing", Prompt: "continue"},
+		harness.RunRequest{Provider: harness.ProviderCodex, ResumeID: "missing", Prompt: "continue"},
 		"Codex",
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
-	if !errors.Is(err, agent.ErrSessionNotFound) {
+	if !errors.Is(err, harness.ErrSessionNotFound) {
 		t.Fatalf("error = %v, want ErrSessionNotFound", err)
 	}
 }
 
 func TestAppServerParserUsesRequestProvider(t *testing.T) {
-	parser := newAppServerEventParser(agent.RunRequest{Provider: agent.ProviderCodex}, "Codex")
+	parser := newAppServerEventParser(harness.RunRequest{Provider: harness.ProviderCodex}, "Codex")
 	events := parser.ParseNotification("turn/completed", json.RawMessage(`{"turn":{"status":"completed"}}`))
-	if len(events) != 1 || events[0].Provider != agent.ProviderCodex {
+	if len(events) != 1 || events[0].Provider != harness.ProviderCodex {
 		t.Fatalf("events = %#v", events)
 	}
 }
 
 func TestAppServerRequestStaysPendingUntilExplicitResponse(t *testing.T) {
 	var encoded strings.Builder
-	var events []agent.Event
+	var events []harness.Event
 	handler := newAppServerRequestHandler(
-		agent.RunRequest{Provider: agent.ProviderCodex, Mode: agent.RunModePlan},
-		func(event agent.Event) { events = append(events, event) },
+		harness.RunRequest{Provider: harness.ProviderCodex, Mode: harness.RunModePlan},
+		func(event harness.Event) { events = append(events, event) },
 		func(message any) error {
 			data, marshalErr := json.Marshal(message)
 			if marshalErr == nil {
@@ -332,10 +332,10 @@ func TestAppServerRequestStaysPendingUntilExplicitResponse(t *testing.T) {
 	if encoded.Len() != 0 {
 		t.Fatalf("request was answered before user input: %s", encoded.String())
 	}
-	if len(events) != 1 || events[0].Type != agent.EventInteractionRequest || events[0].InteractionID != `"request-42"` {
+	if len(events) != 1 || events[0].Type != harness.EventInteractionRequest || events[0].InteractionID != `"request-42"` {
 		t.Fatalf("events = %#v", events)
 	}
-	if err := handler.Respond(agent.InteractionResponse{
+	if err := handler.Respond(harness.InteractionResponse{
 		ID: `"request-42"`, Result: []byte(`{"decision":"decline"}`),
 	}); err != nil {
 		t.Fatal(err)
@@ -343,16 +343,16 @@ func TestAppServerRequestStaysPendingUntilExplicitResponse(t *testing.T) {
 	if !strings.Contains(encoded.String(), `"id":"request-42"`) || !strings.Contains(encoded.String(), `"decision":"decline"`) {
 		t.Fatalf("response = %s", encoded.String())
 	}
-	if len(events) != 2 || events[1].Type != agent.EventInteractionDone || events[1].Status != "denied" {
+	if len(events) != 2 || events[1].Type != harness.EventInteractionDone || events[1].Status != "denied" {
 		t.Fatalf("events = %#v", events)
 	}
 }
 
 func TestAppServerDoesNotPersistSecretInteractionAnswers(t *testing.T) {
-	var events []agent.Event
+	var events []harness.Event
 	handler := newAppServerRequestHandler(
-		agent.RunRequest{ConversationID: "chat-1"},
-		func(event agent.Event) { events = append(events, event) },
+		harness.RunRequest{ConversationID: "chat-1"},
+		func(event harness.Event) { events = append(events, event) },
 		func(any) error { return nil },
 	)
 	if err := handler.Handle(appServerEnvelope{
@@ -362,7 +362,7 @@ func TestAppServerDoesNotPersistSecretInteractionAnswers(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := handler.Respond(agent.InteractionResponse{
+	if err := handler.Respond(harness.InteractionResponse{
 		ID: "9", Result: []byte(`{"answers":{"token":{"answers":["super-secret-value"]}}}`),
 	}); err != nil {
 		t.Fatal(err)
@@ -400,15 +400,15 @@ done`
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var events []agent.Event
+	var events []harness.Event
 	err := Run(
 		ctx,
 		exec.Command("sh", "-c", script),
-		agent.RunRequest{Provider: agent.ProviderCodex, ConversationID: "chat-1", Prompt: "work"},
+		harness.RunRequest{Provider: harness.ProviderCodex, ConversationID: "chat-1", Prompt: "work"},
 		"Codex",
-		func(event agent.Event) {
+		func(event harness.Event) {
 			events = append(events, event)
-			if event.Type == agent.EventTurnStatus && event.Status == "inProgress" {
+			if event.Type == harness.EventTurnStatus && event.Status == "inProgress" {
 				cancel()
 			}
 		},
@@ -416,7 +416,7 @@ done`
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) == 0 || events[len(events)-1].Type != agent.EventRunInterrupted {
+	if len(events) == 0 || events[len(events)-1].Type != harness.EventRunInterrupted {
 		t.Fatalf("events = %#v", events)
 	}
 }

@@ -3,16 +3,16 @@ package minimax
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type Provider struct {
-	projectPreparer agent.ProjectPreparer
+	projectPreparer harness.ProjectPreparer
 	apiKeys         apiKeySource
 	models          modelCatalogSource
 	runtimeAssets   provisioning.RuntimeAssetProvisioner
@@ -27,7 +27,7 @@ type apiKeySource interface {
 }
 
 func newProvider(
-	projectPreparer agent.ProjectPreparer,
+	projectPreparer harness.ProjectPreparer,
 	apiKeys apiKeySource,
 	models modelCatalogSource,
 	runtimeAssets provisioning.RuntimeAssetProvisioner,
@@ -44,12 +44,12 @@ func newProvider(
 	}
 }
 
-func (p *Provider) ID() agent.ProviderID {
-	return agent.ProviderMiniMax
+func (p *Provider) ID() harness.ProviderID {
+	return harness.ProviderMiniMax
 }
 
-func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
-	req.Provider = agent.ProviderMiniMax
+func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
+	req.Provider = harness.ProviderMiniMax
 	if p.apiKeys == nil {
 		return ErrMiniMaxAPIKeyMissing
 	}
@@ -63,7 +63,7 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	req.AccountID = credential.AccountID
 	key := credential.Key
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	emit = harnessruntime.EmitForAccount(emit, req.AccountID)
 	if p.models == nil {

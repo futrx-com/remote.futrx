@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // streamPrintRun executes one agy print-mode process, forwarding stdout to the
@@ -21,8 +21,8 @@ import (
 func streamPrintRun(
 	ctx context.Context,
 	cmd *exec.Cmd,
-	req agent.RunRequest,
-	emit func(agent.Event),
+	req harness.RunRequest,
+	emit func(harness.Event),
 ) (string, error) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -58,12 +58,12 @@ func streamPrintRun(
 			text := decoder.Decode(chunk[:n])
 			if len(text) > 0 {
 				tail.append(text)
-				emit(agent.Event{
+				emit(harness.Event{
 					T:              time.Now().UnixMilli(),
-					Type:           agent.EventAssistantTextDelta,
-					Provider:       agent.ProviderAntigravity,
+					Type:           harness.EventAssistantTextDelta,
+					Provider:       harness.ProviderAntigravity,
 					ConversationID: req.ConversationID,
-					ItemKind:       agent.ItemMessage,
+					ItemKind:       harness.ItemMessage,
 					Text:           text,
 				})
 			}
@@ -77,12 +77,12 @@ func streamPrintRun(
 	}
 	if remaining := decoder.Flush(); len(remaining) > 0 {
 		tail.append(remaining)
-		emit(agent.Event{
+		emit(harness.Event{
 			T:              time.Now().UnixMilli(),
-			Type:           agent.EventAssistantTextDelta,
-			Provider:       agent.ProviderAntigravity,
+			Type:           harness.EventAssistantTextDelta,
+			Provider:       harness.ProviderAntigravity,
 			ConversationID: req.ConversationID,
-			ItemKind:       agent.ItemMessage,
+			ItemKind:       harness.ItemMessage,
 			Text:           remaining,
 		})
 	}

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
@@ -16,8 +16,8 @@ import (
 // The command is handled locally and does not invoke a model or consume tokens.
 func queryEffortOptions(
 	ctx context.Context,
-	req agent.CapabilityRequest,
-) ([]agent.CapabilityOption, error) {
+	req harness.CapabilityRequest,
+) ([]harness.CapabilityOption, error) {
 	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,

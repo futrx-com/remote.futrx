@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -41,7 +41,7 @@ type Authorizer interface {
 }
 
 type CapabilityRegistry interface {
-	CapabilityProviders() []agent.CapabilityProvider
+	CapabilityProviders() []harness.CapabilityProvider
 }
 
 type ScopePolicy interface {
@@ -125,7 +125,7 @@ func New(
 	return catalog
 }
 
-func (c *Service) List(ctx context.Context, query ListQuery) ([]agent.Capabilities, error) {
+func (c *Service) List(ctx context.Context, query ListQuery) ([]harness.Capabilities, error) {
 	containerName := ""
 	flightKey := "host"
 	scope := agentmodule.ScopeHost
@@ -154,7 +154,7 @@ func (c *Service) List(ctx context.Context, query ListQuery) ([]agent.Capabiliti
 		}
 	}
 
-	return c.flights.do(ctx, flightKey, func(discoveryCtx context.Context) ([]agent.Capabilities, error) {
+	return c.flights.do(ctx, flightKey, func(discoveryCtx context.Context) ([]harness.Capabilities, error) {
 		// A catalog may have completed between the optimistic cache check and
 		// this caller becoming the flight leader.
 		if !query.Refresh {
@@ -163,7 +163,7 @@ func (c *Service) List(ctx context.Context, query ListQuery) ([]agent.Capabiliti
 			}
 		}
 		providers := c.capabilityProviders(scope)
-		result := make([]agent.Capabilities, len(providers))
+		result := make([]harness.Capabilities, len(providers))
 		var wait sync.WaitGroup
 		for index, provider := range providers {
 			wait.Add(1)
@@ -177,21 +177,21 @@ func (c *Service) List(ctx context.Context, query ListQuery) ([]agent.Capabiliti
 				defer cancel()
 				caps, err := provider.Capabilities(
 					probeCtx,
-					agent.CapabilityRequest{ContainerName: containerName},
+					harness.CapabilityRequest{ContainerName: containerName},
 				)
 				caps.Provider = provider.ID()
 				c.decorate(&caps)
 				if caps.Source == "" {
-					caps.Source = agent.CapabilitySourceFallback
+					caps.Source = harness.CapabilitySourceFallback
 				}
 				if err != nil && caps.Warning == "" {
 					caps.Warning = "Provider capabilities are temporarily unavailable"
 				}
 				if caps.Models == nil {
-					caps.Models = []agent.ModelCapability{}
+					caps.Models = []harness.ModelCapability{}
 				}
 				if caps.Modes == nil {
-					caps.Modes = []agent.CapabilityOption{}
+					caps.Modes = []harness.CapabilityOption{}
 				}
 				result[index] = caps
 			}()
@@ -202,7 +202,7 @@ func (c *Service) List(ctx context.Context, query ListQuery) ([]agent.Capabiliti
 	})
 }
 
-func (c *Service) decorate(capabilities *agent.Capabilities) {
+func (c *Service) decorate(capabilities *harness.Capabilities) {
 	if capabilities == nil || c.descriptors == nil {
 		return
 	}
@@ -216,22 +216,22 @@ func (c *Service) decorate(capabilities *agent.Capabilities) {
 	for index, scope := range descriptor.ExecutionScopes {
 		capabilities.ExecutionScopes[index] = string(scope)
 	}
-	var apiKey *agent.CapabilityAPIKeyAuthentication
+	var apiKey *harness.CapabilityAPIKeyAuthentication
 	if descriptor.APIKeyAuth != nil {
-		apiKey = &agent.CapabilityAPIKeyAuthentication{
+		apiKey = &harness.CapabilityAPIKeyAuthentication{
 			CreateURL:       descriptor.APIKeyAuth.CreateURL,
 			CreateLabel:     descriptor.APIKeyAuth.CreateLabel,
 			CredentialLabel: descriptor.APIKeyAuth.CredentialLabel,
 		}
 	}
-	capabilities.Authentication = agent.CapabilityAuthentication{
+	capabilities.Authentication = harness.CapabilityAuthentication{
 		Mode:                string(descriptor.Auth),
 		Instructions:        descriptor.AuthInstructions,
 		SatisfiesAccessGate: descriptor.SatisfiesAccessGate,
 		APIKey:              apiKey,
 	}
-	capabilities.Features = agent.CapabilityFeatures{
-		Sessions: agent.CapabilitySessionSupport{
+	capabilities.Features = harness.CapabilityFeatures{
+		Sessions: harness.CapabilitySessionSupport{
 			Resume: descriptor.Features.Sessions.Resume,
 			Fork:   descriptor.Features.Sessions.Fork,
 		},
@@ -246,12 +246,12 @@ func (c *Service) decorate(capabilities *agent.Capabilities) {
 	}
 }
 
-func (c *Service) capabilityProviders(scope agentmodule.ExecutionScope) []agent.CapabilityProvider {
+func (c *Service) capabilityProviders(scope agentmodule.ExecutionScope) []harness.CapabilityProvider {
 	providers := c.agents.CapabilityProviders()
 	if c.scopes == nil {
 		return providers
 	}
-	filtered := make([]agent.CapabilityProvider, 0, len(providers))
+	filtered := make([]harness.CapabilityProvider, 0, len(providers))
 	for _, provider := range providers {
 		if c.scopes.SupportsScope(string(provider.ID()), scope) {
 			filtered = append(filtered, provider)

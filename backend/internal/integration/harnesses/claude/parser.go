@@ -5,25 +5,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // Parser converts Claude Code headless stream-json lines into normalized agent
-// events. It owns Claude's native event shape; callers only see agent.Event.
+// events. It owns Claude's native event shape; callers only see harness.Event.
 type Parser struct {
-	req          agent.RunRequest
+	req          harness.RunRequest
 	sawSessionID string
 	sawModel     string
 }
 
-func NewParser(req agent.RunRequest) *Parser {
+func NewParser(req harness.RunRequest) *Parser {
 	if req.Provider == "" {
-		req.Provider = agent.ProviderClaude
+		req.Provider = harness.ProviderClaude
 	}
 	return &Parser{req: req, sawSessionID: req.ResumeID, sawModel: req.Model}
 }
 
-func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
+func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 	rawLine := append(json.RawMessage(nil), line...)
 	var raw streamMsg
 	if err := json.Unmarshal(line, &raw); err != nil {
@@ -31,13 +31,13 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	}
 
 	now := time.Now().UnixMilli()
-	events := make([]agent.Event, 0, 2)
+	events := make([]harness.Event, 0, 2)
 	if raw.Model != "" {
 		p.sawModel = raw.Model
 	}
 	if raw.SessionID != "" && raw.SessionID != p.sawSessionID {
 		p.sawSessionID = raw.SessionID
-		events = append(events, p.event(now, agent.EventSessionUpdated, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventSessionUpdated, rawLine, func(ev *harness.Event) {
 			ev.SessionID = raw.SessionID
 			ev.Model = raw.Model
 		}))
@@ -49,16 +49,16 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		// status and a reset time rather than a percentage, so a reading with
 		// no number is normal and must not be stored as zero used.
 		if quota, ok := parseRateLimit(raw.RateLimitInfo, now); ok {
-			events = append(events, p.event(now, agent.EventQuotaUpdated, rawLine, func(ev *agent.Event) {
+			events = append(events, p.event(now, harness.EventQuotaUpdated, rawLine, func(ev *harness.Event) {
 				ev.Quota = &quota
 			}))
 		}
 
 	case "system":
-		events = append(events, p.event(now, agent.EventSystem, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventSystem, rawLine, func(ev *harness.Event) {
 			ev.Subtype = raw.Subtype
 			ev.Data = raw.Message
-			ev.ItemKind = agent.ItemSystem
+			ev.ItemKind = harness.ItemSystem
 		}))
 
 	case "stream_event":
@@ -68,8 +68,8 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		}
 		if inner.Type == "content_block_delta" &&
 			inner.Delta.Type == "text_delta" && inner.Delta.Text != "" {
-			events = append(events, p.event(now, agent.EventAssistantTextDelta, rawLine, func(ev *agent.Event) {
-				ev.ItemKind = agent.ItemMessage
+			events = append(events, p.event(now, harness.EventAssistantTextDelta, rawLine, func(ev *harness.Event) {
+				ev.ItemKind = harness.ItemMessage
 				ev.Text = inner.Delta.Text
 			}))
 		}
@@ -82,16 +82,16 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		for _, block := range msg.Content {
 			switch block.Type {
 			case "tool_use":
-				events = append(events, p.event(now, agent.EventToolStarted, rawLine, func(ev *agent.Event) {
-					ev.ItemKind = agent.ItemToolCall
+				events = append(events, p.event(now, harness.EventToolStarted, rawLine, func(ev *harness.Event) {
+					ev.ItemKind = harness.ItemToolCall
 					ev.ItemID = block.ID
 					ev.ToolName = block.Name
 					ev.Input = block.Input
 				}))
 			case "thinking":
 				if block.Text != "" {
-					events = append(events, p.event(now, agent.EventReasoningDelta, rawLine, func(ev *agent.Event) {
-						ev.ItemKind = agent.ItemReasoning
+					events = append(events, p.event(now, harness.EventReasoningDelta, rawLine, func(ev *harness.Event) {
+						ev.ItemKind = harness.ItemReasoning
 						ev.Text = block.Text
 					}))
 				}
@@ -105,8 +105,8 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		}
 		for _, block := range msg.Content {
 			if block.Type == "tool_result" {
-				events = append(events, p.event(now, agent.EventToolCompleted, rawLine, func(ev *agent.Event) {
-					ev.ItemKind = agent.ItemToolCall
+				events = append(events, p.event(now, harness.EventToolCompleted, rawLine, func(ev *harness.Event) {
+					ev.ItemKind = harness.ItemToolCall
 					ev.ItemID = block.ToolUseID
 					ev.Output = normalizeToolResult(block.Content)
 					ev.IsError = false
@@ -120,14 +120,14 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 			if message == "" {
 				message = "Claude returned an error"
 			}
-			events = append(events, p.event(now, agent.EventRunFailed, rawLine, func(ev *agent.Event) {
+			events = append(events, p.event(now, harness.EventRunFailed, rawLine, func(ev *harness.Event) {
 				ev.Message = message
 				ev.IsError = true
 				ev.Usage = p.normalizeUsage(raw).Raw()
 			}))
 			return events, nil
 		}
-		events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventRunCompleted, rawLine, func(ev *harness.Event) {
 			ev.Usage = p.normalizeUsage(raw).Raw()
 		}))
 	}
@@ -137,14 +137,14 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 // normalizeUsage folds Claude's `result` message into the shared usage shape.
 // Claude is the only provider that prices a turn itself: `total_cost_usd` is
 // authoritative and must never be replaced by an estimate downstream.
-func (p *Parser) normalizeUsage(raw streamMsg) agent.Usage {
-	usage := agent.Usage{
+func (p *Parser) normalizeUsage(raw streamMsg) harness.Usage {
+	usage := harness.Usage{
 		CostUSD:    raw.TotalCostUSD,
 		DurationMs: raw.DurationMs,
 		Turns:      raw.NumTurns,
 		Model:      p.sawModel,
 	}
-	if parsed, ok := agent.ParseUsage(raw.Usage); ok {
+	if parsed, ok := harness.ParseUsage(raw.Usage); ok {
 		usage.InputTokens = parsed.InputTokens
 		usage.OutputTokens = parsed.OutputTokens
 		usage.CacheReadTokens = parsed.CacheReadTokens
@@ -155,14 +155,14 @@ func (p *Parser) normalizeUsage(raw streamMsg) agent.Usage {
 
 func (p *Parser) event(
 	now int64,
-	type_ agent.EventType,
+	type_ harness.EventType,
 	raw json.RawMessage,
-	fn func(*agent.Event),
-) agent.Event {
-	ev := agent.Event{
+	fn func(*harness.Event),
+) harness.Event {
+	ev := harness.Event{
 		T:              now,
 		Type:           type_,
-		Provider:       agent.ProviderClaude,
+		Provider:       harness.ProviderClaude,
 		ConversationID: p.req.ConversationID,
 		Raw:            raw,
 	}

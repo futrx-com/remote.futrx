@@ -6,20 +6,20 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 )
 
-func (p *Provider) args(req agent.RunRequest) []string {
+func (p *Provider) args(req harness.RunRequest) []string {
 	args := []string{
 		"-p",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
 		"--verbose",
 	}
-	if req.Mode == agent.RunModePlan {
-		args = append(args, "--permission-mode", string(agent.RunModePlan))
+	if req.Mode == harness.RunModePlan {
+		args = append(args, "--permission-mode", string(harness.RunModePlan))
 	} else {
 		args = append(args, "--dangerously-skip-permissions")
 	}
@@ -29,7 +29,7 @@ func (p *Provider) args(req agent.RunRequest) []string {
 	if effort := reasoningEffortArg(req.Preferences.ReasoningEffort); effort != "" {
 		args = append(args, "--effort", effort)
 	}
-	if req.Preferences.ServiceTier == agent.ServiceTier(fastServiceTier) {
+	if req.Preferences.ServiceTier == harness.ServiceTier(fastServiceTier) {
 		args = append(args, "--settings", `{"fastMode":true}`)
 	}
 	if req.ResumeID != "" {
@@ -46,24 +46,24 @@ func (p *Provider) args(req agent.RunRequest) []string {
 
 // reasoningEffortArg syntax-checks the selected or saved value. Empty or
 // malformed values omit the flag so the CLI picks a default.
-func reasoningEffortArg(effort agent.ReasoningEffort) string {
-	return agent.NormalizeCapabilityValue(string(effort))
+func reasoningEffortArg(effort harness.ReasoningEffort) string {
+	return harness.NormalizeCapabilityValue(string(effort))
 }
 
 func (p *Provider) buildCmd(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 ) (*exec.Cmd, string, error) {
 	return p.buildCmdForAccount(ctx, req, args, emit, nil)
 }
 
 func (p *Provider) buildCmdForAccount(
 	ctx context.Context,
-	req agent.RunRequest,
+	req harness.RunRequest,
 	args []string,
-	emit func(agent.Event),
+	emit func(harness.Event),
 	run *accountRun,
 ) (*exec.Cmd, string, error) {
 	cwd := req.Cwd
@@ -84,7 +84,7 @@ func (p *Provider) buildCmdForAccount(
 			env = isolatedClaudeAuthEnvFor(env, run.hostHome)
 		}
 		cmd.Env = append(env, "IS_SANDBOX=1")
-		cmd.Env = agent.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
+		cmd.Env = harness.WithRuntimeEnvironment(cmd.Env, req.RuntimeEnv)
 		cmd.Stdin = strings.NewReader(req.Prompt)
 		return cmd, "", nil
 	}
@@ -94,8 +94,8 @@ func (p *Provider) buildCmdForAccount(
 		value := run.credentials.Clone()
 		credentials = &value
 	}
-	project, err := p.projectPreparer.Prepare(ctx, agent.ProjectPreparationRequest{
-		ProjectID:      agent.ProjectID(req.ProjectID),
+	project, err := p.projectPreparer.Prepare(ctx, harness.ProjectPreparationRequest{
+		ProjectID:      harness.ProjectID(req.ProjectID),
 		ConversationID: req.ConversationID,
 		EnableBrowser:  req.EnableBrowser,
 		Credentials:    credentials,

@@ -6,21 +6,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // Parser converts `codex exec --json` JSONL events into normalized agent
 // events. Codex emits whole item snapshots; this parser keeps per-item text
 // state so the chat UI can continue to consume deltas.
 type Parser struct {
-	req          agent.RunRequest
+	req          harness.RunRequest
 	sawSessionID string
 	itemText     map[string]string
 }
 
-func NewParser(req agent.RunRequest) *Parser {
+func NewParser(req harness.RunRequest) *Parser {
 	if req.Provider == "" {
-		req.Provider = agent.ProviderCodex
+		req.Provider = harness.ProviderCodex
 	}
 	return &Parser{
 		req:          req,
@@ -29,7 +29,7 @@ func NewParser(req agent.RunRequest) *Parser {
 	}
 }
 
-func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
+func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 	rawLine := append(json.RawMessage(nil), line...)
 	var raw streamMsg
 	if err := json.Unmarshal(line, &raw); err != nil {
@@ -37,13 +37,13 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	}
 
 	now := time.Now().UnixMilli()
-	events := make([]agent.Event, 0, 3)
+	events := make([]harness.Event, 0, 3)
 
 	switch raw.Type {
 	case "thread.started":
 		if raw.ThreadID != "" && raw.ThreadID != p.sawSessionID {
 			p.sawSessionID = raw.ThreadID
-			events = append(events, p.event(now, agent.EventSessionUpdated, rawLine, func(ev *agent.Event) {
+			events = append(events, p.event(now, harness.EventSessionUpdated, rawLine, func(ev *harness.Event) {
 				ev.SessionID = raw.ThreadID
 			}))
 		}
@@ -58,7 +58,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		events = append(events, p.itemCompleted(now, rawLine, raw.Item)...)
 
 	case "turn.completed":
-		events = append(events, p.event(now, agent.EventRunCompleted, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventRunCompleted, rawLine, func(ev *harness.Event) {
 			ev.Usage = p.normalizeUsage(raw.Usage)
 		}))
 
@@ -67,7 +67,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		if message == "" {
 			message = "Codex turn failed"
 		}
-		events = append(events, p.event(now, agent.EventRunFailed, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventRunFailed, rawLine, func(ev *harness.Event) {
 			ev.Message = message
 			ev.IsError = true
 		}))
@@ -80,7 +80,7 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 		if message == "" {
 			message = "Codex stream error"
 		}
-		events = append(events, p.event(now, agent.EventError, rawLine, func(ev *agent.Event) {
+		events = append(events, p.event(now, harness.EventError, rawLine, func(ev *harness.Event) {
 			ev.Message = message
 			ev.IsError = true
 		}))
@@ -89,18 +89,18 @@ func (p *Parser) ParseLine(line []byte) ([]agent.Event, error) {
 	return events, nil
 }
 
-func (p *Parser) itemStarted(now int64, raw json.RawMessage, item codexItem) []agent.Event {
+func (p *Parser) itemStarted(now int64, raw json.RawMessage, item codexItem) []harness.Event {
 	switch item.Type {
 	case "command_execution":
-		return []agent.Event{p.toolStarted(now, raw, item.ID, "Bash", mustJSON(map[string]any{
+		return []harness.Event{p.toolStarted(now, raw, item.ID, "Bash", mustJSON(map[string]any{
 			"command": item.Command,
 		}))}
 	case "mcp_tool_call":
-		return []agent.Event{p.toolStarted(now, raw, item.ID, mcpToolName(item), item.Arguments)}
+		return []harness.Event{p.toolStarted(now, raw, item.ID, mcpToolName(item), item.Arguments)}
 	case "collab_tool_call":
-		return []agent.Event{p.toolStarted(now, raw, item.ID, "Collab:"+item.Tool, item.Raw)}
+		return []harness.Event{p.toolStarted(now, raw, item.ID, "Collab:"+item.Tool, item.Raw)}
 	case "web_search":
-		return []agent.Event{p.toolStarted(now, raw, item.ID, "WebSearch", mustJSON(map[string]any{
+		return []harness.Event{p.toolStarted(now, raw, item.ID, "WebSearch", mustJSON(map[string]any{
 			"query":  item.Query,
 			"action": item.Action,
 		}))}
@@ -109,43 +109,43 @@ func (p *Parser) itemStarted(now int64, raw json.RawMessage, item codexItem) []a
 	}
 }
 
-func (p *Parser) itemUpdated(now int64, raw json.RawMessage, item codexItem) []agent.Event {
+func (p *Parser) itemUpdated(now int64, raw json.RawMessage, item codexItem) []harness.Event {
 	switch item.Type {
 	case "agent_message":
-		return p.textDelta(now, raw, item, agent.EventAssistantTextDelta, agent.ItemMessage)
+		return p.textDelta(now, raw, item, harness.EventAssistantTextDelta, harness.ItemMessage)
 	case "reasoning":
-		return p.textDelta(now, raw, item, agent.EventReasoningDelta, agent.ItemReasoning)
+		return p.textDelta(now, raw, item, harness.EventReasoningDelta, harness.ItemReasoning)
 	default:
 		return nil
 	}
 }
 
-func (p *Parser) itemCompleted(now int64, raw json.RawMessage, item codexItem) []agent.Event {
+func (p *Parser) itemCompleted(now int64, raw json.RawMessage, item codexItem) []harness.Event {
 	switch item.Type {
 	case "agent_message":
-		return p.textDelta(now, raw, item, agent.EventAssistantTextDelta, agent.ItemMessage)
+		return p.textDelta(now, raw, item, harness.EventAssistantTextDelta, harness.ItemMessage)
 	case "reasoning":
-		return p.textDelta(now, raw, item, agent.EventReasoningDelta, agent.ItemReasoning)
+		return p.textDelta(now, raw, item, harness.EventReasoningDelta, harness.ItemReasoning)
 	case "command_execution":
-		return []agent.Event{p.toolCompleted(now, raw, item.ID, item.AggregatedOutput, toolFailed(item))}
+		return []harness.Event{p.toolCompleted(now, raw, item.ID, item.AggregatedOutput, toolFailed(item))}
 	case "mcp_tool_call":
-		return []agent.Event{p.toolCompleted(now, raw, item.ID, mcpOutput(item), item.Status == "failed" || item.Error.Message != "")}
+		return []harness.Event{p.toolCompleted(now, raw, item.ID, mcpOutput(item), item.Status == "failed" || item.Error.Message != "")}
 	case "collab_tool_call":
-		return []agent.Event{p.toolCompleted(now, raw, item.ID, collabOutput(item), item.Status == "failed")}
+		return []harness.Event{p.toolCompleted(now, raw, item.ID, collabOutput(item), item.Status == "failed")}
 	case "file_change":
 		input := mustJSON(map[string]any{"changes": item.Changes, "status": item.Status})
-		return []agent.Event{
+		return []harness.Event{
 			p.toolStarted(now, raw, item.ID, "Patch", input),
 			p.toolCompleted(now, raw, item.ID, item.Status, item.Status == "failed"),
 		}
 	case "web_search":
-		return []agent.Event{p.toolCompleted(now, raw, item.ID, strings.TrimSpace(item.Query), false)}
+		return []harness.Event{p.toolCompleted(now, raw, item.ID, strings.TrimSpace(item.Query), false)}
 	case "error":
 		if item.Message != "" {
-			return []agent.Event{p.event(now, agent.EventSystem, raw, func(ev *agent.Event) {
+			return []harness.Event{p.event(now, harness.EventSystem, raw, func(ev *harness.Event) {
 				ev.Subtype = "codex_warning"
 				ev.Message = item.Message
-				ev.ItemKind = agent.ItemSystem
+				ev.ItemKind = harness.ItemSystem
 			})}
 		}
 	}
@@ -156,9 +156,9 @@ func (p *Parser) textDelta(
 	now int64,
 	raw json.RawMessage,
 	item codexItem,
-	eventType agent.EventType,
-	kind agent.ItemKind,
-) []agent.Event {
+	eventType harness.EventType,
+	kind harness.ItemKind,
+) []harness.Event {
 	text := item.Text
 	if text == "" {
 		return nil
@@ -176,7 +176,7 @@ func (p *Parser) textDelta(
 	if delta == "" {
 		return nil
 	}
-	return []agent.Event{p.event(now, eventType, raw, func(ev *agent.Event) {
+	return []harness.Event{p.event(now, eventType, raw, func(ev *harness.Event) {
 		ev.ItemID = item.ID
 		ev.ItemKind = kind
 		ev.Text = delta
@@ -189,9 +189,9 @@ func (p *Parser) toolStarted(
 	id string,
 	name string,
 	input json.RawMessage,
-) agent.Event {
-	return p.event(now, agent.EventToolStarted, raw, func(ev *agent.Event) {
-		ev.ItemKind = agent.ItemToolCall
+) harness.Event {
+	return p.event(now, harness.EventToolStarted, raw, func(ev *harness.Event) {
+		ev.ItemKind = harness.ItemToolCall
 		ev.ItemID = id
 		ev.ToolName = strings.TrimSpace(name)
 		if ev.ToolName == "" {
@@ -207,9 +207,9 @@ func (p *Parser) toolCompleted(
 	id string,
 	output string,
 	isError bool,
-) agent.Event {
-	return p.event(now, agent.EventToolCompleted, raw, func(ev *agent.Event) {
-		ev.ItemKind = agent.ItemToolCall
+) harness.Event {
+	return p.event(now, harness.EventToolCompleted, raw, func(ev *harness.Event) {
+		ev.ItemKind = harness.ItemToolCall
 		ev.ItemID = id
 		ev.Output = output
 		ev.IsError = isError
@@ -218,14 +218,14 @@ func (p *Parser) toolCompleted(
 
 func (p *Parser) event(
 	now int64,
-	type_ agent.EventType,
+	type_ harness.EventType,
 	raw json.RawMessage,
-	fn func(*agent.Event),
-) agent.Event {
-	ev := agent.Event{
+	fn func(*harness.Event),
+) harness.Event {
+	ev := harness.Event{
 		T:              now,
 		Type:           type_,
-		Provider:       agent.ProviderCodex,
+		Provider:       harness.ProviderCodex,
 		ConversationID: p.req.ConversationID,
 		Raw:            raw,
 	}
@@ -347,11 +347,11 @@ func (p *Parser) normalizeUsage(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return nil
 	}
-	usage, ok := agent.ParseUsage(raw)
+	usage, ok := harness.ParseUsage(raw)
 	if !ok {
 		return raw
 	}
-	usage = agent.NormalizeInclusiveInput(usage)
+	usage = harness.NormalizeInclusiveInput(usage)
 	usage.Model = p.req.Model
 	return usage.Raw()
 }

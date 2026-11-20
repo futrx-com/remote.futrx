@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 var ErrInvalidBinding = errors.New("invalid agent auth binding")
@@ -14,11 +14,11 @@ var ErrInvalidBinding = errors.New("invalid agent auth binding")
 // deterministic.
 type Registry struct {
 	bindings []Binding
-	byID     map[agent.ProviderID]int
+	byID     map[harness.ProviderID]int
 }
 
 func NewRegistry() *Registry {
-	return &Registry{byID: make(map[agent.ProviderID]int)}
+	return &Registry{byID: make(map[harness.ProviderID]int)}
 }
 
 func (r *Registry) Register(binding Binding) error {
@@ -33,7 +33,7 @@ func (r *Registry) Register(binding Binding) error {
 		return fmt.Errorf("%w: provider %q has unknown flow %q", ErrInvalidBinding, binding.ID(), binding.Flow())
 	}
 	if r.byID == nil {
-		r.byID = make(map[agent.ProviderID]int)
+		r.byID = make(map[harness.ProviderID]int)
 	}
 	if _, exists := r.byID[binding.ID()]; exists {
 		return fmt.Errorf("%w: provider %q is already registered", ErrInvalidBinding, binding.ID())
@@ -43,7 +43,7 @@ func (r *Registry) Register(binding Binding) error {
 	return nil
 }
 
-func (r *Registry) Lookup(id agent.ProviderID) (Binding, bool) {
+func (r *Registry) Lookup(id harness.ProviderID) (Binding, bool) {
 	if r == nil {
 		return Binding{}, false
 	}

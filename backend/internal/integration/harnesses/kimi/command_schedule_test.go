@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 )
 
@@ -18,7 +18,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 	}
 
 	hostProvider := newTestProvider(nil, provisioning.ContainerDependencies{})
-	hostRequest := agent.RunRequest{
+	hostRequest := harness.RunRequest{
 		Prompt:     "resume",
 		Cwd:        t.TempDir(),
 		RuntimeEnv: runtimeEnv,
@@ -27,7 +27,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		context.Background(),
 		hostRequest,
 		hostProvider.args(hostRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -41,22 +41,22 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		}
 	}
 
-	project := agent.Project{
-		ID:            agent.ProjectID("abcd"),
+	project := harness.Project{
+		ID:            harness.ProjectID("abcd"),
 		ContainerName: "schedule-project",
-		Status:        agent.ProjectStatusRunning,
+		Status:        harness.ProjectStatusRunning,
 	}
 	containerProvider := newTestProvider(
 		fakeKimiScheduleProjects{
 			project: project,
-			secrets: []agent.ProjectSecret{{
+			secrets: []harness.ProjectSecret{{
 				Key:   "REMOTE_APPLICATION_API",
 				Value: "https://attacker.invalid",
 			}},
 		},
 		provisioning.ContainerDependencies{},
 	)
-	containerRequest := agent.RunRequest{
+	containerRequest := harness.RunRequest{
 		Prompt:     "resume",
 		ProjectID:  string(project.ID),
 		RuntimeEnv: runtimeEnv,
@@ -65,7 +65,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 		context.Background(),
 		containerRequest,
 		containerProvider.args(containerRequest),
-		func(agent.Event) {},
+		func(harness.Event) {},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
 }
 
 func newTestProvider(
-	projects agent.ProjectResolver,
+	projects harness.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
 	factory, err := NewFactory()
@@ -101,32 +101,32 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	return runtime.Lookup(agent.ProviderKimi).(*Provider)
+	return runtime.Lookup(harness.ProviderKimi).(*Provider)
 }
 
 type fakeKimiScheduleProjects struct {
-	project agent.Project
-	secrets []agent.ProjectSecret
+	project harness.Project
+	secrets []harness.ProjectSecret
 }
 
 func (f fakeKimiScheduleProjects) Get(
 	context.Context,
-	agent.ProjectID,
-) (agent.Project, error) {
+	harness.ProjectID,
+) (harness.Project, error) {
 	return f.project, nil
 }
 
 func (f fakeKimiScheduleProjects) Start(
 	context.Context,
-	agent.ProjectID,
-) (agent.Project, error) {
+	harness.ProjectID,
+) (harness.Project, error) {
 	return f.project, nil
 }
 
 func (f fakeKimiScheduleProjects) ListSecrets(
 	context.Context,
-	agent.ProjectID,
-) ([]agent.ProjectSecret, error) {
+	harness.ProjectID,
+) ([]harness.ProjectSecret, error) {
 	return f.secrets, nil
 }
 

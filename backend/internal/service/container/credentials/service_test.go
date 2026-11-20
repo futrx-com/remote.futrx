@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 )
 

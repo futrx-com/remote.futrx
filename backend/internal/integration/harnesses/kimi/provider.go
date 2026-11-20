@@ -6,22 +6,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
 
 type Provider struct {
 	accountAuthorizer     agentauth.AccountAuthorizer
-	projectPreparer       agent.ProjectPreparer
+	projectPreparer       harness.ProjectPreparer
 	credentialCollector   provisioning.CredentialCollector
 	profile               provisioning.Profile
 	credentialSyncTimeout time.Duration
 }
 
 func newProvider(
-	projectPreparer agent.ProjectPreparer,
+	projectPreparer harness.ProjectPreparer,
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
@@ -36,26 +36,26 @@ func newProvider(
 	}
 }
 
-func (p *Provider) ID() agent.ProviderID {
-	return agent.ProviderKimi
+func (p *Provider) ID() harness.ProviderID {
+	return harness.ProviderKimi
 }
 
-func (p *Provider) Parser(req agent.RunRequest) agent.LineParser {
+func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 	return NewParser(req)
 }
 
-func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderKimi, ""); err != nil {
+func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
 		return err
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
 		return agentauth.ErrAccountNotFound
 	}
 	if emit == nil {
-		emit = func(agent.Event) {}
+		emit = func(harness.Event) {}
 	}
 	if req.Provider == "" {
-		req.Provider = agent.ProviderKimi
+		req.Provider = harness.ProviderKimi
 	}
 	// kimi-code has no fork primitive; a forked chat simply starts fresh.
 	if req.Fork {
@@ -66,13 +66,13 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	if err != nil {
 		return err
 	}
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, agent.ProviderKimi, ""); err != nil {
+	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
 		return err
 	}
 	err = harnessruntime.RunProcess(ctx, cmd, p.Parser(req), emit, harnessruntime.ProcessOptions{
 		Name:           "kimi",
 		LogID:          req.ConversationID,
-		Provider:       agent.ProviderKimi,
+		Provider:       harness.ProviderKimi,
 		ConversationID: req.ConversationID,
 	})
 	if err == nil && containerName != "" && p.credentialCollector != nil {

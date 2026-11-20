@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
@@ -13,7 +13,7 @@ import (
 )
 
 type deniedAccountSelection struct {
-	provider agent.ProviderID
+	provider harness.ProviderID
 	id       string
 }
 
@@ -48,12 +48,12 @@ func (r *accountSelectionRepository) Update(ctx context.Context, id ID, mutate f
 
 func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testing.T) {
 	for _, tc := range []struct {
-		provider  agent.ProviderID
+		provider  harness.ProviderID
 		accountID string
 	}{
-		{agent.ProviderMiniMax, "team"},
-		{agent.ProviderKimi, ""},
-		{agent.ProviderAntigravity, ""},
+		{harness.ProviderMiniMax, "team"},
+		{harness.ProviderKimi, ""},
+		{harness.ProviderAntigravity, ""},
 	} {
 		for _, operation := range []string{"create", "fork", "account", "provider"} {
 			t.Run(string(tc.provider)+"/"+operation, func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testin
 					repo.source.AccountID = "old"
 				}
 				if operation == "provider" {
-					repo.source.Provider = agent.ProviderCodex
+					repo.source.Provider = harness.ProviderCodex
 				}
 				service := New(repo, nil, nil, nil, WithAuthorizer(policy), WithAccountAccess(access))
 				member := rbac.ContextWithActor(context.Background(), rbac.UserActor("member@example.com"))
@@ -128,7 +128,7 @@ func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testin
 	}
 }
 
-func (d *deniedAccountSelection) Resolve(_ context.Context, p agent.ProviderID, id string) (string, error) {
+func (d *deniedAccountSelection) Resolve(_ context.Context, p harness.ProviderID, id string) (string, error) {
 	d.provider = p
 	d.id = id
 	return "", rbac.ErrDenied
@@ -158,7 +158,7 @@ func TestChatAccountSelectionDeniesCreateForkAndChangesBeforeWrites(t *testing.T
 		if repo.created.ID != "" || repo.source.AccountID != "old" {
 			t.Fatalf("%s modified chat", operation)
 		}
-		if operation == "provider" && (policy.provider != agent.ProviderClaude || policy.id != "") {
+		if operation == "provider" && (policy.provider != harness.ProviderClaude || policy.id != "") {
 			t.Fatalf("provider change must check its default: %+v", policy)
 		}
 	}

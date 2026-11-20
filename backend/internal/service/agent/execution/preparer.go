@@ -8,13 +8,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 type Options struct {
 	// Provider identifies system events and supplies default error wording.
-	Provider agent.ProviderID
+	Provider harness.ProviderID
 	// Profile is the exact provisioning policy already validated by the module
 	// factory. New clones it before retaining any slices or template bytes.
 	Profile provisioning.Profile
@@ -37,7 +37,7 @@ type Options struct {
 }
 
 type Preparer struct {
-	projects   agent.ProjectResolver
+	projects   harness.ProjectResolver
 	containers provisioning.ContainerDependencies
 	options    Options
 }
@@ -45,10 +45,10 @@ type Preparer struct {
 // New returns nil when no project resolver is available, allowing host-only
 // runtime composition and focused tests without a project service.
 func New(
-	projects agent.ProjectResolver,
+	projects harness.ProjectResolver,
 	containers provisioning.ContainerDependencies,
 	options Options,
-) agent.ProjectPreparer {
+) harness.ProjectPreparer {
 	if projects == nil {
 		return nil
 	}
@@ -58,33 +58,33 @@ func New(
 
 func (p *Preparer) Prepare(
 	ctx context.Context,
-	request agent.ProjectPreparationRequest,
-	emit func(agent.Event),
-) (agent.PreparedProject, error) {
+	request harness.ProjectPreparationRequest,
+	emit func(harness.Event),
+) (harness.PreparedProject, error) {
 	project, err := p.projects.Get(ctx, request.ProjectID)
 	if err != nil {
-		return agent.PreparedProject{}, fmt.Errorf("project not found (%s): %w", request.ProjectID, err)
+		return harness.PreparedProject{}, fmt.Errorf("project not found (%s): %w", request.ProjectID, err)
 	}
 	if project.ContainerName == "" {
-		return agent.PreparedProject{}, fmt.Errorf("project %s has no container - recreate the project", project.ID)
+		return harness.PreparedProject{}, fmt.Errorf("project %s has no container - recreate the project", project.ID)
 	}
-	if project.Status != agent.ProjectStatusRunning {
+	if project.Status != harness.ProjectStatusRunning {
 		p.emitSystem(request, emit, "container_starting")
 	}
 	if _, err := p.projects.Start(ctx, project.ID); err != nil {
-		return agent.PreparedProject{}, fmt.Errorf("start container: %w", err)
+		return harness.PreparedProject{}, fmt.Errorf("start container: %w", err)
 	}
 	if err := p.containers.Validate(); err != nil {
-		return agent.PreparedProject{}, err
+		return harness.PreparedProject{}, err
 	}
 	if !p.containers.IsZero() {
 		p.emitSystem(request, emit, "container_preparing")
 		if err := p.prepareContainer(ctx, request, project.ContainerName); err != nil {
-			return agent.PreparedProject{}, err
+			return harness.PreparedProject{}, err
 		}
 	}
 
-	prepared := agent.PreparedProject{ID: project.ID, ContainerName: project.ContainerName}
+	prepared := harness.PreparedProject{ID: project.ID, ContainerName: project.ContainerName}
 	if secrets, err := p.projects.ListSecrets(ctx, project.ID); err == nil {
 		prepared.Secrets = secrets
 	}
@@ -93,7 +93,7 @@ func (p *Preparer) Prepare(
 
 func (p *Preparer) prepareContainer(
 	ctx context.Context,
-	request agent.ProjectPreparationRequest,
+	request harness.ProjectPreparationRequest,
 	containerName string,
 ) error {
 	if err := p.containers.CLI.Ensure(ctx, containerName, p.options.Profile.CLI); err != nil {
@@ -155,16 +155,16 @@ func (p *Preparer) credentialErrorOperation() string {
 }
 
 func (p *Preparer) emitSystem(
-	request agent.ProjectPreparationRequest,
-	emit func(agent.Event),
+	request harness.ProjectPreparationRequest,
+	emit func(harness.Event),
 	subtype string,
 ) {
 	if emit == nil {
 		return
 	}
-	emit(agent.Event{
+	emit(harness.Event{
 		T:              time.Now().UnixMilli(),
-		Type:           agent.EventSystem,
+		Type:           harness.EventSystem,
 		Provider:       p.options.Provider,
 		ConversationID: request.ConversationID,
 		Subtype:        subtype,

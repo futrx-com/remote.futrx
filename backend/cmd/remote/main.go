@@ -18,9 +18,9 @@ import (
 	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"

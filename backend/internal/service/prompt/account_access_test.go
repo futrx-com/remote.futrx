@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
@@ -17,13 +17,13 @@ import (
 type promptAccountCheck struct {
 	mu         sync.Mutex
 	actors     []string
-	providers  []agent.ProviderID
+	providers  []harness.ProviderID
 	ids        []string
 	resolvedID string
 	denyAt     int
 }
 
-func (a *promptAccountCheck) Resolve(ctx context.Context, provider agent.ProviderID, id string) (string, error) {
+func (a *promptAccountCheck) Resolve(ctx context.Context, provider harness.ProviderID, id string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	actor, ok := rbac.ActorFromContext(ctx)
@@ -41,32 +41,32 @@ func (a *promptAccountCheck) Resolve(ctx context.Context, provider agent.Provide
 
 type accountRecordingProvider struct {
 	usageProvider
-	provider agent.ProviderID
-	requests []agent.RunRequest
+	provider harness.ProviderID
+	requests []harness.RunRequest
 	actors   []string
 }
 
-func (p *accountRecordingProvider) ID() agent.ProviderID { return p.provider }
+func (p *accountRecordingProvider) ID() harness.ProviderID { return p.provider }
 
-func (p *accountRecordingProvider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *accountRecordingProvider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	p.requests = append(p.requests, req)
 	actor, _ := rbac.ActorFromContext(ctx)
 	p.actors = append(p.actors, actor.Email)
-	return p.usageProvider.Run(ctx, req, func(event agent.Event) {
+	return p.usageProvider.Run(ctx, req, func(event harness.Event) {
 		event.Provider = p.ID()
 		emit(event)
 	})
 }
 
 var promptAccountProviders = []struct {
-	provider  agent.ProviderID
+	provider  harness.ProviderID
 	accountID string
 }{
-	{agent.ProviderClaude, "team"},
-	{agent.ProviderCodex, "team"},
-	{agent.ProviderMiniMax, "team"},
-	{agent.ProviderKimi, ""},
-	{agent.ProviderAntigravity, ""},
+	{harness.ProviderClaude, "team"},
+	{harness.ProviderCodex, "team"},
+	{harness.ProviderMiniMax, "team"},
+	{harness.ProviderKimi, ""},
+	{harness.ProviderAntigravity, ""},
 }
 
 func TestPromptAccountChecksKeepScheduledActorAndPinResolvedAccount(t *testing.T) {

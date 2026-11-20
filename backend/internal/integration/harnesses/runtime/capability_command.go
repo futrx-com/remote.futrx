@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // NewCapabilityCommand constructs a provider probe for the host or selected
@@ -15,7 +15,7 @@ import (
 // adapter's explicit environment overrides to that invocation.
 func NewCapabilityCommand(
 	ctx context.Context,
-	req agent.CapabilityRequest,
+	req harness.CapabilityRequest,
 	environment []string,
 	binary string,
 	args ...string,
@@ -25,7 +25,7 @@ func NewCapabilityCommand(
 		cmd.Env = mergeEnvironment(os.Environ(), environment)
 		return cmd
 	}
-	lxcArgs := []string{"exec", "--cwd", agent.ProjectWorkspacePath}
+	lxcArgs := []string{"exec", "--cwd", harness.ProjectWorkspacePath}
 	for _, entry := range environment {
 		lxcArgs = append(lxcArgs, "--env", entry)
 	}

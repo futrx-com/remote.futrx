@@ -4,7 +4,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 func TestParseModelCatalogResultReturnsEverySelection(t *testing.T) {
@@ -75,7 +75,7 @@ func TestParseEffortCommandOptionsIncludesUltracode(t *testing.T) {
 
 func TestBuildCapabilitiesUsesResolvedVersionedLabels(t *testing.T) {
 	catalog := claudeModelCatalog{
-		Source:       agent.CapabilitySourceLive,
+		Source:       harness.CapabilitySourceLive,
 		DefaultLabel: "Opus 4.8 (1M context)",
 		Selections: []claudeModelSelection{
 			{ID: "fable", Label: "Fable 5", Description: "Claude Code selection: fable"},
@@ -105,14 +105,14 @@ func TestBuildCapabilitiesUsesResolvedVersionedLabels(t *testing.T) {
 	if got := caps.Models[2].ReasoningEfforts; len(got) != 7 || got[5].Value != "max" || got[6].Value != ultracodeEffort {
 		t.Fatalf("reasoning efforts = %+v", got)
 	}
-	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(agent.RunModeDefault) || caps.Modes[1].Value != string(agent.RunModePlan) {
+	if len(caps.Modes) != 2 || caps.Modes[0].Value != string(harness.RunModeDefault) || caps.Modes[1].Value != string(harness.RunModePlan) {
 		t.Fatalf("modes = %+v", caps.Modes)
 	}
 }
 
 func TestBuildCapabilitiesScopesEffortAndUltracodeByModel(t *testing.T) {
 	catalog := claudeModelCatalog{
-		Source:       agent.CapabilitySourceLive,
+		Source:       harness.CapabilitySourceLive,
 		DefaultLabel: "Opus 4.6",
 		Selections: []claudeModelSelection{
 			{ID: "opus", Label: "Opus 4.8"},
@@ -148,7 +148,7 @@ func TestReasoningOptionsDoNotTrustProviderWideUltracodeForUnknownModel(t *testi
 	}
 }
 
-func assertEffortValues(t *testing.T, model agent.ModelCapability, want []string) {
+func assertEffortValues(t *testing.T, model harness.ModelCapability, want []string) {
 	t.Helper()
 	got := make([]string, 0, len(model.ReasoningEfforts))
 	for _, option := range model.ReasoningEfforts {
@@ -161,7 +161,7 @@ func assertEffortValues(t *testing.T, model agent.ModelCapability, want []string
 
 func TestFallbackCapabilitiesKeepCompleteVersionedCatalog(t *testing.T) {
 	caps := fallbackCapabilities()
-	if caps.Source != agent.CapabilitySourceFallback || len(caps.Models) != 10 {
+	if caps.Source != harness.CapabilitySourceFallback || len(caps.Models) != 10 {
 		t.Fatalf("capabilities = %+v", caps)
 	}
 	want := map[string]string{

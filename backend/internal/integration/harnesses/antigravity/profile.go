@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 )
 
 // containerAgentHome is HOME inside a project container: agy keeps its state
@@ -24,7 +24,7 @@ const stateDirUnderHome = ".gemini/antigravity-cli"
 const releaseBaseURL = "https://github.com/google-antigravity/antigravity-cli/releases/download"
 
 var antigravityProfile = provisioning.Profile{
-	ID: string(agent.ProviderAntigravity),
+	ID: string(harness.ProviderAntigravity),
 	CLI: provisioning.CLISpec{
 		Name:               "antigravity",
 		ImageLabel:         "antigravity",

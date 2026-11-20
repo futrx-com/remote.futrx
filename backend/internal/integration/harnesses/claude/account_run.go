@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
@@ -34,7 +34,7 @@ type accountRun struct {
 	credentials   provisioning.CredentialSpec
 }
 
-func newAccountRun(req agent.RunRequest, saved agentauth.RunCredential) (*accountRun, error) {
+func newAccountRun(req harness.RunRequest, saved agentauth.RunCredential) (*accountRun, error) {
 	scope := harnessruntime.AccountHomeScope(saved.AccountID, req.ProjectID, req.ConversationID)
 	hostHome := filepath.Join(claudeHomeDir(), "run-accounts", scope)
 	containerHome := filepath.Join(containerClaudeHome, "run-accounts", scope)

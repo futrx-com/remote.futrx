@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // rateLimitInfo is the payload of a rate_limit_event line.
@@ -21,19 +21,19 @@ type rateLimitInfo struct {
 // An unknown window name is dropped rather than guessed at: filing a reading
 // under the wrong window would make the card confidently wrong, which is worse
 // than one that has not heard about that window yet.
-func parseRateLimit(payload json.RawMessage, now int64) (agent.Quota, bool) {
+func parseRateLimit(payload json.RawMessage, now int64) (harness.Quota, bool) {
 	if len(payload) == 0 {
-		return agent.Quota{}, false
+		return harness.Quota{}, false
 	}
 	var info rateLimitInfo
 	if err := json.Unmarshal(payload, &info); err != nil {
-		return agent.Quota{}, false
+		return harness.Quota{}, false
 	}
 	window := normalizeQuotaWindow(info.RateLimitType)
 	if window == "" {
-		return agent.Quota{}, false
+		return harness.Quota{}, false
 	}
-	quota := agent.Quota{
+	quota := harness.Quota{
 		Window:     window,
 		ResetsAt:   info.ResetsAt,
 		Status:     info.Status,
@@ -53,12 +53,12 @@ func parseRateLimit(payload json.RawMessage, now int64) (agent.Quota, bool) {
 
 // normalizeQuotaWindow keeps Claude's wire vocabulary inside its adapter.
 // Unknown names stay unknown so the caller drops them instead of guessing.
-func normalizeQuotaWindow(name string) agent.QuotaWindow {
+func normalizeQuotaWindow(name string) harness.QuotaWindow {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "five_hour", "5h", "primary", "session":
-		return agent.QuotaWindowSession
+		return harness.QuotaWindowSession
 	case "seven_day", "weekly", "7d", "secondary":
-		return agent.QuotaWindowWeekly
+		return harness.QuotaWindowWeekly
 	default:
 		return ""
 	}

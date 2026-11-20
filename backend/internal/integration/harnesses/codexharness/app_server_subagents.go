@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 type appServerSubagentTracker struct {
@@ -49,7 +49,7 @@ func (tracker *appServerSubagentTracker) ParseNotification(
 	rootThreadID string,
 	method string,
 	raw json.RawMessage,
-) []agent.Event {
+) []harness.Event {
 	now := time.Now().UnixMilli()
 	if rootThreadID != "" {
 		tracker.rootThreadID = rootThreadID
@@ -122,17 +122,17 @@ func (tracker *appServerSubagentTracker) ParseNotification(
 	if !changed {
 		return tracker.parser.nativeEvent(now, method, raw)
 	}
-	return []agent.Event{tracker.event(now, rootThreadID, method, raw, state)}
+	return []harness.Event{tracker.event(now, rootThreadID, method, raw, state)}
 }
 
-func (tracker *appServerSubagentTracker) Finalize(rootStatus string) []agent.Event {
+func (tracker *appServerSubagentTracker) Finalize(rootStatus string) []harness.Event {
 	threadIDs := make([]string, 0, len(tracker.states))
 	for threadID := range tracker.states {
 		threadIDs = append(threadIDs, threadID)
 	}
 	sort.Strings(threadIDs)
 
-	var events []agent.Event
+	var events []harness.Event
 	for _, threadID := range threadIDs {
 		state := tracker.states[threadID]
 		if isTerminalSubagentStatus(state.status) {
@@ -172,24 +172,24 @@ func (tracker *appServerSubagentTracker) event(
 	method string,
 	raw json.RawMessage,
 	state *appServerSubagentState,
-) agent.Event {
-	return tracker.parser.event(now, method, agent.EventCollaboration, raw, func(event *agent.Event) {
+) harness.Event {
+	return tracker.parser.event(now, method, harness.EventCollaboration, raw, func(event *harness.Event) {
 		event.ItemID = subagentEventID(state.threadID)
-		event.ItemKind = agent.ItemToolCall
+		event.ItemKind = harness.ItemToolCall
 		event.ToolName = state.label()
 		event.Status = state.status
 		event.Data = state.data(rootThreadID)
 	})
 }
 
-func (tracker *appServerSubagentTracker) syntheticEvent(state *appServerSubagentState) agent.Event {
-	return agent.Event{
+func (tracker *appServerSubagentTracker) syntheticEvent(state *appServerSubagentState) harness.Event {
+	return harness.Event{
 		T:              time.Now().UnixMilli(),
-		Type:           agent.EventCollaboration,
+		Type:           harness.EventCollaboration,
 		Provider:       tracker.parser.req.Provider,
 		ConversationID: tracker.parser.req.ConversationID,
 		ItemID:         subagentEventID(state.threadID),
-		ItemKind:       agent.ItemToolCall,
+		ItemKind:       harness.ItemToolCall,
 		ToolName:       state.label(),
 		Status:         state.status,
 		Data:           state.data(tracker.rootThreadID),
