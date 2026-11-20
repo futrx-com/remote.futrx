@@ -103,7 +103,7 @@ and standalone-script installers target the same managed prefix. The installer
 and backend service put that directory first on `PATH`, and convergence rejects
 any state where ordinary command resolution selects a different executable.
 The global
-`config.AgentOptions.HostCLIVersionTimeout` currently caps each host version
+`config.HarnessOptions.HostCLIVersionTimeout` currently caps each host version
 command at 15 seconds. The installer
 installs stale/missing npm CLIs at the exact package pin or runs the profile's
 pinned install script, then applies the profile's post-install verification

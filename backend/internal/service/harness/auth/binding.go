@@ -43,9 +43,9 @@ type Snapshot struct {
 	Accounts      *AccountsSnapshot `json:"accounts,omitempty"`
 }
 
-// Binding is the transport-neutral view of one configured agent auth caller.
+// Binding is the transport-neutral view of one configured harness auth caller.
 // It lets inbound adapters expose HTTP or WebSocket protocols without importing
-// a concrete agent package or knowing its CLI policy.
+// a concrete harness package or knowing its CLI policy.
 type Binding struct {
 	id            harness.ProviderID
 	flow          Flow

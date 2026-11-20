@@ -84,7 +84,7 @@ type InteractionResponse struct {
 }
 
 // NativeEnvelopeSchemaVersion identifies the provider-native correlation
-// contract persisted with normalized agent events.
+// contract persisted with normalized harness events.
 const NativeEnvelopeSchemaVersion = 1
 
 // NativeEnvelope retains provider-owned protocol data without forcing it
@@ -127,7 +127,7 @@ type RunRequest struct {
 	InteractionResponses <-chan InteractionResponse
 }
 
-// Event is the normalized backend event shape emitted by headless agent
+// Event is the normalized backend event shape emitted by headless harness
 // providers. Transport-specific chat events are derived from this at the edge.
 type Event struct {
 	T              int64           `json:"t"`

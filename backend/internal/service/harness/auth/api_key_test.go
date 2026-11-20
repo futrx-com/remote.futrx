@@ -26,14 +26,14 @@ func (rejectingStoredKeyValidator) ValidateAPIKeyFormat(key string) error {
 	return nil
 }
 
-func (s *apiKeyTestStore) AgentAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
+func (s *apiKeyTestStore) HarnessAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
 	if s.err != nil {
 		return "", s.err
 	}
 	return s.keys[id], nil
 }
 
-func (s *apiKeyTestStore) SaveAgentAPIKey(_ context.Context, id harness.ProviderID, key string) error {
+func (s *apiKeyTestStore) SaveHarnessAPIKey(_ context.Context, id harness.ProviderID, key string) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -41,7 +41,7 @@ func (s *apiKeyTestStore) SaveAgentAPIKey(_ context.Context, id harness.Provider
 	return nil
 }
 
-func (s *apiKeyTestStore) DeleteAgentAPIKey(_ context.Context, id harness.ProviderID) error {
+func (s *apiKeyTestStore) DeleteHarnessAPIKey(_ context.Context, id harness.ProviderID) error {
 	if s.err != nil {
 		return s.err
 	}

@@ -23,9 +23,9 @@ var (
 // snapshots or capability responses. An empty key means the provider has not
 // been configured.
 type APIKeyStore interface {
-	AgentAPIKey(context.Context, harness.ProviderID) (string, error)
-	SaveAgentAPIKey(context.Context, harness.ProviderID, string) error
-	DeleteAgentAPIKey(context.Context, harness.ProviderID) error
+	HarnessAPIKey(context.Context, harness.ProviderID) (string, error)
+	SaveHarnessAPIKey(context.Context, harness.ProviderID, string) error
+	DeleteHarnessAPIKey(context.Context, harness.ProviderID) error
 }
 
 // APIKeyValidator verifies a credential with its provider before the service
@@ -83,7 +83,7 @@ func (s *APIKeyService) EnableAccounts(ctx context.Context, vault *AccountVault,
 	}
 	s.mutationMu.Lock()
 	defer s.mutationMu.Unlock()
-	accounts, err := vault.store.AgentAccounts(ctx, s.id)
+	accounts, err := vault.store.HarnessAccounts(ctx, s.id)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func (s *APIKeyService) EnableAccounts(ctx context.Context, vault *AccountVault,
 				ID: id, Label: "Default", ValidatedAt: time.Now().UTC(), Credential: credential,
 			}},
 		}
-		if err := vault.store.SaveAgentAccounts(ctx, s.id, accounts); err != nil {
+		if err := vault.store.SaveHarnessAccounts(ctx, s.id, accounts); err != nil {
 			return err
 		}
 	}
@@ -115,7 +115,7 @@ func (s *APIKeyService) EnableAccounts(ctx context.Context, vault *AccountVault,
 	// migration committed the account set but could not clean up the old file.
 	if legacyKey != "" && s.store != nil {
 		if _, ok := apiKeyFromAccounts(accounts, ""); ok {
-			if err := s.store.DeleteAgentAPIKey(ctx, s.id); err != nil {
+			if err := s.store.DeleteHarnessAPIKey(ctx, s.id); err != nil {
 				log.Printf("%s API key accounts: remove migrated legacy key: %v", s.id, err)
 			}
 		}
@@ -152,7 +152,7 @@ func NewAPIKeyService(
 	if store == nil {
 		return service, nil
 	}
-	key, err := store.AgentAPIKey(ctx, id)
+	key, err := store.HarnessAPIKey(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +335,7 @@ func (s *APIKeyService) Set(ctx context.Context, key string) error {
 			return err
 		}
 	}
-	if err := s.store.SaveAgentAPIKey(ctx, s.id, key); err != nil {
+	if err := s.store.SaveHarnessAPIKey(ctx, s.id, key); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -403,7 +403,7 @@ func (s *APIKeyService) SetAccount(ctx context.Context, label, accountID, key st
 		next.replace(AccountRecord{ID: accountID, Label: label, Credential: credential, ValidatedAt: time.Now().UTC()})
 	}
 	next.ActiveAccountID = accountID
-	if err := store.SaveAgentAccounts(ctx, s.id, next); err != nil {
+	if err := store.SaveHarnessAccounts(ctx, s.id, next); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -426,7 +426,7 @@ func (s *APIKeyService) Delete(ctx context.Context) error {
 		s.mu.RLock()
 		store := s.accountsStore
 		s.mu.RUnlock()
-		if err := store.SaveAgentAccounts(ctx, s.id, AccountSet{}); err != nil {
+		if err := store.SaveHarnessAccounts(ctx, s.id, AccountSet{}); err != nil {
 			return err
 		}
 		s.mu.Lock()
@@ -435,7 +435,7 @@ func (s *APIKeyService) Delete(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
-	if err := s.store.DeleteAgentAPIKey(ctx, s.id); err != nil {
+	if err := s.store.DeleteHarnessAPIKey(ctx, s.id); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -495,7 +495,7 @@ func (s *APIKeyService) ActivateAccount(ctx context.Context, accountID string) e
 		return ErrAccountNotFound
 	}
 	next.ActiveAccountID = accountID
-	if err := store.SaveAgentAccounts(ctx, s.id, next); err != nil {
+	if err := store.SaveHarnessAccounts(ctx, s.id, next); err != nil {
 		return err
 	}
 	s.mu.Lock()
@@ -524,7 +524,7 @@ func (s *APIKeyService) DeleteAccount(ctx context.Context, accountID string) err
 	if !next.remove(accountID) {
 		return ErrAccountNotFound
 	}
-	if err := store.SaveAgentAccounts(ctx, s.id, next); err != nil {
+	if err := store.SaveHarnessAccounts(ctx, s.id, next); err != nil {
 		return fmt.Errorf("save %s API key accounts: %w", s.id, err)
 	}
 	s.mu.Lock()

@@ -32,7 +32,7 @@ flowchart LR
     Provider --> Harness
     Harness <-->|JSON-RPC over stdin/stdout| AppServer
 
-    Harness -->|agent.Event| Prompt
+    Harness -->|harness.Event| Prompt
     Prompt -->|ChatEvent| Hub
     Hub --> Store
     Hub -->|sequenced live event| Socket
@@ -91,7 +91,7 @@ sequenceDiagram
     Server-->>Harness: native turn ID
     loop Until authoritative terminal notification
         Server-->>Harness: notification or server request
-        Harness-->>Prompt: agent.Event
+        Harness-->>Prompt: harness.Event
         Prompt->>Hub: project and persist ChatEvent
         Hub-->>Socket: sequenced ChatEvent
         Socket-->>Browser: sequenced ChatEvent
@@ -155,7 +155,7 @@ flowchart TD
     Classify -->|response| State["Advance initialize/thread/turn/interrupt state"]
     Classify -->|server request| Pending["Store pending request and emit interaction.request"]
     Classify -->|notification| Parser["appServerEventParser"]
-    Parser -->|known| Typed["Typed agent.Event"]
+    Parser -->|known| Typed["Typed harness.Event"]
     Parser -->|unknown or additive| Native["provider.native + NativeEnvelope"]
     Pending --> Projection["chatEventFromAgentEvent"]
     Typed --> Projection

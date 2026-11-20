@@ -9,14 +9,14 @@ import (
 	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
-type testAgentPolicy map[string]harnessmodule.Descriptor
+type testHarnessPolicy map[string]harnessmodule.Descriptor
 
-func (p testAgentPolicy) Descriptor(provider string) (harnessmodule.Descriptor, bool) {
+func (p testHarnessPolicy) Descriptor(provider string) (harnessmodule.Descriptor, bool) {
 	descriptor, ok := p[provider]
 	return descriptor, ok
 }
 
-func (p testAgentPolicy) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
+func (p testHarnessPolicy) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
 	descriptor, ok := p[provider]
 	if !ok {
 		return false
@@ -32,8 +32,8 @@ func (p testAgentPolicy) SupportsScope(provider string, scope harnessmodule.Exec
 	return false
 }
 
-func codexTestAgentPolicy() testAgentPolicy {
-	return testAgentPolicy{"codex": {
+func codexTestHarnessPolicy() testHarnessPolicy {
+	return testHarnessPolicy{"codex": {
 		ID:    harness.ProviderCodex,
 		Label: "Codex",
 		Features: harnessmodule.Features{

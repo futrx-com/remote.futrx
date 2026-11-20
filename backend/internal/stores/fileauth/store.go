@@ -91,7 +91,7 @@ func (s *Store) SaveOAuthConfig(ctx context.Context, cfg serviceauth.OAuthConfig
 	return s.writeJSONLocked("oauth.json", cfg)
 }
 
-func (s *Store) AgentAPIKey(ctx context.Context, provider harness.ProviderID) (string, error) {
+func (s *Store) HarnessAPIKey(ctx context.Context, provider harness.ProviderID) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
@@ -109,7 +109,7 @@ func (s *Store) AgentAPIKey(ctx context.Context, provider harness.ProviderID) (s
 	return keys[string(provider)], nil
 }
 
-func (s *Store) SaveAgentAPIKey(ctx context.Context, provider harness.ProviderID, key string) error {
+func (s *Store) SaveHarnessAPIKey(ctx context.Context, provider harness.ProviderID, key string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -129,7 +129,7 @@ func (s *Store) SaveAgentAPIKey(ctx context.Context, provider harness.ProviderID
 	return s.writeJSONLocked(agentAPIKeysFile, keys)
 }
 
-func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider harness.ProviderID) error {
+func (s *Store) DeleteHarnessAPIKey(ctx context.Context, provider harness.ProviderID) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -163,7 +163,7 @@ func (s *Store) agentAPIKeysLocked() (map[string]string, error) {
 	return keys, nil
 }
 
-func (s *Store) AgentAccounts(ctx context.Context, provider harness.ProviderID) (harnessauth.AccountSet, error) {
+func (s *Store) HarnessAccounts(ctx context.Context, provider harness.ProviderID) (harnessauth.AccountSet, error) {
 	select {
 	case <-ctx.Done():
 		return harnessauth.AccountSet{}, ctx.Err()
@@ -181,7 +181,7 @@ func (s *Store) AgentAccounts(ctx context.Context, provider harness.ProviderID) 
 	return document.Providers[string(provider)].Clone(), nil
 }
 
-func (s *Store) SaveAgentAccounts(ctx context.Context, provider harness.ProviderID, accounts harnessauth.AccountSet) error {
+func (s *Store) SaveHarnessAccounts(ctx context.Context, provider harness.ProviderID, accounts harnessauth.AccountSet) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

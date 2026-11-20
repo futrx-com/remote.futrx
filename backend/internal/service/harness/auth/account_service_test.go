@@ -64,7 +64,7 @@ func newFakeAccountStore(set AccountSet) *fakeAccountStore {
 	return &fakeAccountStore{sets: map[harness.ProviderID]AccountSet{testAccountProvider: set.Clone()}}
 }
 
-func (s *fakeAccountStore) AgentAccounts(_ context.Context, provider harness.ProviderID) (AccountSet, error) {
+func (s *fakeAccountStore) HarnessAccounts(_ context.Context, provider harness.ProviderID) (AccountSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.loads++
@@ -74,7 +74,7 @@ func (s *fakeAccountStore) AgentAccounts(_ context.Context, provider harness.Pro
 	return s.sets[provider].Clone(), nil
 }
 
-func (s *fakeAccountStore) SaveAgentAccounts(_ context.Context, provider harness.ProviderID, set AccountSet) error {
+func (s *fakeAccountStore) SaveHarnessAccounts(_ context.Context, provider harness.ProviderID, set AccountSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.saveErr != nil {

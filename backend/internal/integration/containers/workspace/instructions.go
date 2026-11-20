@@ -44,9 +44,9 @@ func NewProvisioner(
 	}
 }
 
-// EnsureAgentInstructions pushes the shared system-instructions template to
+// EnsureHarnessInstructions pushes the shared system-instructions template to
 // all configured targets, grouped by hash marker. Idempotent.
-func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName string) error {
+func (p *Provisioner) EnsureHarnessInstructions(ctx context.Context, containerName string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}

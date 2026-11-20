@@ -90,12 +90,12 @@ fi
 grep -Fq "backend/internal/service/harness/module/catalog.go" <<<"$error" || \
     fail "agent module rejection did not identify the protected path"
 
-commit_file backend/internal/config/agents.go agent-composition protected-agent-composition
+commit_file backend/internal/config/harnesses.go agent-composition protected-agent-composition
 git -C "$TEST_REPO" tag 0.3.9
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.9 2>&1)"; then
     fail "agent composition was accepted as an application release"
 fi
-grep -Fq "backend/internal/config/agents.go" <<<"$error" || \
+grep -Fq "backend/internal/config/harnesses.go" <<<"$error" || \
     fail "agent composition rejection did not identify the protected path"
 
 commit_file README.md next-minor minor

@@ -133,12 +133,12 @@ func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
+	policy := testHarnessPolicy{"codex": {
 		ID: harness.ProviderCodex, Label: "Codex",
 		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
 		Features:        harnessmodule.Features{Skills: harnessmodule.SkillsNone},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	service.runPrompt(ctx, meta.ID, "continue", func(ChatEvent) {}, func(ChatEvent) {})
 
 	if len(provider.requests) != 1 {
@@ -177,12 +177,12 @@ func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
+	policy := testHarnessPolicy{"codex": {
 		ID:              harness.ProviderCodex,
 		Label:           "Codex",
 		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeProject},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	if err := service.runPrompt(ctx, meta.ID, "use the browser", func(ChatEvent) {}, func(ChatEvent) {}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,13 +225,13 @@ func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
+	policy := testHarnessPolicy{"codex": {
 		ID: harness.ProviderCodex, Label: "Codex", ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	err = service.runPrompt(ctx, meta.ID, "do work", func(ChatEvent) {}, func(ChatEvent) {})
-	if err != ErrUnsupportedAgentScope {
-		t.Fatalf("runPrompt error = %v, want ErrUnsupportedAgentScope", err)
+	if err != ErrUnsupportedHarnessScope {
+		t.Fatalf("runPrompt error = %v, want ErrUnsupportedHarnessScope", err)
 	}
 	if len(provider.requests) != 0 {
 		t.Fatalf("provider ran outside its scope: %#v", provider.requests)

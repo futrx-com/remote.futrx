@@ -55,8 +55,8 @@ type ContainerStack struct {
 // ContainerStackOptions supplies presentation and installation-specific
 // dependencies to the container composition root.
 type ContainerStackOptions struct {
-	AgentInstructions  []byte
-	ImageBuildProgress serviceimage.ProgressReporter
+	HarnessInstructions []byte
+	ImageBuildProgress  serviceimage.ProgressReporter
 	// AppRegistry is the installable-application catalog. When non-nil the stack
 	// builds the application installer/port-allocator over the same lxc runner.
 	AppRegistry *containerapplications.Registry
@@ -81,9 +81,9 @@ func (s ContainerStack) ProjectDependencies() serviceproject.ContainerDependenci
 	}
 }
 
-// AgentDependencies exposes only the capabilities used while preparing a
+// HarnessDependencies exposes only the capabilities used while preparing a
 // container for an agent provider.
-func (s ContainerStack) AgentDependencies() provisioning.ContainerDependencies {
+func (s ContainerStack) HarnessDependencies() provisioning.ContainerDependencies {
 	return provisioning.ContainerDependencies{
 		CLI:           s.CLI,
 		Credentials:   s.Credentials,
@@ -118,7 +118,7 @@ func NewContainerStack(
 		runner,
 		profiles,
 		publisher,
-		options.AgentInstructions,
+		options.HarnessInstructions,
 	)
 	runtimeAssets := containerruntimeassets.NewAdapter(runner, publisher)
 	images := serviceimage.NewBuilder(
@@ -144,7 +144,7 @@ func NewContainerStack(
 	inspectionAdapter := containerinspection.NewAdapter(
 		runner,
 		profiles,
-		options.AgentInstructions,
+		options.HarnessInstructions,
 	)
 	inspection := serviceinspection.NewService(serviceinspection.Dependencies{
 		States:        lifecycle,

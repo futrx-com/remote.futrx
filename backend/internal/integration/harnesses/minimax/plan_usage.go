@@ -61,7 +61,7 @@ func (p *Provider) readAccountPlanUsage(ctx context.Context, accountID string) h
 }
 
 // MiniMax's model_remains list can also contain image, speech, and video
-// buckets. Only the general or MiniMax-M coding bucket describes this agent.
+// buckets. Only the general or MiniMax-M coding bucket describes this harness.
 // The API's explicit remaining percentages avoid the ambiguous usage_count
 // fields, which some Token Plans report as remaining counts.
 func miniMaxPlanWindows(rows []json.RawMessage, now time.Time) ([]harness.Quota, error) {

@@ -9,7 +9,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
-func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
+func TestCatalogBuildsEveryDeclaredHarnessInStableOrder(t *testing.T) {
 	catalog, err := NewHarnessModules()
 	if err != nil {
 		t.Fatal(err)

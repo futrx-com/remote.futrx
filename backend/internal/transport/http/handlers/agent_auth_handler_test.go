@@ -425,16 +425,16 @@ type agentAuthMemoryKeyStore struct {
 	keys map[harness.ProviderID]string
 }
 
-func (s *agentAuthMemoryKeyStore) AgentAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
+func (s *agentAuthMemoryKeyStore) HarnessAPIKey(_ context.Context, id harness.ProviderID) (string, error) {
 	return s.keys[id], nil
 }
 
-func (s *agentAuthMemoryKeyStore) SaveAgentAPIKey(_ context.Context, id harness.ProviderID, key string) error {
+func (s *agentAuthMemoryKeyStore) SaveHarnessAPIKey(_ context.Context, id harness.ProviderID, key string) error {
 	s.keys[id] = key
 	return nil
 }
 
-func (s *agentAuthMemoryKeyStore) DeleteAgentAPIKey(_ context.Context, id harness.ProviderID) error {
+func (s *agentAuthMemoryKeyStore) DeleteHarnessAPIKey(_ context.Context, id harness.ProviderID) error {
 	delete(s.keys, id)
 	return nil
 }

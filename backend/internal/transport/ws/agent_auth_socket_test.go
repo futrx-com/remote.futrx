@@ -154,15 +154,15 @@ func newSocketTestBindings() ([]harnessauth.Binding, *harnessauth.CodeService) {
 
 type socketAPIKeyStore struct{}
 
-func (socketAPIKeyStore) AgentAPIKey(context.Context, harness.ProviderID) (string, error) {
+func (socketAPIKeyStore) HarnessAPIKey(context.Context, harness.ProviderID) (string, error) {
 	return "", nil
 }
 
-func (socketAPIKeyStore) SaveAgentAPIKey(context.Context, harness.ProviderID, string) error {
+func (socketAPIKeyStore) SaveHarnessAPIKey(context.Context, harness.ProviderID, string) error {
 	return nil
 }
 
-func (socketAPIKeyStore) DeleteAgentAPIKey(context.Context, harness.ProviderID) error {
+func (socketAPIKeyStore) DeleteHarnessAPIKey(context.Context, harness.ProviderID) error {
 	return nil
 }
 

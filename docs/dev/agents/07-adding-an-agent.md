@@ -81,7 +81,7 @@ the required normalization and failure behavior.
 Add the compile-time assertion near the factory:
 
 ```go
-var _ agent.Provider = (*Provider)(nil)
+var _ harness.Provider = (*Provider)(nil)
 ```
 
 ## Declare provisioning policy
@@ -136,7 +136,7 @@ the upstream CLI—owns it.
 example is illustrative:
 
 ```go
-const providerID agent.ProviderID = "acme"
+const providerID harness.ProviderID = "acme"
 
 func NewFactory() (module.Factory, error) {
     profile := Profile()
@@ -232,7 +232,7 @@ the module supports `host`, because defaults must be usable for loose chats.
 ## Register it
 
 Add only the factory constructor to the ordered builder list in
-[`config/agents.go`](../../../backend/internal/config/agents.go):
+[`config/harnesses.go`](../../../backend/internal/config/harnesses.go):
 
 ```go
 builders := []module.FactoryBuilder{

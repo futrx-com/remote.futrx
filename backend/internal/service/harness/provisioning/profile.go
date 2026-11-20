@@ -202,7 +202,7 @@ func validRuntimeAssetMode(mode string) bool {
 
 // PersistentDirectory declares provider state that must survive project
 // container replacement. HostDirectory is a single directory name below the
-// project's private agent-home root; ContainerPath is the absolute location
+// project's private harness-home root; ContainerPath is the absolute location
 // used by the provider CLI. Device must be a stable LXD disk-device name.
 type PersistentDirectory struct {
 	Device        string
@@ -238,7 +238,7 @@ func validPersistentName(value string) bool {
 	return true
 }
 
-// Profile is the provisioning policy supplied by one agent. CLI policy may be
+// Profile is the provisioning policy supplied by one harness. CLI policy may be
 // consumed for host and project execution; credential, mount, instruction,
 // skill, and browser policy applies to project containers. No LXC, process,
 // or filesystem operation lives here.

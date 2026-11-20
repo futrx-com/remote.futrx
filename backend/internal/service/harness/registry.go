@@ -7,7 +7,7 @@ import (
 
 var ErrInvalidProvider = errors.New("invalid agent provider")
 
-// Registry owns the configured agent implementations, keyed by their stable
+// Registry owns the configured harness implementations, keyed by their stable
 // provider identifier. Agents are registered once at the composition root and
 // looked up by application services at run time.
 type Registry struct {

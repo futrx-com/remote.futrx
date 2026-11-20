@@ -70,7 +70,7 @@ type CapabilityFeatures struct {
 	StreamingPresentation string                   `json:"streamingPresentation"`
 }
 
-// Capabilities is the normalized catalog returned by every agent adapter.
+// Capabilities is the normalized catalog returned by every harness adapter.
 // Warning is intentionally concise and must not contain raw provider output.
 type Capabilities struct {
 	Provider          ProviderID               `json:"provider"`

@@ -27,7 +27,7 @@ func (p testProvider) Run(context.Context, harness.RunRequest, func(harness.Even
 	return nil
 }
 
-func TestCatalogBuildsFakeFifthAgentWithoutProviderSwitches(t *testing.T) {
+func TestCatalogBuildsFakeFifthHarnessWithoutProviderSwitches(t *testing.T) {
 	factory := newTestFactory(t, "minimax")
 	catalog, err := NewCatalog(factory)
 	if err != nil {
