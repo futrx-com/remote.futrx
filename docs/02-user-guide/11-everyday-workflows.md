@@ -63,8 +63,9 @@ The files stay in the project. Remote supplies the selected session's missing
 user and assistant messages, tool records and attachments as historical
 context. A fresh session receives the retained conversation history. Remote
 does not truncate that history, but native input limits still apply and
-provider-internal state does not transfer. Forks start fresh sessions with
-their retained history.
+provider-internal state does not transfer between providers. Forks prefer a
+native fork at a retained checkpoint; a fresh session with retained history is
+the fallback when no safe native operation is available.
 
 Antigravity must first be signed in by running `agy` in that project's
 Terminal. Exit the CLI and choose **Refresh models** in the chat picker before

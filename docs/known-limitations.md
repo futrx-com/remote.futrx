@@ -106,9 +106,11 @@ These are the constraints worth understanding before you deploy or rely on remot
   in that tab, but not tab closure or another tab/browser/device. A background
   chat's queue sends only after that chat is opened again. Use scheduled tasks
   for host-owned future work.
-- **Portable history cannot recreate native session state.** Missing-session
-  recovery, forks and rewinds start fresh sessions with retained user and
-  assistant messages, tool calls/results and attachments. Harness switches
+- **Portable history cannot recreate native session state.** Forks and rewinds
+  prefer native forks at saved checkpoints. Missing or unsupported checkpoints,
+  including older history without them, and missing-session recovery start
+  fresh with retained user and assistant messages, tool calls/results and
+  attachments. Harness switches
   deliver history beyond the selected session's safe bookmark, or the full
   retained history for a fresh session. Remote does not truncate or summarize
   that history, but sends it as context rather than native historical turns.

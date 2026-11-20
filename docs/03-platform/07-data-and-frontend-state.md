@@ -57,8 +57,10 @@ retrying the same request can run it again. See
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
 When a chat selects a saved Claude or Codex account, its run uses a stable
 `run-accounts/<scope>` subdirectory inside that provider home. The scope is a
-hash of account, project, and chat identifiers, so concurrent chats do not
-share credential or session files. Shared instructions, settings, and skills
+hash of account, project, and the original native conversation identifiers.
+Independent chats have separate homes; a native fork retains the source home
+scope so its new session and later resumes can find inherited state. Shared
+instructions, settings, and skills
 remain linked from the canonical provider home.
 
 ## Entity relationships
@@ -166,9 +168,11 @@ core acknowledges agent results. Stop/start and upgrades retain state; uninstall
 removes it.
 
 Rewind selects a new branch with a retained history prefix. Forks also share a
-prefix rather than copying the full event log. Their next runs establish fresh
-native sessions and receive the retained history through the harness adapter.
-Old native files are not rewritten. Deleting a chat removes its active database
+prefix rather than copying the full event log. Their next runs prefer a native
+fork at a successful checkpoint retained in that history, then receive only
+the missing suffix. Without a usable checkpoint, they start fresh with retained
+history. Source native sessions stay intact, and workspace files are not rolled
+back. Deleting a chat removes its active database
 records; historical branches required by another fork must remain reachable.
 
 ## Agent quota snapshots

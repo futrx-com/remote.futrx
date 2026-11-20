@@ -11,12 +11,13 @@ import (
 // missing-session retry ThroughSeq keeps the same history boundary so that the
 // new user message is never also replayed as historical context.
 type RunPreparation struct {
-	ChatID     ID
-	RunID      string
-	Provider   Provider
-	AccountID  string
-	ForceFresh bool
-	ThroughSeq *int64
+	ChatID          ID
+	RunID           string
+	Provider        Provider
+	AccountID       string
+	ForceFresh      bool
+	AllowNativeFork bool
+	ThroughSeq      *int64
 }
 
 // RunReference identifies the current delivery without keeping an attempt ledger.
@@ -31,8 +32,10 @@ type RunReference struct {
 
 type PreparedRun struct {
 	RunReference
-	ResumeID string
-	History  conversation.History
+	ResumeID             string
+	NativeCheckpoint     string
+	NativeConversationID string
+	History              conversation.History
 }
 
 type InputAcceptance struct {
@@ -41,8 +44,9 @@ type InputAcceptance struct {
 }
 
 type RunOutcome struct {
-	Status          string // completed, failed, interrupted, or uncertain
-	NativeSessionID string
+	Status           string // completed, failed, interrupted, or uncertain
+	NativeSessionID  string
+	NativeCheckpoint string
 }
 
 // ConversationRuntime marks native sessions pending before execution and records

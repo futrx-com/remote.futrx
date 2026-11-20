@@ -14,11 +14,13 @@ import (
 // One entry per provider/account describes only the current branch's resumable
 // native session. Attempts and delivered prompts are not separate stored history.
 type sessionState struct {
-	NativeSessionID   string `json:"nativeSessionId,omitempty"`
-	HistoryThroughSeq int64  `json:"historyThroughSeq"`
-	State             string `json:"state"`
-	RunID             string `json:"runId,omitempty"`
-	DeliveryMethod    string `json:"deliveryMethod,omitempty"`
+	NativeSessionID      string `json:"nativeSessionId,omitempty"`
+	NativeConversationID string `json:"nativeConversationId,omitempty"`
+	ForkFromSessionID    string `json:"forkFromSessionId,omitempty"`
+	HistoryThroughSeq    int64  `json:"historyThroughSeq"`
+	State                string `json:"state"`
+	RunID                string `json:"runId,omitempty"`
+	DeliveryMethod       string `json:"deliveryMethod,omitempty"`
 }
 
 func sessionKey(provider chat.Provider, account string) string {
@@ -108,20 +110,46 @@ func (s *Store) prepareRunLocked(ctx context.Context, input chat.RunPreparation)
 		tail = *input.ThroughSeq
 	}
 	key := sessionKey(input.Provider, input.AccountID)
-	session := sessions[key]
+	session, exists := sessions[key]
+	var checkpoint string
+	if !exists && input.AllowNativeFork && !input.ForceFresh {
+		// Only a new branch can inherit a native session. An uncertain run on an
+		// existing branch must still use the normal fresh-session recovery path.
+		var parent sql.NullString
+		if err = tx.QueryRowContext(ctx, "SELECT parent_branch_id FROM branches WHERE id=?", branch).Scan(&parent); err != nil {
+			return chat.PreparedRun{}, err
+		}
+		if parent.Valid {
+			var saved nativeCheckpoint
+			saved, err = retainedNativeCheckpoint(ctx, tx, branch, tail, input.Provider, input.AccountID)
+			if err != nil {
+				return chat.PreparedRun{}, err
+			}
+			if saved.Cursor != "" {
+				checkpoint = saved.Cursor
+				session = sessionState{NativeSessionID: saved.SessionID, NativeConversationID: saved.ConversationID,
+					HistoryThroughSeq: saved.ThroughSeq, State: "ready", ForkFromSessionID: saved.SessionID}
+			}
+		}
+	}
 	// Pending/accepted input may already have reached the native harness. After
 	// an interrupted run, start fresh instead of replaying into that session.
 	if input.ForceFresh || session.RunID != "" ||
 		(session.State != "ready" && session.State != "legacy_assumed") || session.NativeSessionID == "" {
 		session = sessionState{}
 	}
+	if session.NativeConversationID == "" {
+		session.NativeConversationID = string(input.ChatID)
+	}
 	if session.HistoryThroughSeq > tail {
 		return chat.PreparedRun{}, fmt.Errorf("session bookmark %d is after history boundary %d", session.HistoryThroughSeq, tail)
 	}
 	prepared := chat.PreparedRun{
-		RunReference: chat.RunReference{ChatID: input.ChatID, BranchID: branch, RunID: input.RunID, Provider: input.Provider, AccountID: input.AccountID},
-		ResumeID:     session.NativeSessionID,
-		History:      conversation.History{BranchID: branch, AfterSeq: session.HistoryThroughSeq, ThroughSeq: tail},
+		RunReference:         chat.RunReference{ChatID: input.ChatID, BranchID: branch, RunID: input.RunID, Provider: input.Provider, AccountID: input.AccountID},
+		ResumeID:             session.NativeSessionID,
+		NativeCheckpoint:     checkpoint,
+		NativeConversationID: session.NativeConversationID,
+		History:              conversation.History{BranchID: branch, AfterSeq: session.HistoryThroughSeq, ThroughSeq: tail},
 	}
 	session.State, session.RunID, session.DeliveryMethod = "pending", input.RunID, ""
 	sessions[key] = session
@@ -134,7 +162,7 @@ func (s *Store) prepareRunLocked(ctx context.Context, input chat.RunPreparation)
 // updateRunSession ignores callbacks from a replaced run or branch. The token
 // comparison and update share a transaction, so late completion cannot make a
 // different native session resumable.
-func (s *Store) updateRunSession(ctx context.Context, run chat.RunReference, update func(*sessionState, int64) error) (bool, error) {
+func (s *Store) updateRunSession(ctx context.Context, run chat.RunReference, update func(*sql.Tx, *sessionState, int64) error) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -154,7 +182,7 @@ func (s *Store) updateRunSession(ctx context.Context, run chat.RunReference, upd
 	if branch != run.BranchID || run.RunID == "" || session.RunID != run.RunID {
 		return false, nil
 	}
-	if err = update(&session, tail); err != nil {
+	if err = update(tx, &session, tail); err != nil {
 		return false, err
 	}
 	sessions[key] = session
@@ -168,7 +196,7 @@ func (s *Store) RecordRunInput(ctx context.Context, run chat.RunReference, metho
 	if method == "" {
 		return errors.New("run input delivery method is required")
 	}
-	current, err := s.updateRunSession(ctx, run, func(session *sessionState, _ int64) error {
+	current, err := s.updateRunSession(ctx, run, func(_ *sql.Tx, session *sessionState, _ int64) error {
 		if session.State != "pending" {
 			return errors.New("run is not pending input delivery")
 		}
@@ -185,12 +213,15 @@ func (s *Store) AcceptRunInput(ctx context.Context, run chat.RunReference, evide
 	if evidence.Evidence == "" {
 		return errors.New("input acceptance requires provider evidence")
 	}
-	_, err := s.updateRunSession(ctx, run, func(session *sessionState, _ int64) error {
+	_, err := s.updateRunSession(ctx, run, func(_ *sql.Tx, session *sessionState, _ int64) error {
 		if session.State == "accepted" {
 			return nil
 		}
 		if session.State != "pending" || session.DeliveryMethod == "" {
 			return errors.New("run input was not recorded before acceptance")
+		}
+		if session.ForkFromSessionID != "" && (evidence.NativeSessionID == "" || evidence.NativeSessionID == session.ForkFromSessionID) {
+			return errors.New("native fork did not identify a new session")
 		}
 		session.State = "accepted"
 		if evidence.NativeSessionID != "" {
@@ -203,16 +234,24 @@ func (s *Store) AcceptRunInput(ctx context.Context, run chat.RunReference, evide
 }
 
 func (s *Store) FinishRun(ctx context.Context, run chat.RunReference, outcome chat.RunOutcome) error {
-	_, err := s.updateRunSession(ctx, run, func(session *sessionState, tail int64) error {
+	_, err := s.updateRunSession(ctx, run, func(tx *sql.Tx, session *sessionState, tail int64) error {
 		if outcome.NativeSessionID != "" {
 			session.NativeSessionID = outcome.NativeSessionID
 		}
-		if outcome.Status == "completed" && session.State == "accepted" && session.NativeSessionID != "" {
+		if outcome.Status == "completed" && session.State == "accepted" && session.NativeSessionID != "" && session.NativeSessionID != session.ForkFromSessionID {
+			if outcome.NativeCheckpoint != "" {
+				var err error
+				tail, err = s.saveNativeCheckpoint(ctx, tx, run, *session, tail, outcome.NativeCheckpoint)
+				if err != nil {
+					return err
+				}
+			}
 			session.State, session.HistoryThroughSeq = "ready", tail
 		} else {
 			session.State = "uncertain"
 		}
 		session.RunID, session.DeliveryMethod = "", ""
+		session.ForkFromSessionID = ""
 		return nil
 	})
 	return err

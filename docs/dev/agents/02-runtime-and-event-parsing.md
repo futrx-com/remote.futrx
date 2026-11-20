@@ -81,7 +81,9 @@ input a provider receives.
 | `Model` | Saved model ID. The adapter must validate or safely pass it as one process/protocol argument. |
 | `Mode` | Provider-neutral `default` or `plan`; the adapter translates it to native flags or protocol settings. |
 | `ResumeID` | Session ID stored for the selected provider, but only when the descriptor declares resume support. |
-| `Fork` | `ForkPending`, but only when the descriptor declares native fork support. |
+| `Fork` | Native fork requested at a retained checkpoint; allowed only when the descriptor declares fork support. |
+| `NativeCheckpoint` | Adapter-owned exact cursor from a successful retained run, used with `Fork` and `ResumeID`. |
+| `NativeConversationID` | Original conversation scope of the native account home; distinct from the current Remote chat ID after a fork. |
 | `ProjectID` | Empty for a loose host chat; otherwise identifies the workspace container. |
 | `Preferences` | Saved reasoning effort, service tier, approval policy, and sandbox policy. Adapters decide which supported values to forward. |
 | `EnableBrowser` | True only when the selected `browser` skill and the module's `BrowserTools` declaration both permit it. |
@@ -266,6 +268,12 @@ The parser maps:
 - `system` records to normalized system events;
 - `result` to `run.completed`, or to `run.failed` when `is_error` is true.
 
+Successful completion also carries the last terminal main-thread assistant
+UUID as `NativeCheckpoint`. Subagent, tool-only, error and stream-envelope
+UUIDs are not usable checkpoints. Native branch requests combine `--resume`,
+`--fork-session` and `--resume-session-at=<UUID>` to preserve the source while
+loading only the retained native prefix.
+
 Malformed top-level JSON is returned to `RunProcess`, logged, and skipped.
 Malformed nested messages are ignored after any session event already derived
 from that line.
@@ -290,8 +298,9 @@ The normal JSON-RPC sequence is:
    support;
 2. after its response, send `initialized` and `thread/start`, `thread/resume`,
    or `thread/fork`;
-3. require a non-empty returned thread ID and model, emit `session.updated`
-   for a new/different thread, then send `turn/start`;
+3. require a non-empty returned thread ID and model; for a checkpoint fork,
+   verify its latest completed turn through `thread/turns/list` before input;
+   emit `session.updated` for a new/different thread, then send `turn/start`;
 4. retain the returned native turn ID, then select concurrently over App Server
    output, user interaction responses, and Remote cancellation;
 5. consume notifications until `turn/completed` emits `run.completed`,
@@ -320,7 +329,9 @@ process alive after the Remote context is cancelled, the harness sends
 protocol failure or interrupt timeout.
 
 A failed `thread/resume` or `thread/fork` whose message contains `not found` or
-`no rollout` becomes `harness.ErrSessionNotFound`. Other protocol errors are
+`no rollout` becomes `harness.ErrSessionNotFound`. Unsupported or mismatched
+native fork boundaries become `harness.ErrNativeCheckpointUnavailable` before
+input starts. Other protocol errors are
 wrapped in `runtime.ProcessError` with captured stderr.
 
 See [Codex App Server architecture](08-codex-app-server-architecture.md) for
@@ -365,8 +376,10 @@ descriptors do not declare native fork support.
 
 ## Sessions, forks, and recovery
 
-SQLite `harness_sessions` stores native identity and history boundaries for a
-branch/provider/account. `Meta.Sessions` and its four named session fields
+SQLite `chats.sessions_json` stores native identity and history boundaries for a
+branch/provider/account. Hidden `system/native_checkpoint` events retain safe
+native cursors for branch continuation. `Meta.Sessions` and its four named
+session fields
 remain compatibility metadata for older records and clients, not proof of
 successful history delivery. A new provider needs no new storage field. See
 [`chat.Meta.NormalizeSessions`](../../../backend/internal/service/chat/model.go)
@@ -376,15 +389,20 @@ The module descriptor controls orchestration:
 
 - without `Resume`, the prompt service never passes the saved ID;
 - `Fork` is invalid unless `Resume` is also true;
-- Remote branch forks and rewinds start fresh native sessions with retained
-  history, so the parent or discarded branch cannot leak into continuation;
+- Remote branch forks and rewinds select the latest successful checkpoint for
+  the chosen provider/account within retained history, create a native fork
+  at its exact boundary, and transfer only the retained suffix after it;
+- without a supported safe checkpoint, they start fresh with retained history;
 - a `session.updated` event clears `ForkPending` and may populate an empty chat
   model from the provider's reported model.
 
-Any adapter may return `harness.ErrSessionNotFound`. When it does so during a
-resume, the prompt service clears only that provider's saved session, clears
+An adapter may return `harness.ErrSessionNotFound` or
+`harness.ErrNativeCheckpointUnavailable` before the current input is accepted
+or executed. When it does so during a resume, the prompt service clears only that provider's saved session, clears
 the pending fork, persists a `system/session_recovered` event, rebuilds a
-retained shared history, and retries the turn once without `ResumeID`.
+retained shared history, and retries the turn once without `ResumeID` or native
+fork arguments. It preserves the pre-prompt cutoff so the current prompt is
+not duplicated. Source native sessions and workspace files stay intact.
 
 ## Failure and cancellation rules
 

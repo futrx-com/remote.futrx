@@ -136,6 +136,7 @@ func (parser *appServerEventParser) turnCompleted(now int64, method string, raw 
 		return []harness.Event{parser.event(now, method, harness.EventRunCompleted, raw, func(event *harness.Event) {
 			event.Status = status
 			event.Usage = cloneRaw(parser.lastUsage)
+			event.NativeCheckpoint = strings.TrimSpace(params.Turn.ID)
 		})}
 	case "interrupted":
 		return []harness.Event{parser.event(now, method, harness.EventRunInterrupted, raw, func(event *harness.Event) {

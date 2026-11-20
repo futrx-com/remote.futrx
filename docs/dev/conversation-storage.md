@@ -144,14 +144,17 @@ Other old native references remain in preserved metadata but do not establish
 synchronized sessions. Their next selection follows the fresh-session handoff
 path. No native harness directories are edited or deleted by migration.
 
-Each current mapping stores its native session ID, last safe event sequence,
-state, and a pending run token/delivery method while a run is active. Preparing
+Each current mapping stores its native session ID and account-home scope,
+last safe event sequence, state, and a pending run token/delivery method while
+a run is active. Preparing
 a run persists the pending marker before contacting the harness. Input must
 have provider acceptance evidence, and the run must complete successfully,
 before the safe bookmark advances. Failure, interruption, or a process restart
 with pending input causes the next attempt to start a fresh native session.
 Callbacks identify both the branch and pending run; a late callback cannot
-advance a replacement session. Fork and rewind begin with an empty session map.
+advance a replacement session. Fork and rewind begin with an empty session map;
+next-run preparation can inherit a safe native checkpoint from retained history
+as described below.
 No full prompt or history transfer is duplicated into a separate audit ledger.
 
 New handoffs are composed as historical JSON context plus the current prompt,
@@ -164,6 +167,54 @@ or uncertain runs leave the mapping unsafe and start fresh on the next attempt.
 History is never silently truncated or summarized by Remote. Kimi's current
 argument transport rejects inputs above 120 KiB before launch; other harness
 or model limits can also reject large history transfers.
+
+## Native forks and rewinds
+
+Successful, accepted runs can append a hidden `system/native_checkpoint` event
+with the native session ID, account-home scope, provider cursor and covered
+Remote event sequence. This uses the existing `events` table. The checkpoint
+is internal bookkeeping, excluded from ordinary event replay, event pages and
+windows, transcript items, portable history, and the UI. Maintenance
+`ScanEvents` reads still include it. Normal branch cutoffs determine whether
+it remains eligible.
+
+A small partial index on checkpoint events supports lookup by branch and
+harness/account. The schema remains v2: offline migration installs the index
+when it opens an existing v2 database, without reimporting conversation data.
+
+Rewind switches the same chat to a branch retaining the prefix before the
+selected prompt. Fork creates a new chat whose branch references the source's
+saved prefix. Both clear current session mappings. When the next prompt selects
+a harness/account, preparation finds its latest successful checkpoint within
+that retained lineage and asks the adapter to create a **new native session at
+that exact boundary**. Rewind uses a native fork too, preserving the source
+session instead of destructively truncating it.
+
+| Harness | Native boundary operation |
+| --- | --- |
+| Claude | Resume the source with `--fork-session` and `--resume-session-at=<assistant UUID>`. Only a completed main-thread assistant boundary is saved. |
+| Codex / MiniMax | Call `thread/fork` with `lastTurnId`, then verify the fork's latest completed turn before sending `turn/start`. |
+| Kimi / Antigravity | Start fresh with retained portable history; the adapters do not support native forks. |
+
+Remote transfers only retained events after the selected checkpoint, followed
+by the current prompt. This handles mixed-harness history and boundaries
+between native checkpoints without restoring discarded turns. Native account
+homes retain their original conversation scope across forks and subsequent
+resumes, so a new Remote chat can find its inherited native session.
+
+If no safe checkpoint exists, including migrated history without checkpoint
+records, Remote starts fresh with the retained history. A missing session or
+unsupported/unavailable checkpoint can also trigger one fresh-session retry,
+only before the current input is accepted or executed. The retry uses the
+history boundary captured before the current prompt, so that prompt is not
+included twice. It never retries an untrimmed source session by silently
+dropping the checkpoint.
+
+Existing source sessions and files stay intact. The selected harness owns
+creation and subsequent updates of the new session. Neither operation rolls
+back workspace files, Git changes or previous external tool effects. Native
+continuation preserves the harness's retained state; portable fallback cannot
+recreate private reasoning or native compaction state.
 
 ## Backup, recovery, and rollback
 

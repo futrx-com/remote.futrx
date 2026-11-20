@@ -42,12 +42,17 @@ type appServerThreadRequest struct {
 
 type appServerThreadParams struct {
 	ApprovalPolicy string `json:"approvalPolicy"`
+	LastTurnID     string `json:"lastTurnId,omitempty"`
+	ExcludeTurns   bool   `json:"excludeTurns,omitempty"`
 	Cwd            string `json:"cwd,omitempty"`
 	Model          string `json:"model,omitempty"`
 	Sandbox        string `json:"sandbox"`
 	ServiceName    string `json:"serviceName,omitempty"`
 	ServiceTier    string `json:"serviceTier,omitempty"`
 	ThreadID       string `json:"threadId,omitempty"`
+	// A fork must not automatically continue a copied goal before Remote
+	// verifies the retained boundary and submits the user's new prompt.
+	DeferGoalContinuation bool `json:"deferGoalContinuation,omitempty"`
 }
 
 type appServerTurnParams struct {

@@ -12,9 +12,9 @@ stateDiagram-v2
     Running --> Ready: complete or error, then sync unlocked
     Running --> Ready: cancel
     Ready --> Rewound: select branch before chosen prompt
-    Rewound --> Ready: fresh native session with retained history
+    Rewound --> Ready: native fork or retained-history fallback on next prompt
     Ready --> Forked: create branch sharing history
-    Forked --> Ready: fresh native session with retained history
+    Forked --> Ready: native fork or retained-history fallback on next prompt
     Ready --> [*]: delete chat
 ```
 
@@ -332,7 +332,7 @@ Claude, Codex, and MiniMax.
 | Read/unread | Updates `lastReadAt` for sidebar indicators |
 | Cancel | Cancels the active provider context and releases the run lock |
 | Queue | Per-tab `sessionStorage` queue sends prompts one at a time after each run unlocks and removes one only after server acceptance |
-| Fork | Creates a branch sharing retained history; next run supplies it to a fresh native session |
+| Fork | Creates a branch sharing retained history; next run prefers a native fork at a retained checkpoint |
 | Rewind | Creates a branch retaining events before the selected point; unavailable while running |
 | Delete | Cancels an active run, then removes chat metadata and history |
 | Load older | Assembles older SQLite events into prompt turns, subject to turn and byte budgets |
@@ -361,7 +361,7 @@ selection. Scheduled turns receive a narrower `complete-self` capability tied
 to one task and run. Newly created tasks are active immediately. See
 [Scheduled tasks](06-scheduled-tasks.md).
 
-## Harness switching, rewind, and fresh-session context
+## Harness switching, rewind, and native continuation
 
 SQLite tracks history delivery for each branch, provider/account and native
 session. Returning to a synchronized session supplies the intervening history
@@ -370,9 +370,16 @@ Each harness adapter formats this as explicitly historical context, including
 available user/assistant messages and exposed tool records; it does not import
 those records as native past turns or replay old tool calls.
 
-Rewind and fork create new branches and use fresh native sessions so discarded
-context is not resumed. Failed, interrupted or unconfirmed runs leave their
-native mapping uncertain; the next attempt starts fresh. There is no silent
+Rewind and fork create new branches and clear current mappings. Their next run
+prefers the selected harness/account's latest successful checkpoint within the
+retained history. The adapter creates a native fork at that boundary, preserving
+the source session, and Remote supplies only the retained suffix after it.
+Claude uses an assistant UUID; Codex and MiniMax use a verified completed turn.
+Missing or unsupported checkpoints use a fresh session with retained history.
+Workspace files and earlier tool effects are unchanged.
+
+Failed, interrupted or unconfirmed runs leave their native mapping uncertain;
+the next attempt starts fresh. There is no silent
 24 KB history truncation. Very large histories can still exceed a harness's
 input limit, which is reported as a failure. Harnesses retain ownership of
 their compaction and native session state.

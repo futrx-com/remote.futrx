@@ -202,8 +202,8 @@ func (s *Service) create(ctx context.Context, in CreateInput) (Meta, error) {
 }
 
 // Fork preserves the current metadata and visible history. Branch-capable
-// stores share a retained prefix and start a fresh native session on the next
-// prompt; legacy repositories retain the copied-history compatibility path.
+// stores share a retained prefix; next-run preparation selects a safe native
+// checkpoint when available. Legacy repositories retain the copied-history path.
 func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID

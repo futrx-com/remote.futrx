@@ -36,4 +36,13 @@ CREATE INDEX events_by_item ON events(branch_id,turn_ordinal,item_key,seq);
 CREATE INDEX events_by_item_type ON events(branch_id,turn_ordinal,item_key,event_type,seq DESC);
 CREATE INDEX events_visible_items ON events(branch_id,item_start_seq DESC,seq DESC) WHERE visible=1 AND seq=item_start_seq;
 CREATE INDEX events_turn_starts ON events(branch_id,seq DESC) WHERE seq=turn_start_seq;
+` + nativeCheckpointIndexSchema
+
+// Checkpoints are sparse event metadata. Keep branch preparation independent
+// of transcript size, including when an imported history has no checkpoints.
+const nativeCheckpointIndexSchema = `
+CREATE INDEX IF NOT EXISTS events_native_checkpoints ON events(
+ branch_id,json_extract(payload_json,'$.provider'),
+ coalesce(json_extract(payload_json,'$.accountId'),''),seq DESC
+) WHERE event_type='system' AND json_extract(payload_json,'$.subtype')='native_checkpoint';
 `

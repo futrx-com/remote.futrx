@@ -16,14 +16,18 @@ import (
 )
 
 type switchingProvider struct {
-	id           harness.ProviderID
-	requests     []harness.RunRequest
-	histories    []conversation.History
-	fail         bool
-	interrupt    bool
-	missing      bool
-	noAcceptance bool
-	nextSession  int
+	id                    harness.ProviderID
+	requests              []harness.RunRequest
+	histories             []conversation.History
+	fail                  bool
+	interrupt             bool
+	missing               bool
+	noAcceptance          bool
+	nextSession           int
+	nativeCheckpoints     bool
+	unavailableCheckpoint bool
+	errorAfterInput       error
+	reuseForkSession      bool
 }
 
 func (p *switchingProvider) ID() harness.ProviderID { return p.id }
@@ -40,14 +44,21 @@ func (p *switchingProvider) Run(ctx context.Context, req harness.RunRequest, emi
 		p.missing = false
 		return harness.ErrSessionNotFound
 	}
+	if p.unavailableCheckpoint && req.NativeCheckpoint != "" {
+		p.unavailableCheckpoint = false
+		return harness.ErrNativeCheckpointUnavailable
+	}
 	native := req.ResumeID
-	if native == "" {
+	if native == "" || (req.Fork && !p.reuseForkSession) {
 		p.nextSession++
 		native = fmt.Sprintf("%s-native-%d", p.id, p.nextSession)
 	}
 	emit(harness.Event{Type: harness.EventSessionUpdated, SessionID: native})
 	if !p.noAcceptance {
 		emit(harness.Event{Type: harness.EventInputAccepted, SessionID: native, Status: "test_native_ack"})
+	}
+	if p.errorAfterInput != nil {
+		return p.errorAfterInput
 	}
 	emit(harness.Event{
 		Type: harness.EventToolStarted, ItemID: "call-1", ToolName: "shell", Input: []byte(`{"command":"tests"}`),
@@ -65,7 +76,11 @@ func (p *switchingProvider) Run(ctx context.Context, req harness.RunRequest, emi
 	if p.fail {
 		return errors.New("transport failed after output")
 	}
-	emit(harness.Event{Type: harness.EventRunCompleted})
+	completion := harness.Event{Type: harness.EventRunCompleted}
+	if p.nativeCheckpoints {
+		completion.NativeCheckpoint = fmt.Sprintf("%s-turn-%d", p.id, len(p.requests))
+	}
+	emit(completion)
 	return nil
 }
 
@@ -74,6 +89,7 @@ type handoffFixture struct {
 	service       *Service
 	claude, codex *switchingProvider
 	id            chat.ID
+	timestamp     int64
 }
 
 func newHandoffFixture(t *testing.T) *handoffFixture {
@@ -104,6 +120,8 @@ func (f *handoffFixture) run(t *testing.T, provider harness.ProviderID, account,
 		t.Fatal(err)
 	}
 	return f.service.runPrompt(context.Background(), f.id, prompt, func(e ChatEvent) {
+		f.timestamp++
+		e.T = f.timestamp
 		if _, err := f.store.AppendEvent(context.Background(), f.id, e); err != nil {
 			t.Fatal(err)
 		}

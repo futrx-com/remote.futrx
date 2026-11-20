@@ -299,8 +299,12 @@ Ordinary turns use native `thread/start` and `thread/resume`, and new thread IDs
 and resolved models are persisted. Remote's SQLite forks and rewinds create a
 new branch with cleared native-session mappings in
 [`sqlitechat/branches.go`](../../../../backend/internal/stores/sqlitechat/branches.go).
-Their next turn starts a fresh native session with retained portable history.
-Missing-thread recovery follows the fresh-session path coordinated by
+Their next turn now selects a successful native checkpoint from retained
+history when available. `thread/fork` receives that turn ID, and the adapter
+verifies the fork's latest completed turn before sending input. The source
+thread remains intact; only the retained suffix is supplied as portable context.
+Missing or unsupported checkpoints and missing-thread recovery follow the
+fresh-session path coordinated by
 [`prompt/service.go`](../../../../backend/internal/service/prompt/service.go).
 
 The portable history includes user and assistant messages, tool calls/results
@@ -319,7 +323,7 @@ Input composed during a run is queued as another Remote turn. Native
 
 Required UI-only behavior:
 
-- prefer native thread operations whenever Codex exposes them;
+- keep exact native fork boundaries verified before accepting input;
 - distinguish portable-context recovery from native history continuation;
 - preserve native history/item references needed by supported rollback flows;
 - offer `turn/steer` for active-turn input when supported, while keeping a

@@ -86,6 +86,11 @@ sequenceDiagram
     Harness->>Server: initialized
     Harness->>Server: thread/start, thread/resume, or thread/fork
     Server-->>Harness: native thread ID and resolved model
+    opt Fork at a retained checkpoint
+        Harness->>Server: thread/turns/list for the fork's latest turn
+        Server-->>Harness: Requested turn ID with completed status
+        Note over Harness,Server: Reject a mismatched boundary before turn/start
+    end
     Harness-->>Prompt: session.updated when the thread changed
     Harness->>Server: turn/start
     Server-->>Harness: native turn ID
@@ -120,6 +125,16 @@ history is supplied as context, without Remote truncation, and remains subject
 to native input limits; see the
 [conversation storage guide](../conversation-storage.md#existing-native-sessions).
 
+For rewind and fork, preparation can select a retained successful native turn
+checkpoint. The shared Codex/MiniMax harness passes it as `lastTurnId` to
+`thread/fork`, requires a new thread ID, then calls `thread/turns/list` to verify
+that the fork ends at that completed turn. Verification precedes `turn/start`,
+so a CLI that ignores the requested cutoff cannot receive the new prompt with
+discarded history. An unavailable or unsupported boundary returns
+`harness.ErrNativeCheckpointUnavailable` for one fresh-session retry. Remote
+transfers only retained history after a usable checkpoint; the source thread
+and workspace files remain unchanged.
+
 ## Identity domains
 
 Several IDs coexist and are intentionally not interchangeable:
@@ -129,7 +144,7 @@ Several IDs coexist and are intentionally not interchangeable:
 | Remote chat ID | Identifies the chat, run lock, subscription room, and interaction route | Chat metadata and routes |
 | Remote `ChatEvent.TurnID` | Groups persisted events produced by one Remote prompt execution | Every projected event for that run |
 | Native thread ID | Codex conversation identity used by start, resume, and fork | Provider session metadata and `NativeEnvelope.ThreadID` |
-| Native turn ID | Codex turn identity required for interruption and correlation | Harness run state and `NativeEnvelope.TurnID` |
+| Native turn ID | Codex turn identity required for interruption, correlation, and exact native forks | Harness run state, `NativeEnvelope.TurnID`, and saved successful checkpoint events |
 | Native item ID | Correlates messages, tools, and collaboration updates | Typed event ID and `NativeEnvelope.ItemID` |
 | JSON-RPC request ID | Correlates one server request with exactly one client response | Pending-request map and `InteractionID` |
 

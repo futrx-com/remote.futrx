@@ -43,8 +43,9 @@ the provider session are related but not identical.
 - Switching provider or account supplies the history that its saved session
   has not received. If there is no safe session to resume, Remote starts fresh
   with the retained conversation history.
-- Rewind and fork start fresh provider sessions. Their history contains only
-  the retained branch, so discarded or unrelated messages are not supplied.
+- Rewind and fork prefer a native fork at a saved checkpoint within the
+  retained history, then supply any missing history after it. If the provider
+  cannot fork safely, Remote starts fresh with the retained history.
 - Missing-session recovery uses the same retained-history path.
 
 Transferred history includes user and assistant messages, exposed tool calls
@@ -136,11 +137,13 @@ For work that must start when no browser tab is open, use
 3. Confirm **Rewind to this prompt? Messages from this point forward will be
    removed.**
 4. Edit the restored prompt in the composer.
-5. Send it to start a fresh provider session with the retained conversation
-   history.
+5. Send it to continue from a native fork within the retained conversation
+   history, or a fresh session when no safe native checkpoint is available.
 
 Rewind is unavailable while the chat is running. Select **Cancel** first.
 Rewind also clears the chat's page-memory prompt queue.
+The original native session remains intact. Rewind does not undo workspace
+files or effects of earlier tool calls.
 
 ### Fork a chat
 
@@ -150,8 +153,10 @@ Rewind also clears the chat's page-memory prompt queue.
 4. Continue with different controls or instructions.
 
 The fork shares its retained history with the parent until new events are
-added. Its next run starts a fresh provider session with that history. The
-parent chat remains unchanged.
+added. Its next run prefers the selected provider's native fork at a retained
+checkpoint, then receives any missing history. A fresh session is the fallback
+when no safe native operation is available. The parent chat and native session
+remain unchanged; both chats use the same workspace files.
 
 ## Parallel conversation pattern
 

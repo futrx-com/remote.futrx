@@ -453,15 +453,16 @@ func (rnr *Service) runPromptAs(
 	if rnr.conversationRuntime != nil {
 		prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
 			ChatID: id, RunID: ledgerRunID, Provider: providerID,
-			AccountID: meta.AccountID, ForceFresh: forkSession || (rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Resume),
+			AccountID: meta.AccountID, ForceFresh: rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Resume,
+			AllowNativeFork: rnr.harnessPolicy == nil || descriptor.Features.Sessions.Fork,
 		})
 		if err != nil {
 			return err
 		}
 		resumeID = prepared.ResumeID
-		// Branches have their own native session mappings. Native fork would
-		// append/fork unrelated state after a history-based branch was created.
-		forkSession = false
+		// A branch inherits only a verified retained native boundary; adapters
+		// fork that exact prefix and receive any later retained history separately.
+		forkSession = prepared.NativeCheckpoint != ""
 	} else {
 		// Compatibility for non-SQLite repositories used by embedding callers.
 		priorEvents, err = rnr.store.ReadEvents(ctx, id)
@@ -493,16 +494,18 @@ func (rnr *Service) runPromptAs(
 		meta:     meta,
 		ledger:   ledger,
 		request: harness.RunRequest{
-			Provider:       providerID,
-			AccountID:      meta.AccountID,
-			ConversationID: string(id),
-			Prompt:         effectivePrompt,
-			Cwd:            cwd,
-			Model:          meta.Model,
-			Mode:           harness.RunMode(meta.Mode),
-			ResumeID:       resumeID,
-			ProjectID:      string(meta.ProjectID),
-			Fork:           forkSession,
+			Provider:             providerID,
+			AccountID:            meta.AccountID,
+			ConversationID:       string(id),
+			Prompt:               effectivePrompt,
+			Cwd:                  cwd,
+			Model:                meta.Model,
+			Mode:                 harness.RunMode(meta.Mode),
+			ResumeID:             resumeID,
+			ProjectID:            string(meta.ProjectID),
+			Fork:                 forkSession,
+			NativeCheckpoint:     prepared.NativeCheckpoint,
+			NativeConversationID: prepared.NativeConversationID,
 			Preferences: harness.RunPreferences{
 				ReasoningEffort: harness.ReasoningEffort(meta.ReasoningEffort),
 				ServiceTier:     harness.ServiceTier(meta.ServiceTier),
@@ -516,7 +519,7 @@ func (rnr *Service) runPromptAs(
 	}
 
 	err = rnr.runAttempt(ctx, attempt, prepared, emit)
-	if errors.Is(err, harness.ErrSessionNotFound) && resumeID != "" {
+	if (errors.Is(err, harness.ErrSessionNotFound) || errors.Is(err, harness.ErrNativeCheckpointUnavailable)) && resumeID != "" {
 		_, _ = rnr.store.Update(ctx, id, func(m *ChatMeta) {
 			clearSessionIDForProvider(m, providerID)
 			m.ForkPending = false
@@ -544,6 +547,9 @@ func (rnr *Service) runPromptAs(
 			freshPrompt,
 		)
 		attempt.request.Prompt, attempt.request.ResumeID = freshPrompt, ""
+		attempt.request.Fork = false
+		attempt.request.NativeCheckpoint = ""
+		attempt.request.NativeConversationID = ""
 		err = rnr.runAttempt(ctx, attempt, prepared, emit)
 	}
 	if err != nil && !errors.Is(err, harness.ErrRunFailed) {

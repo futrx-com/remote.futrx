@@ -235,14 +235,16 @@ adapter can use them.
 
 - `Resume=false` prevents a saved provider session ID from entering
   `RunRequest`.
-- `Fork=true` allows chat fork to preserve the selected provider's session and
-  set `ForkPending`; validation rejects fork without resume.
+- `Fork=true` allows preparation to select a retained native checkpoint for
+  rewind/fork and request a new native session at that boundary; validation
+  rejects fork without resume.
 - Session IDs are persisted in a provider-keyed map, so a fifth provider does
   not require a new chat field or store schema.
 - The four provider-named fields in backend and frontend models are temporary
   compatibility mirrors. Do not add another named field for a new provider.
 - Changing providers keeps each provider's independent session in the map, so
-  switching back may resume it. Rewind clears all provider sessions.
+  switching back may resume it. Rewind clears current mappings; next-run
+  preparation can inherit a safe checkpoint from retained branch history.
 
 See [`chat.Meta`](../../../backend/internal/service/chat/model.go),
 [`chat.Service.Fork`](../../../backend/internal/service/chat/service.go), and

@@ -116,6 +116,11 @@ func (s *Store) initialize() error {
 				return fmt.Errorf("missing conversation table %s", table)
 			}
 		}
+		// Additive indexes preserve schema-v2 compatibility. Deployment opens
+		// this store in the offline migration step before restarting the server.
+		if _, err := s.db.Exec(nativeCheckpointIndexSchema); err != nil {
+			return err
+		}
 		var searchExists int
 		if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='transcript_search'").Scan(&searchExists); err != nil {
 			return err

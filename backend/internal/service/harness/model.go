@@ -9,6 +9,10 @@ import (
 var ErrRunFailed = errors.New("agent run failed")
 var ErrSessionNotFound = errors.New("agent session not found")
 
+// ErrNativeCheckpointUnavailable means native branching failed before the
+// current prompt was delivered. Callers may reconstruct a fresh session.
+var ErrNativeCheckpointUnavailable = errors.New("native checkpoint unavailable")
+
 type ProviderID string
 
 const (
@@ -117,7 +121,13 @@ type RunRequest struct {
 	ResumeID       string
 	ProjectID      string
 	Fork           bool
-	Preferences    RunPreferences
+	// NativeCheckpoint is an adapter-owned exact history cursor. With Fork it
+	// constrains the new native session to this boundary before accepting input.
+	NativeCheckpoint string
+	// NativeConversationID identifies the chat whose account-scoped native home
+	// owns this session. A fork keeps that home while receiving a new session ID.
+	NativeConversationID string
+	Preferences          RunPreferences
 	// EnableBrowser wires the Agent Browser MCP tools into the agent launch.
 	// Set when the `browser` skill is selected for the prompt.
 	EnableBrowser bool
@@ -168,6 +178,9 @@ type Event struct {
 
 	// NotificationSummary is an internal completion hint, never provider input.
 	NotificationSummary string `json:"-"`
+	// NativeCheckpoint is reported only with successful completion. Its format
+	// belongs to the provider and must support exact native branching.
+	NativeCheckpoint string `json:"-"`
 }
 
 type CapabilityProvider interface {

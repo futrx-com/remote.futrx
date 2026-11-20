@@ -125,8 +125,10 @@ open, use [Scheduled tasks](09-scheduled-tasks.md).
 
 ### The conversation lost earlier context
 
-Rewinds, forks and missing sessions start fresh provider sessions. Provider or
-account switches can do the same if there is no safe session to resume. Remote
+Rewinds and forks prefer a native fork at a saved checkpoint. Missing or
+unsupported checkpoints and missing sessions use a fresh provider session.
+Provider or account switches can do the same if there is no safe session to
+resume. Remote
 supplies retained user and assistant messages, tool records and attachments as
 historical context without truncating or summarizing them. This cannot recreate
 hidden provider state, reasoning or native compaction state. Large history

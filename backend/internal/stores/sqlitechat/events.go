@@ -21,6 +21,10 @@ const lineageSQL = `WITH RECURSIVE lineage(id,max_seq) AS (
  FROM lineage l JOIN branches b ON b.id=l.id WHERE b.parent_branch_id IS NOT NULL
 ) `
 
+// Native checkpoints are storage bookkeeping, not replayable conversation
+// events. Keep them out of public reads while maintenance scans retain them.
+const replayableEventSQL = `NOT (event_type='system' AND coalesce(json_extract(payload_json,'$.subtype'),'')='native_checkpoint')`
+
 func readEventsRange(ctx context.Context, q sqlQuerier, branch string, after, through int64) ([]servicechat.Event, error) {
 	segments, err := branchSegments(ctx, q, branch, through)
 	if err != nil {
@@ -29,7 +33,7 @@ func readEventsRange(ctx context.Context, q sqlQuerier, branch string, after, th
 	out := []servicechat.Event{}
 	for i := len(segments) - 1; i >= 0; i-- {
 		seg := segments[i]
-		rows, err := q.QueryContext(ctx, `SELECT seq,payload_json FROM events WHERE branch_id=? AND seq>? AND seq<=? ORDER BY seq`, seg.id, after, seg.through)
+		rows, err := q.QueryContext(ctx, `SELECT seq,payload_json FROM events WHERE branch_id=? AND seq>? AND seq<=? AND `+replayableEventSQL+` ORDER BY seq`, seg.id, after, seg.through)
 		if err != nil {
 			return nil, err
 		}
@@ -127,7 +131,7 @@ func (s *Store) ReadEventsPage(ctx context.Context, id servicechat.ID, q service
 	}
 	events := []servicechat.Event{}
 	for _, seg := range segments {
-		rows, err := s.db.QueryContext(ctx, `SELECT seq,payload_json FROM events WHERE branch_id=? AND seq<=? AND seq<? ORDER BY seq DESC LIMIT ?`, seg.id, seg.through, before, limit+1-len(events))
+		rows, err := s.db.QueryContext(ctx, `SELECT seq,payload_json FROM events WHERE branch_id=? AND seq<=? AND seq<? AND `+replayableEventSQL+` ORDER BY seq DESC LIMIT ?`, seg.id, seg.through, before, limit+1-len(events))
 		if err != nil {
 			return servicechat.EventPage{}, err
 		}
