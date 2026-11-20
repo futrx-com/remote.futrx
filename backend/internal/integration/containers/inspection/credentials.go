@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 

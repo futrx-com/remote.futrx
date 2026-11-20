@@ -7,11 +7,11 @@ import (
 	"net/http"
 
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -19,24 +19,24 @@ import (
 // agent module catalog. Provider packages configure those flows; HTTP owns only
 // route, access-control, and response policy.
 type AgentAuthHandler struct {
-	accountAccess *agentaccountaccess.Service
-	bindings      []agentauth.Binding
+	accountAccess *harnessaccountaccess.Service
+	bindings      []harnessauth.Binding
 	modules       agentModuleDescriptors
 	auth          *serviceauth.Service
 	audit         serviceaudit.Recorder
 }
 
 type agentModuleDescriptors interface {
-	Descriptors() []agentmodule.Descriptor
+	Descriptors() []harnessmodule.Descriptor
 }
 
 func NewAgentAuthHandler(
-	bindings []agentauth.Binding,
+	bindings []harnessauth.Binding,
 	auth *serviceauth.Service,
 	modules ...agentModuleDescriptors,
 ) *AgentAuthHandler {
 	handler := &AgentAuthHandler{
-		bindings: append([]agentauth.Binding(nil), bindings...),
+		bindings: append([]harnessauth.Binding(nil), bindings...),
 		auth:     auth,
 	}
 	if len(modules) > 0 {
@@ -45,7 +45,7 @@ func NewAgentAuthHandler(
 	return handler
 }
 
-func (h *AgentAuthHandler) WithAccountAccess(access *agentaccountaccess.Service) *AgentAuthHandler {
+func (h *AgentAuthHandler) WithAccountAccess(access *harnessaccountaccess.Service) *AgentAuthHandler {
 	h.accountAccess = access
 	return h
 }
@@ -62,7 +62,7 @@ func (h *AgentAuthHandler) WithAudit(recorder serviceaudit.Recorder) *AgentAuthH
 // thing and is recorded as one.
 func (h *AgentAuthHandler) recordAgentAuth(
 	r *http.Request,
-	binding agentauth.Binding,
+	binding harnessauth.Binding,
 	action, step string,
 	err error,
 ) {
@@ -84,7 +84,7 @@ func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 		})
 
 		switch binding.Flow() {
-		case agentauth.FlowCode:
+		case harnessauth.FlowCode:
 			mux.HandleFunc(prefix+"/login/start", func(w http.ResponseWriter, r *http.Request) {
 				h.handleCodeStart(binding, w, r)
 			})
@@ -94,11 +94,11 @@ func (h *AgentAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 			mux.HandleFunc(prefix+"/login/cancel", func(w http.ResponseWriter, r *http.Request) {
 				h.handleCodeCancel(binding, w, r)
 			})
-		case agentauth.FlowDevice:
+		case harnessauth.FlowDevice:
 			mux.HandleFunc(prefix+"/login/device", func(w http.ResponseWriter, r *http.Request) {
 				h.handleDeviceStart(binding, w, r)
 			})
-		case agentauth.FlowAPIKey:
+		case harnessauth.FlowAPIKey:
 			mux.HandleFunc(prefix+"/login/api-key", func(w http.ResponseWriter, r *http.Request) {
 				h.handleAPIKey(binding, w, r)
 			})
@@ -125,16 +125,16 @@ type agentAuthCatalogResponse struct {
 }
 
 type agentAuthProviderResponse struct {
-	Provider        string                       `json:"provider"`
-	Label           string                       `json:"label"`
-	Default         bool                         `json:"default,omitempty"`
-	ExecutionScopes []agentmodule.ExecutionScope `json:"executionScopes"`
-	Authentication  agentAuthPolicyResponse      `json:"authentication"`
-	Status          agentauth.Snapshot           `json:"status"`
+	Provider        string                         `json:"provider"`
+	Label           string                         `json:"label"`
+	Default         bool                           `json:"default,omitempty"`
+	ExecutionScopes []harnessmodule.ExecutionScope `json:"executionScopes"`
+	Authentication  agentAuthPolicyResponse        `json:"authentication"`
+	Status          harnessauth.Snapshot           `json:"status"`
 }
 
 type agentAuthPolicyResponse struct {
-	Mode                agentmodule.AuthMode     `json:"mode"`
+	Mode                harnessmodule.AuthMode   `json:"mode"`
 	Instructions        string                   `json:"instructions,omitempty"`
 	SatisfiesAccessGate bool                     `json:"satisfiesAccessGate"`
 	APIKey              *agentAuthAPIKeyResponse `json:"apiKey,omitempty"`
@@ -151,18 +151,18 @@ func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request)
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	bindings := make(map[string]agentauth.Binding, len(h.bindings))
+	bindings := make(map[string]harnessauth.Binding, len(h.bindings))
 	for _, binding := range h.bindings {
 		bindings[string(binding.ID())] = binding
 	}
-	descriptors := []agentmodule.Descriptor(nil)
+	descriptors := []harnessmodule.Descriptor(nil)
 	if h.modules != nil {
 		descriptors = h.modules.Descriptors()
 	}
 	providers := make([]agentAuthProviderResponse, 0, len(descriptors))
 	for _, descriptor := range descriptors {
-		status := agentauth.Snapshot{}
-		if descriptor.Auth == agentmodule.AuthNone {
+		status := harnessauth.Snapshot{}
+		if descriptor.Auth == harnessmodule.AuthNone {
 			status.Authenticated = true
 		} else if binding, ok := bindings[string(descriptor.ID)]; ok {
 			status = binding.Snapshot()
@@ -187,7 +187,7 @@ func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request)
 			Provider:        string(descriptor.ID),
 			Label:           descriptor.Label,
 			Default:         descriptor.Default,
-			ExecutionScopes: append([]agentmodule.ExecutionScope(nil), descriptor.ExecutionScopes...),
+			ExecutionScopes: append([]harnessmodule.ExecutionScope(nil), descriptor.ExecutionScopes...),
 			Authentication: agentAuthPolicyResponse{
 				Mode:                descriptor.Auth,
 				Instructions:        descriptor.AuthInstructions,
@@ -202,7 +202,7 @@ func (h *AgentAuthHandler) handleCatalog(w http.ResponseWriter, r *http.Request)
 
 // Raw status is reserved for account managers; the catalog exposes filtered
 // snapshots to other registered users.
-func (h *AgentAuthHandler) handleStatus(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleStatus(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if h.accountAccess != nil {
 		if err := h.accountAccess.RequireManage(r.Context()); err != nil {
 			sendPermissionsError(w, err)
@@ -212,7 +212,7 @@ func (h *AgentAuthHandler) handleStatus(binding agentauth.Binding, w http.Respon
 	httptransport.SendJSON(w, http.StatusOK, binding.Status())
 }
 
-func (h *AgentAuthHandler) handleCodeStart(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleCodeStart(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -234,7 +234,7 @@ func (h *AgentAuthHandler) handleCodeStart(binding agentauth.Binding, w http.Res
 	httptransport.SendJSON(w, http.StatusOK, out)
 }
 
-func (h *AgentAuthHandler) handleCodeSubmit(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleCodeSubmit(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -259,7 +259,7 @@ func (h *AgentAuthHandler) handleCodeSubmit(binding agentauth.Binding, w http.Re
 	httptransport.SendJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-func (h *AgentAuthHandler) handleCodeCancel(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleCodeCancel(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -272,7 +272,7 @@ func (h *AgentAuthHandler) handleCodeCancel(binding agentauth.Binding, w http.Re
 	httptransport.SendJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleDeviceStart(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -289,7 +289,7 @@ func (h *AgentAuthHandler) handleDeviceStart(binding agentauth.Binding, w http.R
 	httptransport.SendJSON(w, http.StatusOK, state)
 }
 
-func (h *AgentAuthHandler) handleAPIKey(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleAPIKey(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -317,9 +317,9 @@ func (h *AgentAuthHandler) handleAPIKey(binding agentauth.Binding, w http.Respon
 		status := http.StatusInternalServerError
 		if errors.Is(err, rbac.ErrDenied) || errors.Is(err, rbac.ErrActorRequired) {
 			status = http.StatusForbidden
-		} else if errors.Is(err, agentauth.ErrAPIKeyRequired) || errors.Is(err, agentauth.ErrAPIKeyRejected) ||
-			errors.Is(err, agentauth.ErrAccountLabelRequired) || errors.Is(err, agentauth.ErrAccountLabelInvalid) ||
-			errors.Is(err, agentauth.ErrAccountLabelConflict) || errors.Is(err, agentauth.ErrAccountNotFound) {
+		} else if errors.Is(err, harnessauth.ErrAPIKeyRequired) || errors.Is(err, harnessauth.ErrAPIKeyRejected) ||
+			errors.Is(err, harnessauth.ErrAccountLabelRequired) || errors.Is(err, harnessauth.ErrAccountLabelInvalid) ||
+			errors.Is(err, harnessauth.ErrAccountLabelConflict) || errors.Is(err, harnessauth.ErrAccountNotFound) {
 			status = http.StatusBadRequest
 		}
 		httptransport.SendErr(w, status, err.Error())
@@ -328,7 +328,7 @@ func (h *AgentAuthHandler) handleAPIKey(binding agentauth.Binding, w http.Respon
 	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
 }
 
-func (h *AgentAuthHandler) handleAccountImport(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleAccountImport(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -346,7 +346,7 @@ func (h *AgentAuthHandler) handleAccountImport(binding agentauth.Binding, w http
 	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
 }
 
-func (h *AgentAuthHandler) handleAccountLoginStart(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleAccountLoginStart(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -366,7 +366,7 @@ func (h *AgentAuthHandler) handleAccountLoginStart(binding agentauth.Binding, w 
 	httptransport.SendJSON(w, http.StatusOK, state)
 }
 
-func (h *AgentAuthHandler) handleAccountActivate(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleAccountActivate(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if !h.requireMutationAccess(w, r) {
 		return
 	}
@@ -384,7 +384,7 @@ func (h *AgentAuthHandler) handleAccountActivate(binding agentauth.Binding, w ht
 	httptransport.SendJSON(w, http.StatusOK, binding.Snapshot())
 }
 
-func (h *AgentAuthHandler) handleAccountDelete(binding agentauth.Binding, w http.ResponseWriter, r *http.Request) {
+func (h *AgentAuthHandler) handleAccountDelete(binding harnessauth.Binding, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -411,12 +411,12 @@ func (h *AgentAuthHandler) sendAccountError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, rbac.ErrDenied), errors.Is(err, rbac.ErrActorRequired):
 		status = http.StatusForbidden
-	case errors.Is(err, agentauth.ErrAccountLabelRequired), errors.Is(err, agentauth.ErrAccountLabelInvalid), errors.Is(err, agentauth.ErrAccountLabelConflict):
+	case errors.Is(err, harnessauth.ErrAccountLabelRequired), errors.Is(err, harnessauth.ErrAccountLabelInvalid), errors.Is(err, harnessauth.ErrAccountLabelConflict):
 		status = http.StatusBadRequest
-	case errors.Is(err, agentauth.ErrAccountNotFound):
+	case errors.Is(err, harnessauth.ErrAccountNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, agentauth.ErrAccountInUse), errors.Is(err, agentauth.ErrActiveAccountDelete),
-		errors.Is(err, agentauth.ErrAccountLoginInProgress), errors.Is(err, agentauth.ErrAccountIdentityMismatch):
+	case errors.Is(err, harnessauth.ErrAccountInUse), errors.Is(err, harnessauth.ErrActiveAccountDelete),
+		errors.Is(err, harnessauth.ErrAccountLoginInProgress), errors.Is(err, harnessauth.ErrAccountIdentityMismatch):
 		status = http.StatusConflict
 	}
 	httptransport.SendErr(w, status, err.Error())

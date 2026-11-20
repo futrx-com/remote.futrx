@@ -3,18 +3,18 @@ package skills
 import (
 	"errors"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var ErrInvalidProvider = errors.New("invalid skill provider")
 
-type Provider = agent.ProviderID
+type Provider = harness.ProviderID
 
 const (
-	ProviderClaude      = agent.ProviderClaude
-	ProviderCodex       = agent.ProviderCodex
-	ProviderKimi        = agent.ProviderKimi
-	ProviderAntigravity = agent.ProviderAntigravity
+	ProviderClaude      = harness.ProviderClaude
+	ProviderCodex       = harness.ProviderCodex
+	ProviderKimi        = harness.ProviderKimi
+	ProviderAntigravity = harness.ProviderAntigravity
 )
 
 type Skill struct {

@@ -4,10 +4,10 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
@@ -15,12 +15,12 @@ import (
 // providers again when its last answer is out of date.
 type AgentQuotaService interface {
 	Refresh(ctx context.Context)
-	View() []agentquota.AccountView
+	View() []harnessquota.AccountView
 }
 
 // AgentQuotaHandler serves the Usage tab's plan-limits section.
 type AgentQuotaHandler struct {
-	accountAccess *agentaccountaccess.Service
+	accountAccess *harnessaccountaccess.Service
 	quota         AgentQuotaService
 	auth          *serviceauth.Service
 }
@@ -28,14 +28,14 @@ type AgentQuotaHandler struct {
 // agentQuotaResponse lists readings by provider account. Account IDs are the
 // saved-account IDs from the agent-auth snapshot, which owns their labels.
 type agentQuotaResponse struct {
-	Accounts []agentquota.AccountView `json:"accounts"`
+	Accounts []harnessquota.AccountView `json:"accounts"`
 }
 
 func NewAgentQuotaHandler(quota AgentQuotaService, auth *serviceauth.Service) *AgentQuotaHandler {
 	return &AgentQuotaHandler{quota: quota, auth: auth}
 }
 
-func (h *AgentQuotaHandler) WithAccountAccess(access *agentaccountaccess.Service) *AgentQuotaHandler {
+func (h *AgentQuotaHandler) WithAccountAccess(access *harnessaccountaccess.Service) *AgentQuotaHandler {
 	h.accountAccess = access
 	return h
 }
@@ -71,9 +71,9 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 	h.quota.Refresh(r.Context())
 	accounts := h.quota.View()
 	if h.accountAccess != nil {
-		visible := make([]agentquota.AccountView, 0, len(accounts))
+		visible := make([]harnessquota.AccountView, 0, len(accounts))
 		for _, a := range accounts {
-			allowed, err := h.accountAccess.CanViewAccount(r.Context(), agent.ProviderID(a.Provider), a.AccountID)
+			allowed, err := h.accountAccess.CanViewAccount(r.Context(), harness.ProviderID(a.Provider), a.AccountID)
 			if err != nil {
 				sendPermissionsError(w, err)
 				return
@@ -87,9 +87,9 @@ func (h *AgentQuotaHandler) handle(w http.ResponseWriter, r *http.Request) {
 	sendAgentQuota(w, accounts)
 }
 
-func sendAgentQuota(w http.ResponseWriter, accounts []agentquota.AccountView) {
+func sendAgentQuota(w http.ResponseWriter, accounts []harnessquota.AccountView) {
 	if accounts == nil {
-		accounts = []agentquota.AccountView{}
+		accounts = []harnessquota.AccountView{}
 	}
 	httptransport.SendJSON(w, http.StatusOK, agentQuotaResponse{Accounts: accounts})
 }

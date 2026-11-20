@@ -6,19 +6,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type ID string
 type ProjectID string
-type Provider = agent.ProviderID
+type Provider = harness.ProviderID
 type SessionIDs map[Provider]string
 
 const (
-	ProviderClaude      = agent.ProviderClaude
-	ProviderCodex       = agent.ProviderCodex
-	ProviderKimi        = agent.ProviderKimi
-	ProviderAntigravity = agent.ProviderAntigravity
+	ProviderClaude      = harness.ProviderClaude
+	ProviderCodex       = harness.ProviderCodex
+	ProviderKimi        = harness.ProviderKimi
+	ProviderAntigravity = harness.ProviderAntigravity
 )
 
 type Meta struct {
@@ -92,12 +92,12 @@ type Event struct {
 	// ScheduledTaskID marks events produced by a scheduled run rather than an
 	// interactive one, so consumers can tell "your turn finished" from "a task
 	// ran while you were away".
-	ApplicationID        string                `json:"applicationId,omitempty"`
-	ApplicationRequestID string                `json:"applicationRequestId,omitempty"`
-	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
-	Native               *agent.NativeEnvelope `json:"native,omitempty"`
-	InteractionID        string                `json:"interactionId,omitempty"`
-	Status               string                `json:"status,omitempty"`
+	ApplicationID        string                  `json:"applicationId,omitempty"`
+	ApplicationRequestID string                  `json:"applicationRequestId,omitempty"`
+	ScheduledTaskID      string                  `json:"scheduledTaskId,omitempty"`
+	Native               *harness.NativeEnvelope `json:"native,omitempty"`
+	InteractionID        string                  `json:"interactionId,omitempty"`
+	Status               string                  `json:"status,omitempty"`
 }
 
 // NormalizeSessions makes the provider-keyed session map authoritative while
@@ -306,29 +306,29 @@ type UpdateInput struct {
 }
 
 func NormalizeProvider(provider Provider) Provider {
-	normalized := agent.NormalizeProviderID(string(provider))
-	if normalized == "" || !agent.ValidProviderID(normalized) {
+	normalized := harness.NormalizeProviderID(string(provider))
+	if normalized == "" || !harness.ValidProviderID(normalized) {
 		return ProviderCodex
 	}
 	return normalized
 }
 
 func NormalizeReasoningEffort(effort string) string {
-	return agent.NormalizePreferenceValue(effort)
+	return harness.NormalizePreferenceValue(effort)
 }
 
 // NormalizeServiceTier keeps future provider tiers usable without requiring a
 // frontend/backend release for every catalog addition. "" means Auto.
 func NormalizeServiceTier(tier string) string {
-	return agent.NormalizePreferenceValue(tier)
+	return harness.NormalizePreferenceValue(tier)
 }
 
 func NormalizeApprovalPolicy(policy string) string {
-	return agent.NormalizeApprovalPolicy(policy)
+	return harness.NormalizeApprovalPolicy(policy)
 }
 
 func NormalizeSandboxPolicy(policy string) string {
-	return agent.NormalizeSandboxPolicy(policy)
+	return harness.NormalizeSandboxPolicy(policy)
 }
 
 func NormalizeSelectedSkills(skills []SkillRef, fallbackProvider Provider) []SkillRef {

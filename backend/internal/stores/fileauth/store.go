@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const (
@@ -23,8 +23,8 @@ const (
 )
 
 type agentAccountsDocument struct {
-	Version   int                             `json:"version"`
-	Providers map[string]agentauth.AccountSet `json:"providers"`
+	Version   int                               `json:"version"`
+	Providers map[string]harnessauth.AccountSet `json:"providers"`
 }
 
 type Store struct {
@@ -91,7 +91,7 @@ func (s *Store) SaveOAuthConfig(ctx context.Context, cfg serviceauth.OAuthConfig
 	return s.writeJSONLocked("oauth.json", cfg)
 }
 
-func (s *Store) AgentAPIKey(ctx context.Context, provider agent.ProviderID) (string, error) {
+func (s *Store) AgentAPIKey(ctx context.Context, provider harness.ProviderID) (string, error) {
 	select {
 	case <-ctx.Done():
 		return "", ctx.Err()
@@ -109,7 +109,7 @@ func (s *Store) AgentAPIKey(ctx context.Context, provider agent.ProviderID) (str
 	return keys[string(provider)], nil
 }
 
-func (s *Store) SaveAgentAPIKey(ctx context.Context, provider agent.ProviderID, key string) error {
+func (s *Store) SaveAgentAPIKey(ctx context.Context, provider harness.ProviderID, key string) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -129,7 +129,7 @@ func (s *Store) SaveAgentAPIKey(ctx context.Context, provider agent.ProviderID, 
 	return s.writeJSONLocked(agentAPIKeysFile, keys)
 }
 
-func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider agent.ProviderID) error {
+func (s *Store) DeleteAgentAPIKey(ctx context.Context, provider harness.ProviderID) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -163,25 +163,25 @@ func (s *Store) agentAPIKeysLocked() (map[string]string, error) {
 	return keys, nil
 }
 
-func (s *Store) AgentAccounts(ctx context.Context, provider agent.ProviderID) (agentauth.AccountSet, error) {
+func (s *Store) AgentAccounts(ctx context.Context, provider harness.ProviderID) (harnessauth.AccountSet, error) {
 	select {
 	case <-ctx.Done():
-		return agentauth.AccountSet{}, ctx.Err()
+		return harnessauth.AccountSet{}, ctx.Err()
 	default:
 	}
 	if provider == "" {
-		return agentauth.AccountSet{}, errors.New("agent provider is required")
+		return harnessauth.AccountSet{}, errors.New("agent provider is required")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	document, err := s.agentAccountsLocked()
 	if err != nil {
-		return agentauth.AccountSet{}, err
+		return harnessauth.AccountSet{}, err
 	}
 	return document.Providers[string(provider)].Clone(), nil
 }
 
-func (s *Store) SaveAgentAccounts(ctx context.Context, provider agent.ProviderID, accounts agentauth.AccountSet) error {
+func (s *Store) SaveAgentAccounts(ctx context.Context, provider harness.ProviderID, accounts harnessauth.AccountSet) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -201,7 +201,7 @@ func (s *Store) SaveAgentAccounts(ctx context.Context, provider agent.ProviderID
 }
 
 func (s *Store) agentAccountsLocked() (agentAccountsDocument, error) {
-	document := agentAccountsDocument{Version: 1, Providers: make(map[string]agentauth.AccountSet)}
+	document := agentAccountsDocument{Version: 1, Providers: make(map[string]harnessauth.AccountSet)}
 	data, err := os.ReadFile(filepath.Join(s.dataDir, agentAccountsFile))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -216,7 +216,7 @@ func (s *Store) agentAccountsLocked() (agentAccountsDocument, error) {
 		return agentAccountsDocument{}, fmt.Errorf("parse %s: unsupported version %d", agentAccountsFile, document.Version)
 	}
 	if document.Providers == nil {
-		document.Providers = make(map[string]agentauth.AccountSet)
+		document.Providers = make(map[string]harnessauth.AccountSet)
 	}
 	return document, nil
 }

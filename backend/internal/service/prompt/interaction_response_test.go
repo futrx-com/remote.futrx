@@ -6,30 +6,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 type interactionResponseProvider struct {
 	started  chan struct{}
-	received chan agent.InteractionResponse
+	received chan harness.InteractionResponse
 }
 
-func (p *interactionResponseProvider) ID() agent.ProviderID { return agent.ProviderCodex }
+func (p *interactionResponseProvider) ID() harness.ProviderID { return harness.ProviderCodex }
 
 func (p *interactionResponseProvider) Capabilities(
 	context.Context,
-	agent.CapabilityRequest,
-) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+	harness.CapabilityRequest,
+) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: harness.ProviderCodex}, nil
 }
 
 func (p *interactionResponseProvider) Run(
 	ctx context.Context,
-	req agent.RunRequest,
-	emit func(agent.Event),
+	req harness.RunRequest,
+	emit func(harness.Event),
 ) error {
 	close(p.started)
 	select {
@@ -38,7 +38,7 @@ func (p *interactionResponseProvider) Run(
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-	emit(agent.Event{Type: agent.EventRunCompleted})
+	emit(harness.Event{Type: harness.EventRunCompleted})
 	return nil
 }
 
@@ -60,9 +60,9 @@ func TestRespondInteractionRoutesAnswerToActiveRun(t *testing.T) {
 
 	provider := &interactionResponseProvider{
 		started:  make(chan struct{}),
-		received: make(chan agent.InteractionResponse, 1),
+		received: make(chan harness.InteractionResponse, 1),
 	}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestRespondInteractionRoutesAnswerToActiveRun(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	want := agent.InteractionResponse{
+	want := harness.InteractionResponse{
 		ID:     `"request-42"`,
 		Result: json.RawMessage(`{"decision":"accept"}`),
 	}

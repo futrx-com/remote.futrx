@@ -125,7 +125,7 @@ Three **separate** concerns, deliberately not conflated ([deep dive](docs/02-wor
    users** on the box. Claude and Codex can each retain multiple named
    subscription credentials but expose one validated active host identity at
    a time. The saved-account vault (`agent-accounts.json`) and its activation
-   rules belong to [`service/agent/auth`](backend/internal/service/agent/auth);
+   rules belong to [`service/harness/auth`](backend/internal/service/harness/auth);
    provider adapters supply only credential placement, validation, identity,
    and isolated login. MiniMax instead reads `MINIMAX_API_KEY` from each
    project's secret store, while Antigravity authenticates through `agy`
@@ -150,7 +150,7 @@ sequenceDiagram
     participant Runtime as module.Runtime
     participant Provider as agent.Provider
     participant Prep as execution.Preparer
-    participant Cmd as integration/agents/runtime
+    participant Cmd as integration/harnesses/runtime
     participant Projects as agent.ProjectResolver
     participant LXD as LXD container
     participant CLI as Agent CLI
@@ -182,16 +182,16 @@ sequenceDiagram
 The run hub ([`service/runhub/hub.go`](backend/internal/service/runhub/hub.go))
 enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
-adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
-[`integration/agents/codex`](backend/internal/integration/agents/codex),
-[`integration/agents/minimax`](backend/internal/integration/agents/minimax),
-[`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
-[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
+adapters ([`integration/harnesses/claude`](backend/internal/integration/harnesses/claude),
+[`integration/harnesses/codex`](backend/internal/integration/harnesses/codex),
+[`integration/harnesses/minimax`](backend/internal/integration/harnesses/minimax),
+[`integration/harnesses/kimi`](backend/internal/integration/harnesses/kimi), and
+[`integration/harnesses/antigravity`](backend/internal/integration/harnesses/antigravity)) normalize each
 provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
 Agent composition uses the validated provider-owned factory contract in
-[`service/agent/module`](backend/internal/service/agent/module). Each adapter
+[`service/harness/module`](backend/internal/service/harness/module). Each adapter
 package exposes one `NewFactory()` from its local `factory.go` and is
 compile-time checked against `module.FactoryBuilder`. The factory keeps public
 descriptor metadata separate from its private provisioning profile and
@@ -210,11 +210,11 @@ execution.
 
 Provider-specific commands, protocols, parsers, credentials, capability
 probes, and profiles live in the concrete
-[`integration/agents`](backend/internal/integration/agents) adapters. Neutral
-provider contracts remain in [`agent`](backend/internal/agent), and shared project
+[`integration/harnesses`](backend/internal/integration/harnesses) adapters. Neutral
+provider contracts remain in [`harness`](backend/internal/service/harness), and shared project
 start/provision/secret orchestration lives in
-[`service/agent/execution`](backend/internal/service/agent/execution), while
-[`integration/agents/runtime`](backend/internal/integration/agents/runtime)
+[`service/harness/execution`](backend/internal/service/harness/execution), while
+[`integration/harnesses/runtime`](backend/internal/integration/harnesses/runtime)
 assembles the common process and `lxc exec` command shapes used by those
 adapters. Each provider factory declares its small preparation policy and
 retains native CLI argument and transport ownership.
@@ -224,7 +224,7 @@ The explicit composition root in
 `NewFactory` functions in deterministic order. There is no backend discovery or
 package `init` registration. `service.New` passes application-facing
 `module.BuildDependencies`—the narrow
-[`ProjectResolver`](backend/internal/agent/project.go), full container ports,
+[`ProjectResolver`](backend/internal/service/harness/project.go), full container ports,
 and global credential-sync timeout—to `Catalog.Build`. For every project-scoped
 module, `module.Factory` constructs `execution.Preparer` from a deep clone of
 the validated profile and the provider's `ProjectPreparationPolicy`. It then
@@ -303,7 +303,7 @@ Core provides a generic installation-scoped `Runtime.AgentTurns` capability for
 starting and reading ordinary agent turns, durable execution receipts, scoped
 application tool calls and opt-in background backend recovery. The applications
 service owns policy; the SDK and application process host provide the contract
-and RPC transport; provider integration stays in `internal/integration/agents`.
+and RPC transport; provider integration stays in `internal/integration/harnesses`.
 Other applications use these same capabilities without scheduler dependencies.
 
 See [Application agent runtime](docs/dev/installable-applications/25-application-agent-runtime.md)
@@ -442,7 +442,7 @@ Deployment is a single-box, root-driven, idempotent-converge model ([deep dive](
   creates a GitHub Release for a semantic-version tag after classifying it.
   Production changes are applied separately by an operator through Remote's
   updater or `infra/update.sh`.
-- **Version pinning:** core pins for agent CLIs, the host toolchain, and Playwright/Chrome-for-Testing live in one manifest ([`versions.env`](backend/internal/agent/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. Applications pin their own dependencies. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
+- **Version pinning:** core pins for agent CLIs, the host toolchain, and Playwright/Chrome-for-Testing live in one manifest ([`versions.env`](backend/internal/service/harness/provisioning/versions.env), symlinked at [`infra/versions.env`](infra/versions.env)), embedded by the backend and sourced by the infra scripts. Applications pin their own dependencies. The Playwright browser archives additionally have sha256 pins backing a vendored fallback ([`vendors/`](vendors/README.md)) for servers geo-blocked by Google's CDN; the remaining upstream fetches (NodeSource, the Go tarball, the Ubuntu base image) are version-pinned but not checksum- or signature-verified.
 
 The security consequences of applying unsigned update refs as root and of
 unverified upstream fetches are covered in the

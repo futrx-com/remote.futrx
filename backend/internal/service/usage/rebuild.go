@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Rebuild re-derives the whole ledger from the persisted chat event logs and
@@ -129,13 +129,13 @@ func recordFromChatEvent(
 	if provider == "" {
 		provider = strings.TrimSpace(string(servicechat.NormalizeProvider(chat.Provider)))
 	}
-	usage, hasUsage := agent.ParseUsage(event.Usage)
+	usage, hasUsage := harness.ParseUsage(event.Usage)
 	// Before the normalized usage schema was versioned, Remote persisted
 	// Codex's inclusive input_tokens beside cache_read_input_tokens. Convert
 	// that legacy shape once during rebuild. This provider-specific branch is
 	// migration code only; live adapters emit the provider-neutral contract.
-	if provider == string(agent.ProviderCodex) && usage.SchemaVersion < agent.UsageSchemaVersion {
-		usage = agent.NormalizeInclusiveInput(usage)
+	if provider == string(harness.ProviderCodex) && usage.SchemaVersion < harness.UsageSchemaVersion {
+		usage = harness.NormalizeInclusiveInput(usage)
 	}
 	model := strings.TrimSpace(usage.Model)
 	if model == "" {

@@ -187,7 +187,7 @@ not project secrets; application tools should never log them.
 `internal/service/applications` owns execution authority, admission, receipts,
 scoped tools, and background recovery. `pkg/applications` is the public contract;
 `pkg/applications/rpc` and `internal/integration/applications` bind it across child
-processes. `internal/integration/agents` continues to implement provider-specific
+processes. `internal/integration/harnesses` continues to implement provider-specific
 launching and parsing. Application backends own workflow decisions and tool
 permissions.
 

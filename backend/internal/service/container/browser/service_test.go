@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	containerlaunch "github.com/futrx-com/remote.futrx.com/internal/service/container/launch"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 

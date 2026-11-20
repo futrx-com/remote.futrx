@@ -1,7 +1,6 @@
 package config
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
@@ -28,6 +27,7 @@ import (
 	containerlaunch "github.com/futrx-com/remote.futrx.com/internal/service/container/launch"
 	servicelifecycle "github.com/futrx-com/remote.futrx.com/internal/service/container/lifecycle"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 

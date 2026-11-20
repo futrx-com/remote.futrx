@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
 	"io"
 	"log"
 	"net/http"
@@ -38,7 +38,7 @@ type PermissionsService interface {
 }
 
 type PermissionsHandler struct {
-	accounts    *agentaccountaccess.Service
+	accounts    *harnessaccountaccess.Service
 	permissions PermissionsService
 }
 
@@ -335,7 +335,7 @@ func (h *PermissionsHandler) HandleEffective(w http.ResponseWriter, r *http.Requ
 	httptransport.SendJSON(w, 200, decisions)
 }
 
-func (h *PermissionsHandler) WithAccounts(a *agentaccountaccess.Service) *PermissionsHandler {
+func (h *PermissionsHandler) WithAccounts(a *harnessaccountaccess.Service) *PermissionsHandler {
 	h.accounts = a
 	return h
 }

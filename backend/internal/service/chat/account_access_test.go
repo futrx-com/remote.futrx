@@ -5,15 +5,15 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
 )
 
 type deniedAccountSelection struct {
-	provider agent.ProviderID
+	provider harness.ProviderID
 	id       string
 }
 
@@ -26,10 +26,10 @@ func (chatPolicyIdentities) IsRegistered(_ context.Context, email string) (bool,
 	return email == "admin@example.com" || email == "member@example.com", nil
 }
 
-type chatSavedAccounts struct{ agentauth.AccountController }
+type chatSavedAccounts struct{ harnessauth.AccountController }
 
-func (chatSavedAccounts) AccountsSnapshot() agentauth.AccountsSnapshot {
-	return agentauth.AccountsSnapshot{ActiveAccountID: "team", Items: []agentauth.Account{{ID: "team", Label: "Team", Active: true}}}
+func (chatSavedAccounts) AccountsSnapshot() harnessauth.AccountsSnapshot {
+	return harnessauth.AccountsSnapshot{ActiveAccountID: "team", Items: []harnessauth.Account{{ID: "team", Label: "Team", Active: true}}}
 }
 
 type accountSelectionRepository struct {
@@ -48,12 +48,12 @@ func (r *accountSelectionRepository) Update(ctx context.Context, id ID, mutate f
 
 func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testing.T) {
 	for _, tc := range []struct {
-		provider  agent.ProviderID
+		provider  harness.ProviderID
 		accountID string
 	}{
-		{agent.ProviderMiniMax, "team"},
-		{agent.ProviderKimi, ""},
-		{agent.ProviderAntigravity, ""},
+		{harness.ProviderMiniMax, "team"},
+		{harness.ProviderKimi, ""},
+		{harness.ProviderAntigravity, ""},
 	} {
 		for _, operation := range []string{"create", "fork", "account", "provider"} {
 			t.Run(string(tc.provider)+"/"+operation, func(t *testing.T) {
@@ -61,21 +61,21 @@ func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testin
 				if err != nil {
 					t.Fatal(err)
 				}
-				policy, err := rbac.NewService(context.Background(), rbac.MustRegistry(rbac.ManagementDefinitions(), agentauth.PermissionDefinitions(), PermissionDefinitions()), store, chatPolicyIdentities{}, nil)
+				policy, err := rbac.NewService(context.Background(), rbac.MustRegistry(rbac.ManagementDefinitions(), harnessauth.PermissionDefinitions(), PermissionDefinitions()), store, chatPolicyIdentities{}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				binding := agentauth.NewExternalBinding(tc.provider)
+				binding := harnessauth.NewExternalBinding(tc.provider)
 				if tc.accountID != "" {
 					binding = binding.WithAccounts(chatSavedAccounts{})
 				}
-				access := agentaccountaccess.New(policy, []agentauth.Binding{binding})
+				access := harnessaccountaccess.New(policy, []harnessauth.Binding{binding})
 				repo := &accountSelectionRepository{forkRepository: &forkRepository{source: Meta{ID: "deadbeef", Provider: tc.provider, AccountID: tc.accountID}}}
 				if operation == "account" || operation == "provider" {
 					repo.source.AccountID = "old"
 				}
 				if operation == "provider" {
-					repo.source.Provider = agent.ProviderCodex
+					repo.source.Provider = harness.ProviderCodex
 				}
 				service := New(repo, nil, nil, nil, WithAuthorizer(policy), WithAccountAccess(access))
 				member := rbac.ContextWithActor(context.Background(), rbac.UserActor("member@example.com"))
@@ -98,7 +98,7 @@ func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testin
 					t.Fatal("denied selection wrote chat state")
 				}
 				admin := rbac.ContextWithActor(context.Background(), rbac.UserActor("admin@example.com"))
-				assignment := rbac.AssignmentInput{UserEmail: "member@example.com", Permission: agentauth.PermissionAccountUse, Scope: rbac.ProviderAccountScope(string(tc.provider), tc.accountID), Effect: rbac.Allow}
+				assignment := rbac.AssignmentInput{UserEmail: "member@example.com", Permission: harnessauth.PermissionAccountUse, Scope: rbac.ProviderAccountScope(string(tc.provider), tc.accountID), Effect: rbac.Allow}
 				if _, err := policy.SetAssignment(admin, assignment); err != nil {
 					t.Fatal(err)
 				}
@@ -128,7 +128,7 @@ func TestChatProviderAccountPolicyEnforcesSelectionGrantsAndRevocation(t *testin
 	}
 }
 
-func (d *deniedAccountSelection) Resolve(_ context.Context, p agent.ProviderID, id string) (string, error) {
+func (d *deniedAccountSelection) Resolve(_ context.Context, p harness.ProviderID, id string) (string, error) {
 	d.provider = p
 	d.id = id
 	return "", rbac.ErrDenied
@@ -158,7 +158,7 @@ func TestChatAccountSelectionDeniesCreateForkAndChangesBeforeWrites(t *testing.T
 		if repo.created.ID != "" || repo.source.AccountID != "old" {
 			t.Fatalf("%s modified chat", operation)
 		}
-		if operation == "provider" && (policy.provider != agent.ProviderClaude || policy.id != "") {
+		if operation == "provider" && (policy.provider != harness.ProviderClaude || policy.id != "") {
 			t.Fatalf("provider change must check its default: %+v", policy)
 		}
 	}

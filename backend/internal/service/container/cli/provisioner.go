@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/shared/output"
 )
 

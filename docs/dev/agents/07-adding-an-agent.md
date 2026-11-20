@@ -25,18 +25,18 @@ Before writing code, answer these questions:
 Choose one stable ID matching `[a-z][a-z0-9-]*`. Provider IDs appear in chats,
 sessions, skills, settings, routes, and capability results, so changing one is
 a data migration, not a cosmetic rename. A built-in may add a named
-`agent.ProviderID` constant in
-[`model.go`](../../../backend/internal/agent/model.go), but the catalog—not the
+`harness.ProviderID` constant in
+[`model.go`](../../../backend/internal/service/harness/model.go), but the catalog—not the
 constant—registers it.
 
 ## Create the provider package
 
 Use the existing packages under
-[`backend/internal/integration/agents`](../../../backend/internal/integration/agents) as examples. A
+[`backend/internal/integration/harnesses`](../../../backend/internal/integration/harnesses) as examples. A
 typical integration looks like:
 
 ```text
-backend/internal/integration/agents/acme/
+backend/internal/integration/harnesses/acme/
 ├── factory.go              complete module declaration and construction
 ├── provider.go             Provider implementation and dependencies
 ├── command.go              provider-native launch arguments and environment
@@ -55,7 +55,7 @@ catalogs, credential formats, or session extraction into shared services.
 
 ## Implement runtime and discovery
 
-Implement `agent.Provider`:
+Implement `harness.Provider`:
 
 1. `ID` returns the exact stable ID declared by the factory.
 2. `Capabilities` probes the selected host or project execution environment,
@@ -63,10 +63,10 @@ Implement `agent.Provider`:
    controls, modes, defaults, warnings, and availability. Warning and
    unavailability text is user-facing: keep it concise and do not copy raw CLI
    output or credentials into it.
-3. `Run` translates `agent.RunRequest` into the native CLI/protocol, honors
-   context cancellation, and emits normalized `agent.Event` values.
+3. `Run` translates `harness.RunRequest` into the native CLI/protocol, honors
+   context cancellation, and emits normalized `harness.Event` values.
 
-Use the injected `agent.ProjectPreparer` rather than importing project-service
+Use the injected `harness.ProjectPreparer` rather than importing project-service
 models or copying the start/provision/secret sequence. The generic module
 factory constructs it; declare only genuine differences with
 `module.WithProjectPreparation`. Its callback dependencies do not expose the
@@ -98,7 +98,7 @@ CLI also needs one so the updater can converge the host binary. Declare:
   templates as needed.
 
 Add the version to
-[`provisioning/versions.env`](../../../backend/internal/agent/provisioning/versions.env)
+[`provisioning/versions.env`](../../../backend/internal/service/harness/provisioning/versions.env)
 and read it through `provisioning.MustCLIVersion`; use `MustPin` for associated
 checksums. Do not duplicate literal pins in provider code, tests, or docs.
 
@@ -157,7 +157,7 @@ func NewFactory() (module.Factory, error) {
         deps module.Dependencies,
         validatedProfile *provisioning.Profile,
     ) (module.Components, error) {
-        binding := agentauth.NewDeviceBinding(providerID, NewAuth())
+        binding := harnessauth.NewDeviceBinding(providerID, NewAuth())
         return module.Components{
             Provider: newProvider(
                 deps.ProjectPreparer,
@@ -270,9 +270,9 @@ Add focused tests for every provider-owned boundary:
 - factory identity, scope, auth flow, features, and fresh component builds;
 - configuration catalog order, default, project profiles, and host profiles.
 
-Extend `internal/service/agent/execution` tests for changes to common project
+Extend `internal/service/harness/execution` tests for changes to common project
 lifecycle, ordering, error, or best-effort semantics. Extend
-`internal/integration/agents/runtime` tests for changes to common
+`internal/integration/harnesses/runtime` tests for changes to common
 container-command and environment precedence. Keep native arguments and
 protocol assertions in the provider package.
 
@@ -314,7 +314,7 @@ network powers change.
 
 When a local/project provider adds a preinstalled CLI or durable provider home,
 also update the embedded
-[`provisioning/assets/AGENTS.md`](../../../backend/internal/agent/provisioning/assets/AGENTS.md)
+[`provisioning/assets/AGENTS.md`](../../../backend/internal/service/harness/provisioning/assets/AGENTS.md)
 workspace instructions. That template currently enumerates the installed CLIs,
 provider-home paths, and durable-mount count; those human-facing details are not
 generated from the module catalog.
@@ -330,7 +330,7 @@ full path in QA before publishing the release. See
 
 - The provider owns its factory, runtime translation, parsers, auth adapter,
   capability discovery, and provisioning policy.
-- `config.NewAgentModules` is the only registration edit.
+- `config.NewHarnessModules` is the only registration edit.
 - Factory and catalog validation pass without weakening an invariant.
 - Host/project scopes and all feature declarations match demonstrated behavior.
 - Generic APIs and frontend surfaces show the provider without a special-case

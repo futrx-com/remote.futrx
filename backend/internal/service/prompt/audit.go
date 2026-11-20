@@ -3,9 +3,9 @@ package prompt
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // WithAudit records the start and cancellation of every agent run.
@@ -72,7 +72,7 @@ func (rnr *Service) recordCompletedRun(ctx context.Context, started audit.Entry,
 	rnr.audit.Record(ctx, completed)
 }
 
-func (rnr *Service) recordAccountUse(ctx context.Context, input StartInput, meta ChatMeta, providerID agent.ProviderID, runID string) {
+func (rnr *Service) recordAccountUse(ctx context.Context, input StartInput, meta ChatMeta, providerID harness.ProviderID, runID string) {
 	if rnr.audit != nil {
 		entry := audit.Success(audit.ActionAgentAccountUse, audit.Target{Type: audit.TargetChat, ID: string(input.ChatID)}, audit.Meta{"runId": runID, "projectId": string(meta.ProjectID), "provider": string(providerID), "accountId": meta.AccountID, "applicationInstanceId": input.ApplicationInstanceID, "applicationRequestId": input.ApplicationRequestID})
 		entry.Actor = audit.Actor{Email: input.Actor.Email, IsAdmin: input.Actor.IsAdmin}

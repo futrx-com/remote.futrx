@@ -11,7 +11,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	hostcliruntime "github.com/futrx-com/remote.futrx.com/internal/integration/hostcli"
-	"github.com/futrx-com/remote.futrx.com/internal/service/agent/hostcli"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/hostcli"
 )
 
 const defaultManagedPrefix = "/opt/remote.futrx/data/host-clis"
@@ -30,7 +30,7 @@ func main() {
 // run prints the catalog-derived host CLI plan (plan=true) or converges every
 // host-scoped module to it, reporting one outcome line per module.
 func run(ctx context.Context, cfg config.Config, plan bool, managedPrefix string) error {
-	catalog, err := config.NewAgentModules()
+	catalog, err := config.NewHarnessModules()
 	if err != nil {
 		return fmt.Errorf("configure agent modules: %w", err)
 	}

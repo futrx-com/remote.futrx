@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 func TestChatEventFromAgentEventKeepsProviderlessSessionGeneric(t *testing.T) {
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:         123,
-		Type:      agent.EventSessionUpdated,
+		Type:      harness.EventSessionUpdated,
 		SessionID: "claude-session",
 	})
 	if !ok {
@@ -39,8 +39,8 @@ func TestEmitAgentEventUsesSelectedProviderWhenAdapterOmitsIt(t *testing.T) {
 
 	service := &Service{store: store}
 	var emitted ChatEvent
-	event := withDefaultProvider(agent.Event{
-		Type: agent.EventSessionUpdated, SessionID: "future-session",
+	event := withDefaultProvider(harness.Event{
+		Type: harness.EventSessionUpdated, SessionID: "future-session",
 	}, "future-agent")
 	service.emitAgentEvent(ctx, meta.ID, event, func(event ChatEvent) {
 		emitted = event
@@ -59,10 +59,10 @@ func TestEmitAgentEventUsesSelectedProviderWhenAdapterOmitsIt(t *testing.T) {
 }
 
 func TestChatEventFromAgentEventMapsCodexSession(t *testing.T) {
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:         123,
-		Type:      agent.EventSessionUpdated,
-		Provider:  agent.ProviderCodex,
+		Type:      harness.EventSessionUpdated,
+		Provider:  harness.ProviderCodex,
 		SessionID: "codex-thread",
 	})
 	if !ok {
@@ -74,9 +74,9 @@ func TestChatEventFromAgentEventMapsCodexSession(t *testing.T) {
 }
 
 func TestChatEventFromAgentEventPersistsCompletionProvider(t *testing.T) {
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:        123,
-		Type:     agent.EventRunCompleted,
+		Type:     harness.EventRunCompleted,
 		Provider: "future-agent",
 		Usage:    json.RawMessage(`{"schema_version":1,"input_tokens":7}`),
 	})
@@ -90,25 +90,25 @@ func TestChatEventFromAgentEventPersistsCompletionProvider(t *testing.T) {
 }
 
 func TestChatEventFromAgentEventPersistsTurnStatusProvider(t *testing.T) {
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:        123,
-		Type:     agent.EventTurnStatus,
-		Provider: agent.ProviderMiniMax,
+		Type:     harness.EventTurnStatus,
+		Provider: harness.ProviderMiniMax,
 		Status:   "inProgress",
 	})
 	if !ok {
 		t.Fatal("expected event to map")
 	}
-	if ev.Type != "turn_status" || ev.Provider != servicechat.Provider(agent.ProviderMiniMax) ||
+	if ev.Type != "turn_status" || ev.Provider != servicechat.Provider(harness.ProviderMiniMax) ||
 		ev.Status != "inProgress" {
 		t.Fatalf("unexpected turn status event: %#v", ev)
 	}
 }
 
 func TestChatEventFromAgentEventPreservesMessageIdentity(t *testing.T) {
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:      123,
-		Type:   agent.EventAssistantTextDelta,
+		Type:   harness.EventAssistantTextDelta,
 		ItemID: "message-1",
 		Text:   "hello",
 	})
@@ -122,9 +122,9 @@ func TestChatEventFromAgentEventPreservesMessageIdentity(t *testing.T) {
 
 func TestChatEventFromAgentEventMapsToolLifecycle(t *testing.T) {
 	input := json.RawMessage(`{"cmd":"go test ./..."}`)
-	start, ok := chatEventFromAgentEvent(agent.Event{
+	start, ok := chatEventFromAgentEvent(harness.Event{
 		T:        456,
-		Type:     agent.EventToolStarted,
+		Type:     harness.EventToolStarted,
 		ItemID:   "tool-1",
 		ToolName: "Bash",
 		Input:    input,
@@ -136,9 +136,9 @@ func TestChatEventFromAgentEventMapsToolLifecycle(t *testing.T) {
 		t.Fatalf("unexpected start event: %#v", start)
 	}
 
-	end, ok := chatEventFromAgentEvent(agent.Event{
+	end, ok := chatEventFromAgentEvent(harness.Event{
 		T:      789,
-		Type:   agent.EventToolCompleted,
+		Type:   harness.EventToolCompleted,
 		ItemID: "tool-1",
 		Output: "ok",
 	})
@@ -152,9 +152,9 @@ func TestChatEventFromAgentEventMapsToolLifecycle(t *testing.T) {
 
 func TestChatEventFromAgentEventKeepsRecordedInteractionAnswers(t *testing.T) {
 	data := json.RawMessage(`{"answers":{"env":["staging"]}}`)
-	ev, ok := chatEventFromAgentEvent(agent.Event{
+	ev, ok := chatEventFromAgentEvent(harness.Event{
 		T:             900,
-		Type:          agent.EventInteractionDone,
+		Type:          harness.EventInteractionDone,
 		InteractionID: "9",
 		ToolName:      "item/tool/requestUserInput",
 		Status:        "answered",

@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -14,7 +14,7 @@ type agentProjectResolver struct {
 	projects *serviceproject.Service
 }
 
-func (r agentProjectResolver) Get(ctx context.Context, id agent.ProjectID) (agent.Project, error) {
+func (r agentProjectResolver) Get(ctx context.Context, id harness.ProjectID) (harness.Project, error) {
 	project, err := r.projects.Get(ctx, serviceproject.ID(id))
 	return projectForAgent(project), err
 }
@@ -22,12 +22,12 @@ func (r agentProjectResolver) Get(ctx context.Context, id agent.ProjectID) (agen
 // Start readies the container for an agent run the caller was already
 // admitted to. Runs also start from background contexts that carry no
 // authenticated actor, so this is a reviewed trusted internal entry point.
-func (r agentProjectResolver) Start(ctx context.Context, id agent.ProjectID) (agent.Project, error) {
+func (r agentProjectResolver) Start(ctx context.Context, id harness.ProjectID) (harness.Project, error) {
 	project, err := r.projects.StartForAgent(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
 	return projectForAgent(project), err
 }
 
-func (r agentProjectResolver) ListSecrets(ctx context.Context, id agent.ProjectID) ([]agent.ProjectSecret, error) {
+func (r agentProjectResolver) ListSecrets(ctx context.Context, id harness.ProjectID) ([]harness.ProjectSecret, error) {
 	// Execution already has access to the injected container environment. The
 	// UI secrets capability controls inspection/editing, not runtime injection.
 	secrets, err := r.projects.ListSecrets(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(id))
@@ -37,19 +37,19 @@ func (r agentProjectResolver) ListSecrets(ctx context.Context, id agent.ProjectI
 	if secrets == nil {
 		return nil, nil
 	}
-	out := make([]agent.ProjectSecret, len(secrets))
+	out := make([]harness.ProjectSecret, len(secrets))
 	for index, secret := range secrets {
-		out[index] = agent.ProjectSecret{Key: secret.Key, Value: secret.Value}
+		out[index] = harness.ProjectSecret{Key: secret.Key, Value: secret.Value}
 	}
 	return out, nil
 }
 
-var _ agent.ProjectResolver = agentProjectResolver{}
+var _ harness.ProjectResolver = agentProjectResolver{}
 
-func projectForAgent(project serviceproject.Meta) agent.Project {
-	return agent.Project{
-		ID:            agent.ProjectID(project.ID),
+func projectForAgent(project serviceproject.Meta) harness.Project {
+	return harness.Project{
+		ID:            harness.ProjectID(project.ID),
 		ContainerName: project.ContainerName,
-		Status:        agent.ProjectStatus(project.Status),
+		Status:        harness.ProjectStatus(project.Status),
 	}
 }

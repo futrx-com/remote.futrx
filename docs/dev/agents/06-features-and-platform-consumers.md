@@ -1,7 +1,7 @@
 # Features and platform consumers
 
 An agent factory does more than construct a runtime. Its
-[`module.Descriptor`](../../../backend/internal/service/agent/module/factory.go)
+[`module.Descriptor`](../../../backend/internal/service/harness/module/factory.go)
 is the shared metadata and feature-policy record used by chat creation, prompt
 orchestration, authentication, capabilities, skills, user settings, and the
 frontend. Its separate provisioning profile drives host installation,
@@ -125,7 +125,7 @@ The same compiled catalog is also used outside the server:
   eligible containers.
 
 A provider added only to its local package but not to
-[`config.NewAgentModules`](../../../backend/internal/config/agents.go) is
+[`config.NewHarnessModules`](../../../backend/internal/config/agents.go) is
 inert: it will not be installed, discovered, authenticated, selected, or run.
 
 ## Identity, order, defaults, and scope
@@ -133,12 +133,12 @@ inert: it will not be installed, discovered, authenticated, selected, or run.
 Incoming chat/settings IDs are normalized with `strings.TrimSpace` plus
 lowercase. A factory's descriptor ID is not rewritten: it must already match
 the grammar implemented by
-[`agent.ValidProviderID`](../../../backend/internal/agent/identity.go), beginning
+[`harness.ValidProviderID`](../../../backend/internal/service/harness/identity.go), beginning
 with `a-z` and followed only by `a-z`, `0-9`, or `-`. IDs are used in route
 segments and persisted maps, so changing an ID is a data migration, not a
 cosmetic rename.
 
-[`module.NewCatalog`](../../../backend/internal/service/agent/module/catalog.go)
+[`module.NewCatalog`](../../../backend/internal/service/harness/module/catalog.go)
 preserves the order from the explicit configuration builder list. That order is
 used by descriptors, provisioning profiles, runtime registration, auth
 bindings, capability responses, and default fallback. The catalog rejects an
@@ -166,7 +166,7 @@ validate it. This protects old or manually edited stored chat records.
 ## Authentication and access
 
 Factories build the provider runtime and auth binding in one callback.
-[`Factory.buildComponents`](../../../backend/internal/service/agent/module/factory.go)
+[`Factory.buildComponents`](../../../backend/internal/service/harness/module/factory.go)
 checks that provider ID, auth binding ID, declared auth mode, and actual auth
 flow agree.
 
@@ -204,7 +204,7 @@ frontend types/state, and UI.
 ## Capability metadata and the frontend
 
 Each runtime adapter discovers provider-native models and controls, then
-[`capability.Service.decorate`](../../../backend/internal/service/agent/capability/service.go)
+[`capability.Service.decorate`](../../../backend/internal/service/harness/capability/service.go)
 overwrites shared metadata from the descriptor: label, default, scopes,
 authentication, sessions, skills, browser support, and application tool support. The
 registered provider ID is authoritative even if the adapter returned another
@@ -382,9 +382,9 @@ cross several layers, but each piece still has one role:
 | Question | Correct extension point |
 | --- | --- |
 | Must generic consumers know a stable provider promise before execution? | Add the smallest precise field or strategy to `module.Descriptor.Features`. |
-| Does support vary with CLI version, account, project, or environment? | Add normalized data to `agent.Capabilities` and discover it in each provider capability adapter. |
+| Does support vary with CLI version, account, project, or environment? | Add normalized data to `harness.Capabilities` and discover it in each provider capability adapter. |
 | Does Remote own a workflow, authorization decision, state transition, or lifecycle? | Add an application service under `internal/service`; depend on a narrow provider-neutral port when native work is required. |
-| Is this native CLI syntax, protocol, input translation, or output translation? | Keep it in `internal/integration/agents/<provider>`. Output parsers translate native output only. |
+| Is this native CLI syntax, protocol, input translation, or output translation? | Keep it in `internal/integration/harnesses/<provider>`. Output parsers translate native output only. |
 | Does a run require files, packages, credentials, durable directories, or container preparation? | Extend the provisioning profile or shared preparer policy instead of copying setup into provider command code. |
 | Must the frontend list or invoke it? | Expose a normalized HTTP/WebSocket contract and implement generic frontend state/UI against that contract. |
 
@@ -401,9 +401,9 @@ Use this sequence:
    types; for example, do not represent a one-turn action as a durable chat
    preference.
 2. **Choose the neutral contract.** Put shared request/result data in
-   `internal/agent` only when application policy and concrete adapters both need
+   `internal/service/harness` only when application policy and concrete adapters both need
    it. Introduce a role-specific interface rather than adding unrelated methods
-   to `agent.Provider`. An interface needs a real policy/detail boundary, test
+   to `harness.Provider`. An interface needs a real policy/detail boundary, test
    seam, or multiple implementations.
 3. **Declare only shared policy.** Use a boolean for a true yes/no promise, a
    strategy enum when supported providers deliver the behavior differently, or

@@ -4,12 +4,12 @@ import (
 	"context"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type AccountAccess interface {
-	Resolve(context.Context, agent.ProviderID, string) (string, error)
+	Resolve(context.Context, harness.ProviderID, string) (string, error)
 }
 
 func WithAccountAccess(access AccountAccess) Option {

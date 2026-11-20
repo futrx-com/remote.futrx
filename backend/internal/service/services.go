@@ -9,21 +9,21 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/smtp"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceemail "github.com/futrx-com/remote.futrx.com/internal/service/email"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnesscapability "github.com/futrx-com/remote.futrx.com/internal/service/harness/capability"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -83,13 +83,13 @@ type Dependencies struct {
 	Push              PushStore
 	Usage             serviceusage.Repository
 	Email             emailoutbound.ConfigurationStore
-	AgentQuota        agentquota.Repository
+	AgentQuota        harnessquota.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
 	AgentContainers   provisioning.ContainerDependencies
-	AgentModules      *agentmodule.Catalog
-	AgentAPIKeys      agentauth.APIKeyStore
-	AgentAccounts     agentauth.AccountStore
+	AgentModules      *harnessmodule.Catalog
+	AgentAPIKeys      harnessauth.APIKeyStore
+	AgentAccounts     harnessauth.AccountStore
 	AgentOptions      AgentOptions
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
@@ -139,15 +139,15 @@ type AuthOptions struct {
 }
 
 type Services struct {
-	AccountAccess     *agentaccountaccess.Service
+	AccountAccess     *harnessaccountaccess.Service
 	SetupRepair       *setuprepair.Service
 	Chats             *servicechat.Service
 	ChatAccess        *servicechat.AccessService
 	Projects          *serviceproject.Service
 	Shares            *serviceshare.Service
 	Prompt            *prompt.Service
-	Agents            *agentmodule.Runtime
-	AgentCapabilities *agentcapability.Service
+	Agents            *harnessmodule.Runtime
+	AgentCapabilities *harnesscapability.Service
 	Runs              *runhub.Hub
 	Workspace         *workspacehub.Hub
 	Auth              *serviceauth.Service
@@ -165,7 +165,7 @@ type Services struct {
 	// hides credentials, MIME and HTML email markup behind a builder; see
 	// service/email.Mail.
 	Mailer     *serviceemail.Mailer
-	AgentQuota *agentquota.Service
+	AgentQuota *harnessquota.Service
 	Audit      *serviceaudit.Service
 }
 
@@ -230,18 +230,18 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			},
 		}),
 	)
-	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
+	agentRuntime, err := deps.AgentModules.Build(harnessmodule.BuildDependencies{
 		Projects:              agentProjectResolver{projects: projectService},
 		Containers:            deps.AgentContainers,
 		APIKeys:               deps.AgentAPIKeys,
-		Accounts:              agentauth.NewAccountVault(deps.AgentAccounts, permissionService).WithAudit(auditLog),
+		Accounts:              harnessauth.NewAccountVault(deps.AgentAccounts, permissionService).WithAudit(auditLog),
 		AccountAuthorizer:     permissionService,
 		CredentialSyncTimeout: deps.AgentOptions.CredentialSyncTimeout,
 	})
 	if err != nil {
 		return Services{}, fmt.Errorf("build agent modules: %w", err)
 	}
-	accountAccess := agentaccountaccess.New(permissionService, agentRuntime.Bindings())
+	accountAccess := harnessaccountaccess.New(permissionService, agentRuntime.Bindings())
 	projectService.StartAgentBrowserReaper(ctx, deps.AgentOptions.BrowserIdleTTL)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
@@ -295,7 +295,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 	// The quota service is built even without a store: readings still show for
 	// the life of the process, they just do not survive a restart.
-	agentQuotaService := agentquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
+	agentQuotaService := harnessquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
 	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
 	promptOptions = append(promptOptions, prompt.WithAccountAccess(accountAccess))
 	promptService := prompt.New(
@@ -312,16 +312,16 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	)
 	skillService := serviceskills.New(serviceskills.WithProviderCatalog(agentRuntime))
 	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
-	agentCapabilities := agentcapability.New(
+	agentCapabilities := harnesscapability.New(
 		agentRuntime,
 		projectService,
 		authService,
-		agentcapability.Settings{
+		harnesscapability.Settings{
 			CapabilityTimeout:          deps.AgentOptions.CapabilityTimeout,
 			CapabilityCacheTTL:         deps.AgentOptions.CapabilityCacheTTL,
 			DegradedCapabilityCacheTTL: deps.AgentOptions.DegradedCapabilityCacheTTL,
 		},
-		agentcapability.WithModulePolicy(agentRuntime),
+		harnesscapability.WithModulePolicy(agentRuntime),
 	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {

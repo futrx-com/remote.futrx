@@ -9,9 +9,9 @@ import (
 	"testing"
 
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceaccess"
 	"github.com/futrx-com/remote.futrx.com/internal/service/workspaceide"
@@ -127,7 +127,7 @@ func newMembershipPermissions(
 		t.Fatal(err)
 	}
 	registry, err := servicepermission.NewRegistry(
-		servicepermission.ManagementDefinitions(), serviceproject.PermissionDefinitions(), servicechat.PermissionDefinitions(), workspaceide.PermissionDefinitions(), workspaceaccess.PermissionDefinitions(), agentauth.PermissionDefinitions(),
+		servicepermission.ManagementDefinitions(), serviceproject.PermissionDefinitions(), servicechat.PermissionDefinitions(), workspaceide.PermissionDefinitions(), workspaceaccess.PermissionDefinitions(), harnessauth.PermissionDefinitions(),
 	)
 	if err != nil {
 		t.Fatal(err)

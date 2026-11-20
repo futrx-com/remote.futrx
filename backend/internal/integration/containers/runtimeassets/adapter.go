@@ -6,10 +6,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // Adapter publishes the selected provider's non-secret runtime configuration.

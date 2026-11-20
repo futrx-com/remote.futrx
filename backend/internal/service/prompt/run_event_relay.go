@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // runEventRelay keeps a provider run's private notification trailer out of
@@ -17,7 +17,7 @@ type runEventRelay struct {
 	service       *Service
 	ctx           context.Context
 	chatID        servicechat.ID
-	providerID    agent.ProviderID
+	providerID    harness.ProviderID
 	ledger        ledgerRun
 	emit          func(ChatEvent)
 	notification  notificationSummaryFilter
@@ -25,28 +25,28 @@ type runEventRelay struct {
 	lastMessageID string
 }
 
-func (r *runEventRelay) forward(ev agent.Event) {
+func (r *runEventRelay) forward(ev harness.Event) {
 	ev = withDefaultProvider(ev, r.providerID)
-	if ev.Type == agent.EventAssistantTextDelta {
+	if ev.Type == harness.EventAssistantTextDelta {
 		r.lastMessageID = agentEventMessageID(ev)
 		ev.Text = r.notification.text(ev.Text)
 		if ev.Text == "" {
 			return
 		}
 	}
-	if ev.Type == agent.EventCollaboration {
+	if ev.Type == harness.EventCollaboration {
 		ev.Data = stripSubagentNotificationSummaries(ev.Data)
 	}
-	if ev.Type == agent.EventRunCompleted || ev.Type == agent.EventRunFailed || ev.Type == agent.EventError {
+	if ev.Type == harness.EventRunCompleted || ev.Type == harness.EventRunFailed || ev.Type == harness.EventError {
 		r.terminalSeen = true
 		visible, summary := r.notification.finish()
 		if visible != "" {
-			r.service.emitAgentEvent(r.ctx, r.chatID, agent.Event{
-				T: ev.T, Type: agent.EventAssistantTextDelta, Text: visible,
+			r.service.emitAgentEvent(r.ctx, r.chatID, harness.Event{
+				T: ev.T, Type: harness.EventAssistantTextDelta, Text: visible,
 				Provider: ev.Provider, MessageID: r.lastMessageID,
 			}, r.emit)
 		}
-		if ev.Type == agent.EventRunCompleted {
+		if ev.Type == harness.EventRunCompleted {
 			ev.NotificationSummary = summary
 		}
 	}
@@ -61,8 +61,8 @@ func (r *runEventRelay) finish() {
 	}
 	visible, _ := r.notification.finish()
 	if visible != "" {
-		r.service.emitAgentEvent(r.ctx, r.chatID, agent.Event{
-			Type: agent.EventAssistantTextDelta, Text: visible,
+		r.service.emitAgentEvent(r.ctx, r.chatID, harness.Event{
+			Type: harness.EventAssistantTextDelta, Text: visible,
 			Provider: r.providerID, MessageID: r.lastMessageID,
 		}, r.emit)
 	}

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // Transfer performs the LXD and host-filesystem mechanics for each supported

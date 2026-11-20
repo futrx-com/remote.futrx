@@ -181,14 +181,14 @@ func TestEnforcingServicesDoNotDependOnAuthTransportOrStores(t *testing.T) {
 func TestActorConstructorsAreCalledOnlyFromReviewedEntryPoints(t *testing.T) {
 	allowed := map[string][]string{
 		"ContextWithSystemActor": {
-			"cmd/upgrade-workspaces/main.go",                   // root-run fleet maintenance has no user actor
-			"internal/integration/agents/claude/plan_usage.go", // internal quota sampling, outward reads are filtered
-			"internal/integration/agents/codex/plan_usage.go",  // internal quota sampling, outward reads are filtered
-			"internal/service/agent_project_resolver.go",       // agent runs start containers from background contexts
-			"internal/service/chat_notification_audience.go",   // notification fan-out reads members
-			"internal/service/services.go",                     // application container readiness
-			"internal/service/user_removal_cleanup.go",         // removing a user revokes their access
-			"internal/rbac/assignments.go",                     // RemoveUserPolicy cleanup
+			"cmd/upgrade-workspaces/main.go",                      // root-run fleet maintenance has no user actor
+			"internal/integration/harnesses/claude/plan_usage.go", // internal quota sampling, outward reads are filtered
+			"internal/integration/harnesses/codex/plan_usage.go",  // internal quota sampling, outward reads are filtered
+			"internal/service/agent_project_resolver.go",          // agent runs start containers from background contexts
+			"internal/service/chat_notification_audience.go",      // notification fan-out reads members
+			"internal/service/services.go",                        // application container readiness
+			"internal/service/user_removal_cleanup.go",            // removing a user revokes their access
+			"internal/rbac/assignments.go",                        // RemoveUserPolicy cleanup
 		},
 		"SystemActor": {
 			"internal/rbac/actor.go",
