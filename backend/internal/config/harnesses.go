@@ -1,6 +1,6 @@
 package config
 
-// This file is the composition root for Remote's compiled-in agent
+// This file is the composition root for Remote's compiled-in harness
 // integrations. Providers own their complete factory; config owns only the
 // reviewed registration order and has no provider construction details.
 
