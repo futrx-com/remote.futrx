@@ -125,7 +125,7 @@ The same compiled catalog is also used outside the server:
   eligible containers.
 
 A provider added only to its local package but not to
-[`config.NewAgentModules`](../../../backend/internal/config/agents.go) is
+[`config.NewHarnessModules`](../../../backend/internal/config/agents.go) is
 inert: it will not be installed, discovered, authenticated, selected, or run.
 
 ## Identity, order, defaults, and scope
@@ -384,7 +384,7 @@ cross several layers, but each piece still has one role:
 | Must generic consumers know a stable provider promise before execution? | Add the smallest precise field or strategy to `module.Descriptor.Features`. |
 | Does support vary with CLI version, account, project, or environment? | Add normalized data to `agent.Capabilities` and discover it in each provider capability adapter. |
 | Does Remote own a workflow, authorization decision, state transition, or lifecycle? | Add an application service under `internal/service`; depend on a narrow provider-neutral port when native work is required. |
-| Is this native CLI syntax, protocol, input translation, or output translation? | Keep it in `internal/integration/agents/<provider>`. Output parsers translate native output only. |
+| Is this native CLI syntax, protocol, input translation, or output translation? | Keep it in `internal/integration/harnesses/<provider>`. Output parsers translate native output only. |
 | Does a run require files, packages, credentials, durable directories, or container preparation? | Extend the provisioning profile or shared preparer policy instead of copying setup into provider command code. |
 | Must the frontend list or invoke it? | Expose a normalized HTTP/WebSocket contract and implement generic frontend state/UI against that contract. |
 

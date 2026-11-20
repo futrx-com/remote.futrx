@@ -48,7 +48,7 @@ handling, wire protocols, and output parsing stay inside the concrete adapter.
 
 ## Explicit registration
 
-[`config.NewAgentModules`](../../../backend/internal/config/agents.go) is the
+[`config.NewHarnessModules`](../../../backend/internal/config/agents.go) is the
 composition root for compiled-in integrations:
 
 ```go
@@ -69,7 +69,7 @@ file and prevents import order from changing application behavior.
 ```mermaid
 sequenceDiagram
     participant Main as cmd/remote
-    participant Config as config.NewAgentModules
+    participant Config as config.NewHarnessModules
     participant Provider as provider.NewFactory
     participant Catalog as module.Catalog
     participant Factory as module.Factory
@@ -173,7 +173,7 @@ for every descriptor field's downstream effect.
 - [`backend/internal/agent/model.go`](../../../backend/internal/agent/model.go)
 - [`backend/internal/agent/identity.go`](../../../backend/internal/agent/identity.go)
 - [`backend/internal/agent/registry.go`](../../../backend/internal/agent/registry.go)
-- [`backend/internal/integration/agents/`](../../../backend/internal/integration/agents)
+- [`backend/internal/integration/harnesses/`](../../../backend/internal/integration/harnesses)
 - [`backend/internal/service/agent/module/factory.go`](../../../backend/internal/service/agent/module/factory.go)
 - [`backend/internal/service/agent/module/catalog.go`](../../../backend/internal/service/agent/module/catalog.go)
 - [`backend/internal/service/agent/execution/preparer.go`](../../../backend/internal/service/agent/execution/preparer.go)

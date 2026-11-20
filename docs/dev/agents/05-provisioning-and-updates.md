@@ -359,7 +359,7 @@ protected infrastructure paths, including:
 
 - `backend/internal/agent/provisioning`;
 - provider `assets/`, `factory*.go`, `profile*.go`, `install*.go`, and
-  `provisioning*.go` under `backend/internal/integration/agents`;
+  `provisioning*.go` under `backend/internal/integration/harnesses`;
 - `backend/internal/config/agents.go` and
   `backend/internal/service/agent/module`;
 - host-agent installer/runtime and container-image services;

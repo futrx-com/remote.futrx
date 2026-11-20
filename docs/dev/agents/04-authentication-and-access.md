@@ -257,7 +257,7 @@ It reconciles and leases the canonical host login, retaining the older
 single-slot behavior until that login is imported.
 
 An isolated run also stamps its saved account ID on every event it emits
-(`agentruntime.EmitForAccount`), so what the provider reports about that
+(`harnessruntime.EmitForAccount`), so what the provider reports about that
 account, such as its plan limits, is filed under it. Events from a legacy
 host-login run carry no account ID. The Usage tab's plan-limit reads use the
 same credential snapshots: each saved Claude or Codex account is read in a
@@ -371,7 +371,7 @@ Relevant code:
   `backend/internal/service/agent/auth/{account_service,accounts}.go`;
 - saved-account persistence (`agent-accounts.json`):
   `backend/internal/stores/fileauth/store.go`;
-- provider configurations: `backend/internal/integration/agents/<provider>/auth.go`,
+- provider configurations: `backend/internal/integration/harnesses/<provider>/auth.go`,
   with Claude's and Codex's account credentials and isolated logins in the
   same packages;
 - host-authoritative credential push:

@@ -32,11 +32,11 @@ constant—registers it.
 ## Create the provider package
 
 Use the existing packages under
-[`backend/internal/integration/agents`](../../../backend/internal/integration/agents) as examples. A
+[`backend/internal/integration/harnesses`](../../../backend/internal/integration/harnesses) as examples. A
 typical integration looks like:
 
 ```text
-backend/internal/integration/agents/acme/
+backend/internal/integration/harnesses/acme/
 ├── factory.go              complete module declaration and construction
 ├── provider.go             Provider implementation and dependencies
 ├── command.go              provider-native launch arguments and environment
@@ -272,7 +272,7 @@ Add focused tests for every provider-owned boundary:
 
 Extend `internal/service/agent/execution` tests for changes to common project
 lifecycle, ordering, error, or best-effort semantics. Extend
-`internal/integration/agents/runtime` tests for changes to common
+`internal/integration/harnesses/runtime` tests for changes to common
 container-command and environment precedence. Keep native arguments and
 protocol assertions in the provider package.
 
@@ -330,7 +330,7 @@ full path in QA before publishing the release. See
 
 - The provider owns its factory, runtime translation, parsers, auth adapter,
   capability discovery, and provisioning policy.
-- `config.NewAgentModules` is the only registration edit.
+- `config.NewHarnessModules` is the only registration edit.
 - Factory and catalog validation pass without weakening an invariant.
 - Host/project scopes and all feature declarations match demonstrated behavior.
 - Generic APIs and frontend surfaces show the provider without a special-case

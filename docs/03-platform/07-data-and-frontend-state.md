@@ -192,7 +192,7 @@ infer a percentage from the API's ambiguous count fields.
 
 A plan belongs to one provider account. For a saved-account run, the Claude
 and Codex adapters wrap the run's event callback with
-`agentruntime.EmitForAccount`, which stamps the saved account ID on every
+`harnessruntime.EmitForAccount`, which stamps the saved account ID on every
 event. A run on a provider's current host login, which chats without a
 pinned account use while no saved account is active, leaves `AccountID`
 empty. The prompt service's run event relay

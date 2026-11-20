@@ -76,7 +76,7 @@ func main() {
 	////////////////////////////////////////
 	// Container and workspace capabilities
 	////////////////////////////////////////
-	agentModules, err := config.NewAgentModules()
+	harnessModules, err := config.NewHarnessModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
@@ -120,7 +120,7 @@ func main() {
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
-		agentModules.Profiles(),
+		harnessModules.Profiles(),
 		config.ContainerStackOptions{
 			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
 			AppRegistry:       appRegistry,
@@ -193,7 +193,7 @@ func main() {
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
 		AgentContainers:   containerStack.AgentDependencies(),
-		AgentModules:      agentModules,
+		AgentModules:      harnessModules,
 		AgentAPIKeys:      storeSet.AgentAPIKeys,
 		AgentAccounts:     storeSet.AgentAccounts,
 		AgentOptions: service.AgentOptions{

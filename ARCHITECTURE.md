@@ -150,7 +150,7 @@ sequenceDiagram
     participant Runtime as module.Runtime
     participant Provider as agent.Provider
     participant Prep as execution.Preparer
-    participant Cmd as integration/agents/runtime
+    participant Cmd as integration/harnesses/runtime
     participant Projects as agent.ProjectResolver
     participant LXD as LXD container
     participant CLI as Agent CLI
@@ -182,11 +182,11 @@ sequenceDiagram
 The run hub ([`service/runhub/hub.go`](backend/internal/service/runhub/hub.go))
 enforces **one run per chat**, persists every event through the chat repository,
 and replays history to reconnecting subscribers by sequence number. Provider
-adapters ([`integration/agents/claude`](backend/internal/integration/agents/claude),
-[`integration/agents/codex`](backend/internal/integration/agents/codex),
-[`integration/agents/minimax`](backend/internal/integration/agents/minimax),
-[`integration/agents/kimi`](backend/internal/integration/agents/kimi), and
-[`integration/agents/antigravity`](backend/internal/integration/agents/antigravity)) normalize each
+adapters ([`integration/harnesses/claude`](backend/internal/integration/harnesses/claude),
+[`integration/harnesses/codex`](backend/internal/integration/harnesses/codex),
+[`integration/harnesses/minimax`](backend/internal/integration/harnesses/minimax),
+[`integration/harnesses/kimi`](backend/internal/integration/harnesses/kimi), and
+[`integration/harnesses/antigravity`](backend/internal/integration/harnesses/antigravity)) normalize each
 provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
@@ -210,11 +210,11 @@ execution.
 
 Provider-specific commands, protocols, parsers, credentials, capability
 probes, and profiles live in the concrete
-[`integration/agents`](backend/internal/integration/agents) adapters. Neutral
+[`integration/harnesses`](backend/internal/integration/harnesses) adapters. Neutral
 provider contracts remain in [`agent`](backend/internal/agent), and shared project
 start/provision/secret orchestration lives in
 [`service/agent/execution`](backend/internal/service/agent/execution), while
-[`integration/agents/runtime`](backend/internal/integration/agents/runtime)
+[`integration/harnesses/runtime`](backend/internal/integration/harnesses/runtime)
 assembles the common process and `lxc exec` command shapes used by those
 adapters. Each provider factory declares its small preparation policy and
 retains native CLI argument and transport ownership.
@@ -303,7 +303,7 @@ Core provides a generic installation-scoped `Runtime.AgentTurns` capability for
 starting and reading ordinary agent turns, durable execution receipts, scoped
 application tool calls and opt-in background backend recovery. The applications
 service owns policy; the SDK and application process host provide the contract
-and RPC transport; provider integration stays in `internal/integration/agents`.
+and RPC transport; provider integration stays in `internal/integration/harnesses`.
 Other applications use these same capabilities without scheduler dependencies.
 
 See [Application agent runtime](docs/dev/installable-applications/25-application-agent-runtime.md)

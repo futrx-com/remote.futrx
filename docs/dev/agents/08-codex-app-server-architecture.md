@@ -9,7 +9,7 @@ known activity into chat concepts, and sends explicit user decisions back to
 the original server request.
 
 This chapter describes the production path. The older
-[`codex/parser.go`](../../../backend/internal/integration/agents/codex/parser.go)
+[`codex/parser.go`](../../../backend/internal/integration/harnesses/codex/parser.go)
 parses `codex exec --json` fixtures but is not used for production App Server
 turns.
 
@@ -46,8 +46,8 @@ flowchart LR
 | Component | Owns | Must not own |
 | --- | --- | --- |
 | Codex App Server | Native threads, turns, tools, approvals, questions, subagents, and terminal status | Remote chat persistence or UI rendering |
-| [`codex.Provider`](../../../backend/internal/integration/agents/codex/provider.go) | Codex identity, authentication rules, host/project preparation, command environment, and credential sync | JSON-RPC lifecycle or frontend state |
-| [`codexharness`](../../../backend/internal/integration/agents/codexharness) | JSON-RPC framing, run state, pending requests, native interruption, event parsing, and stderr/process cleanup | User policy decisions or chat storage |
+| [`codex.Provider`](../../../backend/internal/integration/harnesses/codex/provider.go) | Codex identity, authentication rules, host/project preparation, command environment, and credential sync | JSON-RPC lifecycle or frontend state |
+| [`codexharness`](../../../backend/internal/integration/harnesses/codexharness) | JSON-RPC framing, run state, pending requests, native interruption, event parsing, and stderr/process cleanup | User policy decisions or chat storage |
 | [`prompt.Service`](../../../backend/internal/service/prompt/service.go) | One active run per chat, `RunRequest` construction, run-scoped interaction routing, and agent-to-chat projection | Provider-native JSON-RPC rules |
 | [`runhub.Hub`](../../../backend/internal/service/runhub/hub.go) | Append-before-broadcast ordering, event sequence numbers, subscriptions, and cancellation handle | Provider protocol state |
 | Browser chat state | Rendering known parts, generic fallbacks, and collecting explicit user decisions | Inventing provider responses or native IDs |
@@ -104,7 +104,7 @@ the prompt, model, mode, session, project, and feature flags, it carries the
 selected reasoning effort, service tier, approval policy, sandbox policy, and
 a receive-only channel for interaction responses.
 
-[`codex.Provider.buildCmd`](../../../backend/internal/integration/agents/codex/command.go)
+[`codex.Provider.buildCmd`](../../../backend/internal/integration/harnesses/codex/command.go)
 uses `context.WithoutCancel` for the process command. This is deliberate: a
 user cancellation must reach the App Server as `turn/interrupt`; cancelling
 the Remote request context must not kill the process before that exchange can
@@ -338,7 +338,7 @@ projection.
 
 Capability discovery does not reuse a chat turn or its harness state. Codex
 starts a separate App Server probe in
-[`capability_app_server.go`](../../../backend/internal/integration/agents/codex/capability_app_server.go):
+[`capability_app_server.go`](../../../backend/internal/integration/harnesses/codex/capability_app_server.go):
 
 1. send `initialize` and wait for success;
 2. send `initialized`;
