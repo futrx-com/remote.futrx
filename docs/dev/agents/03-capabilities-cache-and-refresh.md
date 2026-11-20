@@ -119,7 +119,7 @@ to provisioning, not model discovery.
 uses Go duration syntax, defaults to `30s`, and accepts `0` to disable the
 catalog-level deadline. Invalid or negative values fall back to `30s`.
 [`config.Load`](../../../backend/internal/config/config.go) parses it into the
-global `AgentOptions`; service composition passes that value to the capability
+global `HarnessOptions`; service composition passes that value to the capability
 catalog once, rather than reading a timeout from each provider package.
 
 The deadline applies independently to each provider's **complete** discovery
@@ -148,7 +148,7 @@ in the database, on disk, or in Redis.
 | Every provider is `live` and warning-free | 24 hours |
 | Any provider is fallback or has a warning | 2 hours |
 
-These TTL defaults live in `config.AgentOptions` and are injected into the
+These TTL defaults live in `config.HarnessOptions` and are injected into the
 capability service at startup. The shorter TTL applies to the **whole scope
 catalog**, not only the degraded provider. Expiry is lazy: the next read
 deletes the expired entry and starts discovery. Values are cloned on both

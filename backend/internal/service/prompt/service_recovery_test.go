@@ -259,7 +259,7 @@ func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
 	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	err = service.runPrompt(ctx, meta.ID, "do work", func(ChatEvent) {}, func(ChatEvent) {})
 	if err != ErrUnsupportedHarnessScope {
-		t.Fatalf("runPrompt error = %v, want ErrUnsupportedAgentScope", err)
+		t.Fatalf("runPrompt error = %v, want ErrUnsupportedHarnessScope", err)
 	}
 	if len(provider.requests) != 0 {
 		t.Fatalf("provider ran outside its scope: %#v", provider.requests)

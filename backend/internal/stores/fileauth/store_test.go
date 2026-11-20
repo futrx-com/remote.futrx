@@ -137,16 +137,16 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 	ctx := context.Background()
 
 	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "" {
-		t.Fatalf("initial AgentAPIKey = %q, %v", key, err)
+		t.Fatalf("initial HarnessAPIKey = %q, %v", key, err)
 	}
 	if err := store.SaveHarnessAPIKey(ctx, "minimax", "first-key"); err != nil {
-		t.Fatalf("SaveAgentAPIKey: %v", err)
+		t.Fatalf("SaveHarnessAPIKey: %v", err)
 	}
 	if err := store.SaveHarnessAPIKey(ctx, "minimax", "replacement-key"); err != nil {
-		t.Fatalf("replace AgentAPIKey: %v", err)
+		t.Fatalf("replace HarnessAPIKey: %v", err)
 	}
 	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "replacement-key" {
-		t.Fatalf("stored AgentAPIKey = %q, %v", key, err)
+		t.Fatalf("stored HarnessAPIKey = %q, %v", key, err)
 	}
 
 	info, err := os.Stat(filepath.Join(dir, agentAPIKeysFile))
@@ -158,10 +158,10 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 	}
 
 	if err := store.DeleteHarnessAPIKey(ctx, "minimax"); err != nil {
-		t.Fatalf("DeleteAgentAPIKey: %v", err)
+		t.Fatalf("DeleteHarnessAPIKey: %v", err)
 	}
 	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "" {
-		t.Fatalf("AgentAPIKey after delete = %q, %v", key, err)
+		t.Fatalf("HarnessAPIKey after delete = %q, %v", key, err)
 	}
 }
 

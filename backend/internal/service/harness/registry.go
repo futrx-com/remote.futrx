@@ -8,7 +8,7 @@ import (
 var ErrInvalidProvider = errors.New("invalid agent provider")
 
 // Registry owns the configured harness implementations, keyed by their stable
-// provider identifier. Harnesss are registered once at the composition root and
+// provider identifier. Harnesses are registered once at the composition root and
 // looked up by application services at run time.
 type Registry struct {
 	providers map[ProviderID]Provider

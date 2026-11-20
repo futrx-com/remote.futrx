@@ -154,7 +154,7 @@ protocol.
 
 After a successful run, Claude, Codex, and Kimi make a best-effort credential
 sync from the container. Its application-wide timeout currently defaults to
-30 seconds through `config.AgentOptions`; Antigravity has no credential sync
+30 seconds through `config.HarnessOptions`; Antigravity has no credential sync
 contract.
 
 Factories express only real policy differences:

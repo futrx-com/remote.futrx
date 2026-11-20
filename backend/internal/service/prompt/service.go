@@ -179,7 +179,8 @@ func New(
 	tmux TmuxClient,
 	projects ProjectResolver,
 	hub *runhub.Hub,
-	harnesses HarnessRegistry, options ...Option,
+	harnesses HarnessRegistry,
+	options ...Option,
 ) *Service {
 	if hub == nil {
 		hub = runhub.New(store)
