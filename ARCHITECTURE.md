@@ -220,7 +220,7 @@ adapters. Each provider factory declares its small preparation policy and
 retains native CLI argument and transport ownership.
 
 The explicit composition root in
-[`config/agents.go`](backend/internal/config/agents.go) only lists provider
+[`config/harnesses.go`](backend/internal/config/harnesses.go) only lists provider
 `NewFactory` functions in deterministic order. There is no backend discovery or
 package `init` registration. `service.New` passes application-facing
 `module.BuildDependencies`—the narrow

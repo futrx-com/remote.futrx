@@ -360,7 +360,7 @@ protected infrastructure paths, including:
 - `backend/internal/service/harness/provisioning`;
 - provider `assets/`, `factory*.go`, `profile*.go`, `install*.go`, and
   `provisioning*.go` under `backend/internal/integration/harnesses`;
-- `backend/internal/config/agents.go` and
+- `backend/internal/config/harnesses.go` and
   `backend/internal/service/harness/module`;
 - host-agent installer/runtime and container-image services;
 - the relevant `infra/` installer/updater paths.

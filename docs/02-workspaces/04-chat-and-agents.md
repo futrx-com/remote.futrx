@@ -109,7 +109,7 @@ auth binding; mutable runtime and auth state is fresh for every catalog build.
 validation rejects inconsistent IDs, auth bindings, multiple defaults, project
 modules without profiles, invalid preparation policy, fork without resume,
 external-auth gate providers, and duplicate or overlapping persistent mounts.
-Registration order is explicit in `internal/config/agents.go` and is preserved
+Registration order is explicit in `internal/config/harnesses.go` and is preserved
 in provisioning, runtime, authentication, and capability views.
 `Catalog.Build` exposes those live views through one `module.Runtime`; adding
 an integration does not depend on package `init` hooks. Every registered
@@ -370,7 +370,7 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Agent model: [`backend/internal/service/harness/model.go`](../../backend/internal/service/harness/model.go)
 - Agent module contract and runtime: [`backend/internal/service/harness/module/`](../../backend/internal/service/harness/module/)
 - Agent authentication: [`backend/internal/service/harness/auth/`](../../backend/internal/service/harness/auth/)
-- Agent composition root: [`backend/internal/config/agents.go`](../../backend/internal/config/agents.go)
+- Agent composition root: [`backend/internal/config/harnesses.go`](../../backend/internal/config/harnesses.go)
 - Provider-owned adapters and factories: [`backend/internal/integration/harnesses/`](../../backend/internal/integration/harnesses/)
 - Project-run preparation: [`backend/internal/service/harness/execution/`](../../backend/internal/service/harness/execution/)
 - Capability catalog: [`backend/internal/service/harness/capability/`](../../backend/internal/service/harness/capability/)

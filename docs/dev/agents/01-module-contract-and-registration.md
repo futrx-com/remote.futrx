@@ -48,7 +48,7 @@ handling, wire protocols, and output parsing stay inside the concrete adapter.
 
 ## Explicit registration
 
-[`config.NewHarnessModules`](../../../backend/internal/config/agents.go) is the
+[`config.NewHarnessModules`](../../../backend/internal/config/harnesses.go) is the
 composition root for compiled-in integrations:
 
 ```go
@@ -177,5 +177,5 @@ for every descriptor field's downstream effect.
 - [`backend/internal/service/harness/module/factory.go`](../../../backend/internal/service/harness/module/factory.go)
 - [`backend/internal/service/harness/module/catalog.go`](../../../backend/internal/service/harness/module/catalog.go)
 - [`backend/internal/service/harness/execution/preparer.go`](../../../backend/internal/service/harness/execution/preparer.go)
-- [`backend/internal/config/agents.go`](../../../backend/internal/config/agents.go)
+- [`backend/internal/config/harnesses.go`](../../../backend/internal/config/harnesses.go)
 - [`backend/internal/service/services.go`](../../../backend/internal/service/services.go)

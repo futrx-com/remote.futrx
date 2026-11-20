@@ -232,7 +232,7 @@ the module supports `host`, because defaults must be usable for loose chats.
 ## Register it
 
 Add only the factory constructor to the ordered builder list in
-[`config/agents.go`](../../../backend/internal/config/agents.go):
+[`config/harnesses.go`](../../../backend/internal/config/harnesses.go):
 
 ```go
 builders := []module.FactoryBuilder{

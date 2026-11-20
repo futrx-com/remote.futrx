@@ -125,7 +125,7 @@ The same compiled catalog is also used outside the server:
   eligible containers.
 
 A provider added only to its local package but not to
-[`config.NewHarnessModules`](../../../backend/internal/config/agents.go) is
+[`config.NewHarnessModules`](../../../backend/internal/config/harnesses.go) is
 inert: it will not be installed, discovered, authenticated, selected, or run.
 
 ## Identity, order, defaults, and scope

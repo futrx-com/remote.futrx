@@ -56,7 +56,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 - **Agent modules are compiled in, not runtime plugins.** Each provider package
   owns a validated factory combining its adapter, auth, feature policy, and
   provisioning profile. A new integration still requires an explicit reviewed
-  factory entry in `internal/config/agents.go`, followed by a rebuild and
+  factory entry in `internal/config/harnesses.go`, followed by a rebuild and
   deployment.
   Remote does not load third-party provider modules from configuration or
   shared objects.
