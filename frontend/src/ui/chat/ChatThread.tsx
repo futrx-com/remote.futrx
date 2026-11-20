@@ -1,5 +1,5 @@
 import type { ComponentChildren, RefObject } from "preact";
-import type { ChatMeta, ChatStatus, TranscriptIndexProgress } from "../../models/chat";
+import type { ChatMeta, ChatStatus } from "../../models/chat";
 import type { ChatMessageBlock, HydratedTextPart } from "../../models/chatMessage";
 import type { ChatFind } from "../../state/hooks/chat/useChatFind";
 import { ChatComposer, type ChatComposerProps } from "./composer/ChatComposer";
@@ -16,7 +16,6 @@ export function ChatThread({
   hydratedTextPart,
   hasOlder,
   loadingOlder,
-  indexingProgress,
   status,
   locallyStartedTurn,
   error,
@@ -42,7 +41,6 @@ export function ChatThread({
   hydratedTextPart?: HydratedTextPart | null;
   hasOlder: boolean;
   loadingOlder: boolean;
-  indexingProgress: TranscriptIndexProgress | null;
   status: ChatStatus;
   locallyStartedTurn: boolean;
   error: string | null;
@@ -87,7 +85,6 @@ export function ChatThread({
             hydratedTextPart={hydratedTextPart}
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
-            indexingProgress={indexingProgress}
             error={error}
             chatId={chat.id}
             cwd={chat.cwd}
@@ -100,7 +97,7 @@ export function ChatThread({
             onLoadOlder={onLoadOlder}
             onRewind={onRewind}
           />
-          <ChatFindBar find={find} hasUnloadedMessages={hasOlder} />
+          <ChatFindBar find={find} />
           {showJump && <JumpToLatestButton onClick={onJumpToBottom} />}
         </div>
 

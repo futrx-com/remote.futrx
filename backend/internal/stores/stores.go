@@ -22,7 +22,6 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileapplicationturns"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileaudit"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileemail"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
@@ -35,6 +34,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusage"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusers"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusersettings"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 
 	emailoutbound "github.com/futrx-com/remote.futrx.com/internal/port/email/outbound"
 )
@@ -43,17 +43,12 @@ type AuthStore interface {
 	serviceauth.Store
 }
 
-// ChatStore retains the complete file-chat capability until composition can
-// project it into each service's narrower repository and transcript contracts.
+// ChatStore exposes conversation persistence at the composition boundary.
 type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
-	servicechat.TranscriptProjectionSource
-}
-
-type recentChatIndexWarmer interface {
-	WarmRecentChatIndexes(context.Context, int) error
+	servicechat.TranscriptReader
 }
 
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities
@@ -67,7 +62,7 @@ type PushStore interface {
 type Stores struct {
 	Audit            serviceaudit.Store
 	Chats            ChatStore
-	chatIndexWarmer  recentChatIndexWarmer
+	closeChats       func() error
 	Projects         serviceproject.Repository
 	ProjectSecrets   serviceproject.SecretsRepository
 	ProjectAccess    serviceproject.AccessRepository
@@ -88,19 +83,28 @@ type Stores struct {
 	Permissions      servicepermission.Repository
 }
 
-// WarmRecentChatIndexes populates disposable read indexes through the
-// startup-only capability retained by the composition bundle.
-func (stores Stores) WarmRecentChatIndexes(ctx context.Context, limit int) error {
-	if stores.chatIndexWarmer == nil {
-		return nil
+// Close releases the authoritative database and its process lock.
+func (stores Stores) Close() error {
+	if stores.closeChats != nil {
+		return stores.closeChats()
 	}
-	return stores.chatIndexWarmer.WarmRecentChatIndexes(ctx, limit)
+	return nil
 }
 
 func New(dataDir string) (Stores, error) {
-	chats, err := filechat.New(dataDir)
+	chats, err := sqlitechat.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init chat store: %w", err)
+	}
+
+	ready := false
+	defer func() {
+		if !ready {
+			_ = chats.Close()
+		}
+	}()
+	if err := chats.EnsureRuntimeReady(context.Background(), dataDir); err != nil {
+		return Stores{}, fmt.Errorf("conversation migration required: %w", err)
 	}
 
 	projects, err := fileproject.New(dataDir)
@@ -174,10 +178,11 @@ func New(dataDir string) (Stores, error) {
 
 	authStore := fileauth.New(dataDir)
 	email := fileemail.New(dataDir)
+	ready = true
 	return Stores{
 		Audit:            auditLog,
 		Chats:            chats,
-		chatIndexWarmer:  chats,
+		closeChats:       chats.Close,
 		Projects:         projects,
 		ProjectSecrets:   projectSecrets,
 		ProjectAccess:    projectAccess,

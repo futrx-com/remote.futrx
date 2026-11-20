@@ -6,16 +6,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 type recoveryProvider struct {
 	requests  []harness.RunRequest
 	failFirst bool
+}
+
+func (*recoveryProvider) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
 }
 
 func (p *recoveryProvider) ID() harness.ProviderID                       { return harness.ProviderCodex }
@@ -39,10 +44,11 @@ func (p *recoveryProvider) Run(_ context.Context, req harness.RunRequest, emit f
 
 func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID: "abcdef123456", Title: "existing", Provider: servicechat.ProviderCodex,
 		CodexSessionID: "missing-thread", Cwd: t.TempDir(),
@@ -58,6 +64,25 @@ func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T)
 		if _, err := store.AppendEvent(ctx, meta.ID, event); err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// A resumable SQLite session requires a completed, accepted prior run.
+	prior, err := store.PrepareRun(ctx, servicechat.RunPreparation{
+		ChatID: meta.ID, RunID: "prior-run", Provider: servicechat.ProviderCodex,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRunInput(ctx, prior.RunReference, harness.PromptContextDelivery); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AcceptRunInput(ctx, prior.RunReference, servicechat.InputAcceptance{
+		NativeSessionID: "missing-thread", Evidence: "test_native_ack",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.FinishRun(ctx, prior.RunReference, servicechat.RunOutcome{Status: "completed"}); err != nil {
+		t.Fatal(err)
 	}
 
 	provider := &recoveryProvider{failFirst: true}
@@ -111,10 +136,11 @@ func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T)
 
 func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID: "abcdef123456", Provider: servicechat.ProviderCodex,
 		CodexSessionID: "old-thread", Cwd: t.TempDir(), ForkPending: true,
@@ -158,10 +184,11 @@ func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 
 func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID:        "abcdef123456",
 		Provider:  servicechat.ProviderCodex,
@@ -210,10 +237,11 @@ func TestClearSessionIDForProvider(t *testing.T) {
 
 func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID: "abcdef123456", Provider: servicechat.ProviderCodex, ProjectID: "abcd", Cwd: t.TempDir(),
 	})

@@ -36,6 +36,11 @@ func (p *Provider) args(req harness.RunRequest) []string {
 		args = append(args, "--resume", req.ResumeID)
 		if req.Fork {
 			args = append(args, "--fork-session")
+			if req.NativeCheckpoint != "" {
+				// Match the Agent SDK's equals-form so a cursor can never be
+				// interpreted as a separate CLI option.
+				args = append(args, "--resume-session-at="+req.NativeCheckpoint)
+			}
 		}
 	}
 	if req.EnableBrowser {

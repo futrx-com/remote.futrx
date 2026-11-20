@@ -54,7 +54,7 @@ type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
-	servicechat.TranscriptProjectionSource
+	servicechat.TranscriptReader
 }
 
 // PushStore persists Web Push registrations and the server's long-lived VAPID
@@ -261,13 +261,22 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithAudit(auditLog),
 		servicechat.WithTranscriptEventSource(deps.Chats),
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
-		servicechat.WithTranscriptProjectionSource(deps.Chats),
+		servicechat.WithTranscriptReader(deps.Chats),
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(harnessRuntime),
 		servicechat.WithProviderPolicy(harnessRuntime),
 		servicechat.WithAuthorizer(permissionService),
 		servicechat.WithAccountAccess(accountAccess),
 	)
+	if source, ok := deps.Chats.(servicechat.TranscriptSearchSource); ok {
+		servicechat.WithTranscriptSearchSource(source)(chatService)
+	}
+	if source, ok := deps.Chats.(servicechat.BranchForker); ok {
+		servicechat.WithBranchForker(notifyingBranchForker{source: source, chats: chats})(chatService)
+	}
+	if source, ok := deps.Chats.(servicechat.BranchRewinder); ok {
+		servicechat.WithBranchRewinder(notifyingBranchRewinder{source: source, chats: chats, runs: runs})(chatService)
+	}
 	chatAccessService := servicechat.NewAccessService(chatService, projectService)
 	pushService := newPush(deps.Push, deps.AuthBaseURL)
 	userService := serviceuser.New(
@@ -285,6 +294,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	promptOptions := []prompt.Option{
 		prompt.WithAudit(auditLog),
 		prompt.WithHarnessPolicy(harnessRuntime),
+	}
+	if runtime, ok := deps.Chats.(servicechat.ConversationRuntime); ok {
+		promptOptions = append(promptOptions, prompt.WithConversationRuntime(runtime))
 	}
 	if deps.PromptStartGate != nil {
 		promptOptions = append(promptOptions, prompt.WithStartGate(deps.PromptStartGate))

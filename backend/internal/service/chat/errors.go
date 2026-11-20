@@ -12,7 +12,7 @@ var (
 	// ErrProjectNotFound is what a ProjectResolver reports for a project that
 	// no longer exists. A chat outlives its project, so this is a state the
 	// chat service has to answer rather than an error to propagate.
-	ErrProjectNotFound                 = errors.New("project not found")
-	ErrTranscriptContentNotFound       = errors.New("transcript content not found")
-	ErrTranscriptProjectionUnavailable = errors.New("transcript projection unavailable")
+	ErrProjectNotFound           = errors.New("project not found")
+	ErrTranscriptContentNotFound = errors.New("transcript content not found")
+	ErrTranscriptUnavailable     = errors.New("transcript projection unavailable")
 )

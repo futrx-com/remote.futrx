@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 // usageProvider emits one turn's worth of events, ending in the completion
@@ -18,6 +19,10 @@ import (
 type usageProvider struct {
 	usage json.RawMessage
 	fail  bool
+}
+
+func (*usageProvider) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
 }
 
 func (p *usageProvider) ID() harness.ProviderID                       { return harness.ProviderClaude }
@@ -73,10 +78,11 @@ func newUsagePromptService(
 	options ...Option,
 ) (*Service, servicechat.Repository, servicechat.Meta) {
 	t.Helper()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(context.Background(), servicechat.Meta{
 		ID:        "abcdef123456",
 		Title:     "existing",

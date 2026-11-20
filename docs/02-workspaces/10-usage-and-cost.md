@@ -156,7 +156,10 @@ When an account cannot be read, for example because its sign-in has expired, it 
 
 ## Rebuilding
 
-A rebuild re-derives the entire ledger from `DATA_DIR/chats/*/events.jsonl`. Use it to backfill an install that upgraded into this feature with existing chat history, or to reprice history after editing `prices.json`.
+A rebuild re-derives the ledger from the chat repository backed by
+`DATA_DIR/conversations.sqlite`. It does not read the inactive legacy JSONL
+backup after migration. Use it to backfill an install with existing chat
+history or to reprice history after editing `prices.json`.
 
 ```bash
 # Online, as an administrator
@@ -168,11 +171,15 @@ sudo systemctl stop remote.futrx
 cd /opt/remote.futrx/backend && sudo DATA_DIR=/opt/remote.futrx/data go run ./cmd/usage-rebuild
 sudo systemctl start remote.futrx
 
-# See what a rebuild would produce, without writing
+# See what a rebuild would produce, without changing the ledger; also offline
+sudo systemctl stop remote.futrx
 cd /opt/remote.futrx/backend && go run ./cmd/usage-rebuild -data-dir /opt/remote.futrx/data -dry-run
+sudo systemctl start remote.futrx
 ```
 
 The CLI is built from [`backend/cmd/usage-rebuild`](../../backend/cmd/usage-rebuild/main.go) and reads `DATA_DIR` from the environment when `-data-dir` is omitted.
+It requires the conversation database lease even with `-dry-run`, and refuses
+an incomplete migration. Use the authenticated API for an online rebuild.
 
 **A rebuild is idempotent.** Runs are keyed by `(chatId, event timestamp)` — the same pair a live record carries — so running it twice produces identical files. New completion events preserve `userEmail`, the turn ID, and application/request identity. Rebuilds use those durable values, with matching live ledger records as a fallback for older events. Legacy scheduled attribution is retained when there is no application origin; if an older ledger incorrectly marked an application turn as scheduled, rebuilding repairs that flag from the persisted application identity.
 

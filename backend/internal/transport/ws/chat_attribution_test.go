@@ -13,7 +13,7 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceprompt "github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 	"github.com/gorilla/websocket"
 )
 
@@ -38,11 +38,11 @@ func (attributionRunner) RespondInteraction(servicechat.ID, harness.InteractionR
 }
 
 func TestChatPromptCannotSpoofItsRemoteAuthor(t *testing.T) {
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(context.Background(), servicechat.Meta{ID: "abcdef12", Title: "shared"})
 	if err != nil {
 		t.Fatal(err)

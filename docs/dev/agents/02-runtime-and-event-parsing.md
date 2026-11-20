@@ -76,23 +76,29 @@ input a provider receives.
 | --- | --- |
 | `Provider` | Normalized chat provider ID. Chat creation/update and the prompt boundary both enforce module membership and host/project scope. |
 | `ConversationID` | Remote chat ID, used to correlate events and logs. It is not the provider-native session ID. |
-| `Prompt` | Current prompt after optional visible-history recovery and provider-specific skill triggers are added. |
+| `Prompt` | Current prompt including provider-specific skill triggers; the adapter composes any shared history handoff. |
 | `Cwd` | Live tmux working directory when available, otherwise stored chat cwd, then host home as a fallback. |
 | `Model` | Saved model ID. The adapter must validate or safely pass it as one process/protocol argument. |
 | `Mode` | Provider-neutral `default` or `plan`; the adapter translates it to native flags or protocol settings. |
 | `ResumeID` | Session ID stored for the selected provider, but only when the descriptor declares resume support. |
-| `Fork` | `ForkPending`, but only when the descriptor declares native fork support. |
+| `Fork` | Native fork requested at a retained checkpoint; allowed only when the descriptor declares fork support. |
+| `NativeCheckpoint` | Adapter-owned exact cursor from a successful retained run, used with `Fork` and `ResumeID`. |
+| `NativeConversationID` | Original conversation scope of the native account home; distinct from the current Remote chat ID after a fork. |
 | `ProjectID` | Empty for a loose host chat; otherwise identifies the workspace container. |
 | `Preferences` | Saved reasoning effort, service tier, approval policy, and sandbox policy. Adapters decide which supported values to forward. |
 | `EnableBrowser` | True only when the selected `browser` skill and the module's `BrowserTools` declaration both permit it. |
 | `RuntimeEnv` | Short-lived backend-issued schedule API URL and grant. Invalid environment names are discarded and these values override same-named project secrets. |
 | `InteractionResponses` | Run-scoped channel carrying explicit UI responses to provider-initiated requests. Providers without interactive protocols may ignore it. |
 
-If no native session is available, the prompt service prepends visible `user`
-and `assistant_text` history. The transcript is bounded to the last 24,000
-bytes. Tool output and reasoning are not copied into that transcript. See
-[`visibleTranscript`](../../../backend/internal/service/prompt/service.go) and
-[`promptWithVisibleHistory`](../../../backend/internal/service/prompt/service.go).
+The SQLite run/session mapping identifies the missing branch-history range.
+The selected harness adapter composes available shared records as historical
+context alongside the current prompt. Fresh sessions receive the retained
+prefix; resumed sessions receive the missing suffix. This is prompt context,
+not insertion of arbitrary native historical turns. No shared layer summarizes
+or silently truncates the history. The run and handoff input are persisted
+before execution; native acceptance evidence and terminal status determine
+whether the session bookmark can advance. See
+[conversation storage](../conversation-storage.md).
 
 Selected skills are translated from the module's declared strategy by
 [`promptWithSelectedSkills`](../../../backend/internal/service/prompt/service.go):
@@ -262,6 +268,12 @@ The parser maps:
 - `system` records to normalized system events;
 - `result` to `run.completed`, or to `run.failed` when `is_error` is true.
 
+Successful completion also carries the last terminal main-thread assistant
+UUID as `NativeCheckpoint`. Subagent, tool-only, error and stream-envelope
+UUIDs are not usable checkpoints. Native branch requests combine `--resume`,
+`--fork-session` and `--resume-session-at=<UUID>` to preserve the source while
+loading only the retained native prefix.
+
 Malformed top-level JSON is returned to `RunProcess`, logged, and skipped.
 Malformed nested messages are ignored after any session event already derived
 from that line.
@@ -286,8 +298,9 @@ The normal JSON-RPC sequence is:
    support;
 2. after its response, send `initialized` and `thread/start`, `thread/resume`,
    or `thread/fork`;
-3. require a non-empty returned thread ID and model, emit `session.updated`
-   for a new/different thread, then send `turn/start`;
+3. require a non-empty returned thread ID and model; for a checkpoint fork,
+   verify its latest completed turn through `thread/turns/list` before input;
+   emit `session.updated` for a new/different thread, then send `turn/start`;
 4. retain the returned native turn ID, then select concurrently over App Server
    output, user interaction responses, and Remote cancellation;
 5. consume notifications until `turn/completed` emits `run.completed`,
@@ -316,7 +329,9 @@ process alive after the Remote context is cancelled, the harness sends
 protocol failure or interrupt timeout.
 
 A failed `thread/resume` or `thread/fork` whose message contains `not found` or
-`no rollout` becomes `harness.ErrSessionNotFound`. Other protocol errors are
+`no rollout` becomes `harness.ErrSessionNotFound`. Unsupported or mismatched
+native fork boundaries become `harness.ErrNativeCheckpointUnavailable` before
+input starts. Other protocol errors are
 wrapped in `runtime.ProcessError` with captured stderr.
 
 See [Codex App Server architecture](08-codex-app-server-architecture.md) for
@@ -343,44 +358,51 @@ when `Fork` is true.
 
 ### Antigravity
 
-Antigravity print mode is unstructured. Production
-[`antigravity.Provider.Run`](../../../backend/internal/integration/harnesses/antigravity/provider.go)
-therefore bypasses `RunProcess` and streams raw stdout chunks as assistant
-deltas so blank lines and Markdown paragraphs survive. It captures a 4 KiB
-combined output tail for errors, maps sign-in-looking failures to a focused
-instruction, and emits completion itself.
+Tracked SQLite runs use the pinned CLI's `--input-format stream-json` and
+`--output-format stream-json` flags. The adapter sends the composed user event
+on stdin and closes it to execute one turn. The native `init` event supplies
+conversation identity, and a completed `user_input` step provides acceptance
+evidence. Step updates normalize exposed tool calls/results and assistant
+text, while retaining their native payloads. The terminal result supplies
+completion/error status; quota fields are not mislabeled as turn usage.
 
-Because print mode does not report a new conversation ID, the adapter snapshots
-the provider's `brain` directory before and after a fresh run. Exactly one new,
-valid directory becomes `session.updated`; zero or multiple candidates are
-treated as ambiguous and no session is saved. See
+Legacy direct requests without tracked-input delivery retain the old plain
+print-stream path and native-directory discovery. See
 [`antigravity/session.go`](../../../backend/internal/integration/harnesses/antigravity/session.go).
-Its [`parser.go`](../../../backend/internal/integration/harnesses/antigravity/parser.go) is a
-line-oriented test/helper parser, not the production chunk-streaming path.
+The tracked parser is
+[`stream_parser.go`](../../../backend/internal/integration/harnesses/antigravity/stream_parser.go).
 Antigravity and Kimi both clear resume state for requested forks because their
 descriptors do not declare native fork support.
 
 ## Sessions, forks, and recovery
 
-Sessions are stored in the provider-keyed `Meta.Sessions` map. The four named
-session fields remain only as compatibility mirrors for older records and
-clients. A new provider needs no new storage field. See
+SQLite `chats.sessions_json` stores native identity and history boundaries for a
+branch/provider/account. Hidden `system/native_checkpoint` events retain safe
+native cursors for branch continuation. `Meta.Sessions` and its four named
+session fields
+remain compatibility metadata for older records and clients, not proof of
+successful history delivery. A new provider needs no new storage field. See
 [`chat.Meta.NormalizeSessions`](../../../backend/internal/service/chat/model.go)
-and [`filechat` records](../../../backend/internal/stores/filechat/records.go).
+and [`sqlitechat` sessions](../../../backend/internal/stores/sqlitechat/handoffs.go).
 
 The module descriptor controls orchestration:
 
 - without `Resume`, the prompt service never passes the saved ID;
 - `Fork` is invalid unless `Resume` is also true;
-- chat forking preserves and marks a provider session only when native fork is
-  declared; otherwise the copied chat starts fresh from visible history;
+- Remote branch forks and rewinds select the latest successful checkpoint for
+  the chosen provider/account within retained history, create a native fork
+  at its exact boundary, and transfer only the retained suffix after it;
+- without a supported safe checkpoint, they start fresh with retained history;
 - a `session.updated` event clears `ForkPending` and may populate an empty chat
   model from the provider's reported model.
 
-Any adapter may return `harness.ErrSessionNotFound`. When it does so during a
-resume, the prompt service clears only that provider's saved session, clears
+An adapter may return `harness.ErrSessionNotFound` or
+`harness.ErrNativeCheckpointUnavailable` before the current input is accepted
+or executed. When it does so during a resume, the prompt service clears only that provider's saved session, clears
 the pending fork, persists a `system/session_recovered` event, rebuilds a
-bounded visible transcript, and retries the turn once without `ResumeID`.
+retained shared history, and retries the turn once without `ResumeID` or native
+fork arguments. It preserves the pre-prompt cutoff so the current prompt is
+not duplicated. Source native sessions and workspace files stay intact.
 
 ## Failure and cancellation rules
 

@@ -39,7 +39,6 @@ export function ChatContainer({
     eventCount,
     hasOlder,
     loadingOlder,
-    indexingProgress,
     status,
     locallyStartedTurn,
     error,
@@ -100,6 +99,7 @@ export function ChatContainer({
   // `eventCount` stands in for "the thread changed": find re-reads the rendered
   // messages on it, so a match list cannot go stale against a streaming reply.
   const find = useChatFind({
+    chatId: chat.id,
     scrollRef: composer.scroll.scrollRef,
     contentRef: composer.scroll.contentRef,
     revision: eventCount,
@@ -216,7 +216,6 @@ export function ChatContainer({
             hydratedTextPart={hydratedTextPart}
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
-            indexingProgress={indexingProgress}
             status={status}
             locallyStartedTurn={locallyStartedTurn}
             streamingPresentation={streamingPresentation}

@@ -33,6 +33,11 @@ func buildAppServerThreadRequest(req harness.RunRequest) appServerThreadRequest 
 	request.Params.ThreadID = req.ResumeID
 	if req.Fork {
 		request.Method = "thread/fork"
+		if req.NativeCheckpoint != "" {
+			request.Params.LastTurnID = req.NativeCheckpoint
+			request.Params.ExcludeTurns = true
+			request.Params.DeferGoalContinuation = true
+		}
 		return request
 	}
 	request.Method = "thread/resume"

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
@@ -28,6 +29,9 @@ func (p *Provider) ID() harness.ProviderID {
 }
 
 func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
+	if req.TrackInputAcceptance {
+		return newStreamParser(req)
+	}
 	return NewParser(req)
 }
 
@@ -56,6 +60,11 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 
 	if err := harnessauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
 		return err
+	}
+	if req.TrackInputAcceptance {
+		return harnessruntime.RunProcess(ctx, cmd, p.Parser(req), emit, harnessruntime.ProcessOptions{
+			Name: "agy", LogID: req.ConversationID, Provider: req.Provider, ConversationID: req.ConversationID,
+		})
 	}
 	store := conversationStore{containerName: containerName}
 	var before map[string]struct{}

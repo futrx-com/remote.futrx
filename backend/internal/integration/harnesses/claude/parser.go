@@ -11,9 +11,13 @@ import (
 // Parser converts Claude Code headless stream-json lines into normalized agent
 // events. It owns Claude's native event shape; callers only see harness.Event.
 type Parser struct {
-	req          harness.RunRequest
-	sawSessionID string
-	sawModel     string
+	req                harness.RunRequest
+	sawSessionID       string
+	sawModel           string
+	sawInputAcceptance bool
+	messageUUID        string
+	streamMessageID    string
+	nativeCheckpoint   string
 }
 
 func NewParser(req harness.RunRequest) *Parser {
@@ -30,6 +34,7 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		return nil, err
 	}
 
+	p.messageUUID = raw.UUID
 	now := time.Now().UnixMilli()
 	events := make([]harness.Event, 0, 2)
 	if raw.Model != "" {
@@ -66,18 +71,42 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		if err := json.Unmarshal(raw.Event, &inner); err != nil {
 			return events, nil
 		}
+		if inner.Type == "message_start" {
+			p.streamMessageID = inner.Message.ID
+		} else if inner.Type == "message_stop" {
+			p.streamMessageID = ""
+		}
 		if inner.Type == "content_block_delta" &&
 			inner.Delta.Type == "text_delta" && inner.Delta.Text != "" {
 			events = append(events, p.event(now, harness.EventAssistantTextDelta, rawLine, func(ev *harness.Event) {
 				ev.ItemKind = harness.ItemMessage
 				ev.Text = inner.Delta.Text
+				// The wrapper UUID identifies this stream event, not its message.
+				// Keep that UUID in Native.ItemID and use message_start's stable
+				// API message identity for assembling text fragments.
+				ev.MessageID = p.streamMessageID
 			}))
 		}
 
 	case "assistant":
+		// Only main-thread transcript messages can identify a continuation
+		// boundary. Stream envelopes and subagent messages have unrelated UUIDs.
+		if raw.ParentToolUseID == "" {
+			p.nativeCheckpoint = ""
+		}
+		if p.req.TrackInputAcceptance && !p.sawInputAcceptance && raw.UUID != "" && p.sawSessionID != "" {
+			p.sawInputAcceptance = true
+			events = append(events, p.event(now, harness.EventInputAccepted, rawLine, func(ev *harness.Event) {
+				ev.SessionID = p.sawSessionID
+				ev.Status = "claude_assistant_message"
+			}))
+		}
 		var msg message
 		if err := json.Unmarshal(raw.Message, &msg); err != nil {
 			return events, nil
+		}
+		if raw.ParentToolUseID == "" && raw.UUID != "" && raw.Error == "" && terminalAssistantMessage(msg) {
+			p.nativeCheckpoint = raw.UUID
 		}
 		for _, block := range msg.Content {
 			switch block.Type {
@@ -99,6 +128,11 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		}
 
 	case "user":
+		if raw.ParentToolUseID == "" {
+			// A new main-thread input or tool result invalidates an earlier
+			// assistant boundary until a terminal assistant message follows it.
+			p.nativeCheckpoint = ""
+		}
 		var msg message
 		if err := json.Unmarshal(raw.Message, &msg); err != nil {
 			return events, nil
@@ -109,7 +143,7 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 					ev.ItemKind = harness.ItemToolCall
 					ev.ItemID = block.ToolUseID
 					ev.Output = normalizeToolResult(block.Content)
-					ev.IsError = false
+					ev.IsError = block.IsError
 				}))
 			}
 		}
@@ -129,9 +163,24 @@ func (p *Parser) ParseLine(line []byte) ([]harness.Event, error) {
 		}
 		events = append(events, p.event(now, harness.EventRunCompleted, rawLine, func(ev *harness.Event) {
 			ev.Usage = p.normalizeUsage(raw).Raw()
+			ev.NativeCheckpoint = p.nativeCheckpoint
 		}))
 	}
 	return events, nil
+}
+
+func terminalAssistantMessage(msg message) bool {
+	if msg.StopReason == "tool_use" {
+		return false
+	}
+	hasText := false
+	for _, block := range msg.Content {
+		if block.Type == "tool_use" {
+			return false
+		}
+		hasText = hasText || block.Type == "text"
+	}
+	return hasText
 }
 
 // normalizeUsage folds Claude's `result` message into the shared usage shape.
@@ -165,6 +214,12 @@ func (p *Parser) event(
 		Provider:       harness.ProviderClaude,
 		ConversationID: p.req.ConversationID,
 		Raw:            raw,
+		MessageID:      p.messageUUID,
+	}
+	if p.req.TrackInputAcceptance {
+		var envelope streamMsg
+		_ = json.Unmarshal(raw, &envelope)
+		ev.Native = &harness.NativeEnvelope{SchemaVersion: harness.NativeEnvelopeSchemaVersion, Method: envelope.Type, ThreadID: p.sawSessionID, ItemID: envelope.UUID, Payload: raw}
 	}
 	if fn != nil {
 		fn(&ev)
@@ -176,15 +231,18 @@ func (p *Parser) event(
 // stream-json --include-partial-messages --verbose`. We parse the relevant
 // subset; unknown fields are allowed.
 type streamMsg struct {
-	Type      string          `json:"type"`
-	Subtype   string          `json:"subtype,omitempty"`
-	SessionID string          `json:"session_id,omitempty"`
-	Model     string          `json:"model,omitempty"`
-	Message   json.RawMessage `json:"message,omitempty"`
-	Event     json.RawMessage `json:"event,omitempty"`
-	IsError   bool            `json:"is_error,omitempty"`
-	Result    string          `json:"result,omitempty"`
-	Usage     json.RawMessage `json:"usage,omitempty"`
+	Type            string          `json:"type"`
+	UUID            string          `json:"uuid,omitempty"`
+	Subtype         string          `json:"subtype,omitempty"`
+	SessionID       string          `json:"session_id,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	Message         json.RawMessage `json:"message,omitempty"`
+	Event           json.RawMessage `json:"event,omitempty"`
+	IsError         bool            `json:"is_error,omitempty"`
+	Result          string          `json:"result,omitempty"`
+	Usage           json.RawMessage `json:"usage,omitempty"`
+	ParentToolUseID string          `json:"parent_tool_use_id,omitempty"`
+	Error           string          `json:"error,omitempty"`
 	// RateLimitInfo rides on a top-level "rate_limit_event" line and carries
 	// one subscription window.
 	RateLimitInfo json.RawMessage `json:"rate_limit_info,omitempty"`
@@ -195,6 +253,9 @@ type streamMsg struct {
 }
 
 type streamInner struct {
+	Message struct {
+		ID string `json:"id"`
+	} `json:"message,omitempty"`
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
 	Delta struct {
@@ -210,9 +271,10 @@ type streamInner struct {
 }
 
 type message struct {
-	ID      string         `json:"id,omitempty"`
-	Role    string         `json:"role,omitempty"`
-	Content []contentBlock `json:"content,omitempty"`
+	ID         string         `json:"id,omitempty"`
+	Role       string         `json:"role,omitempty"`
+	Content    []contentBlock `json:"content,omitempty"`
+	StopReason string         `json:"stop_reason,omitempty"`
 }
 
 type contentBlock struct {
@@ -222,6 +284,7 @@ type contentBlock struct {
 	Name      string          `json:"name,omitempty"`
 	Input     json.RawMessage `json:"input,omitempty"`
 	ToolUseID string          `json:"tool_use_id,omitempty"`
+	IsError   bool            `json:"is_error,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"`
 }
 

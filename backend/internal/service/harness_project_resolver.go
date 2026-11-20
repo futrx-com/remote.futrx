@@ -19,7 +19,7 @@ func (r harnessProjectResolver) Get(ctx context.Context, id harness.ProjectID) (
 	return projectForHarness(project), err
 }
 
-// Start readies the container for an agent run the caller was already
+// Start readies the container for a harness run the caller was already
 // admitted to. Runs also start from background contexts that carry no
 // authenticated actor, so this is a reviewed trusted internal entry point.
 func (r harnessProjectResolver) Start(ctx context.Context, id harness.ProjectID) (harness.Project, error) {

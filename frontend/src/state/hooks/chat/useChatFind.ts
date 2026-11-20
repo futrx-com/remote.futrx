@@ -4,18 +4,20 @@ import { CHAT_FIND_SKIP_SELECTOR } from "../../../config/chat.ts";
 import { shortcutService } from "../../../services/platform/shortcutService.ts";
 import { chatFindHighlightService } from "../../../services/chat/chatFindHighlightService.ts";
 import { domTextSearchService } from "../../../services/platform/domTextSearchService.ts";
+import { chatApi } from "../../../api/chatApi";
+import type { ConversationSearchHit } from "../../../api/chat/chatTranscriptApi";
+import type { ChatEvent } from "../../../models/chat";
 import { useDismissShortcut } from "../shared/useDismissShortcut.ts";
 import { useShortcut } from "../shared/useShortcut.ts";
 
 /**
- * Where the search stands. A union rather than a loose `(index, matchCount)`
- * pair, because only these three combinations are real: the bar was showing
- * one of three things and had to re-derive which from three separate fields,
- * two of which could disagree.
+ * Search state distinguishes pending and failed requests from empty results.
  */
 export type FindStatus =
   | { kind: "idle" }
   | { kind: "empty" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
   | { kind: "matched"; position: number; total: number };
 
 export interface ChatFind {
@@ -26,21 +28,27 @@ export interface ChatFind {
   next: () => void;
   previous: () => void;
   close: () => void;
+  selectedHit: ConversationSearchHit | null;
+  preview: ChatEvent[];
+  previewLoading: boolean;
+  previewError: string | null;
 }
 
 /**
  * Find-in-chat: the query, and where you are in the results.
  *
- * Matches come from the rendered thread rather than the message model, so what
- * it counts is exactly what is on screen -- see `domTextSearchService`.
+ * Matches come from the complete active conversation in SQLite. Rendered
+ * text also receives highlights, while historical results use a bounded preview.
  * `revision` is any value that changes when the thread's content does, so a
  * match list cannot go stale against a streaming reply.
  */
 export function useChatFind({
+  chatId,
   scrollRef,
   contentRef,
   revision,
 }: {
+  chatId: string;
   scrollRef: RefObject<HTMLDivElement>;
   contentRef: RefObject<HTMLDivElement>;
   revision: number;
@@ -48,7 +56,48 @@ export function useChatFind({
   const [open, setOpen] = useState(false);
   const [query, setQueryState] = useState("");
   const [index, setIndex] = useState(0);
-  const [matchCount, setMatchCount] = useState(0);
+  const [hits, setHits] = useState<ConversationSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ChatEvent[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const matchCount = hits.length;
+  const selectedHit = hits[index] ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setHits([]);
+    setIndex(0);
+    setSearchError(null);
+    if (!open || !query.trim()) { setSearching(false); return; }
+    setSearching(true);
+    const timer = setTimeout(() => {
+      chatApi.searchTranscript(chatId, query).then((result) => {
+        if (!cancelled) setHits(result);
+      }).catch((error: Error) => {
+        if (!cancelled) setSearchError(error.message);
+      }).finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [chatId, open, query, revision]);
+
+  // Read one matching turn without loading intervening pages or moving the
+  // live thread's cursor. Closing search leaves the current thread intact.
+  useEffect(() => {
+    let cancelled = false;
+    setPreview([]);
+    setPreviewError(null);
+    if (!open || !selectedHit) { setPreviewLoading(false); return; }
+    setPreviewLoading(true);
+    chatApi.fetchTranscript(chatId, { before: selectedHit.endSeq + 1, limit: 1 })
+      .then((page) => { if (!cancelled) setPreview(page.events); })
+      .catch((error: Error) => { if (!cancelled) setPreviewError(error.message); })
+      .finally(() => { if (!cancelled) setPreviewLoading(false); });
+    return () => { cancelled = true; };
+  }, [chatId, open, selectedHit]);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -87,7 +136,6 @@ export function useChatFind({
   // one-character match visible when the query changes from "c" to empty.
   useLayoutEffect(() => {
     if (!open || !contentRef.current) {
-      setMatchCount(0);
       chatFindHighlightService.clear();
       return;
     }
@@ -96,19 +144,12 @@ export function useChatFind({
       query,
       CHAT_FIND_SKIP_SELECTOR
     );
-    setMatchCount(ranges.length);
     if (ranges.length === 0) {
       chatFindHighlightService.clear();
       return;
     }
-    // Content can shrink under a held cursor (a message collapsing, older
-    // messages dropping out), so the index is clamped rather than trusted.
-    if (index >= ranges.length) {
-      setIndex(0);
-      return;
-    }
-    chatFindHighlightService.show(ranges, ranges[index]);
-    chatFindHighlightService.reveal(scrollRef.current, ranges[index]);
+    chatFindHighlightService.show(ranges, ranges[0]);
+
   }, [open, query, index, revision, contentRef, scrollRef]);
 
   useEffect(() => () => chatFindHighlightService.clear(), []);
@@ -120,7 +161,9 @@ export function useChatFind({
   );
 
   const status: FindStatus =
-    query.trim().length === 0
+    searchError ? { kind: "error", message: searchError }
+    : searching ? { kind: "loading" }
+    : query.trim().length === 0
       ? { kind: "idle" }
       : matchCount === 0
         ? { kind: "empty" }
@@ -134,5 +177,9 @@ export function useChatFind({
     next: useCallback(() => step(1), [step]),
     previous: useCallback(() => step(-1), [step]),
     close,
+    selectedHit,
+    preview,
+    previewLoading,
+    previewError,
   };
 }
