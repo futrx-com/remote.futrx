@@ -236,7 +236,7 @@ func (s *Store) FinishImportChat(ctx context.Context, meta servicechat.Meta, raw
 		return err
 	}
 	defer tx.Rollback()
-	if err := SeedLegacySessionsTx(ctx, tx, meta, p.BranchID, p.LastSeq); err != nil {
+	if err := SeedLegacySessionsTx(ctx, tx, meta, p.LastSeq); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE conversation_imports SET status='complete' WHERE chat_id=?`, meta.ID); err != nil {

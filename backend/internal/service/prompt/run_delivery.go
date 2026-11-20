@@ -12,7 +12,7 @@ import (
 // text stream without acceptance evidence cannot make a native session resumable.
 type runDelivery struct {
 	store         chat.ConversationRuntime
-	runID         string
+	run           chat.RunReference
 	nativeID      string
 	completed     bool
 	failed        bool
@@ -31,10 +31,7 @@ func (d *runDelivery) observe(ctx context.Context, event harness.Event) {
 			return
 		}
 		evidence := chat.InputAcceptance{NativeSessionID: d.nativeID, Evidence: event.Status}
-		if event.Native != nil {
-			evidence.NativeTurnID = event.Native.TurnID
-		}
-		d.acceptanceErr = d.store.AcceptRunInput(ctx, d.runID, evidence)
+		d.acceptanceErr = d.store.AcceptRunInput(ctx, d.run, evidence)
 		d.accepted = d.acceptanceErr == nil
 	case harness.EventRunCompleted:
 		d.completed = true
@@ -57,8 +54,5 @@ func (d *runDelivery) finish(ctx context.Context, cancellation, errorFromRun err
 		status = "completed"
 	}
 	outcome := chat.RunOutcome{Status: status, NativeSessionID: d.nativeID}
-	if err != nil {
-		outcome.Error = err.Error()
-	}
-	return errors.Join(err, d.store.FinishRun(ctx, d.runID, outcome))
+	return errors.Join(err, d.store.FinishRun(ctx, d.run, outcome))
 }

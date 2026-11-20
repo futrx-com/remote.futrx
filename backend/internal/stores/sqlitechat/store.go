@@ -22,9 +22,8 @@ import (
 )
 
 const Filename = "conversations.sqlite"
-const schemaVersion = 1
+const schemaVersion = 2
 
-var errInvalidProjection = errors.New("invalid transcript projection")
 var _ servicechat.Repository = (*Store)(nil)
 var _ servicechat.TranscriptEventSource = (*Store)(nil)
 var _ servicechat.TranscriptEventWindowSource = (*Store)(nil)
@@ -103,12 +102,12 @@ func (s *Store) initialize() error {
 		return err
 	}
 	if version != 0 && version != schemaVersion {
-		return fmt.Errorf("unsupported conversation schema %d (expected %d)", version, schemaVersion)
+		return fmt.Errorf("unsupported conversation schema %d (expected %d); stop the backend and run remote migrate-chats", version, schemaVersion)
 	}
 	if version == schemaVersion {
 		// Missing authoritative tables must fail startup; never recreate a broken
 		// database and pretend that existing history was successfully loaded.
-		for _, table := range []string{"chats", "branches", "events", "turns", "transcript_items", "transcript_search", "transcript_content_refs", "transcript_text_runs", "transcript_text_search", "transcript_text_pending", "harness_sessions", "handoffs", "runs", "content_blobs", "conversation_migration", "conversation_imports"} {
+		for _, table := range []string{"chats", "branches", "events", "conversation_migration", "conversation_imports"} {
 			var count int
 			if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE name=?", table).Scan(&count); err != nil {
 				return err
@@ -117,7 +116,24 @@ func (s *Store) initialize() error {
 				return fmt.Errorf("missing conversation table %s", table)
 			}
 		}
-		return nil
+		var searchExists int
+		if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name='transcript_search'").Scan(&searchExists); err != nil {
+			return err
+		}
+		if searchExists != 0 {
+			return nil
+		}
+		// A missing search cache can be reconstructed. Reset its progress in
+		// the same transaction so an old checkpoint cannot skip saved events.
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if _, err = tx.Exec(searchSchema + "UPDATE branches SET search_seq=0,search_pending_json='{}';"); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	var tables int
 	if err := s.db.QueryRow("SELECT count(*) FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%'").Scan(&tables); err != nil {
@@ -131,7 +147,7 @@ func (s *Store) initialize() error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec(schema + sessionSchema + importSchema); err != nil {
+	if _, err = tx.Exec(schema + searchSchema + importSchema); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(fmt.Sprintf("PRAGMA user_version=%d", schemaVersion)); err != nil {

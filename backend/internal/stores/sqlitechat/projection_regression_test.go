@@ -78,6 +78,7 @@ func TestAppendItemPreservesCurrentAndPreviousNativePayloads(t *testing.T) {
 			}
 			for i := range committed {
 				committed[i].Native = nil
+				committed[i].Raw = nil
 			}
 			if !reflect.DeepEqual(page.Turns[0].Events, committed) {
 				t.Fatalf("projection changed item events: %+v; want %+v", page.Turns[0].Events, committed)

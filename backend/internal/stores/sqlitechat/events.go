@@ -196,8 +196,10 @@ func (s *Store) append(ctx context.Context, id servicechat.ID, ev servicechat.Ev
 // appendEventTx deliberately does not mutate chat metadata: import must retain
 // the exact legacy metadata snapshot, and copied history is not new activity.
 func (s *Store) appendEventTx(ctx context.Context, tx *sql.Tx, branch string, ev servicechat.Event, raw []byte) (servicechat.Event, error) {
-	var last, ordinal int64
-	if err := tx.QueryRowContext(ctx, "SELECT last_seq,last_turn_ordinal FROM branches WHERE id=?", branch).Scan(&last, &ordinal); err != nil {
+	var last, ordinal, start int64
+	var turnID string
+	var hasUser bool
+	if err := tx.QueryRowContext(ctx, "SELECT last_seq,last_turn_ordinal,last_turn_id,last_turn_start_seq,last_turn_has_user FROM branches WHERE id=?", branch).Scan(&last, &ordinal, &turnID, &start, &hasUser); err != nil {
 		return ev, err
 	}
 	if ev.Seq == 0 {
@@ -211,40 +213,37 @@ func (s *Store) appendEventTx(ctx context.Context, tx *sql.Tx, branch string, ev
 	if err != nil {
 		return ev, err
 	}
-	if _, err = tx.ExecContext(ctx, "INSERT INTO events(branch_id,seq,t,event_type,turn_id,payload_json,raw_json) VALUES(?,?,?,?,?,?,?)", branch, ev.Seq, ev.T, ev.Type, ev.TurnID, payload, raw); err != nil {
-		return ev, err
-	}
-	var turnID string
-	var hasUser bool
-	var start int64
-	err = tx.QueryRowContext(ctx, "SELECT source_turn_id,has_user,start_seq FROM turns WHERE branch_id=? AND ordinal=?", branch, ordinal).Scan(&turnID, &hasUser, &start)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return ev, err
-	}
-	fresh := errors.Is(err, sql.ErrNoRows) || servicechat.EventStartsTranscriptTurn(turnID, hasUser, true, ev)
+	fresh := start == 0 || servicechat.EventStartsTranscriptTurn(turnID, hasUser, true, ev)
 	if fresh {
 		ordinal++
 		turnID = ev.TurnID
 		hasUser = ev.Type == "user"
 		start = ev.Seq
-		_, err = tx.ExecContext(ctx, "INSERT INTO turns(branch_id,ordinal,source_turn_id,has_user,start_seq,end_seq) VALUES(?,?,?,?,?,?)", branch, ordinal, turnID, hasUser, start, ev.Seq)
 	} else {
-		if turnID == "" {
+		if turnID == "" && ev.TurnID != "" {
 			turnID = ev.TurnID
+			// Legacy streams can reveal their turn identifier after the first
+			// event. Only update the index fields; original payloads stay intact.
+			if _, err = tx.ExecContext(ctx, "UPDATE events SET turn_key=? WHERE branch_id=? AND turn_ordinal=?", turnID, branch, ordinal); err != nil {
+				return ev, err
+			}
 		}
 		hasUser = hasUser || ev.Type == "user"
-		_, err = tx.ExecContext(ctx, "UPDATE turns SET source_turn_id=?,has_user=?,end_seq=? WHERE branch_id=? AND ordinal=?", turnID, hasUser, ev.Seq, branch, ordinal)
 	}
-	if err != nil {
+	key, mode, visible := transcriptItemIdentity(ev, ev.Seq)
+	itemStart := ev.Seq
+	if visible && mode != transcriptItemSingle {
+		err = tx.QueryRowContext(ctx, "SELECT item_start_seq FROM events WHERE branch_id=? AND turn_ordinal=? AND item_key=? ORDER BY seq DESC LIMIT 1", branch, ordinal, key).Scan(&itemStart)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return ev, err
+		}
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO events
+	 (branch_id,seq,t,event_type,turn_id,payload_json,raw_json,turn_ordinal,turn_start_seq,turn_key,item_key,item_mode,item_start_seq,visible)
+	 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, branch, ev.Seq, ev.T, ev.Type, ev.TurnID, payload, raw, ordinal, start, turnID, key, mode, itemStart, visible); err != nil {
 		return ev, err
 	}
-	if err = s.projectEventTx(ctx, tx, branch, ordinal, ev); err != nil {
-		return ev, err
-	}
-	if err = indexTextEventTx(ctx, tx, branch, ordinal, ev); err != nil {
-		return ev, err
-	}
-	_, err = tx.ExecContext(ctx, "UPDATE branches SET last_seq=?,last_turn_ordinal=? WHERE id=?", ev.Seq, ordinal, branch)
+	_, err = tx.ExecContext(ctx, "UPDATE branches SET last_seq=?,last_turn_ordinal=?,last_turn_id=?,last_turn_start_seq=?,last_turn_has_user=? WHERE id=?", ev.Seq, ordinal, turnID, start, hasUser, branch)
 	return ev, err
 }
 
@@ -263,7 +262,7 @@ func (s *Store) ReadTranscriptEventWindow(ctx context.Context, id servicechat.ID
 	if before > 0 && before-1 < cutoff {
 		cutoff = before - 1
 	}
-	rows, err := s.db.QueryContext(ctx, lineageSQL+`SELECT t.start_seq FROM lineage l JOIN turns t ON t.branch_id=l.id WHERE t.start_seq<=l.max_seq ORDER BY t.start_seq DESC LIMIT ?`, branch, cutoff, limit+1)
+	rows, err := s.db.QueryContext(ctx, lineageSQL+`SELECT e.seq FROM lineage l JOIN events e ON e.branch_id=l.id WHERE e.seq=e.turn_start_seq AND e.seq<=l.max_seq ORDER BY e.seq DESC LIMIT ?`, branch, cutoff, limit+1)
 	if err != nil {
 		return servicechat.TranscriptEventWindow{}, err
 	}

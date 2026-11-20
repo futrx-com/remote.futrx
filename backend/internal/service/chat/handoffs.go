@@ -12,42 +12,47 @@ import (
 // new user message is never also replayed as historical context.
 type RunPreparation struct {
 	ChatID     ID
-	TurnID     string
 	RunID      string
 	Provider   Provider
 	AccountID  string
-	Model      string
 	ForceFresh bool
 	ThroughSeq *int64
 }
 
-type PreparedRun struct {
+// RunReference identifies the current delivery without keeping an attempt ledger.
+// Branch and run identity prevent stale callbacks from advancing newer sessions.
+type RunReference struct {
+	ChatID    ID
+	BranchID  string
 	RunID     string
-	SessionID string // Remote's stable mapping ID, not the native session ID.
-	ResumeID  string
-	History   conversation.History
+	Provider  Provider
+	AccountID string
+}
+
+type PreparedRun struct {
+	RunReference
+	ResumeID string
+	History  conversation.History
 }
 
 type InputAcceptance struct {
 	NativeSessionID string
-	NativeTurnID    string
 	Evidence        string
 }
 
 type RunOutcome struct {
 	Status          string // completed, failed, interrupted, or uncertain
 	NativeSessionID string
-	Error           string
 }
 
-// ConversationRuntime persists delivery attempts before execution and records
+// ConversationRuntime marks native sessions pending before execution and records
 // acceptance independently of terminal output. Implementations must not treat
 // a session-created event alone as proof that a prompt was consumed.
 type ConversationRuntime interface {
 	PrepareRun(context.Context, RunPreparation) (PreparedRun, error)
-	RecordRunInput(context.Context, string, string, string) error
-	AcceptRunInput(context.Context, string, InputAcceptance) error
-	FinishRun(context.Context, string, RunOutcome) error
+	RecordRunInput(context.Context, RunReference, string) error
+	AcceptRunInput(context.Context, RunReference, InputAcceptance) error
+	FinishRun(context.Context, RunReference, RunOutcome) error
 }
 
 // ConversationRecords selects only portable conversation material. Native

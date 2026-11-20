@@ -32,9 +32,10 @@ type Options struct {
 }
 
 type Result struct {
-	Chats           int   `json:"chats"`
-	Events          int64 `json:"events"`
-	AlreadyComplete bool  `json:"alreadyComplete"`
+	Chats           int                             `json:"chats"`
+	Events          int64                           `json:"events"`
+	AlreadyComplete bool                            `json:"alreadyComplete"`
+	SchemaUpgrade   *sqlitechat.SchemaUpgradeResult `json:"schemaUpgrade,omitempty"`
 }
 
 type source struct {
@@ -49,6 +50,13 @@ type source struct {
 // Run must execute while the backend is stopped. The store's exclusive lease
 // also rejects concurrent new-version servers and importers.
 func Run(ctx context.Context, root string, options Options) (result Result, err error) {
+	upgrade, err := sqlitechat.UpgradeSchema(ctx, root)
+	if err != nil {
+		return result, err
+	}
+	if upgrade.FromVersion != upgrade.ToVersion {
+		result.SchemaUpgrade = &upgrade
+	}
 	if options.BatchEvents <= 0 {
 		options.BatchEvents = 128
 	}

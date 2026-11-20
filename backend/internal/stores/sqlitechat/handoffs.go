@@ -2,74 +2,77 @@ package sqlitechat
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	chat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
-const sessionSchema = `
-CREATE TABLE IF NOT EXISTS harness_sessions (
- id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
- provider TEXT NOT NULL, account_id TEXT NOT NULL, native_session_id TEXT NOT NULL DEFAULT '',
- history_through_seq INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL,
- created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS harness_session_current ON harness_sessions(branch_id,provider,account_id)
- WHERE state IN ('ready','legacy_assumed','pending');
-CREATE TABLE IF NOT EXISTS runs (
- id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
- turn_id TEXT NOT NULL, harness_session_id TEXT NOT NULL REFERENCES harness_sessions(id),
- provider TEXT NOT NULL, account_id TEXT NOT NULL, model TEXT NOT NULL,
- status TEXT NOT NULL, history_through_seq INTEGER NOT NULL,
- input_blob_id TEXT REFERENCES content_blobs(id), delivery_method TEXT NOT NULL DEFAULT '',
- acceptance_evidence TEXT NOT NULL DEFAULT '', native_turn_id TEXT NOT NULL DEFAULT '',
- error TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, completed_at INTEGER
-);
-CREATE INDEX IF NOT EXISTS runs_session_status ON runs(harness_session_id,status);
-CREATE TABLE IF NOT EXISTS handoffs (
- run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
- harness_session_id TEXT NOT NULL REFERENCES harness_sessions(id),
- from_seq INTEGER NOT NULL, through_seq INTEGER NOT NULL,
- status TEXT NOT NULL, delivery_method TEXT NOT NULL DEFAULT '',
- created_at INTEGER NOT NULL, accepted_at INTEGER
-);
-`
+// One entry per provider/account describes only the current branch's resumable
+// native session. Attempts and delivered prompts are not separate stored history.
+type sessionState struct {
+	NativeSessionID   string `json:"nativeSessionId,omitempty"`
+	HistoryThroughSeq int64  `json:"historyThroughSeq"`
+	State             string `json:"state"`
+	RunID             string `json:"runId,omitempty"`
+	DeliveryMethod    string `json:"deliveryMethod,omitempty"`
+}
+
+func sessionKey(provider chat.Provider, account string) string {
+	key, _ := json.Marshal([2]string{string(provider), account})
+	return string(key)
+}
 
 var _ chat.ConversationRuntime = (*Store)(nil)
 
-// SeedLegacySessionsTx deliberately makes exactly the migration assumption the
-// operator selected: the last assigned provider owns the imported prefix. It
-// does not claim older mixed-provider history was actually ingested natively.
-func SeedLegacySessionsTx(ctx context.Context, tx *sql.Tx, meta chat.Meta, branch string, lastSeq int64) error {
+// SeedLegacySessionsTx makes only the migration assumption selected by the
+// operator: the last assigned harness owns the imported prefix.
+func SeedLegacySessionsTx(ctx context.Context, tx *sql.Tx, meta chat.Meta, lastSeq int64) error {
 	nativeID := meta.SessionID(meta.Provider)
 	if nativeID == "" {
 		return nil
 	}
-	now := time.Now().UnixMilli()
-	_, err := tx.ExecContext(ctx, `INSERT INTO harness_sessions
-	 (id,branch_id,provider,account_id,native_session_id,history_through_seq,state,created_at,updated_at)
-	 VALUES(?,?,?,?,?,?,'legacy_assumed',?,?)`, sessionRecordID(), branch, meta.Provider, meta.AccountID, nativeID, lastSeq, now, now)
+	return writeSessionsTx(ctx, tx, meta.ID, map[string]sessionState{
+		sessionKey(meta.Provider, meta.AccountID): {
+			NativeSessionID: nativeID, HistoryThroughSeq: lastSeq, State: "legacy_assumed",
+		},
+	})
+}
+
+func readSessions(ctx context.Context, q sqlQuerier, id chat.ID) (string, int64, map[string]sessionState, error) {
+	var branch string
+	var tail int64
+	var raw []byte
+	err := q.QueryRowContext(ctx, `SELECT c.active_branch_id,b.last_seq,c.sessions_json
+        FROM chats c JOIN branches b ON b.id=c.active_branch_id WHERE c.id=?`, id).Scan(&branch, &tail, &raw)
+	if err != nil {
+		return "", 0, nil, err
+	}
+	sessions := map[string]sessionState{}
+	if err = json.Unmarshal(raw, &sessions); err != nil {
+		return "", 0, nil, fmt.Errorf("decode conversation sessions: %w", err)
+	}
+	if sessions == nil {
+		sessions = map[string]sessionState{}
+	}
+	return branch, tail, sessions, nil
+}
+
+func writeSessionsTx(ctx context.Context, tx *sql.Tx, id chat.ID, sessions map[string]sessionState) error {
+	raw, err := json.Marshal(sessions)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE chats SET sessions_json=? WHERE id=?", raw, id)
 	return err
 }
 
-func sessionRecordID() string {
-	var value [16]byte
-	if _, err := rand.Read(value[:]); err != nil {
-		panic(err) // Losing unique session identity is not safely recoverable.
-	}
-	return hex.EncodeToString(value[:])
-}
-
 func (s *Store) PrepareRun(ctx context.Context, input chat.RunPreparation) (chat.PreparedRun, error) {
-	// Reserve the native mapping and capture an immutable branch/range under
-	// a short write transaction. Loading/assembling large history must not
-	// hold the global writer lock or block unrelated conversation appends.
+	// Reserve the run before loading its immutable history range, keeping the
+	// writer lock out of potentially large history reads.
 	s.mu.Lock()
 	prepared, err := s.prepareRunLocked(ctx, input)
 	s.mu.Unlock()
@@ -78,7 +81,7 @@ func (s *Store) PrepareRun(ctx context.Context, input chat.RunPreparation) (chat
 	}
 	events, err := readPortableHistoryRange(ctx, s.db, prepared.History.BranchID, prepared.History.AfterSeq, prepared.History.ThroughSeq)
 	if err != nil {
-		finishErr := s.FinishRun(context.WithoutCancel(ctx), prepared.RunID, chat.RunOutcome{Status: "failed", Error: err.Error()})
+		finishErr := s.FinishRun(context.WithoutCancel(ctx), prepared.RunReference, chat.RunOutcome{Status: "failed"})
 		return chat.PreparedRun{}, errors.Join(err, finishErr)
 	}
 	prepared.History.Records = chat.ConversationRecords(events)
@@ -86,12 +89,15 @@ func (s *Store) PrepareRun(ctx context.Context, input chat.RunPreparation) (chat
 }
 
 func (s *Store) prepareRunLocked(ctx context.Context, input chat.RunPreparation) (chat.PreparedRun, error) {
+	if input.RunID == "" {
+		return chat.PreparedRun{}, errors.New("run ID is required")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return chat.PreparedRun{}, err
 	}
 	defer tx.Rollback()
-	branch, tail, err := activeBranch(ctx, tx, input.ChatID)
+	branch, tail, sessions, err := readSessions(ctx, tx, input.ChatID)
 	if err != nil {
 		return chat.PreparedRun{}, err
 	}
@@ -101,177 +107,115 @@ func (s *Store) prepareRunLocked(ctx context.Context, input chat.RunPreparation)
 		}
 		tail = *input.ThroughSeq
 	}
-	now := time.Now().UnixMilli()
-	// A previous process may have died after delivery but before recording its
-	// outcome. Never replay uncertain input into that same native session.
-	_, err = tx.ExecContext(ctx, `UPDATE harness_sessions SET state='uncertain', updated_at=?
-	 WHERE branch_id=? AND provider=? AND account_id=? AND id IN
-	 (SELECT harness_session_id FROM runs WHERE status IN ('pending','accepted'))`, now, branch, input.Provider, input.AccountID)
-	if err != nil {
+	key := sessionKey(input.Provider, input.AccountID)
+	session := sessions[key]
+	// Pending/accepted input may already have reached the native harness. After
+	// an interrupted run, start fresh instead of replaying into that session.
+	if input.ForceFresh || session.RunID != "" ||
+		(session.State != "ready" && session.State != "legacy_assumed") || session.NativeSessionID == "" {
+		session = sessionState{}
+	}
+	if session.HistoryThroughSeq > tail {
+		return chat.PreparedRun{}, fmt.Errorf("session bookmark %d is after history boundary %d", session.HistoryThroughSeq, tail)
+	}
+	prepared := chat.PreparedRun{
+		RunReference: chat.RunReference{ChatID: input.ChatID, BranchID: branch, RunID: input.RunID, Provider: input.Provider, AccountID: input.AccountID},
+		ResumeID:     session.NativeSessionID,
+		History:      conversation.History{BranchID: branch, AfterSeq: session.HistoryThroughSeq, ThroughSeq: tail},
+	}
+	session.State, session.RunID, session.DeliveryMethod = "pending", input.RunID, ""
+	sessions[key] = session
+	if err = writeSessionsTx(ctx, tx, input.ChatID, sessions); err != nil {
 		return chat.PreparedRun{}, err
-	}
-	_, err = tx.ExecContext(ctx, `UPDATE runs SET status='uncertain',completed_at=?
-	 WHERE status IN ('pending','accepted') AND harness_session_id IN
-	 (SELECT id FROM harness_sessions WHERE branch_id=? AND provider=? AND account_id=? AND state='uncertain')`, now, branch, input.Provider, input.AccountID)
-	if err != nil {
-		return chat.PreparedRun{}, err
-	}
-	_, err = tx.ExecContext(ctx, `UPDATE handoffs SET status='uncertain' WHERE status='pending' AND run_id IN (SELECT id FROM runs WHERE status='uncertain')`)
-	if err != nil {
-		return chat.PreparedRun{}, err
-	}
-	if input.ForceFresh {
-		_, err = tx.ExecContext(ctx, `UPDATE harness_sessions SET state='retired',updated_at=?
-		 WHERE branch_id=? AND provider=? AND account_id=? AND state IN ('ready','legacy_assumed','pending')`, now, branch, input.Provider, input.AccountID)
-		if err != nil {
-			return chat.PreparedRun{}, err
-		}
-	}
-	prepared := chat.PreparedRun{RunID: input.RunID}
-	var covered int64
-	err = tx.QueryRowContext(ctx, `SELECT id,native_session_id,history_through_seq FROM harness_sessions
-	 WHERE branch_id=? AND provider=? AND account_id=? AND state IN ('ready','legacy_assumed')`, branch, input.Provider, input.AccountID).
-		Scan(&prepared.SessionID, &prepared.ResumeID, &covered)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return chat.PreparedRun{}, err
-	}
-	if errors.Is(err, sql.ErrNoRows) {
-		prepared.SessionID = sessionRecordID()
-		_, err = tx.ExecContext(ctx, `INSERT INTO harness_sessions
-		 (id,branch_id,provider,account_id,state,created_at,updated_at) VALUES(?,?,?,?,'pending',?,?)`, prepared.SessionID, branch, input.Provider, input.AccountID, now, now)
-		if err != nil {
-			return chat.PreparedRun{}, err
-		}
-	}
-	if covered > tail {
-		return chat.PreparedRun{}, fmt.Errorf("session bookmark %d is after history boundary %d", covered, tail)
-	}
-	prepared.History = conversation.History{BranchID: branch, AfterSeq: covered, ThroughSeq: tail}
-	_, err = tx.ExecContext(ctx, `INSERT INTO runs
-	 (id,branch_id,turn_id,harness_session_id,provider,account_id,model,status,history_through_seq,created_at)
-	 VALUES(?,?,?,?,?,?,?,'pending',?,?)`, input.RunID, branch, input.TurnID, prepared.SessionID, input.Provider, input.AccountID, input.Model, tail, now)
-	if err != nil {
-		return chat.PreparedRun{}, err
-	}
-	if tail > covered {
-		_, err = tx.ExecContext(ctx, `INSERT INTO handoffs
-		 (run_id,harness_session_id,from_seq,through_seq,status,created_at) VALUES(?,?,?,?,'pending',?)`, input.RunID, prepared.SessionID, covered+1, tail, now)
-		if err != nil {
-			return chat.PreparedRun{}, err
-		}
 	}
 	return prepared, tx.Commit()
 }
 
-func (s *Store) RecordRunInput(ctx context.Context, runID, prompt, method string) error {
+// updateRunSession ignores callbacks from a replaced run or branch. The token
+// comparison and update share a transaction, so late completion cannot make a
+// different native session resumable.
+func (s *Store) updateRunSession(ctx context.Context, run chat.RunReference, update func(*sessionState, int64) error) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
-	blobID, err := putBlobTx(ctx, tx, []byte(prompt), "text/plain; charset=utf-8")
+	branch, tail, sessions, err := readSessions(ctx, tx, run.ChatID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE runs SET input_blob_id=?,delivery_method=? WHERE id=? AND status='pending'`, blobID, method, runID)
-	if err != nil {
-		return err
+	key := sessionKey(run.Provider, run.AccountID)
+	session := sessions[key]
+	if branch != run.BranchID || run.RunID == "" || session.RunID != run.RunID {
+		return false, nil
 	}
-	if n, _ := result.RowsAffected(); n != 1 {
-		return errors.New("run is not pending input delivery")
+	if err = update(&session, tail); err != nil {
+		return false, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE handoffs SET delivery_method=? WHERE run_id=?`, method, runID); err != nil {
-		return err
+	sessions[key] = session
+	if err = writeSessionsTx(ctx, tx, run.ChatID, sessions); err != nil {
+		return false, err
 	}
-	return tx.Commit()
+	return true, tx.Commit()
 }
 
-func (s *Store) AcceptRunInput(ctx context.Context, runID string, evidence chat.InputAcceptance) error {
+func (s *Store) RecordRunInput(ctx context.Context, run chat.RunReference, method string) error {
+	if method == "" {
+		return errors.New("run input delivery method is required")
+	}
+	current, err := s.updateRunSession(ctx, run, func(session *sessionState, _ int64) error {
+		if session.State != "pending" {
+			return errors.New("run is not pending input delivery")
+		}
+		session.DeliveryMethod = method
+		return nil
+	})
+	if err == nil && !current {
+		return errors.New("run is not pending input delivery")
+	}
+	return err
+}
+
+func (s *Store) AcceptRunInput(ctx context.Context, run chat.RunReference, evidence chat.InputAcceptance) error {
 	if evidence.Evidence == "" {
 		return errors.New("input acceptance requires provider evidence")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var sessionID, status, method string
-	var through int64
-	if err = tx.QueryRowContext(ctx, `SELECT harness_session_id,history_through_seq,status,delivery_method FROM runs WHERE id=?`, runID).Scan(&sessionID, &through, &status, &method); err != nil {
-		return err
-	}
-	if status == "accepted" {
+	_, err := s.updateRunSession(ctx, run, func(session *sessionState, _ int64) error {
+		if session.State == "accepted" {
+			return nil
+		}
+		if session.State != "pending" || session.DeliveryMethod == "" {
+			return errors.New("run input was not recorded before acceptance")
+		}
+		session.State = "accepted"
+		if evidence.NativeSessionID != "" {
+			session.NativeSessionID = evidence.NativeSessionID
+		}
+		// The safe bookmark moves only when this accepted run completes.
 		return nil
-	}
-	if status != "pending" || method == "" {
-		return errors.New("run input was not recorded before acceptance")
-	}
-	now := time.Now().UnixMilli()
-	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status='accepted',acceptance_evidence=?,native_turn_id=? WHERE id=?`, evidence.Evidence, evidence.NativeTurnID, runID); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE handoffs SET status='accepted',accepted_at=? WHERE run_id=?`, now, runID); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE harness_sessions SET history_through_seq=?,
-	 native_session_id=CASE WHEN ?<>'' THEN ? ELSE native_session_id END,updated_at=? WHERE id=?`, through, evidence.NativeSessionID, evidence.NativeSessionID, now, sessionID); err != nil {
-		return err
-	}
-	return tx.Commit()
+	})
+	return err
 }
 
-func (s *Store) FinishRun(ctx context.Context, runID string, outcome chat.RunOutcome) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	var sessionID, branch, status, nativeID string
-	if err = tx.QueryRowContext(ctx, `SELECT r.harness_session_id,r.branch_id,r.status,s.native_session_id
-	 FROM runs r JOIN harness_sessions s ON s.id=r.harness_session_id WHERE r.id=?`, runID).Scan(&sessionID, &branch, &status, &nativeID); err != nil {
-		return err
-	}
-	if status != "pending" && status != "accepted" {
-		// Finalization is idempotent. A late callback from an older process
-		// must not alter a session already reconciled by a later preparation.
+func (s *Store) FinishRun(ctx context.Context, run chat.RunReference, outcome chat.RunOutcome) error {
+	_, err := s.updateRunSession(ctx, run, func(session *sessionState, tail int64) error {
+		if outcome.NativeSessionID != "" {
+			session.NativeSessionID = outcome.NativeSessionID
+		}
+		if outcome.Status == "completed" && session.State == "accepted" && session.NativeSessionID != "" {
+			session.State, session.HistoryThroughSeq = "ready", tail
+		} else {
+			session.State = "uncertain"
+		}
+		session.RunID, session.DeliveryMethod = "", ""
 		return nil
-	}
-	if outcome.NativeSessionID != "" {
-		nativeID = outcome.NativeSessionID
-	}
-	state := "uncertain"
-	if outcome.Status == "completed" && status == "accepted" && nativeID != "" {
-		state = "ready"
-	}
-	if outcome.Status == "" {
-		outcome.Status = "uncertain"
-	}
-	now := time.Now().UnixMilli()
-	if _, err = tx.ExecContext(ctx, `UPDATE runs SET status=?,error=?,completed_at=? WHERE id=?`, outcome.Status, outcome.Error, now, runID); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE handoffs SET status='uncertain' WHERE run_id=? AND status='pending'`, runID); err != nil {
-		return err
-	}
-	// Only the successful native turn with accepted input owns its produced
-	// events. Failed/interrupted runs leave their evidence but cannot be resumed
-	// safely without a native reconciliation API; the next run starts fresh.
-	if state == "ready" {
-		_, err = tx.ExecContext(ctx, `UPDATE harness_sessions SET state=?,native_session_id=?,
-		 history_through_seq=(SELECT last_seq FROM branches WHERE id=?),updated_at=? WHERE id=?`, state, nativeID, branch, now, sessionID)
-	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE harness_sessions SET state=?,native_session_id=?,updated_at=? WHERE id=?`, state, nativeID, now, sessionID)
-	}
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+	})
+	return err
 }
 
 // Select portable records before decoding. Provider telemetry/native-only rows

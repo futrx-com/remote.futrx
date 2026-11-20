@@ -453,9 +453,8 @@ func (rnr *Service) runPromptAs(
 	var prepared servicechat.PreparedRun
 	if rnr.conversationRuntime != nil {
 		prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
-			ChatID: id, TurnID: ledgerRunID, RunID: ledgerRunID, Provider: providerID,
-			AccountID: meta.AccountID, Model: meta.Model,
-			ForceFresh: forkSession || (rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume),
+			ChatID: id, RunID: ledgerRunID, Provider: providerID,
+			AccountID: meta.AccountID, ForceFresh: forkSession || (rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume),
 		})
 		if err != nil {
 			return err
@@ -492,7 +491,7 @@ func (rnr *Service) runPromptAs(
 	run := func(runPrompt, runResumeID string) (runErr error) {
 		var tracking *runDelivery
 		if rnr.conversationRuntime != nil {
-			tracking = &runDelivery{store: rnr.conversationRuntime, runID: prepared.RunID, nativeID: runResumeID}
+			tracking = &runDelivery{store: rnr.conversationRuntime, run: prepared.RunReference, nativeID: runResumeID}
 			defer func() {
 				if persistenceErr := rnr.hub.PersistenceError(id); persistenceErr != nil {
 					runErr = errors.Join(runErr, persistenceErr)
@@ -527,7 +526,7 @@ func (rnr *Service) runPromptAs(
 			if err != nil {
 				return err
 			}
-			if err = rnr.conversationRuntime.RecordRunInput(ctx, prepared.RunID, runPrompt, method); err != nil {
+			if err = rnr.conversationRuntime.RecordRunInput(ctx, prepared.RunReference, method); err != nil {
 				return err
 			}
 		}
@@ -615,8 +614,8 @@ func (rnr *Service) runPromptAs(
 		if rnr.conversationRuntime != nil {
 			through := prepared.History.ThroughSeq
 			prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
-				ChatID: id, TurnID: ledgerRunID, RunID: newLedgerRunID(), Provider: providerID,
-				AccountID: meta.AccountID, Model: meta.Model, ForceFresh: true, ThroughSeq: &through,
+				ChatID: id, RunID: newLedgerRunID(), Provider: providerID,
+				AccountID: meta.AccountID, ForceFresh: true, ThroughSeq: &through,
 			})
 			if err != nil {
 				return err

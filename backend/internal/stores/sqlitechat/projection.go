@@ -2,105 +2,18 @@ package sqlitechat
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	constants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
-
-func putBlobTx(ctx context.Context, tx *sql.Tx, content []byte, mediaType string) (string, error) {
-	hash := sha256.Sum256(content)
-	id := hex.EncodeToString(hash[:])
-	_, err := tx.ExecContext(ctx, "INSERT INTO content_blobs(id,media_type,byte_length,content) VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING", id, mediaType, len(content), content)
-	return id, err
-}
-
-func (s *Store) projectEventTx(ctx context.Context, tx *sql.Tx, branch string, ordinal int64, ev servicechat.Event) error {
-	key, mode, visible := transcriptItemIdentity(ev, ev.Seq)
-	if !visible {
-		return nil
-	}
-	projected, refs := compactTranscriptEvent(servicechat.ID(branch), ev, key+":"+strconv.FormatInt(ev.Seq, 10), 0, 0, ordinal)
-	payload := []servicechat.Event{projected}
-	start := ev.Seq
-	priorSearch := ""
-	if mode != transcriptItemSingle {
-		var prior []byte
-		err := tx.QueryRowContext(ctx, "SELECT start_seq,payload_json,search_text FROM transcript_items WHERE branch_id=? AND turn_ordinal=? AND item_key=? ORDER BY end_seq DESC LIMIT 1", branch, ordinal, key).Scan(&start, &prior, &priorSearch)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err == nil {
-			if mode == transcriptItemAppend {
-				// Decode into fresh events: reusing payload would overwrite the
-				// current event's shared RawMessage buffers and retain fields that
-				// are absent from the previous event.
-				var previous []servicechat.Event
-				if err = json.Unmarshal(prior, &previous); err != nil {
-					return err
-				}
-				payload = append(previous, projected)
-			} else {
-				payload[0].Seq = start
-			}
-		}
-	}
-	for _, ref := range refs {
-		text, err := extractTranscriptContent(ev, ref.fieldKind, ref.fieldKey)
-		if err != nil {
-			return err
-		}
-		blobID, err := putBlobTx(ctx, tx, []byte(text), "text/plain; charset=utf-8")
-		if err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, "INSERT INTO transcript_content_refs(branch_id,content_id,event_seq,blob_id) VALUES(?,?,?,?)", branch, ref.id, ev.Seq, blobID); err != nil {
-			return err
-		}
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	// Index full exposed content, including the portion lazily loaded by the
-	// UI. A preview-only index would silently omit most large tool results.
-	var texts []string
-	if mode == transcriptItemAppend && priorSearch != "" {
-		texts = append(texts, priorSearch)
-	}
-	for _, text := range []string{ev.Text, ev.Name, ev.Output, string(ev.Input), ev.Message} {
-		if text != "" {
-			texts = append(texts, text)
-		}
-	}
-	if ev.Type == "collaboration" && len(ev.Data) > 0 {
-		texts = append(texts, string(ev.Data))
-	}
-	text := strings.Join(texts, "\n")
-	result, err := tx.ExecContext(ctx, `INSERT INTO transcript_items(branch_id,turn_ordinal,item_key,start_seq,end_seq,payload_json,payload_bytes,search_text) VALUES(?,?,?,?,?,?,?,?)`, branch, ordinal, key, start, ev.Seq, raw, len(raw), text)
-	if err != nil {
-		return err
-	}
-	rowID, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	if ev.Type == "assistant_text" || ev.Type == "thinking" {
-		return nil
-	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO transcript_search(rowid,text) VALUES(?,?)", rowID, text)
-	return err
-}
 
 type branchSegment struct {
 	id      string
@@ -116,15 +29,29 @@ func branchSegments(ctx context.Context, q sqlQuerier, branch string, through in
 		return nil, err
 	}
 	defer rows.Close()
-	out := []branchSegment{}
+	var out []branchSegment
 	for rows.Next() {
 		var seg branchSegment
-		if err := rows.Scan(&seg.id, &seg.through); err != nil {
+		if err = rows.Scan(&seg.id, &seg.through); err != nil {
 			return nil, err
 		}
 		out = append(out, seg)
 	}
 	return out, rows.Err()
+}
+
+// Content references identify a field in an authoritative event. They confer no
+// access: every read checks the chat's currently retained branch lineage.
+type eventContentRef struct {
+	Branch string `json:"b"`
+	Seq    int64  `json:"s"`
+	Kind   string `json:"k"`
+	Key    string `json:"f,omitempty"`
+}
+
+func contentReference(branch string, seq int64, kind, key string) string {
+	raw, _ := json.Marshal(eventContentRef{branch, seq, kind, key})
+	return base64.RawURLEncoding.EncodeToString(raw)
 }
 
 func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q servicechat.TranscriptPageQuery) (servicechat.TranscriptPage, error) {
@@ -139,12 +66,12 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 	if limit > constants.MaxChatTranscriptTurnLimit {
 		limit = constants.MaxChatTranscriptTurnLimit
 	}
-	bytes := q.ByteLimit
-	if bytes <= 0 {
-		bytes = constants.DefaultChatTranscriptByteLimit
+	budget := q.ByteLimit
+	if budget <= 0 {
+		budget = constants.DefaultChatTranscriptByteLimit
 	}
-	if bytes > constants.MaxChatTranscriptByteLimit {
-		bytes = constants.MaxChatTranscriptByteLimit
+	if budget > constants.MaxChatTranscriptByteLimit {
+		budget = constants.MaxChatTranscriptByteLimit
 	}
 	before := q.BeforeSeq
 	if before <= 0 {
@@ -154,38 +81,97 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
 	}
-	buffer := newTranscriptPageBuffer(limit, bytes)
-	for _, segment := range segments {
-		rows, err := s.db.QueryContext(ctx, `SELECT i.turn_ordinal,t.source_turn_id,t.start_seq,i.start_seq,i.end_seq,i.payload_json,i.payload_bytes
- FROM transcript_items i JOIN turns t ON t.branch_id=i.branch_id AND t.ordinal=i.turn_ordinal
- WHERE i.branch_id=? AND i.start_seq<? AND i.end_seq<=?
- AND NOT EXISTS(SELECT 1 FROM transcript_items newer WHERE newer.branch_id=i.branch_id AND newer.turn_ordinal=i.turn_ordinal AND newer.item_key=i.item_key AND newer.end_seq>i.end_seq AND newer.end_seq<=?)
- ORDER BY i.start_seq DESC,i.end_seq DESC`, segment.id, before, segment.through, segment.through)
-		if err != nil {
-			return servicechat.TranscriptPage{}, err
-		}
+	buffer := newTranscriptPageBuffer(limit, budget)
+	for _, seg := range segments {
+		cursor := before
 		stop := false
-		for rows.Next() {
-			var item projectedTranscriptItem
-			var raw []byte
-			if err = rows.Scan(&item.turnOrdinal, &item.turnID, &item.turnStart, &item.startSeq, &item.endSeq, &raw, &item.payloadBytes); err != nil {
-				rows.Close()
-				return servicechat.TranscriptPage{}, err
-			}
-			added, err := buffer.appendItem(item, raw)
+		for !stop {
+			// Close each bounded header cursor before fetching payloads. This
+			// avoids exhausting the connection pool under concurrent readers.
+			rows, err := s.db.QueryContext(ctx, `SELECT turn_ordinal,turn_key,turn_start_seq,seq,item_key,item_mode,event_type
+                FROM events WHERE branch_id=? AND visible=1 AND item_start_seq<? AND seq<=? AND seq=item_start_seq
+                ORDER BY item_start_seq DESC,seq DESC LIMIT 64`, seg.id, cursor, seg.through)
 			if err != nil {
-				rows.Close()
 				return servicechat.TranscriptPage{}, err
 			}
-			if !added {
-				stop = true
+			type header struct {
+				item           projectedTranscriptItem
+				key, eventType string
+				mode           transcriptItemMode
+			}
+			headers := make([]header, 0, 64)
+			for rows.Next() {
+				var h header
+				if err = rows.Scan(&h.item.turnOrdinal, &h.item.turnID, &h.item.turnStart, &h.item.startSeq, &h.key, &h.mode, &h.eventType); err != nil {
+					rows.Close()
+					return servicechat.TranscriptPage{}, err
+				}
+				headers = append(headers, h)
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return servicechat.TranscriptPage{}, err
+			}
+			for _, h := range headers {
+				item, key, mode, eventType := h.item, h.key, h.mode, h.eventType
+				if _, known := buffer.turns[item.turnOrdinal]; !known && len(buffer.turns) == buffer.turnLimit {
+					buffer.hasMore = true
+					stop = true
+					break
+				}
+				var seqs []int64
+				if mode == transcriptItemSingle {
+					seqs = []int64{item.startSeq}
+				} else {
+					types := []string{eventType}
+					if mode == transcriptItemAppend {
+						if eventType == "tool_use_start" || eventType == "tool_use_end" {
+							types = []string{"tool_use_start", "tool_use_end"}
+						} else {
+							types = []string{"interaction_request", "interaction_resolved"}
+						}
+					}
+					for _, typ := range types {
+						var seq int64
+						err = s.db.QueryRowContext(ctx, `SELECT seq FROM events WHERE branch_id=? AND turn_ordinal=? AND item_key=? AND event_type=? AND seq<=? ORDER BY seq DESC LIMIT 1`, seg.id, item.turnOrdinal, key, typ, seg.through).Scan(&seq)
+						if errors.Is(err, sql.ErrNoRows) {
+							continue
+						}
+						if err != nil {
+							return servicechat.TranscriptPage{}, err
+						}
+						seqs = append(seqs, seq)
+					}
+				}
+				for _, seq := range seqs {
+					ev, err := s.readDisplayEvent(ctx, seg.id, seq)
+					if err != nil {
+						return servicechat.TranscriptPage{}, err
+					}
+					if seq > item.endSeq {
+						item.endSeq = seq
+					}
+					if mode == transcriptItemReplace {
+						ev.Seq = item.startSeq
+					}
+					item.payload = append(item.payload, ev)
+				}
+				raw, err := json.Marshal(item.payload)
+				if err != nil {
+					return servicechat.TranscriptPage{}, err
+				}
+				item.payloadBytes = len(raw)
+				added := buffer.appendItem(item)
+				if !added {
+					stop = true
+					break
+				}
+			}
+			if stop || len(headers) < 64 {
 				break
 			}
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return servicechat.TranscriptPage{}, err
+			cursor = headers[len(headers)-1].item.startSeq
 		}
 		if stop {
 			break
@@ -194,13 +180,73 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 	return buffer.page(last), nil
 }
 
+// JSON extraction stays inside SQLite. A huge raw/native envelope or tool
+// result cannot escape into Go merely to render a small transcript preview.
+func (s *Store) readDisplayEvent(ctx context.Context, branch string, seq int64) (servicechat.Event, error) {
+	var event servicechat.Event
+	var base []byte
+	var input, output string
+	var inputBytes, outputBytes int64
+	err := s.db.QueryRowContext(ctx, `SELECT json_remove(payload_json,'$.raw','$.native','$.input','$.output','$.data'),
+ coalesce(substr(payload_json -> '$.input',1,?),''),coalesce(length(CAST(payload_json -> '$.input' AS BLOB)),0),
+ coalesce(substr(json_extract(payload_json,'$.output'),1,?),''),coalesce(length(CAST(json_extract(payload_json,'$.output') AS BLOB)),0)
+ FROM events WHERE branch_id=? AND seq=?`, constants.ChatTranscriptInlineFieldBytes, constants.ChatTranscriptInlineFieldBytes, branch, seq).Scan(&base, &input, &inputBytes, &output, &outputBytes)
+	if err != nil {
+		return event, err
+	}
+	if err = json.Unmarshal(base, &event); err != nil {
+		return event, err
+	}
+	if inputBytes > constants.ChatTranscriptInlineFieldBytes {
+		event.Input, _ = json.Marshal(map[string]any{"preview": utf8Prefix(input, constants.ChatTranscriptInlineFieldBytes), "truncated": true, "contentRef": contentReference(branch, seq, "tool_input", "")})
+	} else if inputBytes > 0 {
+		event.Input = json.RawMessage(input)
+	}
+	event.Output = utf8Prefix(output, constants.ChatTranscriptInlineFieldBytes)
+	if outputBytes > constants.ChatTranscriptInlineFieldBytes {
+		event.OutputRef = contentReference(branch, seq, "tool_output", "")
+		event.OutputBytes = outputBytes
+		event.OutputTruncated = true
+	}
+	if event.Type == "collaboration" {
+		event.Data, err = s.readCollaborationData(ctx, branch, seq)
+	} else {
+		var data sql.NullString
+		err = s.db.QueryRowContext(ctx, `SELECT payload_json -> '$.data' FROM events WHERE branch_id=? AND seq=?`, branch, seq).Scan(&data)
+		if data.Valid {
+			event.Data = json.RawMessage(data.String)
+		}
+	}
+	return event, err
+}
+
 func (s *Store) ReadTranscriptContent(ctx context.Context, id servicechat.ID, contentID string, after int64, limit int) (servicechat.TranscriptContentPage, error) {
-	if contentID == "" || after < 0 {
-		return servicechat.TranscriptContentPage{}, servicechat.ErrTranscriptContentNotFound
+	missing := servicechat.ErrTranscriptContentNotFound
+	if len(contentID) > 8192 {
+		return servicechat.TranscriptContentPage{}, missing
+	}
+	var ref eventContentRef
+	raw, err := base64.RawURLEncoding.DecodeString(contentID)
+	if err != nil || len(raw) > 4096 || json.Unmarshal(raw, &ref) != nil || ref.Seq <= 0 || after < 0 {
+		return servicechat.TranscriptContentPage{}, missing
 	}
 	branch, last, err := activeBranch(ctx, s.db, id)
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err
+	}
+	segments, err := branchSegments(ctx, s.db, branch, last)
+	if err != nil {
+		return servicechat.TranscriptContentPage{}, err
+	}
+	allowed := false
+	for _, seg := range segments {
+		if seg.id == ref.Branch && ref.Seq <= seg.through {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		return servicechat.TranscriptContentPage{}, missing
 	}
 	if limit <= 0 {
 		limit = constants.DefaultChatTranscriptContentPageBytes
@@ -211,15 +257,16 @@ func (s *Store) ReadTranscriptContent(ctx context.Context, id servicechat.ID, co
 	if limit > constants.MaxChatTranscriptContentPageBytes {
 		limit = constants.MaxChatTranscriptContentPageBytes
 	}
-	var total int64
+	expression, kind, args, err := contentExpression(ref)
+	if err != nil {
+		return servicechat.TranscriptContentPage{}, err
+	}
+	args = append(args, ref.Branch, ref.Seq, kind, after+1, limit+utf8.UTFMax)
+	var total sql.NullInt64
 	var chunk []byte
-	// substr on a BLOB uses bytes. Only the requested bounded chunk crosses the
-	// SQLite driver, even when the original tool result is hundreds of MB.
-	err = s.db.QueryRowContext(ctx, lineageSQL+`SELECT b.byte_length,substr(b.content,?,?)
- FROM lineage l JOIN transcript_content_refs r ON r.branch_id=l.id JOIN content_blobs b ON b.id=r.blob_id
- WHERE r.content_id=? AND r.event_seq<=l.max_seq LIMIT 1`, branch, last, after+1, limit+utf8.UTFMax, contentID).Scan(&total, &chunk)
-	if errors.Is(err, sql.ErrNoRows) || after > total && err == nil {
-		return servicechat.TranscriptContentPage{}, servicechat.ErrTranscriptContentNotFound
+	err = s.db.QueryRowContext(ctx, `WITH content(value) AS (SELECT `+expression+` FROM events e WHERE branch_id=? AND seq=? AND event_type=?) SELECT length(CAST(value AS BLOB)),substr(CAST(value AS BLOB),?,?) FROM content`, args...).Scan(&total, &chunk)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (!total.Valid || after > total.Int64) {
+		return servicechat.TranscriptContentPage{}, missing
 	}
 	if err != nil {
 		return servicechat.TranscriptContentPage{}, err
@@ -235,103 +282,31 @@ func (s *Store) ReadTranscriptContent(ctx context.Context, id servicechat.ID, co
 	for end > start && end < len(chunk) && !utf8.RuneStart(chunk[end]) {
 		end--
 	}
-	complete := after+int64(end) >= total
+	complete := after+int64(end) >= total.Int64
 	var next int64
 	if !complete {
 		next = after + int64(end)
 	}
-	return servicechat.TranscriptContentPage{ContentID: contentID, Content: string(chunk[start:end]), NextAfter: next, TotalBytes: total, Complete: complete}, nil
+	return servicechat.TranscriptContentPage{ContentID: contentID, Content: string(chunk[start:end]), NextAfter: next, TotalBytes: total.Int64, Complete: complete}, nil
 }
-
-func (s *Store) SearchTranscript(ctx context.Context, id servicechat.ID, text string, limit int) ([]servicechat.SearchHit, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return []servicechat.SearchHit{}, nil
-	}
-	if len(text) > 4096 {
-		return nil, fmt.Errorf("search query exceeds 4096 bytes")
-	}
-	if limit <= 0 {
-		limit = 30
-	}
-	if limit > 100 {
-		limit = 100
-	}
-	if err := s.flushSearch(ctx, id); err != nil {
-		return nil, err
-	}
-	branch, last, err := activeBranch(ctx, s.db, id)
-	if err != nil {
-		return nil, err
-	}
-	// Treat user input as a literal phrase. FTS operators and quoting cannot
-	// alter scope, and parameter binding keeps SQL out of the query text.
-	phrase := "\"" + strings.ReplaceAll(text, "\"", "\"\"") + "\""
-	rows, err := s.db.QueryContext(ctx, lineageSQL+`SELECT i.id,t.source_turn_id,i.start_seq,i.end_seq,snippet(transcript_search,0,'','',' … ',32)
- FROM transcript_search JOIN transcript_items i ON i.id=transcript_search.rowid
- JOIN lineage l ON l.id=i.branch_id JOIN turns t ON t.branch_id=i.branch_id AND t.ordinal=i.turn_ordinal
- WHERE transcript_search MATCH ? AND i.end_seq<=l.max_seq
- AND NOT EXISTS(SELECT 1 FROM transcript_items newer WHERE newer.branch_id=i.branch_id AND newer.turn_ordinal=i.turn_ordinal AND newer.item_key=i.item_key AND newer.end_seq>i.end_seq AND newer.end_seq<=l.max_seq)
- ORDER BY rank LIMIT ?`, branch, last, phrase, limit)
-	if err != nil {
-		return nil, err
-	}
-	out := []servicechat.SearchHit{}
-	for rows.Next() {
-		var h servicechat.SearchHit
-		var item int64
-		if err = rows.Scan(&item, &h.TurnID, &h.StartSeq, &h.EndSeq, &h.Text); err != nil {
-			rows.Close()
-			return nil, err
+func contentExpression(ref eventContentRef) (string, string, []any, error) {
+	switch ref.Kind {
+	case "tool_input":
+		return `e.payload_json -> '$.input'`, "tool_use_start", nil, nil
+	case "tool_output":
+		return `json_extract(e.payload_json,'$.output')`, "tool_use_end", nil, nil
+	case "collaboration_tool_input", "collaboration_tool_output":
+		index, err := strconv.Atoi(ref.Key)
+		if err != nil || index < 0 {
+			return "", "", nil, servicechat.ErrTranscriptContentNotFound
 		}
-		h.ItemID = strconv.FormatInt(item, 10)
-		if h.TurnID == "" {
-			h.TurnID = "legacy-" + strconv.FormatInt(h.StartSeq, 10)
+		field := `value -> '$.input'`
+		if ref.Kind == "collaboration_tool_output" {
+			field = `json_extract(value,'$.output')`
 		}
-		out = append(out, h)
+		return `(SELECT ` + field + ` FROM json_each(e.payload_json,'$.data.tools') WHERE key=?)`, "collaboration", []any{index}, nil
+	case "collaboration_agent_message":
+		return `(SELECT json_extract(value,'$.message') FROM json_each(e.payload_json,'$.data.agentsStates') WHERE key=?)`, "collaboration", []any{ref.Key}, nil
 	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	rows, err = s.db.QueryContext(ctx, lineageSQL+`SELECT i.id,i.turn_id,i.start_seq,i.end_seq,snippet(transcript_text_search,0,'','',' … ',32)
- FROM transcript_text_search JOIN transcript_text_runs i ON i.id=transcript_text_search.rowid
- JOIN lineage l ON l.id=i.branch_id
- WHERE transcript_text_search MATCH ? AND i.end_seq<=l.max_seq ORDER BY rank LIMIT ?`, branch, last, phrase, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var h servicechat.SearchHit
-		var item int64
-		if err = rows.Scan(&item, &h.TurnID, &h.StartSeq, &h.EndSeq, &h.Text); err != nil {
-			return nil, err
-		}
-		h.ItemID = "text-" + strconv.FormatInt(item, 10)
-		if h.TurnID == "" {
-			h.TurnID = "legacy-" + strconv.FormatInt(h.StartSeq, 10)
-		}
-		out = append(out, h)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].StartSeq > out[j].StartSeq })
-	// Overlap makes boundary-spanning matches possible; do not display the
-	// same occurrence twice when it lies entirely in that overlap.
-	unique := out[:0]
-	seen := map[string]bool{}
-	for _, hit := range out {
-		key := hit.TurnID + "\x00" + hit.Text
-		if !seen[key] {
-			seen[key] = true
-			unique = append(unique, hit)
-		}
-		if len(unique) == limit {
-			break
-		}
-	}
-	return unique, nil
+	return "", "", nil, fmt.Errorf("%w: unknown field", servicechat.ErrTranscriptContentNotFound)
 }

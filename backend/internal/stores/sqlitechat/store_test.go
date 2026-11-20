@@ -99,10 +99,10 @@ func TestCRUDDurabilityAndExclusiveOwnership(t *testing.T) {
 	}
 }
 
-func TestAppendAtomicOnProjectionFailure(t *testing.T) {
+func TestAppendAtomicOnMetadataFailure(t *testing.T) {
 	s := testStore(t)
 	makeChat(t, s, "abcd")
-	_, err := s.db.Exec(`CREATE TRIGGER reject_projection BEFORE INSERT ON transcript_items BEGIN SELECT RAISE(ABORT,'projection rejected'); END;`)
+	_, err := s.db.Exec(`CREATE TRIGGER reject_metadata BEFORE UPDATE ON branches BEGIN SELECT RAISE(ABORT,'metadata rejected'); END;`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,9 @@ func TestLargeContentBoundedUTF8AndSearchBeyondPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	_ = s.db.QueryRow("SELECT count(*) FROM content_blobs").Scan(&count)
+	if err = s.db.QueryRow("SELECT count(*) FROM events WHERE event_type='tool_use_end'").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
 	if count != 0 {
 		t.Fatal("unreferenced content retained")
 	}
@@ -318,7 +320,7 @@ func TestAuthoritativeCorruptionNeverRecreated(t *testing.T) {
 
 func TestIndexedPlans(t *testing.T) {
 	s := testStore(t)
-	for _, query := range []string{`SELECT payload_json FROM events WHERE branch_id='x' AND seq>12 AND seq<=20 ORDER BY seq`, `SELECT payload_json FROM transcript_items WHERE branch_id='x' AND start_seq<200 ORDER BY start_seq DESC,end_seq DESC`} {
+	for _, query := range []string{`SELECT payload_json FROM events WHERE branch_id='x' AND seq>12 AND seq<=20 ORDER BY seq`, `SELECT seq FROM events WHERE branch_id='x' AND visible=1 AND seq=item_start_seq AND item_start_seq<200 ORDER BY item_start_seq DESC,seq DESC`, `SELECT seq FROM events WHERE branch_id='x' AND seq=turn_start_seq AND seq<200 ORDER BY seq DESC LIMIT 3`} {
 		rows, err := s.db.Query("EXPLAIN QUERY PLAN " + query)
 		if err != nil {
 			t.Fatal(err)
@@ -387,23 +389,23 @@ func TestTextSearchAcrossChunkBoundaryAndUTF8(t *testing.T) {
 	}
 }
 
-func TestDeleteSessionAndInputBlob(t *testing.T) {
+func TestDeleteConversationRemovesSessionState(t *testing.T) {
 	s := testStore(t)
 	makeChat(t, s, "aaaa")
-	run, err := s.PrepareRun(testContext, chat.RunPreparation{ChatID: "aaaa", RunID: "test-run", TurnID: "turn", Provider: chat.ProviderClaude})
+	run, err := s.PrepareRun(testContext, chat.RunPreparation{ChatID: "aaaa", RunID: "test-run", Provider: chat.ProviderClaude})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.RecordRunInput(testContext, run.RunID, "input", "prompt_context"); err != nil {
+	if err = s.RecordRunInput(testContext, run.RunReference, "prompt_context"); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.AcceptRunInput(testContext, run.RunID, chat.InputAcceptance{NativeSessionID: "native", Evidence: "test"}); err != nil {
+	if err = s.AcceptRunInput(testContext, run.RunReference, chat.InputAcceptance{NativeSessionID: "native", Evidence: "test"}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Delete(testContext, "aaaa"); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"runs", "handoffs", "harness_sessions", "content_blobs"} {
+	for _, table := range []string{"chats", "branches", "events"} {
 		var count int
 		if err = s.db.QueryRow("SELECT count(*) FROM " + table).Scan(&count); err != nil {
 			t.Fatal(err)

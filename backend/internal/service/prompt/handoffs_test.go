@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -150,13 +151,20 @@ func TestHandoffClaudeCodexClaudeKeepsOnlyMissingHistory(t *testing.T) {
 	if users != 3 {
 		t.Fatalf("user count=%d", users)
 	}
-	var status string
-	var through int64
-	if err = f.store.DB().QueryRow(`SELECT state,history_through_seq FROM harness_sessions WHERE provider='claude' AND state='ready'`).Scan(&status, &through); err != nil {
+	var raw []byte
+	if err = f.store.DB().QueryRow(`SELECT sessions_json FROM chats WHERE id=?`, f.id).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
-	if through != events[len(events)-1].Seq {
-		t.Fatalf("bookmark=%d, tail=%d", through, events[len(events)-1].Seq)
+	var sessions map[string]struct {
+		State             string `json:"state"`
+		HistoryThroughSeq int64  `json:"historyThroughSeq"`
+	}
+	if err = json.Unmarshal(raw, &sessions); err != nil {
+		t.Fatal(err)
+	}
+	session := sessions[`["claude",""]`]
+	if session.State != "ready" || session.HistoryThroughSeq != events[len(events)-1].Seq {
+		t.Fatalf("session=%+v, tail=%d", session, events[len(events)-1].Seq)
 	}
 }
 

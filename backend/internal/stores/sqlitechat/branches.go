@@ -11,7 +11,10 @@ import (
 
 func inheritedTurnOrdinal(ctx context.Context, tx *sql.Tx, parent string, cutoff int64) (int64, error) {
 	var ordinal int64
-	err := tx.QueryRowContext(ctx, lineageSQL+`SELECT coalesce(max(t.ordinal),0) FROM lineage l JOIN turns t ON t.branch_id=l.id WHERE t.start_seq<=l.max_seq`, parent, cutoff).Scan(&ordinal)
+	err := tx.QueryRowContext(ctx, lineageSQL+`SELECT e.turn_ordinal FROM lineage l JOIN events e ON e.branch_id=l.id WHERE e.seq<=l.max_seq ORDER BY e.seq DESC LIMIT 1`, parent, cutoff).Scan(&ordinal)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
 	return ordinal, err
 }
 func (s *Store) ForkChat(ctx context.Context, source servicechat.ID, target servicechat.Meta, cutoff int64) (servicechat.Meta, error) {
@@ -47,9 +50,6 @@ func (s *Store) ForkChat(ctx context.Context, source servicechat.ID, target serv
 		return target, err
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE branches SET parent_branch_id=?,fork_seq=?,last_seq=?,last_turn_ordinal=? WHERE id=?", parent, cutoff, cutoff, ordinal, branch); err != nil {
-		return target, err
-	}
-	if err = materializeSearchPrefixTx(ctx, tx, branch, parent, cutoff); err != nil {
 		return target, err
 	}
 	return target, tx.Commit()
@@ -118,10 +118,7 @@ func (s *Store) RewindBranch(ctx context.Context, id servicechat.ID, before int6
 	if err = writeMetaTx(ctx, tx, meta, raw); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "UPDATE chats SET active_branch_id=? WHERE id=?", branch, id); err != nil {
-		return err
-	}
-	if err = materializeSearchPrefixTx(ctx, tx, branch, parent, cutoff); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE chats SET active_branch_id=?,sessions_json='{}' WHERE id=?", branch, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -151,16 +148,10 @@ func (s *Store) Delete(ctx context.Context, id servicechat.ID) error {
  SELECT b.id FROM branches b JOIN chats c ON c.id=b.chat_id
  UNION SELECT b.parent_branch_id FROM branches b JOIN retained r ON b.id=r.id WHERE b.parent_branch_id IS NOT NULL
  ) `
-	if _, err = tx.ExecContext(ctx, unreachable+`DELETE FROM transcript_search WHERE rowid IN (SELECT i.id FROM transcript_items i WHERE i.branch_id NOT IN (SELECT id FROM retained))`); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, unreachable+`DELETE FROM transcript_text_search WHERE rowid IN (SELECT i.id FROM transcript_text_runs i WHERE i.branch_id NOT IN (SELECT id FROM retained))`); err != nil {
+	if _, err = tx.ExecContext(ctx, unreachable+`DELETE FROM transcript_search WHERE branch_id NOT IN (SELECT id FROM retained)`); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, unreachable+`DELETE FROM branches WHERE id NOT IN (SELECT id FROM retained)`); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM content_blobs WHERE id NOT IN (SELECT blob_id FROM transcript_content_refs) AND id NOT IN (SELECT input_blob_id FROM runs WHERE input_blob_id IS NOT NULL)`); err != nil {
 		return err
 	}
 	return tx.Commit()

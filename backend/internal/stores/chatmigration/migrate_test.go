@@ -97,13 +97,13 @@ func TestMigrationResumesWithoutDuplicatesAndPreservesRawHistory(t *testing.T) {
 	if err := store.DB().QueryRow(`SELECT raw_json FROM events WHERE seq=1`).Scan(&raw); err != nil || !strings.Contains(raw, "preserved") {
 		t.Fatalf("raw=%s err=%v", raw, err)
 	}
-	if err := store.DB().QueryRow(`SELECT native_session_id,history_through_seq,state FROM harness_sessions`).Scan(&native, &through, &state); err != nil {
+	if err := store.DB().QueryRow(`SELECT json_extract(value,'$.nativeSessionId'),json_extract(value,'$.historyThroughSeq'),json_extract(value,'$.state') FROM chats,json_each(chats.sessions_json) WHERE chats.id='abcd'`).Scan(&native, &through, &state); err != nil {
 		t.Fatal(err)
 	}
 	if native != "claude-native" || through != 8 || state != "legacy_assumed" {
 		t.Fatalf("native=%s through=%d state=%s", native, through, state)
 	}
-	if err := store.DB().QueryRow(`SELECT count(*) FROM harness_sessions`).Scan(&count); err != nil || count != 1 {
+	if err := store.DB().QueryRow(`SELECT count(*) FROM chats,json_each(chats.sessions_json) WHERE chats.id='abcd'`).Scan(&count); err != nil || count != 1 {
 		t.Fatalf("session count=%d err=%v", count, err)
 	}
 	store.Close()

@@ -1,8 +1,6 @@
 package sqlitechat
 
 import (
-	"encoding/json"
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -20,7 +18,7 @@ type projectedTranscriptItem struct {
 }
 
 // transcriptPageBuffer owns the budget and selected items for one reverse read.
-// It decodes accepted payloads only, then assembles turns in display order.
+// It assembles already bounded event previews in display order.
 type transcriptPageBuffer struct {
 	turnLimit int
 	byteLimit int
@@ -39,20 +37,18 @@ func newTranscriptPageBuffer(turnLimit, byteLimit int) *transcriptPageBuffer {
 	}
 }
 
-func (buffer *transcriptPageBuffer) appendItem(item projectedTranscriptItem, payloadJSON []byte) (bool, error) {
+func (buffer *transcriptPageBuffer) appendItem(item projectedTranscriptItem) bool {
 	_, knownTurn := buffer.turns[item.turnOrdinal]
 	if (!knownTurn && len(buffer.turns) == buffer.turnLimit) ||
 		(len(buffer.items) > 0 && buffer.usedBytes+item.payloadBytes > buffer.byteLimit) {
 		buffer.hasMore = true
-		return false, nil
+		return false
 	}
-	if err := json.Unmarshal(payloadJSON, &item.payload); err != nil {
-		return false, fmt.Errorf("%w: decode projected item: %v", errInvalidProjection, err)
-	}
+
 	buffer.items = append(buffer.items, item)
 	buffer.turns[item.turnOrdinal] = struct{}{}
 	buffer.usedBytes += item.payloadBytes
-	return true, nil
+	return true
 }
 
 func (buffer *transcriptPageBuffer) page(lastSeq int64) servicechat.TranscriptPage {
@@ -73,7 +69,9 @@ func (buffer *transcriptPageBuffer) page(lastSeq int64) servicechat.TranscriptPa
 			lastTurnOrdinal = item.turnOrdinal
 			continue
 		}
-		projectedTurns[last].EndSeq = item.endSeq
+		if item.endSeq > projectedTurns[last].EndSeq {
+			projectedTurns[last].EndSeq = item.endSeq
+		}
 		projectedTurns[last].Events = append(projectedTurns[last].Events, item.payload...)
 	}
 	for index := range projectedTurns {
