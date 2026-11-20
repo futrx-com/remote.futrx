@@ -29,6 +29,7 @@ const searchLineageSQL = `WITH RECURSIVE lineage(id,max_seq) AS (
  FROM lineage l JOIN branches b ON b.id=l.id WHERE b.parent_branch_id IS NOT NULL
 ) `
 
+const searchBatchBytes = 4 * 1024 * 1024
 const searchChunkBytes = 8192
 const searchOverlapBytes = 2048 // Covers the service's maximum 512-rune query.
 type textPart struct {
@@ -207,6 +208,7 @@ func (s *Store) searchBatch(ctx context.Context, seg branchSegment) (bool, error
 		visible                 bool
 	}
 	batch := make([]searchEvent, 0, 128)
+	batchBytes, byteLimitReached := 0, false
 	for rows.Next() {
 		var e searchEvent
 		if err = rows.Scan(&e.seq, &e.typ, &e.ordinal, &e.turn, &e.visible, &e.text, &e.textBytes, &e.group); err != nil {
@@ -214,6 +216,11 @@ func (s *Store) searchBatch(ctx context.Context, seg branchSegment) (bool, error
 			return false, err
 		}
 		batch = append(batch, e)
+		batchBytes += len(e.typ) + len(e.turn) + len(e.text) + len(e.group)
+		if batchBytes >= searchBatchBytes {
+			byteLimitReached = true
+			break
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -261,7 +268,7 @@ func (s *Store) searchBatch(ctx context.Context, seg branchSegment) (bool, error
 		}
 		cursor = e.seq
 	}
-	done := len(batch) < 128 || cursor >= seg.through
+	done := (!byteLimitReached && len(batch) < 128) || cursor >= seg.through
 	if done {
 		if err = flushPending(ctx, tx, seg.id, &p, true); err != nil {
 			return false, err

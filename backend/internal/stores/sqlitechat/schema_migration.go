@@ -213,6 +213,8 @@ DROP INDEX events_by_time;
 	return err
 }
 
+const schemaBackfillBatchBytes = 4 * 1024 * 1024
+
 func migrateEventFields(ctx context.Context, tx *sql.Tx) error {
 	var overlaps int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM (
@@ -246,6 +248,7 @@ func migrateEventFields(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 		var page []record
+		pageBytes := 0
 		for rows.Next() {
 			var r record
 			if err = rows.Scan(&r.branch, &r.seq, &r.raw, &r.ordinal, &r.start, &r.turn); err != nil {
@@ -253,6 +256,12 @@ func migrateEventFields(ctx context.Context, tx *sql.Tx) error {
 				return fmt.Errorf("event has missing or invalid turn grouping: %w", err)
 			}
 			page = append(page, r)
+			pageBytes += len(r.raw)
+			// Always admit one complete event, including oversized legacy
+			// records, but do not retain the next rows once this page is full.
+			if pageBytes >= schemaBackfillBatchBytes {
+				break
+			}
 		}
 		err = rows.Err()
 		rows.Close()

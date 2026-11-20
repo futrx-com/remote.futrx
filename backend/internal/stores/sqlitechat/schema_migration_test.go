@@ -290,3 +290,85 @@ func TestUpgradeSchemaUncommittedConversionCanRetry(t *testing.T) {
 		t.Fatalf("retry failed: %+v %v", result, err)
 	}
 }
+
+func TestUpgradeSchemaPreservesToolGroupingAcrossByteBoundedPages(t *testing.T) {
+	root, _ := schemaV1Fixture(t)
+	ctx := context.Background()
+	db, err := openSchemaDatabase(filepath.Join(root, Filename), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The user and tool start together fill one byte-bounded page. The tool
+	// result must retain that start pointer when processed on the next page.
+	// A later oversized event must still make progress without being split.
+	for _, row := range []struct{ seq, size int }{
+		{1, schemaBackfillBatchBytes / 2},
+		{2, schemaBackfillBatchBytes / 2},
+		{4, schemaBackfillBatchBytes + 1024},
+	} {
+		if _, err = db.Exec(`UPDATE events SET payload_json=CAST(json_set(payload_json,'$.raw',json_object('large',?)) AS BLOB) WHERE branch_id='root' AND seq=?`, strings.Repeat("x", row.size), row.seq); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+	}
+	before, err := canonicalSchemaDigest(ctx, db)
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = UpgradeSchema(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	after, err := canonicalSchemaDigest(ctx, store.db)
+	if err != nil || before != after {
+		t.Fatalf("byte-bounded migration changed canonical content: %v", err)
+	}
+	var itemStart, turnStart, ordinal int64
+	if err = store.db.QueryRow(`SELECT item_start_seq,turn_start_seq,turn_ordinal FROM events WHERE branch_id='root' AND seq=3`).Scan(&itemStart, &turnStart, &ordinal); err != nil {
+		t.Fatal(err)
+	}
+	if itemStart != 2 || turnStart != 1 || ordinal != 1 {
+		t.Fatalf("tool lost grouping across page boundary: item=%d turn=%d ordinal=%d", itemStart, turnStart, ordinal)
+	}
+	var indexed int
+	if err = store.db.QueryRow(`SELECT count(*) FROM events WHERE turn_ordinal>0 AND item_start_seq>0`).Scan(&indexed); err != nil || indexed != 8 {
+		t.Fatalf("events after oversized record were skipped: count=%d error=%v", indexed, err)
+	}
+}
+
+func TestSearchByteBoundedBatchRetainsLaterEvents(t *testing.T) {
+	store := testStore(t)
+	makeChat(t, store, "abcd")
+	// Search text previews are bounded already; unusually large native message
+	// identifiers can still fill the metadata budget before the row-count limit.
+	messageID := strings.Repeat("m", searchBatchBytes/2)
+	appendEvents(t, store, "abcd",
+		chat.Event{Type: "assistant_text", TurnID: "one", MessageID: messageID, Text: "first "},
+		chat.Event{Type: "assistant_text", TurnID: "one", MessageID: messageID, Text: "second "},
+		chat.Event{Type: "assistant_text", TurnID: "one", Text: "afterlimit"},
+	)
+	branch, tail, err := activeBranch(testContext, store.db, "abcd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, err := store.searchBatch(testContext, branchSegment{id: branch, through: tail})
+	if err != nil || done {
+		t.Fatalf("byte-limited batch marked the tail indexed: done=%v error=%v", done, err)
+	}
+	var cursor int64
+	if err = store.db.QueryRow("SELECT search_seq FROM branches WHERE id=?", branch).Scan(&cursor); err != nil || cursor != 2 {
+		t.Fatalf("byte-limited cursor=%d; expected 2: %v", cursor, err)
+	}
+	hits, err := store.SearchTranscript(testContext, "abcd", "afterlimit", 10)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("events after byte-limited page were skipped: %+v %v", hits, err)
+	}
+}
