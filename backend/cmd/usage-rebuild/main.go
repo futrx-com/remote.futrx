@@ -37,12 +37,12 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "report what would be written without touching the ledger")
 	flag.Parse()
 
-	if err := run(context.Background(), *dataDir, *dryRun); err != nil {
+	if err := run(context.Background(), *dataDir, fileproject.WorkspaceRoot, *dryRun); err != nil {
 		log.Fatalf("usage-rebuild: %v", err)
 	}
 }
 
-func run(ctx context.Context, dataDir string, dryRun bool) error {
+func run(ctx context.Context, dataDir, workspaceRoot string, dryRun bool) error {
 	chats, err := sqlitechat.New(dataDir)
 	if err != nil {
 		return fmt.Errorf("open chat store (stop the backend before offline rebuild): %w", err)
@@ -51,7 +51,7 @@ func run(ctx context.Context, dataDir string, dryRun bool) error {
 	if err := chats.EnsureRuntimeReady(ctx, dataDir); err != nil {
 		return fmt.Errorf("conversation migration required before usage rebuild: %w", err)
 	}
-	projects, err := fileproject.New(dataDir)
+	projects, err := fileproject.NewWithWorkspaceRoot(dataDir, workspaceRoot)
 	if err != nil {
 		return fmt.Errorf("open project store: %w", err)
 	}

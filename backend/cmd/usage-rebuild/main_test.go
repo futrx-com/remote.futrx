@@ -16,6 +16,7 @@ import (
 func TestRebuildReadsSQLiteAndNeverRecreatesLegacyIndex(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
+	workspaceRoot := t.TempDir()
 	store, err := sqlitechat.New(root)
 	if err != nil {
 		t.Fatal(err)
@@ -38,7 +39,7 @@ func TestRebuildReadsSQLiteAndNeverRecreatesLegacyIndex(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(legacy, "meta.json"), []byte("invalid inactive backup"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(ctx, root, false); err != nil {
+	if err := run(ctx, root, workspaceRoot, false); err != nil {
 		t.Fatal(err)
 	}
 	ledger, err := fileusage.New(root)
@@ -56,7 +57,7 @@ func TestRebuildReadsSQLiteAndNeverRecreatesLegacyIndex(t *testing.T) {
 		t.Fatal("legacy index recreated")
 	}
 	// Close released the exclusive lease: consecutive offline rebuilds work.
-	if err := run(ctx, root, true); err != nil {
+	if err := run(ctx, root, workspaceRoot, true); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -64,18 +65,19 @@ func TestRebuildReadsSQLiteAndNeverRecreatesLegacyIndex(t *testing.T) {
 func TestRebuildRequiresStoppedBackendAndCompletedMigration(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
+	workspaceRoot := t.TempDir()
 	store, err := sqlitechat.New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := run(ctx, root, true); err == nil || !strings.Contains(err.Error(), "stop the backend") {
+	if err := run(ctx, root, workspaceRoot, true); err == nil || !strings.Contains(err.Error(), "stop the backend") {
 		t.Fatalf("live backend error=%v", err)
 	}
 	store.Close()
 	if err := os.MkdirAll(filepath.Join(root, "chats", "abcd"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	if err := run(ctx, root, false); err == nil || !strings.Contains(err.Error(), "migration required") {
+	if err := run(ctx, root, workspaceRoot, false); err == nil || !strings.Contains(err.Error(), "migration required") {
 		t.Fatalf("legacy migration error=%v", err)
 	}
 }
