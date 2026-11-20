@@ -625,7 +625,7 @@ func (s *Service) setupEnvironment(ctx context.Context, id ID) (map[string]strin
 }
 
 // setStartError keeps the persisted project status useful for the UI while
-// returning the operational failure to callers. StartForAgent only bypasses a
+// returning the operational failure to callers. StartForHarness only bypasses a
 // confirmed script failure after checking the container is running; failed
 // container preparation must still stop CLI provisioning.
 func (s *Service) setStartError(ctx context.Context, id ID, cause error) (Meta, error) {

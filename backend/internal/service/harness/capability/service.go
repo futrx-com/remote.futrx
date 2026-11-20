@@ -1,5 +1,5 @@
 // Package capability aggregates the provider-specific capability catalogs
-// exposed by the registered agent CLIs.
+// exposed by the registered harness CLIs.
 //
 // Capability discovery may start several comparatively expensive CLI probes (for
 // example, Codex app-server and provider model-list commands). Simultaneous

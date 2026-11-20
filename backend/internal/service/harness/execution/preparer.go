@@ -1,4 +1,4 @@
-// Package execution owns provider-neutral project preparation for agent runs.
+// Package execution owns provider-neutral project preparation for harness runs.
 // Provider adapters declare the small policy differences and retain their own
 // host commands, CLI arguments, stdin strategy, and output protocol.
 package execution
@@ -113,7 +113,7 @@ func (p *Preparer) prepareContainer(
 			return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 		}
 	}
-	if err := p.containers.Workspace.EnsureAgentInstructions(ctx, containerName); err != nil {
+	if err := p.containers.Workspace.EnsureHarnessInstructions(ctx, containerName); err != nil {
 		return fmt.Errorf("push agent instructions to container: %w", err)
 	}
 	if err := p.containers.RuntimeAssets.Ensure(ctx, containerName, p.options.Profile.RuntimeAssets); err != nil {

@@ -111,7 +111,7 @@ func (v *AccountVault) Open(ctx context.Context, config AccountConfig) (*Account
 	if config.Provider == "" || config.Label == "" || config.Credentials == nil || config.Login == nil {
 		return nil, errors.New("saved accounts need a provider, label, credentials, and login flow")
 	}
-	accounts, err := v.store.AgentAccounts(ctx, config.Provider)
+	accounts, err := v.store.HarnessAccounts(ctx, config.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -815,7 +815,7 @@ func (s *AccountService) hostWritableLocked() error {
 // commit saves next as the account set and, with apply, writes its active
 // account to the host.
 func (s *AccountService) commit(ctx context.Context, next AccountSet, apply bool) error {
-	if err := s.store.SaveAgentAccounts(ctx, s.config.Provider, next); err != nil {
+	if err := s.store.SaveHarnessAccounts(ctx, s.config.Provider, next); err != nil {
 		return err
 	}
 	s.mu.Lock()

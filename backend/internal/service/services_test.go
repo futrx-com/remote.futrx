@@ -71,7 +71,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 
 func TestNewRejectsPartialAgentContainerDependencies(t *testing.T) {
 	_, err := New(context.Background(), Dependencies{
-		AgentContainers: provisioning.ContainerDependencies{CLI: stubCLIProvisioner{}},
+		HarnessContainers: provisioning.ContainerDependencies{CLI: stubCLIProvisioner{}},
 	})
 	if err == nil {
 		t.Fatal("expected partial agent container dependencies to fail")
@@ -124,8 +124,8 @@ func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = New(context.Background(), Dependencies{
-		Auth:         auth,
-		AgentModules: catalog,
+		Auth:           auth,
+		HarnessModules: catalog,
 	})
 	if !errors.Is(err, harnessmodule.ErrNoAccessGate) {
 		t.Fatalf("New error = %v, want ErrNoAccessGate", err)

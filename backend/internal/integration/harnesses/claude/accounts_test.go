@@ -379,11 +379,11 @@ func TestNewAuthRestoresActiveAccountOverDifferentHostLogin(t *testing.T) {
 
 type memoryAccountStore struct{ accounts harnessauth.AccountSet }
 
-func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
+func (s *memoryAccountStore) HarnessAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
 	return s.accounts.Clone(), nil
 }
 
-func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
+func (s *memoryAccountStore) SaveHarnessAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
 	s.accounts = accounts.Clone()
 	return nil
 }

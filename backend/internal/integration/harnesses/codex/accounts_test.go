@@ -412,11 +412,11 @@ type memoryAccountStore struct {
 	accounts harnessauth.AccountSet
 }
 
-func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
+func (s *memoryAccountStore) HarnessAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
 	return s.saved(), nil
 }
 
-func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
+func (s *memoryAccountStore) SaveHarnessAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.accounts = accounts.Clone()

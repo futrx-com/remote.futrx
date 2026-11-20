@@ -1,5 +1,5 @@
 // Package module defines the provider-neutral contract implemented by every
-// agent integration. A module combines static behavior metadata with the
+// harness integration. A module combines static behavior metadata with the
 // factory that creates its runtime provider and optional auth binding.
 package module
 

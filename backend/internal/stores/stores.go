@@ -80,10 +80,10 @@ type Stores struct {
 	ApplicationTurns serviceapplications.AgentTurnRepository
 	Push             PushStore
 	Usage            serviceusage.Repository
-	AgentAPIKeys     harnessauth.APIKeyStore
+	HarnessAPIKeys   harnessauth.APIKeyStore
 	Email            emailoutbound.ConfigurationStore
-	AgentQuota       harnessquota.Repository
-	AgentAccounts    harnessauth.AccountStore
+	HarnessQuota     harnessquota.Repository
+	HarnessAccounts  harnessauth.AccountStore
 	ProjectShares    serviceshare.Repository
 	Permissions      servicepermission.Repository
 }
@@ -162,7 +162,7 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init permissions store: %w", err)
 	}
 
-	agentQuota, err := fileagentquota.New(dataDir)
+	harnessQuota, err := fileagentquota.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init agent quota store: %w", err)
 	}
@@ -190,10 +190,10 @@ func New(dataDir string) (Stores, error) {
 		ApplicationTurns: fileapplicationturns.New(dataDir),
 		Push:             push,
 		Usage:            usage,
-		AgentAPIKeys:     authStore,
+		HarnessAPIKeys:   authStore,
 		Email:            email,
-		AgentQuota:       agentQuota,
-		AgentAccounts:    authStore,
+		HarnessQuota:     harnessQuota,
+		HarnessAccounts:  authStore,
 		ProjectShares:    projectShares,
 		Permissions:      permissions,
 	}, nil

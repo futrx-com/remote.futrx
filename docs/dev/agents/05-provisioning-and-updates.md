@@ -104,7 +104,7 @@ systemd unit, and login-shell profile put the prefix's `bin` directory first
 on `PATH`. Before accepting a provider, convergence verifies both the managed
 executable's exact pin and that a normal command lookup resolves to that same
 path. For a checked CLI it runs the profile's version arguments with the application-wide
-`config.AgentOptions.HostCLIVersionTimeout`, currently 15 seconds, and requires
+`config.HarnessOptions.HostCLIVersionTimeout`, currently 15 seconds, and requires
 the **exact host pin**. Missing/stale npm and image-repair profiles install their exact npm
 package pin; script profiles run their pinned install program. The profile's
 `InstallTimeout` bounds the mutation. Post-install verification receives a
@@ -262,7 +262,7 @@ already exists.
 | Antigravity | Declares no credential transfer because the CLI has no stable documented token subpath. Its project-local login/state survives through the persistent directory. |
 
 Claude, Codex, and Kimi attempt a bounded pull after a **successful** project
-run. The shared `config.AgentOptions.CredentialSyncTimeout` currently defaults
+run. The shared `config.HarnessOptions.CredentialSyncTimeout` currently defaults
 to 30 seconds. `service.New` passes it through application-facing
 `module.BuildDependencies`; each module factory then projects the collector and
 timeout through provider-facing `module.Dependencies`. Providers that support

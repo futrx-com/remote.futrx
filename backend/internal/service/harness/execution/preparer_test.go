@@ -180,7 +180,7 @@ func (p preparationCredentials) SyncFromContainer(context.Context, string, provi
 
 type preparationWorkspace struct{ recorder *preparationRecorder }
 
-func (p preparationWorkspace) EnsureAgentInstructions(context.Context, string) error {
+func (p preparationWorkspace) EnsureHarnessInstructions(context.Context, string) error {
 	p.recorder.calls = append(p.recorder.calls, "instructions")
 	return nil
 }

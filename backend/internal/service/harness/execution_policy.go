@@ -11,7 +11,7 @@ import (
 func NormalizeApprovalPolicy(policy string) string {
 	policy, valid := normalizedApprovalPolicy(policy)
 	if !valid {
-		return configconstants.DefaultAgentApprovalPolicy
+		return configconstants.DefaultHarnessApprovalPolicy
 	}
 	return policy
 }
@@ -37,7 +37,7 @@ func normalizedApprovalPolicy(policy string) (string, bool) {
 func NormalizeSandboxPolicy(policy string) string {
 	policy, valid := normalizedSandboxPolicy(policy)
 	if !valid {
-		return configconstants.DefaultAgentSandboxPolicy
+		return configconstants.DefaultHarnessSandboxPolicy
 	}
 	return policy
 }

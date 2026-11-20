@@ -16,7 +16,7 @@ type Config struct {
 	DataDir      string
 	InstallDir   string
 	BaseURL      string
-	Agent        AgentOptions
+	Harness      HarnessOptions
 	Auth         AuthOptions
 	Applications ApplicationOptions
 	Audit        AuditLimits
@@ -37,8 +37,8 @@ type ApplicationOptions struct {
 	GoTool string
 }
 
-// AgentOptions are application-wide policies for the agent subsystem.
-type AgentOptions struct {
+// HarnessOptions are application-wide policies for the harness subsystem.
+type HarnessOptions struct {
 	// CapabilityTimeout bounds one provider's complete model/capability probe
 	// (AGENT_CAPABILITY_TIMEOUT, Go duration, default 30s, "0" disables).
 	CapabilityTimeout time.Duration
@@ -84,7 +84,7 @@ func Load() Config {
 		DataDir:    envDefault("DATA_DIR", "/opt/remote.futrx/data"),
 		InstallDir: envDefault("INSTALL_DIR", "/opt/remote.futrx"),
 		BaseURL:    envDefault("BASE_URL", ""),
-		Agent: AgentOptions{
+		Harness: HarnessOptions{
 			CapabilityTimeout:          envDuration("AGENT_CAPABILITY_TIMEOUT", 30*time.Second),
 			HostCLIVersionTimeout:      15 * time.Second,
 			CapabilityCacheTTL:         24 * time.Hour,

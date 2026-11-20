@@ -132,8 +132,8 @@ func defaultChatSettings() Chat {
 		Mode:            ChatModeDefault,
 		ReasoningEffort: ReasoningEffortAuto,
 		ServiceTier:     ServiceTierAuto,
-		ApprovalPolicy:  ApprovalPolicy(configconstants.DefaultAgentApprovalPolicy),
-		SandboxPolicy:   SandboxPolicy(configconstants.DefaultAgentSandboxPolicy),
+		ApprovalPolicy:  ApprovalPolicy(configconstants.DefaultHarnessApprovalPolicy),
+		SandboxPolicy:   SandboxPolicy(configconstants.DefaultHarnessSandboxPolicy),
 	}
 }
 

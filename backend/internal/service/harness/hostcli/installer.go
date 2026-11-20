@@ -1,4 +1,4 @@
-// Package hostcli converges the host-side agent CLIs declared by the module
+// Package hostcli converges the host-side harness CLIs declared by the module
 // catalog. Provider profiles own package names, scripts, binaries, and pins;
 // this package owns only the common installation policy.
 package hostcli

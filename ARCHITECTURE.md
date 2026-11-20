@@ -148,10 +148,10 @@ sequenceDiagram
     participant WS as /ws/chat/{id}
     participant Prompt as prompt.Service
     participant Runtime as module.Runtime
-    participant Provider as agent.Provider
+    participant Provider as harness.Provider
     participant Prep as execution.Preparer
     participant Cmd as integration/harnesses/runtime
-    participant Projects as agent.ProjectResolver
+    participant Projects as harness.ProjectResolver
     participant LXD as LXD container
     participant CLI as Agent CLI
 
@@ -190,7 +190,7 @@ adapters ([`integration/harnesses/claude`](backend/internal/integration/harnesse
 provider's available output into a shared event stream. Antigravity print mode
 provides plain streamed text rather than structured tool/usage events.
 
-Agent composition uses the validated provider-owned factory contract in
+Harness composition uses the validated provider-owned factory contract in
 [`service/harness/module`](backend/internal/service/harness/module). Each adapter
 package exposes one `NewFactory()` from its local `factory.go` and is
 compile-time checked against `module.FactoryBuilder`. The factory keeps public

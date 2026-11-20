@@ -9,7 +9,7 @@ import (
 
 var ErrInvalidBinding = errors.New("invalid agent auth binding")
 
-// Registry owns the auth callers configured by the agent module catalog.
+// Registry owns the auth callers configured by the harness module catalog.
 // Bindings retain catalog order so route registration and diagnostics are
 // deterministic.
 type Registry struct {

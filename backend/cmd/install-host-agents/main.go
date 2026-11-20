@@ -48,7 +48,7 @@ func run(ctx context.Context, cfg config.Config, plan bool, managedPrefix string
 
 	results, err := hostcli.New(
 		hostcliruntime.New(),
-		cfg.Agent.HostCLIVersionTimeout,
+		cfg.Harness.HostCLIVersionTimeout,
 		managedPrefix,
 	).EnsureAll(ctx, profiles)
 	if err != nil {

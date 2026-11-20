@@ -38,7 +38,7 @@ type agentBrowserActivityRecorder interface {
 }
 
 var ErrPromptAlreadyRunning = errors.New("a previous prompt is still running")
-var ErrUnsupportedAgentScope = errors.New("agent does not support this chat execution scope")
+var ErrUnsupportedHarnessScope = errors.New("agent does not support this chat execution scope")
 var ErrMaintenance = errors.New("an infrastructure update is recycling workspaces; prompts will be available when it finishes")
 
 type Actor struct {
@@ -137,18 +137,18 @@ func WithQuotaRecorder(recorder QuotaRecorder) Option {
 	}
 }
 
-type AgentPolicy interface {
+type HarnessPolicy interface {
 	Descriptor(provider string) (harnessmodule.Descriptor, bool)
 	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 }
 
-type AgentRegistry interface {
+type HarnessRegistry interface {
 	Lookup(harness.ProviderID) harness.Provider
 }
 
-func WithAgentPolicy(policy AgentPolicy) Option {
+func WithHarnessPolicy(policy HarnessPolicy) Option {
 	return func(service *Service) {
-		service.agentPolicy = policy
+		service.harnessPolicy = policy
 	}
 }
 
@@ -158,8 +158,8 @@ type Service struct {
 	tmux             TmuxClient
 	projects         ProjectResolver
 	hub              *runhub.Hub
-	agents           AgentRegistry
-	agentPolicy      AgentPolicy
+	harnesses        HarnessRegistry
+	harnessPolicy    HarnessPolicy
 	applicationTools ApplicationToolIssuer
 	usage            UsageRecorder
 	quota            QuotaRecorder
@@ -174,7 +174,7 @@ func New(
 	tmux TmuxClient,
 	projects ProjectResolver,
 	hub *runhub.Hub,
-	agents AgentRegistry,
+	harnesses HarnessRegistry,
 	options ...Option,
 ) *Service {
 	if hub == nil {
@@ -185,7 +185,7 @@ func New(
 		tmux:         tmux,
 		projects:     projects,
 		hub:          hub,
-		agents:       agents,
+		harnesses:    harnesses,
 		interactions: newInteractionResponseRouter(),
 		audit:        audit.Nop{},
 	}
@@ -378,15 +378,15 @@ func (rnr *Service) runPromptAs(
 
 	providerID := providerIDFromChatProvider(meta.Provider)
 	descriptor := harnessmodule.Descriptor{}
-	if rnr.agentPolicy != nil {
-		descriptor, _ = rnr.agentPolicy.Descriptor(string(providerID))
+	if rnr.harnessPolicy != nil {
+		descriptor, _ = rnr.harnessPolicy.Descriptor(string(providerID))
 		scope := harnessmodule.ScopeHost
 		if meta.ProjectID != "" {
 			scope = harnessmodule.ScopeProject
 		}
-		if !rnr.agentPolicy.SupportsScope(string(providerID), scope) {
-			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedAgentScope.Error()})
-			return ErrUnsupportedAgentScope
+		if !rnr.harnessPolicy.SupportsScope(string(providerID), scope) {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedHarnessScope.Error()})
+			return ErrUnsupportedHarnessScope
 		}
 	}
 	promptSkills := append([]servicechat.SkillRef(nil), meta.SelectedSkills...)
@@ -419,11 +419,11 @@ func (rnr *Service) runPromptAs(
 		}
 	}
 	resumeID := sessionIDForProvider(meta, providerID)
-	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume {
+	if rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Resume {
 		resumeID = ""
 	}
 	forkSession := meta.ForkPending
-	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Fork {
+	if rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Fork {
 		forkSession = false
 	}
 	effectivePrompt := prompt
@@ -444,7 +444,7 @@ func (rnr *Service) runPromptAs(
 		effectivePrompt,
 	)
 
-	provider := rnr.agents.Lookup(providerID)
+	provider := rnr.harnesses.Lookup(providerID)
 	if provider == nil {
 		err := errors.New(string(providerID) + " provider not configured")
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})

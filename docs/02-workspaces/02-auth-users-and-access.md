@@ -208,9 +208,9 @@ sequenceDiagram
 
 - Frontend gate: [`frontend/src/app/containers/AuthGate.tsx`](../../frontend/src/app/containers/AuthGate.tsx)
 - Frontend agent-auth registry: [`frontend/src/state/hooks/auth/useAgentAuthRegistry.ts`](../../frontend/src/state/hooks/auth/useAgentAuthRegistry.ts)
-- Agent module contract and runtime: [`backend/internal/service/harness/module/`](../../backend/internal/service/harness/module/)
-- Agent authentication bindings and lifecycle: [`backend/internal/service/harness/auth/`](../../backend/internal/service/harness/auth/)
-- Agent composition root: [`backend/internal/config/harnesses.go`](../../backend/internal/config/harnesses.go)
+- Harness module contract and runtime: [`backend/internal/service/harness/module/`](../../backend/internal/service/harness/module/)
+- Harness authentication bindings and lifecycle: [`backend/internal/service/harness/auth/`](../../backend/internal/service/harness/auth/)
+- Harness composition root: [`backend/internal/config/harnesses.go`](../../backend/internal/config/harnesses.go)
 - Agent-auth handler: [`backend/internal/transport/http/handlers/agent_auth_handler.go`](../../backend/internal/transport/http/handlers/agent_auth_handler.go)
 - Auth middleware: [`backend/internal/transport/http/middleware/auth.go`](../../backend/internal/transport/http/middleware/auth.go)
 - Auth service: [`backend/internal/service/auth/service.go`](../../backend/internal/service/auth/service.go)

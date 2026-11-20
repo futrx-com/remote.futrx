@@ -31,9 +31,9 @@ type CredentialSynchronizer interface {
 	CredentialCollector
 }
 
-// WorkspaceProvisioner publishes shared agent instructions and workspace links.
+// WorkspaceProvisioner publishes shared harness instructions and workspace links.
 type WorkspaceProvisioner interface {
-	EnsureAgentInstructions(context.Context, string) error
+	EnsureHarnessInstructions(context.Context, string) error
 	EnsureSkillLinks(context.Context, string) error
 }
 
@@ -51,12 +51,12 @@ type BrowserProvisioner interface {
 	EnsureCore(context.Context, string) error
 }
 
-// ContainerLifecycle owns lifecycle settings needed by agent runs.
+// ContainerLifecycle owns lifecycle settings needed by harness runs.
 type ContainerLifecycle interface {
 	EnsureBootAutostart(context.Context, string) error
 }
 
-// ContainerDependencies groups the focused ports used by shared agent project
+// ContainerDependencies groups the focused ports used by shared harness project
 // preparation. A zero value lets focused/test composition reconcile a project
 // while skipping the container-provisioning phase.
 type ContainerDependencies struct {

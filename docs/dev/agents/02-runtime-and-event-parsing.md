@@ -14,7 +14,7 @@ sequenceDiagram
     participant Hub as runhub.Hub
     participant Prompt as prompt.Service
     participant Runtime as module.Runtime
-    participant Provider as agent.Provider
+    participant Provider as harness.Provider
     participant Prep as execution.Preparer
     participant Cmd as integration/harnesses/runtime
     participant CLI as Provider CLI
@@ -35,7 +35,7 @@ sequenceDiagram
     end
     Provider->>CLI: execute host process or lxc exec
     CLI-->>Provider: provider-native output
-    Provider-->>Prompt: normalized agent.Event values
+    Provider-->>Prompt: normalized harness.Event values
     Prompt->>Store: update session metadata and persist ChatEvent
     Prompt-->>Browser: broadcast sequenced ChatEvent
     Prompt->>Hub: FinishRun(chatID, runID)
@@ -148,7 +148,7 @@ protocol.
 
 After a successful run, Claude, Codex, and Kimi make a best-effort credential
 sync from the container. Its application-wide timeout currently defaults to
-30 seconds through `config.AgentOptions`; Antigravity has no credential sync
+30 seconds through `config.HarnessOptions`; Antigravity has no credential sync
 contract.
 
 Factories express only real policy differences:
@@ -410,7 +410,7 @@ In the concrete provider package, pin the behavior the adapter owns:
 - text/reasoning deltas, tool start/end correlation, completion with usage, and
   failure parsing;
 - malformed/unknown native records and cancellation;
-- compile-time `var _ agent.Provider = (*Provider)(nil)` in `factory.go`.
+- compile-time `var _ harness.Provider = (*Provider)(nil)` in `factory.go`.
 
 Keep shared workflow tests in their owning packages: project reconciliation,
 provisioning order, error text, and best-effort branches belong under

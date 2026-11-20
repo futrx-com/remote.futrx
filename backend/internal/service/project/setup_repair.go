@@ -8,10 +8,10 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 )
 
-// StartForAgent keeps a failed project script from blocking the agent needed
+// StartForHarness keeps a failed project script from blocking the agent needed
 // to repair it. Infrastructure errors still stop preparation, and bypass is
 // permitted only after checking that the container is actually running.
-func (s *Service) StartForAgent(ctx context.Context, id ID) (Meta, error) {
+func (s *Service) StartForHarness(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
 	}
