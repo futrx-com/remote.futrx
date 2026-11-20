@@ -73,7 +73,7 @@ type repairAgent struct {
 	resume            <-chan struct{}
 }
 
-func (*repairAgent) ID() harness.ProviderID                     { return harness.ProviderCodex }
+func (*repairAgent) ID() harness.ProviderID                       { return harness.ProviderCodex }
 func (*repairAgent) Parser(harness.RunRequest) harness.LineParser { return nil }
 func (*repairAgent) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
 	return harness.Capabilities{}, nil

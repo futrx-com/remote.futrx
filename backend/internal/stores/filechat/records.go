@@ -164,36 +164,36 @@ func skillRefRecordsToDomain(records []skillRefRecord) []servicechat.SkillRef {
 const maxEventRecordBytes = 16 * 1024 * 1024
 
 type eventRecord struct {
-	Seq                  int64                 `json:"seq,omitempty"`
-	T                    int64                 `json:"t"`
-	Type                 string                `json:"type"`
-	TurnID               string                `json:"turnId,omitempty"`
-	UserEmail            string                `json:"userEmail,omitempty"`
-	Text                 string                `json:"text,omitempty"`
-	MessageID            string                `json:"messageId,omitempty"`
-	ID                   string                `json:"id,omitempty"`
-	Name                 string                `json:"name,omitempty"`
-	Input                json.RawMessage       `json:"input,omitempty"`
-	Output               string                `json:"output,omitempty"`
-	IsError              bool                  `json:"isError,omitempty"`
-	ToolName             string                `json:"toolName,omitempty"`
-	Subtype              string                `json:"subtype,omitempty"`
-	Data                 json.RawMessage       `json:"data,omitempty"`
-	SessionID            string                `json:"sessionId,omitempty"`
-	ClaudeSessionID      string                `json:"claudeSessionId,omitempty"`
-	CodexSessionID       string                `json:"codexSessionId,omitempty"`
-	KimiSessionID        string                `json:"kimiSessionId,omitempty"`
-	AntigravitySessionID string                `json:"antigravitySessionId,omitempty"`
-	Provider             string                `json:"provider,omitempty"`
-	Usage                json.RawMessage       `json:"usage,omitempty"`
-	Message              string                `json:"message,omitempty"`
-	Running              bool                  `json:"running,omitempty"`
-	ApplicationID        string                `json:"applicationId,omitempty"`
-	ApplicationRequestID string                `json:"applicationRequestId,omitempty"`
-	ScheduledTaskID      string                `json:"scheduledTaskId,omitempty"`
+	Seq                  int64                   `json:"seq,omitempty"`
+	T                    int64                   `json:"t"`
+	Type                 string                  `json:"type"`
+	TurnID               string                  `json:"turnId,omitempty"`
+	UserEmail            string                  `json:"userEmail,omitempty"`
+	Text                 string                  `json:"text,omitempty"`
+	MessageID            string                  `json:"messageId,omitempty"`
+	ID                   string                  `json:"id,omitempty"`
+	Name                 string                  `json:"name,omitempty"`
+	Input                json.RawMessage         `json:"input,omitempty"`
+	Output               string                  `json:"output,omitempty"`
+	IsError              bool                    `json:"isError,omitempty"`
+	ToolName             string                  `json:"toolName,omitempty"`
+	Subtype              string                  `json:"subtype,omitempty"`
+	Data                 json.RawMessage         `json:"data,omitempty"`
+	SessionID            string                  `json:"sessionId,omitempty"`
+	ClaudeSessionID      string                  `json:"claudeSessionId,omitempty"`
+	CodexSessionID       string                  `json:"codexSessionId,omitempty"`
+	KimiSessionID        string                  `json:"kimiSessionId,omitempty"`
+	AntigravitySessionID string                  `json:"antigravitySessionId,omitempty"`
+	Provider             string                  `json:"provider,omitempty"`
+	Usage                json.RawMessage         `json:"usage,omitempty"`
+	Message              string                  `json:"message,omitempty"`
+	Running              bool                    `json:"running,omitempty"`
+	ApplicationID        string                  `json:"applicationId,omitempty"`
+	ApplicationRequestID string                  `json:"applicationRequestId,omitempty"`
+	ScheduledTaskID      string                  `json:"scheduledTaskId,omitempty"`
 	Native               *harness.NativeEnvelope `json:"native,omitempty"`
-	InteractionID        string                `json:"interactionId,omitempty"`
-	Status               string                `json:"status,omitempty"`
+	InteractionID        string                  `json:"interactionId,omitempty"`
+	Status               string                  `json:"status,omitempty"`
 }
 
 func eventRecordFromDomain(ev servicechat.Event) eventRecord {

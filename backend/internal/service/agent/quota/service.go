@@ -26,8 +26,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
+	"github.com/futrx-com/remote.futrx.com/internal/harness"
 )
 
 // Repository persists readings across restarts.

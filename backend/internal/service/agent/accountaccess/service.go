@@ -145,9 +145,9 @@ func (s *Service) CanViewAccount(ctx context.Context, provider harness.ProviderI
 
 type Target struct {
 	Provider  harness.ProviderID `json:"provider"`
-	AccountID string           `json:"accountId"`
-	Label     string           `json:"label"`
-	Scope     rbac.Scope       `json:"scope"`
+	AccountID string             `json:"accountId"`
+	Label     string             `json:"label"`
+	Scope     rbac.Scope         `json:"scope"`
 }
 
 // Targets exposes the assignable account scopes to policy managers. The

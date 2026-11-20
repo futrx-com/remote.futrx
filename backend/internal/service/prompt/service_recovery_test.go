@@ -18,7 +18,7 @@ type recoveryProvider struct {
 	failFirst bool
 }
 
-func (p *recoveryProvider) ID() harness.ProviderID                     { return harness.ProviderCodex }
+func (p *recoveryProvider) ID() harness.ProviderID                       { return harness.ProviderCodex }
 func (p *recoveryProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
 func (p *recoveryProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
 	return harness.Capabilities{Provider: harness.ProviderCodex}, nil

@@ -20,7 +20,7 @@ type usageProvider struct {
 	fail  bool
 }
 
-func (p *usageProvider) ID() harness.ProviderID                     { return harness.ProviderClaude }
+func (p *usageProvider) ID() harness.ProviderID                       { return harness.ProviderClaude }
 func (p *usageProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
 
 // Capabilities satisfies the interface qa added to harness.Provider. This double
