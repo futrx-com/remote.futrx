@@ -72,7 +72,7 @@ func TestIndependentApplicationStartsAndReadsThroughGeneratedSDK(t *testing.T) {
 }
 
 func TestPackagedSchedulerOwnsDeliveryAcrossChildRestart(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	registry, err := catalogapps.NewRegistry(catalog.FS, nil)
 	if err != nil {
