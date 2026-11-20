@@ -11,7 +11,7 @@ import (
 
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	hostcliruntime "github.com/futrx-com/remote.futrx.com/internal/integration/hostcli"
-	"github.com/futrx-com/remote.futrx.com/internal/service/agent/hostcli"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/hostcli"
 )
 
 const defaultManagedPrefix = "/opt/remote.futrx/data/host-clis"

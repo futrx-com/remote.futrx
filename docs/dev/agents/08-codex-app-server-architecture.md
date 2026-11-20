@@ -99,7 +99,7 @@ sequenceDiagram
 ```
 
 The prompt service builds a provider-neutral
-[`harness.RunRequest`](../../../backend/internal/harness/model.go). In addition to
+[`harness.RunRequest`](../../../backend/internal/service/harness/model.go). In addition to
 the prompt, model, mode, session, project, and feature flags, it carries the
 selected reasoning effort, service tier, approval policy, sandbox policy, and
 a receive-only channel for interaction responses.
@@ -130,7 +130,7 @@ Several IDs coexist and are intentionally not interchangeable:
 | Native item ID | Correlates messages, tools, and collaboration updates | Typed event ID and `NativeEnvelope.ItemID` |
 | JSON-RPC request ID | Correlates one server request with exactly one client response | Pending-request map and `InteractionID` |
 
-[`harness.NativeEnvelope`](../../../backend/internal/harness/model.go) is the
+[`harness.NativeEnvelope`](../../../backend/internal/service/harness/model.go) is the
 lossless correlation record. It carries a schema version, method, native IDs,
 and the original notification params. The request ID is stored as compact JSON
 so numeric `7` and string `"7"` remain different keys.

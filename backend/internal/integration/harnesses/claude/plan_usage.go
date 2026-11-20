@@ -17,8 +17,8 @@ import (
 	"time"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // claudeUsageRequestID names the one control request a usage read sends.

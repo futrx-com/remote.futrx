@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
 )
@@ -58,7 +58,7 @@ func TestPermissionCatalogRegistersEveryProjectPermission(t *testing.T) {
 	for _, key := range []rbac.Key{
 		serviceproject.PermissionLifecycleManage, serviceproject.PermissionAccessManage,
 		rbac.PermissionAssignmentsManage, rbac.PermissionRolesManage,
-		agentauth.PermissionAccountUse, agentauth.PermissionAccountsManage,
+		harnessauth.PermissionAccountUse, harnessauth.PermissionAccountsManage,
 	} {
 		if _, ok := registry.Lookup(key); !ok {
 			t.Errorf("%s is not registered by the composition root", key)

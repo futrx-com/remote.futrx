@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestParseClaudeAuthStatusReadsSubscriptionMetadata(t *testing.T) {
@@ -94,22 +94,22 @@ func TestAccountIdentityReadsOAuthAccount(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		credential string
-		want       agentauth.AccountIdentity
+		want       harnessauth.AccountIdentity
 	}{
 		{
 			// The email can change, so the UUID alone names the account.
 			name:       "account and email",
 			credential: `{"credentials":{},"oauthAccount":{"accountUuid":"uuid-1","emailAddress":"person@example.test"}}`,
-			want:       agentauth.AccountIdentity{"account": "uuid-1"},
+			want:       harnessauth.AccountIdentity{"account": "uuid-1"},
 		},
 		{
 			name:       "email only",
 			credential: `{"oauthAccount":{"emailAddress":" Person@Example.TEST "}}`,
-			want:       agentauth.AccountIdentity{"email": "person@example.test"},
+			want:       harnessauth.AccountIdentity{"email": "person@example.test"},
 		},
-		{name: "no profile", credential: `{"credentials":{"claudeAiOauth":{}}}`, want: agentauth.AccountIdentity{}},
-		{name: "malformed profile", credential: `{"oauthAccount":"person"}`, want: agentauth.AccountIdentity{}},
-		{name: "not JSON", credential: `not json`, want: agentauth.AccountIdentity{}},
+		{name: "no profile", credential: `{"credentials":{"claudeAiOauth":{}}}`, want: harnessauth.AccountIdentity{}},
+		{name: "malformed profile", credential: `{"oauthAccount":"person"}`, want: harnessauth.AccountIdentity{}},
+		{name: "not JSON", credential: `not json`, want: harnessauth.AccountIdentity{}},
 	} {
 		if got := accountIdentity([]byte(test.credential)); !maps.Equal(got, test.want) {
 			t.Errorf("%s: accountIdentity = %#v, want %#v", test.name, got, test.want)
@@ -227,15 +227,15 @@ func TestActivateAccountValidatesBeforeReplacingCurrentCredential(t *testing.T) 
 		`{"claudeAiOauth":{"refreshToken":"old"},"mcpOAuth":{"server":"kept"}}`,
 		`{"oauthAccount":{"accountUuid":"uuid-old"},"projects":{"/workspace":{}}}`,
 	)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "old",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "old", Label: "Old", Credential: oldCredential},
 			{ID: "new", Label: "New", Credential: newCredential},
 		},
 	}}
 	auth := newTestAuth(t, store)
-	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 		validated, err := acceptCredential(ctx, credential)
 		validated.PlanType = "max"
 		return validated, err
@@ -268,9 +268,9 @@ func TestActivateAccountFailureAndRunLeasePreserveCurrentCredential(t *testing.T
 	host := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", host)
 	writeHostFiles(t, host, `{"claudeAiOauth":{"refreshToken":"old"}}`, `{"oauthAccount":{"accountUuid":"uuid-old"}}`)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "old",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "old", Label: "Old", Credential: testClaudeCredential("old", "uuid-old", "")},
 			{ID: "new", Label: "New", Credential: testClaudeCredential("new", "uuid-new", "")},
 		},
@@ -280,12 +280,12 @@ func TestActivateAccountFailureAndRunLeasePreserveCurrentCredential(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := auth.accounts.ActivateAccount(context.Background(), "new"); !errors.Is(err, agentauth.ErrAccountInUse) {
+	if err := auth.accounts.ActivateAccount(context.Background(), "new"); !errors.Is(err, harnessauth.ErrAccountInUse) {
 		t.Fatalf("activate during run error = %v", err)
 	}
 	release()
-	auth.credentials.validate = func(context.Context, json.RawMessage) (agentauth.ValidatedAccount, error) {
-		return agentauth.ValidatedAccount{}, errors.New("expired credential")
+	auth.credentials.validate = func(context.Context, json.RawMessage) (harnessauth.ValidatedAccount, error) {
+		return harnessauth.ValidatedAccount{}, errors.New("expired credential")
 	}
 	if err := auth.accounts.ActivateAccount(context.Background(), "new"); err == nil || err.Error() != "expired credential" {
 		t.Fatalf("invalid activation error = %v", err)
@@ -305,9 +305,9 @@ func TestActivateAccountKeepsOutgoingAccountsRefreshedLogin(t *testing.T) {
 		`{"claudeAiOauth":{"refreshToken":"refreshed-one"}}`,
 		`{"oauthAccount":{"accountUuid":"uuid-1","emailAddress":"one@example.test"}}`,
 	)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "one", Label: "One", Credential: testClaudeCredential("saved-one", "uuid-1", "one@example.test")},
 			{ID: "two", Label: "Two", Credential: testClaudeCredential("saved-two", "uuid-2", "two@example.test")},
 		},
@@ -341,9 +341,9 @@ func TestNewAuthKeepsNewerHostTokensForTheSameActiveAccount(t *testing.T) {
 	host := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", host)
 	writeHostFiles(t, host, `{"claudeAiOauth":{"refreshToken":"refreshed"}}`, `{"oauthAccount":{"accountUuid":"uuid-1"}}`)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts:        []agentauth.AccountRecord{{ID: "one", Label: "One", Credential: testClaudeCredential("stale", "uuid-1", "")}},
+		Accounts:        []harnessauth.AccountRecord{{ID: "one", Label: "One", Credential: testClaudeCredential("stale", "uuid-1", "")}},
 	}}
 	auth := newTestAuth(t, store)
 	if got := readFile(t, filepath.Join(host, ".credentials.json")); !strings.Contains(got, "refreshed") {
@@ -365,11 +365,11 @@ func TestNewAuthRestoresActiveAccountOverDifferentHostLogin(t *testing.T) {
 	host := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", host)
 	writeHostFiles(t, host, `{"claudeAiOauth":{"refreshToken":"other"}}`, `{"oauthAccount":{"accountUuid":"uuid-other"}}`)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts:        []agentauth.AccountRecord{{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-1", "")}},
+		Accounts:        []harnessauth.AccountRecord{{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-1", "")}},
 	}}
-	if _, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{})); err != nil {
+	if _, err := NewAuth(harnessauth.NewAccountVault(store, allowAccountUse{})); err != nil {
 		t.Fatal(err)
 	}
 	if got := readFile(t, filepath.Join(host, ".credentials.json")); !strings.Contains(got, "saved") {
@@ -377,22 +377,22 @@ func TestNewAuthRestoresActiveAccountOverDifferentHostLogin(t *testing.T) {
 	}
 }
 
-type memoryAccountStore struct{ accounts agentauth.AccountSet }
+type memoryAccountStore struct{ accounts harnessauth.AccountSet }
 
-func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (agentauth.AccountSet, error) {
+func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
 	return s.accounts.Clone(), nil
 }
 
-func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts agentauth.AccountSet) error {
+func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
 	s.accounts = accounts.Clone()
 	return nil
 }
 
 // newTestAuth opens saved accounts over store with validation that accepts
 // every credential.
-func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
+func newTestAuth(t *testing.T, store harnessauth.AccountStore) *Auth {
 	t.Helper()
-	auth, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{}))
+	auth, err := NewAuth(harnessauth.NewAccountVault(store, allowAccountUse{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,12 +400,12 @@ func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
 	return auth
 }
 
-func acceptCredential(_ context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+func acceptCredential(_ context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 	var stored accountCredential
 	if err := json.Unmarshal(credential, &stored); err != nil {
-		return agentauth.ValidatedAccount{}, err
+		return harnessauth.ValidatedAccount{}, err
 	}
-	return agentauth.ValidatedAccount{
+	return harnessauth.ValidatedAccount{
 		Email: oauthAccountEmail(stored.OAuthAccount), PlanType: "pro",
 		Credential: append(json.RawMessage(nil), credential...),
 	}, nil
@@ -415,12 +415,12 @@ func acceptCredential(_ context.Context, credential json.RawMessage) (agentauth.
 // fail returns true for the path.
 func failCredentialWrites(t *testing.T, fail func(path string) bool) {
 	t.Helper()
-	t.Cleanup(func() { writeCredentialFile = agentauth.WriteCredentialFile })
+	t.Cleanup(func() { writeCredentialFile = harnessauth.WriteCredentialFile })
 	writeCredentialFile = func(path string, data []byte) error {
 		if fail(path) {
 			return fmt.Errorf("write %s: disk full", filepath.Base(path))
 		}
-		return agentauth.WriteCredentialFile(path, data)
+		return harnessauth.WriteCredentialFile(path, data)
 	}
 }
 

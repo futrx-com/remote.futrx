@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // containerAgentHome is HOME inside a project container: agy keeps its state

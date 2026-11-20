@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Parser converts Claude Code headless stream-json lines into normalized agent

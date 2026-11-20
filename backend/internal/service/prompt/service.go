@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
@@ -138,8 +138,8 @@ func WithQuotaRecorder(recorder QuotaRecorder) Option {
 }
 
 type AgentPolicy interface {
-	Descriptor(provider string) (agentmodule.Descriptor, bool)
-	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	Descriptor(provider string) (harnessmodule.Descriptor, bool)
+	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 }
 
 type AgentRegistry interface {
@@ -377,12 +377,12 @@ func (rnr *Service) runPromptAs(
 	emit(ChatEvent{T: time.Now().UnixMilli(), Type: "user", Text: prompt})
 
 	providerID := providerIDFromChatProvider(meta.Provider)
-	descriptor := agentmodule.Descriptor{}
+	descriptor := harnessmodule.Descriptor{}
 	if rnr.agentPolicy != nil {
 		descriptor, _ = rnr.agentPolicy.Descriptor(string(providerID))
-		scope := agentmodule.ScopeHost
+		scope := harnessmodule.ScopeHost
 		if meta.ProjectID != "" {
-			scope = agentmodule.ScopeProject
+			scope = harnessmodule.ScopeProject
 		}
 		if !rnr.agentPolicy.SupportsScope(string(providerID), scope) {
 			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedAgentScope.Error()})
@@ -624,14 +624,14 @@ func hasBrowserSkill(skills []servicechat.SkillRef) bool {
 }
 
 func promptWithSelectedSkills(
-	strategy agentmodule.SkillStrategy,
+	strategy harnessmodule.SkillStrategy,
 	providerLabel string,
 	provider harness.ProviderID,
 	skills []servicechat.SkillRef,
 	projectScoped bool,
 	prompt string,
 ) string {
-	if len(skills) == 0 || strategy == agentmodule.SkillsNone {
+	if len(skills) == 0 || strategy == harnessmodule.SkillsNone {
 		return prompt
 	}
 
@@ -649,11 +649,11 @@ func promptWithSelectedSkills(
 		}
 
 		switch strategy {
-		case agentmodule.SkillsSlashCommand:
+		case harnessmodule.SkillsSlashCommand:
 			triggers = append(triggers, "/"+name)
-		case agentmodule.SkillsDollarMention:
+		case harnessmodule.SkillsDollarMention:
 			triggers = append(triggers, "$"+name)
-		case agentmodule.SkillsInstructions:
+		case harnessmodule.SkillsInstructions:
 			if name == "." || name == ".." || path.Base(name) != name {
 				continue
 			}
@@ -669,14 +669,14 @@ func promptWithSelectedSkills(
 	}
 
 	switch strategy {
-	case agentmodule.SkillsSlashCommand:
+	case harnessmodule.SkillsSlashCommand:
 		return strings.Join(triggers, "\n") + "\n\n" + prompt
-	case agentmodule.SkillsDollarMention:
+	case harnessmodule.SkillsDollarMention:
 		if strings.TrimSpace(providerLabel) == "" {
 			providerLabel = string(provider)
 		}
 		return "Use these " + providerLabel + " skills for this request: " + strings.Join(triggers, " ") + "\n\n" + prompt
-	case agentmodule.SkillsInstructions:
+	case harnessmodule.SkillsInstructions:
 		return "Read and follow the selected skill instructions at " +
 			strings.Join(triggers, ", ") + ".\n\n" + prompt
 	default:

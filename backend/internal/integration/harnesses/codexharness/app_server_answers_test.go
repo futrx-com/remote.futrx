@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func respondToRequest(t *testing.T, method, params, result string) harness.Event {

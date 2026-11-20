@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // printTimeout bounds one agy print-mode run. The CLI default (5m) is far too

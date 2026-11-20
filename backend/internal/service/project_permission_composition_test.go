@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"

@@ -26,7 +26,7 @@ Choose one stable ID matching `[a-z][a-z0-9-]*`. Provider IDs appear in chats,
 sessions, skills, settings, routes, and capability results, so changing one is
 a data migration, not a cosmetic rename. A built-in may add a named
 `harness.ProviderID` constant in
-[`model.go`](../../../backend/internal/harness/model.go), but the catalog—not the
+[`model.go`](../../../backend/internal/service/harness/model.go), but the catalog—not the
 constant—registers it.
 
 ## Create the provider package
@@ -98,7 +98,7 @@ CLI also needs one so the updater can converge the host binary. Declare:
   templates as needed.
 
 Add the version to
-[`provisioning/versions.env`](../../../backend/internal/harness/provisioning/versions.env)
+[`provisioning/versions.env`](../../../backend/internal/service/harness/provisioning/versions.env)
 and read it through `provisioning.MustCLIVersion`; use `MustPin` for associated
 checksums. Do not duplicate literal pins in provider code, tests, or docs.
 
@@ -157,7 +157,7 @@ func NewFactory() (module.Factory, error) {
         deps module.Dependencies,
         validatedProfile *provisioning.Profile,
     ) (module.Components, error) {
-        binding := agentauth.NewDeviceBinding(providerID, NewAuth())
+        binding := harnessauth.NewDeviceBinding(providerID, NewAuth())
         return module.Components{
             Provider: newProvider(
                 deps.ProjectPreparer,
@@ -270,7 +270,7 @@ Add focused tests for every provider-owned boundary:
 - factory identity, scope, auth flow, features, and fresh component builds;
 - configuration catalog order, default, project profiles, and host profiles.
 
-Extend `internal/service/agent/execution` tests for changes to common project
+Extend `internal/service/harness/execution` tests for changes to common project
 lifecycle, ordering, error, or best-effort semantics. Extend
 `internal/integration/harnesses/runtime` tests for changes to common
 container-command and environment precedence. Keep native arguments and
@@ -314,7 +314,7 @@ network powers change.
 
 When a local/project provider adds a preinstalled CLI or durable provider home,
 also update the embedded
-[`provisioning/assets/AGENTS.md`](../../../backend/internal/harness/provisioning/assets/AGENTS.md)
+[`provisioning/assets/AGENTS.md`](../../../backend/internal/service/harness/provisioning/assets/AGENTS.md)
 workspace instructions. That template currently enumerates the installed CLIs,
 provider-home paths, and durable-mount count; those human-facing details are not
 generated from the module catalog.

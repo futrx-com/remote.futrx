@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Parser converts `codex exec --json` JSONL events into normalized agent

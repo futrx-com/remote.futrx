@@ -58,17 +58,17 @@ if [ -n "$previous" ] && [ "${previous%.*}" = "$current_train" ]; then
         infra/templates \
         infra/launcher \
 		infra/versions.env \
-		backend/internal/harness/provisioning \
+		backend/internal/service/harness/provisioning \
 		':(glob)backend/internal/integration/harnesses/*/assets/**' \
 		':(glob)backend/internal/integration/harnesses/*/factory*.go' \
 		':(glob)backend/internal/integration/harnesses/*/profile*.go' \
 		':(glob)backend/internal/integration/harnesses/*/install*.go' \
 		':(glob)backend/internal/integration/harnesses/*/provisioning*.go' \
         backend/internal/config/agents.go \
-        backend/internal/service/agent/module \
+        backend/internal/service/harness/module \
         backend/cmd/install-host-agents \
         backend/internal/integration/hostcli \
-        backend/internal/service/agent/hostcli \
+        backend/internal/service/harness/hostcli \
         backend/internal/service/container/image)"
     blocked_changes=""
     while IFS= read -r path; do

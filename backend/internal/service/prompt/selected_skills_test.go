@@ -4,19 +4,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
-type testAgentPolicy map[string]agentmodule.Descriptor
+type testAgentPolicy map[string]harnessmodule.Descriptor
 
-func (p testAgentPolicy) Descriptor(provider string) (agentmodule.Descriptor, bool) {
+func (p testAgentPolicy) Descriptor(provider string) (harnessmodule.Descriptor, bool) {
 	descriptor, ok := p[provider]
 	return descriptor, ok
 }
 
-func (p testAgentPolicy) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+func (p testAgentPolicy) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
 	descriptor, ok := p[provider]
 	if !ok {
 		return false
@@ -36,8 +36,8 @@ func codexTestAgentPolicy() testAgentPolicy {
 	return testAgentPolicy{"codex": {
 		ID:    harness.ProviderCodex,
 		Label: "Codex",
-		Features: agentmodule.Features{
-			Skills:           agentmodule.SkillsDollarMention,
+		Features: harnessmodule.Features{
+			Skills:           harnessmodule.SkillsDollarMention,
 			BrowserTools:     true,
 			ApplicationTools: true,
 		},
@@ -45,7 +45,7 @@ func codexTestAgentPolicy() testAgentPolicy {
 }
 
 func TestPromptWithSelectedSkillsPrefixesClaudeSlashCommands(t *testing.T) {
-	got := promptWithSelectedSkills(agentmodule.SkillsSlashCommand, "Claude", harness.ProviderClaude, []servicechat.SkillRef{
+	got := promptWithSelectedSkills(harnessmodule.SkillsSlashCommand, "Claude", harness.ProviderClaude, []servicechat.SkillRef{
 		{Name: "Frontend Design", Command: "frontend-design", Provider: servicechat.ProviderClaude},
 	}, true, "build the UI")
 
@@ -56,7 +56,7 @@ func TestPromptWithSelectedSkillsPrefixesClaudeSlashCommands(t *testing.T) {
 }
 
 func TestPromptWithSelectedSkillsPrefixesCodexDollarTriggers(t *testing.T) {
-	got := promptWithSelectedSkills(agentmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
+	got := promptWithSelectedSkills(harnessmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
 		{Name: "Frontend Design", Command: "frontend-design", Provider: servicechat.ProviderCodex},
 		{Name: "Review", Command: "review", Provider: servicechat.ProviderCodex},
 	}, true, "build the UI")
@@ -70,7 +70,7 @@ func TestPromptWithSelectedSkillsPrefixesCodexDollarTriggers(t *testing.T) {
 }
 
 func TestPromptWithSelectedSkillsFiltersOtherProviders(t *testing.T) {
-	got := promptWithSelectedSkills(agentmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
+	got := promptWithSelectedSkills(harnessmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
 		{Name: "Claude Only", Command: "claude-only", Provider: servicechat.ProviderClaude},
 	}, true, "ship it")
 
@@ -80,7 +80,7 @@ func TestPromptWithSelectedSkillsFiltersOtherProviders(t *testing.T) {
 }
 
 func TestPromptWithSelectedSkillsLoadsScheduledTasksForKimi(t *testing.T) {
-	got := promptWithSelectedSkills(agentmodule.SkillsInstructions, "Kimi", harness.ProviderKimi, []servicechat.SkillRef{{
+	got := promptWithSelectedSkills(harnessmodule.SkillsInstructions, "Kimi", harness.ProviderKimi, []servicechat.SkillRef{{
 		Name:     "Scheduled Tasks",
 		Command:  "scheduled-tasks",
 		Provider: servicechat.ProviderKimi,
@@ -95,7 +95,7 @@ func TestPromptWithSelectedSkillsLoadsScheduledTasksForKimi(t *testing.T) {
 }
 
 func TestSkillTriggerNameFallsBackToSingleToken(t *testing.T) {
-	got := promptWithSelectedSkills(agentmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
+	got := promptWithSelectedSkills(harnessmodule.SkillsDollarMention, "Codex", harness.ProviderCodex, []servicechat.SkillRef{
 		{Name: "Frontend Design", Provider: servicechat.ProviderCodex},
 	}, true, "ship it")
 
@@ -106,7 +106,7 @@ func TestSkillTriggerNameFallsBackToSingleToken(t *testing.T) {
 
 func TestPromptWithSelectedSkillsSupportsFutureInstructionAgent(t *testing.T) {
 	got := promptWithSelectedSkills(
-		agentmodule.SkillsInstructions,
+		harnessmodule.SkillsInstructions,
 		"Future Agent",
 		"future-agent",
 		[]servicechat.SkillRef{{Name: "Review", Command: "review", Provider: "future-agent"}},

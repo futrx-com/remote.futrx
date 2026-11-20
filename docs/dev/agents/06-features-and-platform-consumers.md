@@ -1,7 +1,7 @@
 # Features and platform consumers
 
 An agent factory does more than construct a runtime. Its
-[`module.Descriptor`](../../../backend/internal/service/agent/module/factory.go)
+[`module.Descriptor`](../../../backend/internal/service/harness/module/factory.go)
 is the shared metadata and feature-policy record used by chat creation, prompt
 orchestration, authentication, capabilities, skills, user settings, and the
 frontend. Its separate provisioning profile drives host installation,
@@ -133,12 +133,12 @@ inert: it will not be installed, discovered, authenticated, selected, or run.
 Incoming chat/settings IDs are normalized with `strings.TrimSpace` plus
 lowercase. A factory's descriptor ID is not rewritten: it must already match
 the grammar implemented by
-[`harness.ValidProviderID`](../../../backend/internal/harness/identity.go), beginning
+[`harness.ValidProviderID`](../../../backend/internal/service/harness/identity.go), beginning
 with `a-z` and followed only by `a-z`, `0-9`, or `-`. IDs are used in route
 segments and persisted maps, so changing an ID is a data migration, not a
 cosmetic rename.
 
-[`module.NewCatalog`](../../../backend/internal/service/agent/module/catalog.go)
+[`module.NewCatalog`](../../../backend/internal/service/harness/module/catalog.go)
 preserves the order from the explicit configuration builder list. That order is
 used by descriptors, provisioning profiles, runtime registration, auth
 bindings, capability responses, and default fallback. The catalog rejects an
@@ -166,7 +166,7 @@ validate it. This protects old or manually edited stored chat records.
 ## Authentication and access
 
 Factories build the provider runtime and auth binding in one callback.
-[`Factory.buildComponents`](../../../backend/internal/service/agent/module/factory.go)
+[`Factory.buildComponents`](../../../backend/internal/service/harness/module/factory.go)
 checks that provider ID, auth binding ID, declared auth mode, and actual auth
 flow agree.
 
@@ -204,7 +204,7 @@ frontend types/state, and UI.
 ## Capability metadata and the frontend
 
 Each runtime adapter discovers provider-native models and controls, then
-[`capability.Service.decorate`](../../../backend/internal/service/agent/capability/service.go)
+[`capability.Service.decorate`](../../../backend/internal/service/harness/capability/service.go)
 overwrites shared metadata from the descriptor: label, default, scopes,
 authentication, sessions, skills, browser support, and application tool support. The
 registered provider ID is authoritative even if the adapter returned another
@@ -401,7 +401,7 @@ Use this sequence:
    types; for example, do not represent a one-turn action as a durable chat
    preference.
 2. **Choose the neutral contract.** Put shared request/result data in
-   `internal/harness` only when application policy and concrete adapters both need
+   `internal/service/harness` only when application policy and concrete adapters both need
    it. Introduce a role-specific interface rather than adding unrelated methods
    to `harness.Provider`. An interface needs a real policy/detail boundary, test
    seam, or multiple implementations.

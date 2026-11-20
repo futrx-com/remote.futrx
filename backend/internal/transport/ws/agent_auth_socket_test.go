@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/gorilla/websocket"
 )
 
 type socketDeviceStatus struct {
-	Authenticated bool                  `json:"authenticated"`
-	DeviceLogin   agentauth.DeviceState `json:"deviceLogin,omitempty"`
+	Authenticated bool                    `json:"authenticated"`
+	DeviceLogin   harnessauth.DeviceState `json:"deviceLogin,omitempty"`
 }
 
 func TestAgentAuthSocketInitialStatusPayloads(t *testing.T) {
@@ -107,10 +107,10 @@ func TestAgentAuthSocketExposesNormalizedProviderStream(t *testing.T) {
 }
 
 func TestAgentAuthSocketUnavailableRoutesKeepProviderError(t *testing.T) {
-	bindings := []agentauth.Binding{
-		agentauth.NewCodeBinding(harness.ProviderClaude, nil),
-		agentauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderCodex, nil),
-		agentauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderKimi, nil),
+	bindings := []harnessauth.Binding{
+		harnessauth.NewCodeBinding(harness.ProviderClaude, nil),
+		harnessauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderCodex, nil),
+		harnessauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderKimi, nil),
 	}
 	mux := http.NewServeMux()
 	NewAgentAuthSocket(bindings).RegisterRoutes(mux, websocket.Upgrader{})
@@ -127,28 +127,28 @@ func TestAgentAuthSocketUnavailableRoutesKeepProviderError(t *testing.T) {
 	}
 }
 
-func newSocketTestBindings() ([]agentauth.Binding, *agentauth.CodeService) {
-	code := agentauth.NewCodeService(agentauth.CodeConfig{Authenticated: func() bool { return false }})
-	device := func() *agentauth.DeviceService[socketDeviceStatus] {
-		return agentauth.NewDeviceService(agentauth.DeviceConfig[socketDeviceStatus]{
+func newSocketTestBindings() ([]harnessauth.Binding, *harnessauth.CodeService) {
+	code := harnessauth.NewCodeService(harnessauth.CodeConfig{Authenticated: func() bool { return false }})
+	device := func() *harnessauth.DeviceService[socketDeviceStatus] {
+		return harnessauth.NewDeviceService(harnessauth.DeviceConfig[socketDeviceStatus]{
 			Authenticated: func() bool { return false },
-			BuildStatus: func() agentauth.DeviceStatusBuilder[socketDeviceStatus] {
-				return func(state agentauth.DeviceState) socketDeviceStatus {
+			BuildStatus: func() harnessauth.DeviceStatusBuilder[socketDeviceStatus] {
+				return func(state harnessauth.DeviceState) socketDeviceStatus {
 					return socketDeviceStatus{DeviceLogin: state}
 				}
 			},
 			NotFound: errors.New("not found"),
 		})
 	}
-	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), harness.ProviderMiniMax, socketAPIKeyStore{}, nil, nil)
+	apiKeys, err := harnessauth.NewAPIKeyService(context.Background(), harness.ProviderMiniMax, socketAPIKeyStore{}, nil, nil)
 	if err != nil {
 		panic(err)
 	}
-	return []agentauth.Binding{
-		agentauth.NewCodeBinding(harness.ProviderClaude, code),
-		agentauth.NewDeviceBinding(harness.ProviderCodex, device()),
-		agentauth.NewDeviceBinding(harness.ProviderKimi, device()),
-		agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys),
+	return []harnessauth.Binding{
+		harnessauth.NewCodeBinding(harness.ProviderClaude, code),
+		harnessauth.NewDeviceBinding(harness.ProviderCodex, device()),
+		harnessauth.NewDeviceBinding(harness.ProviderKimi, device()),
+		harnessauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys),
 	}, code
 }
 

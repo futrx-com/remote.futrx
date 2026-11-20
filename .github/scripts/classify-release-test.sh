@@ -82,12 +82,12 @@ fi
 grep -Fq "backend/internal/integration/harnesses/future/factory.go" <<<"$error" || \
     fail "future agent factory rejection did not identify the protected path"
 
-commit_file backend/internal/service/agent/module/catalog.go module-contract protected-module-contract
+commit_file backend/internal/service/harness/module/catalog.go module-contract protected-module-contract
 git -C "$TEST_REPO" tag 0.3.8
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.8 2>&1)"; then
     fail "agent module contract was accepted as an application release"
 fi
-grep -Fq "backend/internal/service/agent/module/catalog.go" <<<"$error" || \
+grep -Fq "backend/internal/service/harness/module/catalog.go" <<<"$error" || \
     fail "agent module rejection did not identify the protected path"
 
 commit_file backend/internal/config/agents.go agent-composition protected-agent-composition

@@ -5,8 +5,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // containerKimiHome is the KIMI_CODE_HOME inside a project container — where

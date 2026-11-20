@@ -20,7 +20,6 @@ import (
 	remote "github.com/futrx-com/remote.futrx.com"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
 	containerapplications "github.com/futrx-com/remote.futrx.com/internal/integration/containers/applications"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/gitcli"
@@ -33,10 +32,11 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
@@ -332,7 +332,7 @@ func permissionDefinitions() [][]rbac.Definition {
 		workspaceide.PermissionDefinitions(),
 		workspaceaccess.PermissionDefinitions(),
 		servicechat.PermissionDefinitions(),
-		agentauth.PermissionDefinitions(),
+		harnessauth.PermissionDefinitions(),
 	}
 }
 
@@ -352,7 +352,7 @@ func newPermissionService(
 	return rbac.NewService(
 		ctx, registry, policy, identity, members,
 		rbac.WithBuiltinAdminRole(),
-		rbac.WithBuiltinMemberRole(agentauth.PermissionAccountUse),
+		rbac.WithBuiltinMemberRole(harnessauth.PermissionAccountUse),
 	)
 }
 

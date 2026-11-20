@@ -7,18 +7,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnesscapability "github.com/futrx-com/remote.futrx.com/internal/service/harness/capability"
 )
 
 type stubAgentCapabilitiesService struct {
-	query agentcapability.ListQuery
+	query harnesscapability.ListQuery
 }
 
 func (s *stubAgentCapabilitiesService) List(
 	_ context.Context,
-	query agentcapability.ListQuery,
+	query harnesscapability.ListQuery,
 ) ([]harness.Capabilities, error) {
 	s.query = query
 	return []harness.Capabilities{{

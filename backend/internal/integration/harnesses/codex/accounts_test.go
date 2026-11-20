@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestReadCodexAccountRefreshesAndReturnsPlanMetadata(t *testing.T) {
@@ -65,23 +65,23 @@ func TestCodexAccountIdentityReadsTheChatGPTAccount(t *testing.T) {
 		return json.RawMessage(`{"auth_mode":"chatgpt","OPENAI_API_KEY":null,"tokens":` + tokens + `,"last_refresh":"2026-09-01T00:00:00Z"}`)
 	}
 	// The email can change, so it names the person only without a user ID.
-	fromClaims := agentauth.AccountIdentity{"account": "acct-claim", "user": "user-chatgpt"}
+	fromClaims := harnessauth.AccountIdentity{"account": "acct-claim", "user": "user-chatgpt"}
 
 	cases := []struct {
 		name       string
 		credential json.RawMessage
-		want       agentauth.AccountIdentity
+		want       harnessauth.AccountIdentity
 	}{
 		{"id token claims", auth(`{"id_token":"` + idToken(claims) + `","access_token":"a","refresh_token":"r"}`), fromClaims},
 		{"account_id before the claim", auth(`{"id_token":"` + idToken(claims) + `","account_id":"acct-token"}`),
-			agentauth.AccountIdentity{"account": "acct-token", "user": "user-chatgpt"}},
+			harnessauth.AccountIdentity{"account": "acct-token", "user": "user-chatgpt"}},
 		{"legacy user_id claim", auth(`{"id_token":"` + idToken(legacyClaims) + `"}`),
-			agentauth.AccountIdentity{"account": "acct-claim", "user": "user-legacy"}},
+			harnessauth.AccountIdentity{"account": "acct-claim", "user": "user-legacy"}},
 		{"padded payload", auth(`{"id_token":"` + padded + `"}`), fromClaims},
 		{"email without a user ID", auth(`{"id_token":"` + idToken(emailClaims) + `"}`),
-			agentauth.AccountIdentity{"account": "acct-claim", "email": "person@example.test"}},
+			harnessauth.AccountIdentity{"account": "acct-claim", "email": "person@example.test"}},
 		{"malformed id token keeps account_id", auth(`{"id_token":"not-a-jwt","account_id":"acct-token"}`),
-			agentauth.AccountIdentity{"account": "acct-token"}},
+			harnessauth.AccountIdentity{"account": "acct-token"}},
 		{"undecodable id token", auth(`{"id_token":"e30.%%%.signature"}`), nil},
 		{"id token that is not JSON", auth(`{"id_token":"` + idToken("not json") + `"}`), nil},
 		{"no tokens", auth(`null`), nil},
@@ -107,9 +107,9 @@ func TestNewAuthReconcilesHostLoginWithActiveAccount(t *testing.T) {
 	t.Setenv("CODEX_HOME", home)
 	hostPath := filepath.Join(home, "auth.json")
 	saved := codexTestCredential("personal", "saved")
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "personal",
-		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
+		Accounts:        []harnessauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
 	}}
 
 	// The CLI may have refreshed the active account's login since it was
@@ -253,16 +253,16 @@ func TestActivateAccountValidatesBeforeReplacingCurrentCredential(t *testing.T) 
 	oldCredential := codexTestCredential("old", "old")
 	newCredential := codexTestCredential("new", "new")
 	writeCodexHostCredential(t, hostPath, oldCredential)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "old",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "old", Label: "Old", Credential: oldCredential},
 			{ID: "new", Label: "New", Credential: newCredential},
 		},
 	}}
 	auth := newTestAuth(t, store)
 	validator := echoCodexValidator("new@example.test")
-	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 		validated, err := validator(ctx, credential)
 		validated.PlanType = "pro"
 		return validated, err
@@ -290,9 +290,9 @@ func TestActivateAccountFailureAndRunLeasePreserveCurrentCredential(t *testing.T
 	hostPath := filepath.Join(home, "auth.json")
 	oldCredential := codexTestCredential("old", "old")
 	writeCodexHostCredential(t, hostPath, oldCredential)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "old",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "old", Label: "Old", Credential: oldCredential},
 			{ID: "new", Label: "New", Credential: codexTestCredential("new", "new")},
 		},
@@ -302,12 +302,12 @@ func TestActivateAccountFailureAndRunLeasePreserveCurrentCredential(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := auth.accounts.ActivateAccount(context.Background(), "new"); !errors.Is(err, agentauth.ErrAccountInUse) {
+	if err := auth.accounts.ActivateAccount(context.Background(), "new"); !errors.Is(err, harnessauth.ErrAccountInUse) {
 		t.Fatalf("activate during run error = %v", err)
 	}
 	release()
-	auth.credentials.validate = func(context.Context, json.RawMessage) (agentauth.ValidatedAccount, error) {
-		return agentauth.ValidatedAccount{}, errors.New("expired credential")
+	auth.credentials.validate = func(context.Context, json.RawMessage) (harnessauth.ValidatedAccount, error) {
+		return harnessauth.ValidatedAccount{}, errors.New("expired credential")
 	}
 	if err := auth.accounts.ActivateAccount(context.Background(), "new"); err == nil || err.Error() != "expired credential" {
 		t.Fatalf("invalid activation error = %v", err)
@@ -333,9 +333,9 @@ func TestImportCurrentAccountLabelsAreBoundedAndUnique(t *testing.T) {
 		t.Fatal(err)
 	}
 	for label, want := range map[string]error{
-		"personal":              agentauth.ErrAccountLabelConflict,
-		strings.Repeat("x", 65): agentauth.ErrAccountLabelInvalid,
-		"   ":                   agentauth.ErrAccountLabelRequired,
+		"personal":              harnessauth.ErrAccountLabelConflict,
+		strings.Repeat("x", 65): harnessauth.ErrAccountLabelInvalid,
+		"   ":                   harnessauth.ErrAccountLabelRequired,
 	} {
 		if err := auth.accounts.ImportCurrent(context.Background(), label); !errors.Is(err, want) {
 			t.Errorf("import %q error = %v, want %v", label, err, want)
@@ -362,18 +362,18 @@ func codexTestCredential(account, token string) json.RawMessage {
 
 // echoCodexValidator accepts every credential as the account email without
 // refreshing it.
-func echoCodexValidator(email string) func(context.Context, json.RawMessage) (agentauth.ValidatedAccount, error) {
-	return func(_ context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
-		return agentauth.ValidatedAccount{
+func echoCodexValidator(email string) func(context.Context, json.RawMessage) (harnessauth.ValidatedAccount, error) {
+	return func(_ context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
+		return harnessauth.ValidatedAccount{
 			Email: email, PlanType: "plus",
 			Credential: append(json.RawMessage(nil), credential...),
 		}, nil
 	}
 }
 
-func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
+func newTestAuth(t *testing.T, store harnessauth.AccountStore) *Auth {
 	t.Helper()
-	auth, err := NewAuth(agentauth.NewAccountVault(store, allowAccountUse{}))
+	auth, err := NewAuth(harnessauth.NewAccountVault(store, allowAccountUse{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +382,7 @@ func newTestAuth(t *testing.T, store agentauth.AccountStore) *Auth {
 
 func writeCodexHostCredential(t *testing.T, path string, credential json.RawMessage) {
 	t.Helper()
-	if err := agentauth.WriteCredentialFile(path, credential); err != nil {
+	if err := harnessauth.WriteCredentialFile(path, credential); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -409,21 +409,21 @@ func requireRemoved(t *testing.T, path string) {
 // account login while a test reads the saved set.
 type memoryAccountStore struct {
 	mu       sync.Mutex
-	accounts agentauth.AccountSet
+	accounts harnessauth.AccountSet
 }
 
-func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (agentauth.AccountSet, error) {
+func (s *memoryAccountStore) AgentAccounts(context.Context, harness.ProviderID) (harnessauth.AccountSet, error) {
 	return s.saved(), nil
 }
 
-func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts agentauth.AccountSet) error {
+func (s *memoryAccountStore) SaveAgentAccounts(_ context.Context, _ harness.ProviderID, accounts harnessauth.AccountSet) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.accounts = accounts.Clone()
 	return nil
 }
 
-func (s *memoryAccountStore) saved() agentauth.AccountSet {
+func (s *memoryAccountStore) saved() harnessauth.AccountSet {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.accounts.Clone()

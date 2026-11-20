@@ -178,7 +178,7 @@ before it exits, so an unanswered read would delay the end of the turn.
 
 The Usage tab also reads plan limits on demand, the way Claude Code's `/usage`
 and Codex's `/status` do. Providers that can do this implement
-`harness.PlanUsageReader`, and `agentmodule.Runtime.PlanUsageReaders` lists them.
+`harness.PlanUsageReader`, and `harnessmodule.Runtime.PlanUsageReaders` lists them.
 Claude's reader in `claude/plan_usage.go` runs the CLI headless and sends one
 `get_usage` control request; Codex's in `codex/plan_usage.go` starts an app
 server of its own and sends `account/rateLimits/read`. Each saved account is
@@ -199,7 +199,7 @@ empty. The prompt service's run event relay
 records `EventQuotaUpdated` through its `QuotaRecorder` contract with the
 provider and account; quota events are not chat transcript events, and a
 cancelled prompt still records readings that arrived before the cancel.
-`service/agent/quota` owns the latest session and weekly readings per
+`service/harness/quota` owns the latest session and weekly readings per
 provider account and lists them by provider and then account ID. It keys
 readings only by account ID; which saved accounts exist and what they are
 called stays with the saved-account service. Its `Refresh` asks every plan

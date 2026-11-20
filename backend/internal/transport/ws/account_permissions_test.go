@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	accountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	accountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/gorilla/websocket"
 )
 
@@ -27,16 +27,16 @@ func (p *streamAccountPolicy) Require(ctx context.Context, check rbac.Check) err
 	if !ok || actor.Email != "member@example.com" {
 		return rbac.ErrActorRequired
 	}
-	if check.Permission == agentauth.PermissionAccountUse && check.Scope.ID == string(p.provider)+":team" && !p.revoked.Load() {
+	if check.Permission == harnessauth.PermissionAccountUse && check.Scope.ID == string(p.provider)+":team" && !p.revoked.Load() {
 		return nil
 	}
 	return rbac.ErrDenied
 }
 
-type streamAccounts struct{ agentauth.AccountController }
+type streamAccounts struct{ harnessauth.AccountController }
 
-func (streamAccounts) AccountsSnapshot() agentauth.AccountsSnapshot {
-	return agentauth.AccountsSnapshot{ActiveAccountID: "private", Items: []agentauth.Account{{ID: "private", Label: "Private label"}, {ID: "team", Label: "Team"}}}
+func (streamAccounts) AccountsSnapshot() harnessauth.AccountsSnapshot {
+	return harnessauth.AccountsSnapshot{ActiveAccountID: "private", Items: []harnessauth.Account{{ID: "private", Label: "Private label"}, {ID: "team", Label: "Team"}}}
 }
 func TestAccountStatusStreamsFilterAndRefreshRevocationWithoutProviderEvents(t *testing.T) {
 	for _, provider := range []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderMiniMax, harness.ProviderKimi} {
@@ -88,7 +88,7 @@ func testAccountStatusStream(t *testing.T, provider harness.ProviderID) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var snapshot agentauth.Snapshot
+	var snapshot harnessauth.Snapshot
 	if err := json.Unmarshal(payload, &snapshot); err != nil {
 		t.Fatal(err)
 	}

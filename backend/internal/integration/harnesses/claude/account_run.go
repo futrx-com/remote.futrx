@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 const (
@@ -28,13 +28,13 @@ exec "$@"`
 )
 
 type accountRun struct {
-	saved         agentauth.RunCredential
+	saved         harnessauth.RunCredential
 	hostHome      string
 	containerHome string
 	credentials   provisioning.CredentialSpec
 }
 
-func newAccountRun(req harness.RunRequest, saved agentauth.RunCredential) (*accountRun, error) {
+func newAccountRun(req harness.RunRequest, saved harnessauth.RunCredential) (*accountRun, error) {
 	scope := harnessruntime.AccountHomeScope(saved.AccountID, req.ProjectID, req.ConversationID)
 	hostHome := filepath.Join(claudeHomeDir(), "run-accounts", scope)
 	containerHome := filepath.Join(containerClaudeHome, "run-accounts", scope)

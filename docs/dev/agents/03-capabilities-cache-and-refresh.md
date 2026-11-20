@@ -7,17 +7,17 @@ normalizes those answers, and exposes one catalog to every client.
 
 The main contracts are:
 
-- [`harness.CapabilityProvider`](../../../backend/internal/harness/model.go) and the
+- [`harness.CapabilityProvider`](../../../backend/internal/service/harness/model.go) and the
   normalized models in
-  [`capability_model.go`](../../../backend/internal/harness/capability_model.go);
+  [`capability_model.go`](../../../backend/internal/service/harness/capability_model.go);
 - the host/container command boundary in
   [`integration/harnesses/runtime/capability_command.go`](../../../backend/internal/integration/harnesses/runtime/capability_command.go);
 - aggregation, authorization, deadlines, and descriptor decoration in
-  [`service/agent/capability/service.go`](../../../backend/internal/service/agent/capability/service.go);
+  [`service/harness/capability/service.go`](../../../backend/internal/service/harness/capability/service.go);
 - completed-result caching in
-  [`cache.go`](../../../backend/internal/service/agent/capability/cache.go) and
+  [`cache.go`](../../../backend/internal/service/harness/capability/cache.go) and
   in-flight request coalescing in
-  [`flight.go`](../../../backend/internal/service/agent/capability/flight.go).
+  [`flight.go`](../../../backend/internal/service/harness/capability/flight.go).
 
 ## Request and discovery flow
 
@@ -200,7 +200,7 @@ layer:
 
 - provider probe/parser tests under `backend/internal/integration/harnesses/<provider>/`;
 - aggregation, timeout, fallback, cache, authorization, and flight tests under
-  `backend/internal/service/agent/capability/`;
+  `backend/internal/service/harness/capability/`;
 - HTTP query/error mapping in
   `backend/internal/transport/http/handlers/agent_capabilities_handler_test.go`;
 - page-memory coalescing and invalidation in

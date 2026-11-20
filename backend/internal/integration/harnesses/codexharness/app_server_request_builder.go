@@ -3,7 +3,7 @@ package codexharness
 import (
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func buildAppServerThreadRequest(req harness.RunRequest) appServerThreadRequest {

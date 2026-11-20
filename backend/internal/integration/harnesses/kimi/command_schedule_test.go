@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func TestBuildCmdPassesRuntimeEnvironmentOnHostAndIntoContainer(t *testing.T) {
@@ -89,11 +89,11 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		panic(err)
 	}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{
+	runtime, err := catalog.Build(harnessmodule.BuildDependencies{
 		Projects:              projects,
 		Containers:            dependencies,
 		CredentialSyncTimeout: 30 * time.Second,

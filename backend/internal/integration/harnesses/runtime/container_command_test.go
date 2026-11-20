@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func TestBuildContainerCommandPreservesEnvironmentOrderAndPrecedence(t *testing.T) {

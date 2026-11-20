@@ -1,32 +1,32 @@
 package antigravity
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // NewFactory returns Antigravity's complete module definition. Authentication is
 // provider-owned and external, while the shared profile supplies deterministic
 // host and project provisioning policy.
-func NewFactory() (agentmodule.Factory, error) {
+func NewFactory() (harnessmodule.Factory, error) {
 	profile := Profile()
-	return agentmodule.NewFactory(agentmodule.Descriptor{
+	return harnessmodule.NewFactory(harnessmodule.Descriptor{
 		ID:               harness.ProviderAntigravity,
 		Label:            "Antigravity",
-		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
-		Auth:             agentmodule.AuthExternal,
+		ExecutionScopes:  []harnessmodule.ExecutionScope{harnessmodule.ScopeHost, harnessmodule.ScopeProject},
+		Auth:             harnessmodule.AuthExternal,
 		AuthInstructions: "Open the project's Terminal application, run `agy`, and complete its sign-in flow.",
-		Features: agentmodule.Features{
-			Sessions:              agentmodule.SessionSupport{Resume: true},
-			Skills:                agentmodule.SkillsInstructions,
+		Features: harnessmodule.Features{
+			Sessions:              harnessmodule.SessionSupport{Resume: true},
+			Skills:                harnessmodule.SkillsInstructions,
 			ApplicationTools:      true,
-			StreamingPresentation: agentmodule.StreamingBlocks,
+			StreamingPresentation: harnessmodule.StreamingBlocks,
 		},
-	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewExternalBinding(harness.ProviderAntigravity)
-		return agentmodule.Components{
+	}, &profile, func(deps harnessmodule.Dependencies, validatedProfile *provisioning.Profile) (harnessmodule.Components, error) {
+		binding := harnessauth.NewExternalBinding(harness.ProviderAntigravity)
+		return harnessmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
 				validatedProfile.CLI.Binary,
@@ -38,6 +38,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ harness.Provider           = (*Provider)(nil)
-	_ agentmodule.FactoryBuilder = NewFactory
+	_ harness.Provider             = (*Provider)(nil)
+	_ harnessmodule.FactoryBuilder = NewFactory
 )

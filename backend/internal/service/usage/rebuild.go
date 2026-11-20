@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Rebuild re-derives the whole ledger from the persisted chat event logs and

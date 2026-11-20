@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {

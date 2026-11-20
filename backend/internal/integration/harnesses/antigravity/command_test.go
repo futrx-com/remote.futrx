@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func TestArgsComposition(t *testing.T) {
@@ -85,11 +85,11 @@ func TestBuildCmdUsesAntigravityProjectPreparationPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{
+	runtime, err := catalog.Build(harnessmodule.BuildDependencies{
 		Projects: antigravityTestProjects{
 			project: project,
 			secrets: []harness.ProjectSecret{

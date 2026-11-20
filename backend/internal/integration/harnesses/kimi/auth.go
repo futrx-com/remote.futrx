@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const (
@@ -36,11 +36,11 @@ type AuthStatus struct {
 	DeviceLogin   DeviceLoginState `json:"deviceLogin,omitempty"`
 }
 
-type DeviceLoginState = agentauth.DeviceState
-type Auth = agentauth.DeviceService[AuthStatus]
+type DeviceLoginState = harnessauth.DeviceState
+type Auth = harnessauth.DeviceService[AuthStatus]
 
 func NewAuth() *Auth {
-	return agentauth.NewDeviceService(agentauth.DeviceConfig[AuthStatus]{
+	return harnessauth.NewDeviceService(harnessauth.DeviceConfig[AuthStatus]{
 		Command:         "kimi",
 		Args:            []string{"login"},
 		Env:             kimiEnv,
@@ -52,20 +52,20 @@ func NewAuth() *Auth {
 		URLPattern:      deviceURLRE,
 		CodePattern:     deviceCodeRE,
 		Authenticated:   authenticated,
-		BuildStatus: func() agentauth.DeviceStatusBuilder[AuthStatus] {
+		BuildStatus: func() harnessauth.DeviceStatusBuilder[AuthStatus] {
 			authenticated := authenticated()
-			return func(state agentauth.DeviceState) AuthStatus {
+			return func(state harnessauth.DeviceState) AuthStatus {
 				return AuthStatus{Authenticated: authenticated, DeviceLogin: state}
 			}
 		},
-		ResolveCompletion: func(err error, _ string) agentauth.DeviceCompletion {
+		ResolveCompletion: func(err error, _ string) harnessauth.DeviceCompletion {
 			switch {
 			case authenticated():
-				return agentauth.DeviceCompletion{Completed: true}
+				return harnessauth.DeviceCompletion{Completed: true}
 			case err != nil:
-				return agentauth.DeviceCompletion{Error: fmt.Sprintf("kimi login failed: %s", truncate(err.Error(), 300))}
+				return harnessauth.DeviceCompletion{Error: fmt.Sprintf("kimi login failed: %s", truncate(err.Error(), 300))}
 			default:
-				return agentauth.DeviceCompletion{Error: "Kimi login ended before authentication completed."}
+				return harnessauth.DeviceCompletion{Error: "Kimi login ended before authentication completed."}
 			}
 		},
 	})

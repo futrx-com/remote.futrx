@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func (p *Provider) args(req harness.RunRequest) []string {

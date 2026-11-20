@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 // accountCredentials is Codex's half of saved accounts: the host auth.json
@@ -20,24 +20,24 @@ import (
 type accountCredentials struct {
 	// validate asks Codex whether a credential is a usable ChatGPT login.
 	// Tests replace it because the real check reaches OpenAI.
-	validate func(context.Context, json.RawMessage) (agentauth.ValidatedAccount, error)
+	validate func(context.Context, json.RawMessage) (harnessauth.ValidatedAccount, error)
 }
 
-var _ agentauth.AccountCredentials = (*accountCredentials)(nil)
+var _ harnessauth.AccountCredentials = (*accountCredentials)(nil)
 
 func (c *accountCredentials) ReadHost() (json.RawMessage, error) {
 	return os.ReadFile(codexCredentialPath())
 }
 
 func (c *accountCredentials) WriteHost(credential json.RawMessage) error {
-	return agentauth.WriteCredentialFile(codexCredentialPath(), credential)
+	return harnessauth.WriteCredentialFile(codexCredentialPath(), credential)
 }
 
-func (c *accountCredentials) Validate(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+func (c *accountCredentials) Validate(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 	return c.validate(ctx, credential)
 }
 
-func (c *accountCredentials) Identity(credential json.RawMessage) agentauth.AccountIdentity {
+func (c *accountCredentials) Identity(credential json.RawMessage) harnessauth.AccountIdentity {
 	return codexAccountIdentity(credential)
 }
 
@@ -56,7 +56,7 @@ type codexIDTokenClaims struct {
 // that a login still belongs to its saved account, and a login is saved only
 // after Validate has refreshed it through the Codex app server. An API-key or
 // unreadable login names no account.
-func codexAccountIdentity(credential json.RawMessage) agentauth.AccountIdentity {
+func codexAccountIdentity(credential json.RawMessage) harnessauth.AccountIdentity {
 	var file struct {
 		AuthMode string `json:"auth_mode"`
 		Tokens   *struct {
@@ -69,7 +69,7 @@ func codexAccountIdentity(credential json.RawMessage) agentauth.AccountIdentity 
 		return nil
 	}
 	claims := parseCodexIDToken(file.Tokens.IDToken)
-	identity := agentauth.AccountIdentity{}
+	identity := harnessauth.AccountIdentity{}
 	// set records the first non-empty candidate for key.
 	set := func(key string, candidates ...string) {
 		for _, value := range candidates {
@@ -111,18 +111,18 @@ func parseCodexIDToken(token string) codexIDTokenClaims {
 // accountLoginFlow runs `codex login --device-auth` for a saved account.
 type accountLoginFlow struct{ auth *Auth }
 
-var _ agentauth.AccountLoginFlow = accountLoginFlow{}
+var _ harnessauth.AccountLoginFlow = accountLoginFlow{}
 
 // Reset refuses to start while any Codex login runs: the device login is
 // shared by plain and account logins.
 func (f accountLoginFlow) Reset(context.Context) error {
 	if f.auth.device.LoginState().Active {
-		return fmt.Errorf("a Codex %w", agentauth.ErrAccountLoginInProgress)
+		return fmt.Errorf("a Codex %w", harnessauth.ErrAccountLoginInProgress)
 	}
 	return nil
 }
 
-func (f accountLoginFlow) Prepare() (agentauth.AccountLogin, error) {
+func (f accountLoginFlow) Prepare() (harnessauth.AccountLogin, error) {
 	login, err := newAccountLogin(externalCredentialPaths())
 	if err != nil {
 		return nil, err
@@ -130,9 +130,9 @@ func (f accountLoginFlow) Prepare() (agentauth.AccountLogin, error) {
 	return login, nil
 }
 
-func (f accountLoginFlow) Start(ctx context.Context) (agentauth.LoginSnapshot, error) {
+func (f accountLoginFlow) Start(ctx context.Context) (harnessauth.LoginSnapshot, error) {
 	state, err := f.auth.device.StartDeviceLogin(ctx)
-	return agentauth.LoginSnapshot{
+	return harnessauth.LoginSnapshot{
 		Active: state.Active, URL: state.VerificationURI, UserCode: state.UserCode,
 		StartedAt: state.StartedAt, ExpiresAt: state.ExpiresAt,
 		Completed: state.Completed, Error: state.Error,
@@ -149,7 +149,7 @@ type accountLogin struct {
 	external []watchedCredential
 }
 
-var _ agentauth.AccountLogin = (*accountLogin)(nil)
+var _ harnessauth.AccountLogin = (*accountLogin)(nil)
 
 // newAccountLogin creates the isolated CODEX_HOME and remembers each host
 // credential file in externalPaths so a write to it can be undone.
@@ -267,7 +267,7 @@ func (w watchedCredential) changed() ([]byte, bool) {
 
 func (w watchedCredential) restore() error {
 	if w.existed {
-		return agentauth.WriteCredentialFile(w.path, w.previous)
+		return harnessauth.WriteCredentialFile(w.path, w.previous)
 	}
 	err := os.Remove(w.path)
 	if errors.Is(err, os.ErrNotExist) {

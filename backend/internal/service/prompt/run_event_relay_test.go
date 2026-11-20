@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )

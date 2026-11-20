@@ -2,9 +2,9 @@ package minimax
 
 import (
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 var miniMaxProfile = provisioning.Profile{

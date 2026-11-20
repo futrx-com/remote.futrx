@@ -13,9 +13,9 @@ the application may open.
 ## Auth contract
 
 The descriptor contract is in
-[`module/factory.go`](../../../backend/internal/service/agent/module/factory.go), and
+[`module/factory.go`](../../../backend/internal/service/harness/module/factory.go), and
 the runtime binding is in
-[`auth/binding.go`](../../../backend/internal/service/agent/auth/binding.go).
+[`auth/binding.go`](../../../backend/internal/service/harness/auth/binding.go).
 
 | Descriptor mode | Binding | Behavior | May satisfy onboarding gate? |
 | --- | --- | --- | --- |
@@ -152,7 +152,7 @@ credential mechanics:
 
 | Owner | Responsibility |
 | --- | --- |
-| `AccountVault` and `AccountService` in [`service/agent/auth`](../../../backend/internal/service/agent/auth/account_service.go) | The account set and default account, label and activation rules, account logins, isolated run snapshots and capture, legacy run leases, startup reconciliation, and every write to the store |
+| `AccountVault` and `AccountService` in [`service/harness/auth`](../../../backend/internal/service/harness/auth/account_service.go) | The account set and default account, label and activation rules, account logins, isolated run snapshots and capture, legacy run leases, startup reconciliation, and every write to the store |
 | `AccountStore` in [`stores/fileauth`](../../../backend/internal/stores/fileauth/store.go) | `agent-accounts.json` in `DATA_DIR`: one account set per provider, mode `0600` |
 | Provider `AccountCredentials` | Reading and writing the host login, provider validation, and the stable account identity a credential records |
 | Provider `AccountLoginFlow` and `AccountLogin` | Running the CLI login in an isolated location and collecting what it wrote |
@@ -364,11 +364,11 @@ the existing mode names.
 Relevant code:
 
 - provider-neutral binding and registry:
-  `backend/internal/service/agent/auth/{binding,registry}.go`;
+  `backend/internal/service/harness/auth/{binding,registry}.go`;
 - shared code/device services:
-  `backend/internal/service/agent/auth/{code,device}.go`;
+  `backend/internal/service/harness/auth/{code,device}.go`;
 - saved-account lifecycle and model:
-  `backend/internal/service/agent/auth/{account_service,accounts}.go`;
+  `backend/internal/service/harness/auth/{account_service,accounts}.go`;
 - saved-account persistence (`agent-accounts.json`):
   `backend/internal/stores/fileauth/store.go`;
 - provider configurations: `backend/internal/integration/harnesses/<provider>/auth.go`,

@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // installFakeCodexUsage puts a codex command first on PATH whose app server
@@ -73,9 +73,9 @@ func TestReadPlanUsageReadsEverySavedAccountInItsOwnHome(t *testing.T) {
 	installFakeCodexUsage(t)
 	personal := codexTestCredential("personal", "saved")
 	writeCodexHostCredential(t, filepath.Join(codexHome, "auth.json"), personal)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "personal",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "personal", Label: "Personal", Credential: personal},
 			{ID: "work", Label: "Work", Credential: codexTestCredential("work", "saved")},
 		},
@@ -117,8 +117,8 @@ func TestReadPlanUsageReadsTheHostLoginOnlyWhileNoAccountIsActive(t *testing.T) 
 		t.Fatalf("host usage = %q; want %q", got, want)
 	}
 
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
-		Accounts: []agentauth.AccountRecord{{ID: "work", Label: "Work", Credential: codexTestCredential("work", "saved")}},
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
+		Accounts: []harnessauth.AccountRecord{{ID: "work", Label: "Work", Credential: codexTestCredential("work", "saved")}},
 	}}
 	auth := newTestAuth(t, store)
 	auth.credentials.validate = echoCodexValidator("work@example.test")

@@ -4,9 +4,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
@@ -19,7 +19,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	ids := make([]harness.ProviderID, len(descriptors))
 	for index, descriptor := range descriptors {
 		ids[index] = descriptor.ID
-		if descriptor.Features.StreamingPresentation != agentmodule.StreamingBlocks {
+		if descriptor.Features.StreamingPresentation != harnessmodule.StreamingBlocks {
 			t.Fatalf("provider %q should reveal formatted blocks", descriptor.ID)
 		}
 		if index >= len(profiles) || profiles[index].ID != string(descriptor.ID) {
@@ -39,7 +39,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 	if !catalog.HasProvider("claude") || catalog.HasProvider("future-agent") {
 		t.Fatal("catalog provider membership is incorrect")
 	}
-	if got := catalog.DefaultProvider(agentmodule.ScopeHost); got != harness.ProviderCodex {
+	if got := catalog.DefaultProvider(harnessmodule.ScopeHost); got != harness.ProviderCodex {
 		t.Fatalf("host default = %q, want codex", got)
 	}
 	if roots := catalog.LegacySkillRoots("codex"); !slices.Equal(roots, []string{"/root/.codex/skills"}) {
@@ -65,7 +65,7 @@ func TestCatalogBuildsEveryDeclaredAgentInStableOrder(t *testing.T) {
 		t.Fatalf("Antigravity host CLI policy = %#v", antigravityCLI)
 	}
 
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{})
+	runtime, err := catalog.Build(harnessmodule.BuildDependencies{})
 	if err != nil {
 		t.Fatal(err)
 	}

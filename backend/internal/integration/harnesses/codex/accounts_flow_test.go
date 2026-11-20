@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 // fakeCodexLogin prints the device prompt the way the real CLI does and then
@@ -72,7 +72,7 @@ func newCodexLoginHarness(t *testing.T) *codexLoginHarness {
 		homeRecord: homeRecord,
 	}
 	harness.auth = newTestAuth(t, harness.store)
-	harness.auth.credentials.validate = func(_ context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+	harness.auth.credentials.validate = func(_ context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 		harness.validatedCalls.Add(1)
 		var parsed struct {
 			Tokens struct {
@@ -82,9 +82,9 @@ func newCodexLoginHarness(t *testing.T) *codexLoginHarness {
 		}
 		if err := json.Unmarshal(credential, &parsed); err != nil || parsed.Tokens.AccountID == "" ||
 			parsed.Tokens.AccessToken == "rejected" {
-			return agentauth.ValidatedAccount{}, errors.New("Codex did not recognize a ChatGPT account")
+			return harnessauth.ValidatedAccount{}, errors.New("Codex did not recognize a ChatGPT account")
 		}
-		return agentauth.ValidatedAccount{
+		return harnessauth.ValidatedAccount{
 			Email: strings.TrimPrefix(parsed.Tokens.AccountID, "acct-") + "@example.test", PlanType: "plus",
 			Credential: append(json.RawMessage(nil), credential...),
 		}, nil
@@ -94,7 +94,7 @@ func newCodexLoginHarness(t *testing.T) *codexLoginHarness {
 
 // login runs one account login to completion and returns its final state and
 // the isolated directory it used.
-func (h *codexLoginHarness) login(t *testing.T, token, label, accountID string) (agentauth.DeviceState, string) {
+func (h *codexLoginHarness) login(t *testing.T, token, label, accountID string) (harnessauth.DeviceState, string) {
 	t.Helper()
 	t.Setenv("FAKE_CODEX_TOKEN", token)
 	if err := os.Remove(h.homeRecord); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -115,7 +115,7 @@ func (h *codexLoginHarness) login(t *testing.T, token, label, accountID string) 
 	return state, filepath.Dir(string(home))
 }
 
-func waitForCodexLogin(t *testing.T, auth *Auth) agentauth.DeviceState {
+func waitForCodexLogin(t *testing.T, auth *Auth) harnessauth.DeviceState {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for auth.LoginState().Active {
@@ -136,7 +136,7 @@ func (h *codexLoginHarness) activeCredential(t *testing.T) string {
 	return string(data)
 }
 
-func (h *codexLoginHarness) account(t *testing.T, label string) agentauth.AccountRecord {
+func (h *codexLoginHarness) account(t *testing.T, label string) harnessauth.AccountRecord {
 	t.Helper()
 	saved := h.store.saved()
 	for _, record := range saved.Accounts {
@@ -145,7 +145,7 @@ func (h *codexLoginHarness) account(t *testing.T, label string) agentauth.Accoun
 		}
 	}
 	t.Fatalf("account %q not saved: %#v", label, saved)
-	return agentauth.AccountRecord{}
+	return harnessauth.AccountRecord{}
 }
 
 func TestAccountLoginWorkflowAddsAndSwitchesAccounts(t *testing.T) {
@@ -348,7 +348,7 @@ func TestAccountLoginHoldsRunsAndOtherLoginsUntilItFinishes(t *testing.T) {
 	if _, err := h.auth.accounts.StartAccountLogin(context.Background(), "Company", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.auth.accounts.BeginRun(); !errors.Is(err, agentauth.ErrAccountLoginInProgress) {
+	if _, err := h.auth.accounts.BeginRun(); !errors.Is(err, harnessauth.ErrAccountLoginInProgress) {
 		t.Fatalf("run during an account login error = %v", err)
 	}
 	if _, err := h.auth.accounts.StartAccountLogin(context.Background(), "Other", ""); err == nil {
@@ -377,9 +377,9 @@ func TestAccountLoginRejectsInvalidRequestsBeforeStartingCodex(t *testing.T) {
 		name, label, accountID string
 		want                   error
 	}{
-		{"blank label", "  ", "", agentauth.ErrAccountLabelRequired},
-		{"duplicate label", "personal", "", agentauth.ErrAccountLabelConflict},
-		{"unknown account", "Other", "missing", agentauth.ErrAccountNotFound},
+		{"blank label", "  ", "", harnessauth.ErrAccountLabelRequired},
+		{"duplicate label", "personal", "", harnessauth.ErrAccountLabelConflict},
+		{"unknown account", "Other", "missing", harnessauth.ErrAccountNotFound},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

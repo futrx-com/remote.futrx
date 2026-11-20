@@ -3,7 +3,7 @@ package chat
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // AccountAccess is implemented by the existing-policy adapter. No account ACL

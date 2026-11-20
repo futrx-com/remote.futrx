@@ -7,7 +7,7 @@ provisioning profiles without maintaining separate provider lists.
 
 ## Contract layers
 
-The narrow runtime contract is [`harness.Provider`](../../../backend/internal/harness/model.go):
+The narrow runtime contract is [`harness.Provider`](../../../backend/internal/service/harness/model.go):
 
 ```go
 type Provider interface {
@@ -26,17 +26,17 @@ The module layer wraps that runtime contract with platform policy:
 
 | Type | Responsibility |
 | --- | --- |
-| [`Descriptor`](../../../backend/internal/service/agent/module/factory.go) | Stable identity and label, default, execution scopes, auth policy, feature support, and skill metadata |
-| [`Factory`](../../../backend/internal/service/agent/module/factory.go) | Immutable descriptor, provisioning profile, project-preparation policy, and callback that constructs runtime/auth components from narrowed dependencies |
-| [`FactoryBuilder`](../../../backend/internal/service/agent/module/factory.go) | Compile-time signature for each provider package's `NewFactory` constructor |
-| [`Catalog`](../../../backend/internal/service/agent/module/catalog.go) | Ordered definition validation plus project/host profile projections |
-| [`Runtime`](../../../backend/internal/service/agent/module/catalog.go) | One encapsulated, validated view for provider lookup, auth bindings, descriptors, defaults, scopes, and features |
+| [`Descriptor`](../../../backend/internal/service/harness/module/factory.go) | Stable identity and label, default, execution scopes, auth policy, feature support, and skill metadata |
+| [`Factory`](../../../backend/internal/service/harness/module/factory.go) | Immutable descriptor, provisioning profile, project-preparation policy, and callback that constructs runtime/auth components from narrowed dependencies |
+| [`FactoryBuilder`](../../../backend/internal/service/harness/module/factory.go) | Compile-time signature for each provider package's `NewFactory` constructor |
+| [`Catalog`](../../../backend/internal/service/harness/module/catalog.go) | Ordered definition validation plus project/host profile projections |
+| [`Runtime`](../../../backend/internal/service/harness/module/catalog.go) | One encapsulated, validated view for provider lookup, auth bindings, descriptors, defaults, scopes, and features |
 
 A factory owns declarations and the construction boundary, not infrastructure
 mechanisms. Its profile says what the provider needs; generic host and
 container services decide how and when to apply that policy. For project
 scope, the module factory constructs
-[`service/agent/execution.Preparer`](../../../backend/internal/service/agent/execution/preparer.go)
+[`service/harness/execution.Preparer`](../../../backend/internal/service/harness/execution/preparer.go)
 from the exact validated profile and the adapter's
 `ProjectPreparationPolicy`.
 
@@ -170,12 +170,12 @@ for every descriptor field's downstream effect.
 
 ## Main source locations
 
-- [`backend/internal/harness/model.go`](../../../backend/internal/harness/model.go)
-- [`backend/internal/harness/identity.go`](../../../backend/internal/harness/identity.go)
-- [`backend/internal/harness/registry.go`](../../../backend/internal/harness/registry.go)
+- [`backend/internal/service/harness/model.go`](../../../backend/internal/service/harness/model.go)
+- [`backend/internal/service/harness/identity.go`](../../../backend/internal/service/harness/identity.go)
+- [`backend/internal/service/harness/registry.go`](../../../backend/internal/service/harness/registry.go)
 - [`backend/internal/integration/harnesses/`](../../../backend/internal/integration/harnesses)
-- [`backend/internal/service/agent/module/factory.go`](../../../backend/internal/service/agent/module/factory.go)
-- [`backend/internal/service/agent/module/catalog.go`](../../../backend/internal/service/agent/module/catalog.go)
-- [`backend/internal/service/agent/execution/preparer.go`](../../../backend/internal/service/agent/execution/preparer.go)
+- [`backend/internal/service/harness/module/factory.go`](../../../backend/internal/service/harness/module/factory.go)
+- [`backend/internal/service/harness/module/catalog.go`](../../../backend/internal/service/harness/module/catalog.go)
+- [`backend/internal/service/harness/execution/preparer.go`](../../../backend/internal/service/harness/execution/preparer.go)
 - [`backend/internal/config/agents.go`](../../../backend/internal/config/agents.go)
 - [`backend/internal/service/services.go`](../../../backend/internal/service/services.go)

@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 )
 
 func TestLoadFallbacks(t *testing.T) {
@@ -52,7 +52,7 @@ func TestSaveRoundTripAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	zero := 0.0
-	want := []agentquota.AccountQuota{
+	want := []harnessquota.AccountQuota{
 		{Provider: "codex", Session: &harness.Quota{
 			Window: harness.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123,
 		}},

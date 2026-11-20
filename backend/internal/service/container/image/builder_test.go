@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type runtimeResponse struct {

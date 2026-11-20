@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func TestCodexQuotaReadingsSelectProductAndWindowDuration(t *testing.T) {

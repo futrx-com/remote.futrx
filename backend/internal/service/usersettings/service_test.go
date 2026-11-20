@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 func TestDefaultSettingsUseCodexChatDefaults(t *testing.T) {
@@ -30,8 +30,8 @@ func TestDefaultSettingsUseCodexChatDefaults(t *testing.T) {
 func TestUpdatePersistsProjectOnlyProviderAsProjectPreference(t *testing.T) {
 	repo := &memoryRepo{}
 	service := New(repo, WithProviderCatalog(scopedTestProviderCatalog{
-		"codex":   {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
-		"minimax": {agentmodule.ScopeProject: true},
+		"codex":   {harnessmodule.ScopeHost: true, harnessmodule.ScopeProject: true},
+		"minimax": {harnessmodule.ScopeProject: true},
 	}))
 	provider := ChatProviderMiniMax
 	accountID := "minimax-work"
@@ -79,8 +79,8 @@ func TestGetMigratesLegacyChatPreferenceToProjectScope(t *testing.T) {
 	legacy.ProjectChat = Chat{}
 	repo := &memoryRepo{settings: legacy, exists: true}
 	service := New(repo, WithProviderCatalog(scopedTestProviderCatalog{
-		"codex": {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
-		"kimi":  {agentmodule.ScopeHost: true, agentmodule.ScopeProject: true},
+		"codex": {harnessmodule.ScopeHost: true, harnessmodule.ScopeProject: true},
+		"kimi":  {harnessmodule.ScopeHost: true, harnessmodule.ScopeProject: true},
 	}))
 
 	settings, err := service.Get(context.Background(), "sub:user")
@@ -226,18 +226,18 @@ func TestUpdateRejectsInvalidChatPreferences(t *testing.T) {
 type testProviderCatalog map[string]bool
 
 func (c testProviderCatalog) HasProvider(provider string) bool { return c[provider] }
-func (c testProviderCatalog) SupportsScope(provider string, _ agentmodule.ExecutionScope) bool {
+func (c testProviderCatalog) SupportsScope(provider string, _ harnessmodule.ExecutionScope) bool {
 	return c[provider]
 }
 
-type scopedTestProviderCatalog map[string]map[agentmodule.ExecutionScope]bool
+type scopedTestProviderCatalog map[string]map[harnessmodule.ExecutionScope]bool
 
 func (c scopedTestProviderCatalog) HasProvider(provider string) bool {
 	_, ok := c[provider]
 	return ok
 }
 
-func (c scopedTestProviderCatalog) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+func (c scopedTestProviderCatalog) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
 	return c[provider][scope]
 }
 
@@ -246,7 +246,7 @@ type defaultTestProviderCatalog struct {
 	provider ChatProvider
 }
 
-func (c defaultTestProviderCatalog) DefaultProvider(agentmodule.ExecutionScope) ChatProvider {
+func (c defaultTestProviderCatalog) DefaultProvider(harnessmodule.ExecutionScope) ChatProvider {
 	return c.provider
 }
 

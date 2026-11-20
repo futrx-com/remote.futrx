@@ -12,10 +12,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // Provisioner installs provider-defined and embedded assets — shared agent

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type rpcResponse struct {

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 type Service struct {
@@ -39,11 +39,11 @@ type SessionPolicy interface {
 
 type ProviderPolicy interface {
 	HasProvider(provider string) bool
-	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 }
 
 type defaultProviderPolicy interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) harness.ProviderID
+	DefaultProvider(scope harnessmodule.ExecutionScope) harness.ProviderID
 }
 
 // Option configures an optional chat-service collaborator.
@@ -380,17 +380,17 @@ func (s *Service) validProviderScope(provider Provider, projectID ProjectID) boo
 	if !s.providers.HasProvider(string(provider)) {
 		return false
 	}
-	scope := agentmodule.ScopeHost
+	scope := harnessmodule.ScopeHost
 	if projectID != "" {
-		scope = agentmodule.ScopeProject
+		scope = harnessmodule.ScopeProject
 	}
 	return s.providers.SupportsScope(string(provider), scope)
 }
 
 func (s *Service) providerForScope(input Provider, projectID ProjectID) (Provider, bool) {
-	scope := agentmodule.ScopeHost
+	scope := harnessmodule.ScopeHost
 	if projectID != "" {
-		scope = agentmodule.ScopeProject
+		scope = harnessmodule.ScopeProject
 	}
 	normalized := harness.NormalizeProviderID(string(input))
 	if normalized == "" {

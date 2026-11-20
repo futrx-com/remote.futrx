@@ -367,13 +367,13 @@ Rewind clears provider session IDs. On the next run, the backend converts remain
 - Chat service: [`backend/internal/service/chat/service.go`](../../backend/internal/service/chat/service.go)
 - Prompt service: [`backend/internal/service/prompt/service.go`](../../backend/internal/service/prompt/service.go)
 - Run hub: [`backend/internal/service/runhub/hub.go`](../../backend/internal/service/runhub/hub.go)
-- Agent model: [`backend/internal/harness/model.go`](../../backend/internal/harness/model.go)
-- Agent module contract and runtime: [`backend/internal/service/agent/module/`](../../backend/internal/service/agent/module/)
-- Agent authentication: [`backend/internal/service/agent/auth/`](../../backend/internal/service/agent/auth/)
+- Agent model: [`backend/internal/service/harness/model.go`](../../backend/internal/service/harness/model.go)
+- Agent module contract and runtime: [`backend/internal/service/harness/module/`](../../backend/internal/service/harness/module/)
+- Agent authentication: [`backend/internal/service/harness/auth/`](../../backend/internal/service/harness/auth/)
 - Agent composition root: [`backend/internal/config/agents.go`](../../backend/internal/config/agents.go)
 - Provider-owned adapters and factories: [`backend/internal/integration/harnesses/`](../../backend/internal/integration/harnesses/)
-- Project-run preparation: [`backend/internal/service/agent/execution/`](../../backend/internal/service/agent/execution/)
-- Capability catalog: [`backend/internal/service/agent/capability/`](../../backend/internal/service/agent/capability/)
+- Project-run preparation: [`backend/internal/service/harness/execution/`](../../backend/internal/service/harness/execution/)
+- Capability catalog: [`backend/internal/service/harness/capability/`](../../backend/internal/service/harness/capability/)
 - Frontend chat hook: [`frontend/src/state/hooks/chat/useChat.ts`](../../frontend/src/state/hooks/chat/useChat.ts)
 
 ### Prompt authors

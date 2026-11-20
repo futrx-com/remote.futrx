@@ -6,14 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type Provider struct {
-	accountAuthorizer     agentauth.AccountAuthorizer
+	accountAuthorizer     harnessauth.AccountAuthorizer
 	projectPreparer       harness.ProjectPreparer
 	credentialCollector   provisioning.CredentialCollector
 	profile               provisioning.Profile
@@ -25,7 +25,7 @@ func newProvider(
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
-	accountAuthorizer agentauth.AccountAuthorizer,
+	accountAuthorizer harnessauth.AccountAuthorizer,
 ) *Provider {
 	return &Provider{
 		projectPreparer:       projectPreparer,
@@ -45,11 +45,11 @@ func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 }
 
 func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
+	if err := harnessauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
 		return err
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
-		return agentauth.ErrAccountNotFound
+		return harnessauth.ErrAccountNotFound
 	}
 	if emit == nil {
 		emit = func(harness.Event) {}
@@ -66,7 +66,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if err != nil {
 		return err
 	}
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
+	if err := harnessauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderKimi, ""); err != nil {
 		return err
 	}
 	err = harnessruntime.RunProcess(ctx, cmd, p.Parser(req), emit, harnessruntime.ProcessOptions{

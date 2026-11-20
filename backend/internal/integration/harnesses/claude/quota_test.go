@@ -3,7 +3,7 @@ package claude
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // TestTheFiveHourWindowIsRead uses the exact line the CLI emitted on this

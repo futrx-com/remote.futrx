@@ -4,38 +4,38 @@ import (
 	"context"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // NewFactory returns MiniMax's project-scoped module. The provider uses the
 // Codex app-server harness with a separate home and MiniMax Responses endpoint.
-func NewFactory() (agentmodule.Factory, error) {
+func NewFactory() (harnessmodule.Factory, error) {
 	profile := Profile()
-	return agentmodule.NewFactory(agentmodule.Descriptor{
+	return harnessmodule.NewFactory(harnessmodule.Descriptor{
 		ID:               harness.ProviderMiniMax,
 		Label:            configconstants.MiniMaxLabel,
-		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeProject},
-		Auth:             agentmodule.AuthManagedAPIKey,
+		ExecutionScopes:  []harnessmodule.ExecutionScope{harnessmodule.ScopeProject},
+		Auth:             harnessmodule.AuthManagedAPIKey,
 		AuthInstructions: configconstants.MiniMaxAuthInstructions,
-		APIKeyAuth: &agentmodule.APIKeyAuth{
+		APIKeyAuth: &harnessmodule.APIKeyAuth{
 			CreateURL:       configconstants.MiniMaxAPIKeyCreateURL,
 			CreateLabel:     configconstants.MiniMaxAPIKeyCreateLabel,
 			CredentialLabel: configconstants.MiniMaxAPIKeyCredentialLabel,
 		},
-		Features: agentmodule.Features{
-			Sessions:              agentmodule.SessionSupport{Resume: true, Fork: true},
-			Skills:                agentmodule.SkillsDollarMention,
+		Features: harnessmodule.Features{
+			Sessions:              harnessmodule.SessionSupport{Resume: true, Fork: true},
+			Skills:                harnessmodule.SkillsDollarMention,
 			BrowserTools:          true,
 			ApplicationTools:      true,
 			ExecutionPolicies:     true,
-			StreamingPresentation: agentmodule.StreamingBlocks,
+			StreamingPresentation: harnessmodule.StreamingBlocks,
 		},
-	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
+	}, &profile, func(deps harnessmodule.Dependencies, validatedProfile *provisioning.Profile) (harnessmodule.Components, error) {
 		tokenPlans := newAPIKeyValidator()
-		apiKeys, err := agentauth.NewAPIKeyService(
+		apiKeys, err := harnessauth.NewAPIKeyService(
 			context.Background(),
 			harness.ProviderMiniMax,
 			deps.APIKeys,
@@ -43,13 +43,13 @@ func NewFactory() (agentmodule.Factory, error) {
 			deps.AccountAuthorizer,
 		)
 		if err != nil {
-			return agentmodule.Components{}, err
+			return harnessmodule.Components{}, err
 		}
 		if err := apiKeys.EnableAccounts(context.Background(), deps.Accounts, configconstants.MiniMaxLabel); err != nil {
-			return agentmodule.Components{}, err
+			return harnessmodule.Components{}, err
 		}
-		binding := agentauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys)
-		return agentmodule.Components{
+		binding := harnessauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys)
+		return harnessmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
 				apiKeys,
@@ -60,7 +60,7 @@ func NewFactory() (agentmodule.Factory, error) {
 			),
 			Auth: &binding,
 		}, nil
-	}, agentmodule.WithProjectPreparation(agentmodule.ProjectPreparationPolicy{
+	}, harnessmodule.WithProjectPreparation(harnessmodule.ProjectPreparationPolicy{
 		SkillLinksRequired: true,
 		BrowserAssets:      true,
 		BrowserMCPRuntime:  true,
@@ -68,6 +68,6 @@ func NewFactory() (agentmodule.Factory, error) {
 }
 
 var (
-	_ harness.Provider           = (*Provider)(nil)
-	_ agentmodule.FactoryBuilder = NewFactory
+	_ harness.Provider             = (*Provider)(nil)
+	_ harnessmodule.FactoryBuilder = NewFactory
 )

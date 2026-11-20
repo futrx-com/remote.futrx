@@ -7,19 +7,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const signInHint = "antigravity is not signed in — open this chat's Terminal application, run `agy`, and complete the sign-in URL + code flow, then retry"
 
 type Provider struct {
-	accountAuthorizer agentauth.AccountAuthorizer
+	accountAuthorizer harnessauth.AccountAuthorizer
 	projectPreparer   harness.ProjectPreparer
 	binary            string
 }
 
-func newProvider(projectPreparer harness.ProjectPreparer, binary string, accountAuthorizer agentauth.AccountAuthorizer) *Provider {
+func newProvider(projectPreparer harness.ProjectPreparer, binary string, accountAuthorizer harnessauth.AccountAuthorizer) *Provider {
 	return &Provider{projectPreparer: projectPreparer, binary: binary, accountAuthorizer: accountAuthorizer}
 }
 
@@ -32,11 +32,11 @@ func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 }
 
 func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
+	if err := harnessauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
 		return err
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
-		return agentauth.ErrAccountNotFound
+		return harnessauth.ErrAccountNotFound
 	}
 	if emit == nil {
 		emit = func(harness.Event) {}
@@ -54,7 +54,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		return err
 	}
 
-	if err := agentauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
+	if err := harnessauth.RequireAccountUse(ctx, p.accountAuthorizer, harness.ProviderAntigravity, ""); err != nil {
 		return err
 	}
 	store := conversationStore{containerName: containerName}

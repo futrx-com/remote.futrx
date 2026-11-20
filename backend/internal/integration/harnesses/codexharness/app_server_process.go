@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type appServerScanResult struct {

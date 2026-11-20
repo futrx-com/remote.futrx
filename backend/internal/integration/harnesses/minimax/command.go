@@ -8,10 +8,10 @@ import (
 	"strconv"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 var (

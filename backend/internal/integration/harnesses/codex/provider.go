@@ -5,11 +5,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type Provider struct {
@@ -18,7 +18,7 @@ type Provider struct {
 	profile               provisioning.Profile
 	credentialSyncTimeout time.Duration
 	// accounts is nil when saved accounts are unavailable.
-	accounts *agentauth.AccountService
+	accounts *harnessauth.AccountService
 }
 
 func newProvider(
@@ -26,7 +26,7 @@ func newProvider(
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
-	accounts *agentauth.AccountService,
+	accounts *harnessauth.AccountService,
 ) *Provider {
 	return &Provider{
 		projectPreparer:       projectPreparer,

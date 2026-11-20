@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const (
@@ -37,22 +37,22 @@ type AuthStatus struct {
 	DeviceLogin   DeviceLoginState `json:"deviceLogin,omitempty"`
 }
 
-type DeviceLoginState = agentauth.DeviceState
+type DeviceLoginState = harnessauth.DeviceState
 
 // Auth combines Codex's device login with its optional saved accounts.
 // DeviceService owns the login process and subscriptions and
-// agentauth.AccountService owns the account lifecycle; Auth supplies only
+// harnessauth.AccountService owns the account lifecycle; Auth supplies only
 // Codex credential mechanics.
 type Auth struct {
-	device *agentauth.DeviceService[AuthStatus]
+	device *harnessauth.DeviceService[AuthStatus]
 	// accounts is nil when saved accounts are unavailable.
-	accounts    *agentauth.AccountService
+	accounts    *harnessauth.AccountService
 	credentials *accountCredentials
 }
 
-func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
+func NewAuth(vault *harnessauth.AccountVault) (*Auth, error) {
 	auth := &Auth{credentials: &accountCredentials{validate: validateAccountCredential}}
-	auth.device = agentauth.NewDeviceService(agentauth.DeviceConfig[AuthStatus]{
+	auth.device = harnessauth.NewDeviceService(harnessauth.DeviceConfig[AuthStatus]{
 		Command:         "codex",
 		Args:            []string{"login", "--device-auth"},
 		Env:             auth.deviceAuthEnv,
@@ -67,9 +67,9 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 			authenticated, _, _ := authenticated()
 			return authenticated
 		},
-		BuildStatus: func() agentauth.DeviceStatusBuilder[AuthStatus] {
+		BuildStatus: func() harnessauth.DeviceStatusBuilder[AuthStatus] {
 			authenticated, authMode, usesAPIKey := authenticated()
-			return func(state agentauth.DeviceState) AuthStatus {
+			return func(state harnessauth.DeviceState) AuthStatus {
 				return AuthStatus{
 					Authenticated: authenticated,
 					AuthMode:      authMode,
@@ -78,30 +78,30 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 				}
 			}
 		},
-		ResolveCompletion: func(err error, output string) agentauth.DeviceCompletion {
+		ResolveCompletion: func(err error, output string) harnessauth.DeviceCompletion {
 			if auth.accounts != nil {
 				if handled, loginErr := auth.accounts.FinishLogin(err, output); handled {
 					if loginErr != nil {
-						return agentauth.DeviceCompletion{Error: loginErr.Error()}
+						return harnessauth.DeviceCompletion{Error: loginErr.Error()}
 					}
-					return agentauth.DeviceCompletion{Completed: true}
+					return harnessauth.DeviceCompletion{Completed: true}
 				}
 			}
 			authenticated, _, usesAPIKey := authenticated()
 			switch {
 			case authenticated:
-				return agentauth.DeviceCompletion{Completed: true}
+				return harnessauth.DeviceCompletion{Completed: true}
 			case usesAPIKey:
-				return agentauth.DeviceCompletion{Error: "Codex is still logged in with an API key. Sign in with ChatGPT to use subscription limits."}
+				return harnessauth.DeviceCompletion{Error: "Codex is still logged in with an API key. Sign in with ChatGPT to use subscription limits."}
 			case err != nil:
-				return agentauth.DeviceCompletion{Error: fmt.Sprintf("codex login failed: %s", truncate(err.Error(), 300))}
+				return harnessauth.DeviceCompletion{Error: fmt.Sprintf("codex login failed: %s", truncate(err.Error(), 300))}
 			default:
-				return agentauth.DeviceCompletion{Error: "Codex login ended before authentication completed."}
+				return harnessauth.DeviceCompletion{Error: "Codex login ended before authentication completed."}
 			}
 		},
 	})
 	if vault != nil {
-		accounts, err := vault.Open(context.Background(), agentauth.AccountConfig{
+		accounts, err := vault.Open(context.Background(), harnessauth.AccountConfig{
 			Provider:    harness.ProviderCodex,
 			Label:       "Codex",
 			Credentials: auth.credentials,
@@ -119,9 +119,9 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 	return auth, nil
 }
 
-func (a *Auth) Status() AuthStatus                { return a.device.Status() }
-func (a *Auth) LoginState() agentauth.DeviceState { return a.device.LoginState() }
-func (a *Auth) Broadcast()                        { a.device.Broadcast() }
+func (a *Auth) Status() AuthStatus                  { return a.device.Status() }
+func (a *Auth) LoginState() harnessauth.DeviceState { return a.device.LoginState() }
+func (a *Auth) Broadcast()                          { a.device.Broadcast() }
 
 // deviceAuthEnv points the Codex login at an account login's isolated
 // CODEX_HOME while one is pending, and at the host login otherwise.

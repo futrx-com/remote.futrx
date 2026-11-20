@@ -10,18 +10,18 @@ import (
 	codexharness "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codex"
 	kimiharness "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/kimi"
 	minimaxharness "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/minimax"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
-func NewHarnessModules() (*agentmodule.Catalog, error) {
-	builders := []agentmodule.FactoryBuilder{
+func NewHarnessModules() (*harnessmodule.Catalog, error) {
+	builders := []harnessmodule.FactoryBuilder{
 		claudeharness.NewFactory,
 		codexharness.NewFactory,
 		minimaxharness.NewFactory,
 		kimiharness.NewFactory,
 		antigravityharness.NewFactory,
 	}
-	factories := make([]agentmodule.Factory, 0, len(builders))
+	factories := make([]harnessmodule.Factory, 0, len(builders))
 	for _, build := range builders {
 		factory, err := build()
 		if err != nil {
@@ -29,5 +29,5 @@ func NewHarnessModules() (*agentmodule.Catalog, error) {
 		}
 		factories = append(factories, factory)
 	}
-	return agentmodule.NewCatalog(factories...)
+	return harnessmodule.NewCatalog(factories...)
 }

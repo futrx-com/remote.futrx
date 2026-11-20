@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestLocalAdminCredentialIsPrivateAndCreateOnly(t *testing.T) {
@@ -168,9 +168,9 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 	dir := t.TempDir()
 	store := New(dir)
-	want := agentauth.AccountSet{
+	want := harnessauth.AccountSet{
 		ActiveAccountID: "account-one",
-		Accounts: []agentauth.AccountRecord{{
+		Accounts: []harnessauth.AccountRecord{{
 			ID: "account-one", Label: "Personal", Email: "person@example.test",
 			Credential: []byte(`{"auth_mode":"chatgpt","token":"secret"}`),
 		}},

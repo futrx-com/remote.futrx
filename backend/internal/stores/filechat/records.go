@@ -3,8 +3,8 @@ package filechat
 import (
 	"encoding/json"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type metaRecord struct {

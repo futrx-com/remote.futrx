@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
 )
 

@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
@@ -80,10 +80,10 @@ type Stores struct {
 	ApplicationTurns serviceapplications.AgentTurnRepository
 	Push             PushStore
 	Usage            serviceusage.Repository
-	AgentAPIKeys     agentauth.APIKeyStore
+	AgentAPIKeys     harnessauth.APIKeyStore
 	Email            emailoutbound.ConfigurationStore
-	AgentQuota       agentquota.Repository
-	AgentAccounts    agentauth.AccountStore
+	AgentQuota       harnessquota.Repository
+	AgentAccounts    harnessauth.AccountStore
 	ProjectShares    serviceshare.Repository
 	Permissions      servicepermission.Repository
 }

@@ -3,7 +3,7 @@
 This chapter follows one prompt from the chat WebSocket to a provider CLI and
 back into Remote's persisted event stream. Provider packages own CLI syntax and
 wire-protocol parsing. The service layer sees only the contracts in
-[`internal/harness`](../../../backend/internal/harness/model.go).
+[`internal/service/harness`](../../../backend/internal/service/harness/model.go).
 
 ## End-to-end run path
 
@@ -56,7 +56,7 @@ The concrete entry points are:
    resolves chat state, prepares a provider-neutral request, looks up the
    registered runtime, and calls `Provider.Run`.
 4. The provider launches and parses its own CLI. It emits
-   [`harness.Event`](../../../backend/internal/harness/model.go) values without
+   [`harness.Event`](../../../backend/internal/service/harness/model.go) values without
    importing chat, transport, store, or frontend types.
 5. [`emitAgentEvent`](../../../backend/internal/service/prompt/agent_events.go)
    persists session identity, projects recognized agent events into chat
@@ -69,7 +69,7 @@ that survives the backend.
 
 ## How `RunRequest` is built
 
-[`harness.RunRequest`](../../../backend/internal/harness/model.go) is the only run
+[`harness.RunRequest`](../../../backend/internal/service/harness/model.go) is the only run
 input a provider receives.
 
 | Field | Source and meaning |
@@ -108,20 +108,20 @@ Every built-in provider has a provider-local command builder. A factory and
 profile declare policy, but they do **not** automatically implement the
 provider's native run command. A new adapter must translate `RunRequest`; for
 project execution it receives the shared
-[`harness.ProjectPreparer`](../../../backend/internal/harness/project.go) port
+[`harness.ProjectPreparer`](../../../backend/internal/service/harness/project.go) port
 constructed by `module.Factory` through
-[`service/agent/execution`](../../../backend/internal/service/agent/execution).
+[`service/harness/execution`](../../../backend/internal/service/harness/execution).
 
 For a loose chat, built-ins execute the provider binary directly on the host
 with the requested working directory and a filtered/augmented environment.
 
 For a project chat, `execution.Preparer` owns this common workflow:
 
-1. Resolve the project through [`harness.ProjectResolver`](../../../backend/internal/harness/project.go)
+1. Resolve the project through [`harness.ProjectResolver`](../../../backend/internal/service/harness/project.go)
    and reject a missing container name.
 2. Call `ProjectResolver.Start` even when stored state says `running`. This
    reconciles a container deleted or replaced outside the process.
-3. Validate that [`provisioning.ContainerDependencies`](../../../backend/internal/harness/provisioning/container_dependencies.go)
+3. Validate that [`provisioning.ContainerDependencies`](../../../backend/internal/service/harness/provisioning/container_dependencies.go)
    is either completely wired or completely zero. Production supplies the
    complete set.
 4. Use the exact validated provider profile to ensure the CLI and, where
@@ -180,12 +180,12 @@ The provider-specific implementations are in:
 
 The shared orchestration and command construction are in:
 
-- [`service/agent/execution/preparer.go`](../../../backend/internal/service/agent/execution/preparer.go)
+- [`service/harness/execution/preparer.go`](../../../backend/internal/service/harness/execution/preparer.go)
 - [`integration/harnesses/runtime/container_command.go`](../../../backend/internal/integration/harnesses/runtime/container_command.go)
 
 ## Runtime and parser contracts
 
-[`harness.Provider`](../../../backend/internal/harness/model.go) deliberately has
+[`harness.Provider`](../../../backend/internal/service/harness/model.go) deliberately has
 only three responsibilities:
 
 ```go
@@ -197,7 +197,7 @@ type Provider interface {
 ```
 
 `Parser(req)` is **not** part of `harness.Provider`. Structured-stream adapters
-may implement [`harness.LineParser`](../../../backend/internal/harness/parser.go)
+may implement [`harness.LineParser`](../../../backend/internal/service/harness/parser.go)
 and use [`runtime.RunProcess`](../../../backend/internal/integration/harnesses/runtime/process.go),
 but a provider may own a different protocol loop.
 
@@ -217,7 +217,7 @@ service from appending a second generic `<provider> exit` error.
 
 ## Normalized agent events
 
-The provider boundary uses [`harness.Event`](../../../backend/internal/harness/model.go).
+The provider boundary uses [`harness.Event`](../../../backend/internal/service/harness/model.go).
 The prompt projection currently recognizes the following types:
 
 | Agent event | Persisted chat event | Required fields or behavior |
@@ -414,15 +414,15 @@ In the concrete provider package, pin the behavior the adapter owns:
 
 Keep shared workflow tests in their owning packages: project reconciliation,
 provisioning order, error text, and best-effort branches belong under
-`internal/service/agent/execution`; common container command and environment
+`internal/service/harness/execution`; common container command and environment
 precedence belong under `internal/integration/harnesses/runtime`; factory projection and
-validation belong under `internal/service/agent/module`.
+validation belong under `internal/service/harness/module`.
 
 Run focused tests first, then from `backend/` run:
 
 ```bash
-go test ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/agent/execution ./internal/service/agent/module ./internal/service/prompt
-go test -race ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/agent/execution ./internal/service/prompt
+go test ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/harness/execution ./internal/service/harness/module ./internal/service/prompt
+go test -race ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/harness/execution ./internal/service/prompt
 go test ./...
 go vet ./...
 ```

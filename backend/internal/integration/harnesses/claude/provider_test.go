@@ -8,28 +8,28 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func newTestProvider(
 	projects harness.ProjectResolver,
 	dependencies provisioning.ContainerDependencies,
 ) *Provider {
-	return newTestRuntime(agentmodule.BuildDependencies{
+	return newTestRuntime(harnessmodule.BuildDependencies{
 		Projects:   projects,
 		Containers: dependencies,
 	}).Lookup(harness.ProviderClaude).(*Provider)
 }
 
-func newTestRuntime(dependencies agentmodule.BuildDependencies) *agentmodule.Runtime {
+func newTestRuntime(dependencies harnessmodule.BuildDependencies) *harnessmodule.Runtime {
 	factory, err := NewFactory()
 	if err != nil {
 		panic(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		panic(err)
 	}
@@ -46,13 +46,13 @@ func newTestRuntime(dependencies agentmodule.BuildDependencies) *agentmodule.Run
 func TestFactoryOffersSavedAccountsOnlyWithAVault(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
 	for _, test := range []struct {
-		vault *agentauth.AccountVault
+		vault *harnessauth.AccountVault
 		want  bool
 	}{
 		{vault: nil, want: false},
-		{vault: agentauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{}), want: true},
+		{vault: harnessauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{}), want: true},
 	} {
-		runtime := newTestRuntime(agentmodule.BuildDependencies{Accounts: test.vault})
+		runtime := newTestRuntime(harnessmodule.BuildDependencies{Accounts: test.vault})
 		binding, ok := runtime.AuthBinding(harness.ProviderClaude)
 		if !ok || binding.AccountsAvailable() != test.want {
 			t.Fatalf("vault %v: accounts available = %v, want %v", test.vault != nil, binding.AccountsAvailable(), test.want)
@@ -82,14 +82,14 @@ esac
 		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
 		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
 	)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
 		},
 	}}
-	provider := newTestRuntime(agentmodule.BuildDependencies{
-		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
+	provider := newTestRuntime(harnessmodule.BuildDependencies{
+		Accounts: harnessauth.NewAccountVault(store, allowAccountUse{}),
 	}).Lookup(harness.ProviderClaude).(*Provider)
 	run := func(token, account string) {
 		t.Helper()
@@ -134,19 +134,19 @@ esac
 		`{"claudeAiOauth":{"refreshToken":"saved"}}`,
 		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
 	)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "one", Label: "One", Credential: testClaudeCredential("saved", "uuid-one", "one@example.test")},
 		},
 	}}
 	for _, test := range []struct {
 		name         string
-		dependencies agentmodule.BuildDependencies
+		dependencies harnessmodule.BuildDependencies
 		want         string
 	}{
-		{"saved account", agentmodule.BuildDependencies{Accounts: agentauth.NewAccountVault(store, allowAccountUse{})}, "one"},
-		{"host login", agentmodule.BuildDependencies{}, ""},
+		{"saved account", harnessmodule.BuildDependencies{Accounts: harnessauth.NewAccountVault(store, allowAccountUse{})}, "one"},
+		{"host login", harnessmodule.BuildDependencies{}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			provider := newTestRuntime(test.dependencies).Lookup(harness.ProviderClaude).(*Provider)
@@ -169,7 +169,7 @@ esac
 
 func TestAccountRunHomesSeparateChats(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	saved := agentauth.RunCredential{
+	saved := harnessauth.RunCredential{
 		AccountID:  "one",
 		Credential: testClaudeCredential("saved", "uuid-one", "one@example.test"),
 	}

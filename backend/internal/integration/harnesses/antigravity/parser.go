@@ -3,7 +3,7 @@ package antigravity
 import (
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Parser translates line-oriented Antigravity output for focused parser tests.

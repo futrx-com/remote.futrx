@@ -6,8 +6,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 const (

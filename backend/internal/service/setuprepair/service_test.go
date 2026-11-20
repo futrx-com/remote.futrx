@@ -13,9 +13,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"

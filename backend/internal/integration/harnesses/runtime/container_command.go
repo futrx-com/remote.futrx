@@ -4,7 +4,7 @@ import (
 	"context"
 	"os/exec"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // ContainerCommandSpec is the provider-owned portion of one lxc exec command.

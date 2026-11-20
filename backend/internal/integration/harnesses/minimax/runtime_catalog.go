@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type runtimeModelCatalog struct {

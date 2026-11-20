@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const (
@@ -28,27 +28,27 @@ var (
 	claudeAuthURLRE = regexp.MustCompile(`https://claude\.com/cai/oauth/authorize\?[^\s]+`)
 )
 
-type AuthStatus = agentauth.CodeStatus
-type LoginState = agentauth.CodeLoginState
-type StartResult = agentauth.CodeStartResult
+type AuthStatus = harnessauth.CodeStatus
+type LoginState = harnessauth.CodeLoginState
+type StartResult = harnessauth.CodeStartResult
 
 // Auth combines Claude's authorization-code login with its optional saved
 // accounts. CodeService owns the login process and subscriptions and
 // AccountService owns the account lifecycle; this package supplies only
 // Claude credential mechanics.
 type Auth struct {
-	code *agentauth.CodeService
+	code *harnessauth.CodeService
 	// accounts is nil when saved accounts are unavailable.
-	accounts    *agentauth.AccountService
+	accounts    *harnessauth.AccountService
 	credentials *accountCredentials
 }
 
 // NewAuth configures the shared authorization-code service for the Claude CLI
 // and, given a vault, opens Claude's saved accounts. Opening keeps a host
 // login for the active account and replaces any other with the saved one.
-func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
+func NewAuth(vault *harnessauth.AccountVault) (*Auth, error) {
 	auth := &Auth{credentials: &accountCredentials{validate: validateAccountCredential}}
-	auth.code = agentauth.NewCodeService(agentauth.CodeConfig{
+	auth.code = harnessauth.NewCodeService(harnessauth.CodeConfig{
 		Command:           "claude",
 		Args:              []string{"auth", "login", "--claudeai"},
 		Env:               auth.codeAuthEnv,
@@ -61,7 +61,7 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 		NotFound:          ErrClaudeNotFound,
 		CodeRequired:      ErrCodeRequired,
 		NoSession:         ErrNoSession,
-		Errors: agentauth.CodeErrorFormatters{
+		Errors: harnessauth.CodeErrorFormatters{
 			PTYStart: func(err error) error {
 				return fmt.Errorf("pty start: %w", err)
 			},
@@ -101,7 +101,7 @@ func NewAuth(vault *agentauth.AccountVault) (*Auth, error) {
 		},
 	})
 	if vault != nil {
-		accounts, err := vault.Open(context.Background(), agentauth.AccountConfig{
+		accounts, err := vault.Open(context.Background(), harnessauth.AccountConfig{
 			Provider:    harness.ProviderClaude,
 			Label:       "Claude",
 			Credentials: auth.credentials,

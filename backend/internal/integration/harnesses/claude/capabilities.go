@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 const fastServiceTier = "fast"

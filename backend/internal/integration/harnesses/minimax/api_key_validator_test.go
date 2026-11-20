@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestAPIKeyValidatorAcceptsAuthenticatedTokenPlan(t *testing.T) {
@@ -47,7 +47,7 @@ func TestAPIKeyValidatorRejectsPayAsYouGoKeysWithoutCallingMiniMax(t *testing.T)
 
 	validator := &apiKeyValidator{client: server.Client(), endpoint: server.URL}
 	err := validator.ValidateAPIKey(context.Background(), "standard-pay-as-you-go-key")
-	if !errors.Is(err, agentauth.ErrAPIKeyRejected) || !errors.Is(err, ErrTokenPlanKeyRequired) {
+	if !errors.Is(err, harnessauth.ErrAPIKeyRejected) || !errors.Is(err, ErrTokenPlanKeyRequired) {
 		t.Fatalf("error = %v, want Token Plan rejection", err)
 	}
 	if !strings.Contains(err.Error(), "pay-as-you-go API keys are not supported") {
@@ -67,7 +67,7 @@ func TestAPIKeyValidatorRejectsUnauthorizedKeysWithoutEchoingProviderBody(t *tes
 
 	validator := &apiKeyValidator{client: server.Client(), endpoint: server.URL}
 	err := validator.ValidateAPIKey(context.Background(), "sk-cp-rejected-key")
-	if !errors.Is(err, agentauth.ErrAPIKeyRejected) {
+	if !errors.Is(err, harnessauth.ErrAPIKeyRejected) {
 		t.Fatalf("error = %v, want ErrAPIKeyRejected", err)
 	}
 	if strings.Contains(err.Error(), "body-must-not-escape") {
@@ -117,7 +117,7 @@ func TestAPIKeyValidatorRejectsTokenPlanCredentialFailures(t *testing.T) {
 			defer server.Close()
 
 			validator := &apiKeyValidator{client: server.Client(), endpoint: server.URL}
-			if err := validator.ValidateAPIKey(context.Background(), "sk-cp-key"); !errors.Is(err, agentauth.ErrAPIKeyRejected) {
+			if err := validator.ValidateAPIKey(context.Background(), "sk-cp-key"); !errors.Is(err, harnessauth.ErrAPIKeyRejected) {
 				t.Fatalf("error = %v, want ErrAPIKeyRejected", err)
 			}
 		})

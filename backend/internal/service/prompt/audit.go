@@ -3,9 +3,9 @@ package prompt
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // WithAudit records the start and cancellation of every agent run.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 var _ harness.PlanUsageReader = (*Provider)(nil)
@@ -28,7 +28,7 @@ func (p *Provider) ReadPlanUsage(ctx context.Context) []harness.AccountPlanUsage
 		return nil
 	}
 	if accounts, ok := p.apiKeys.(interface {
-		AccountsSnapshot() agentauth.AccountsSnapshot
+		AccountsSnapshot() harnessauth.AccountsSnapshot
 		AccountsEnabled() bool
 	}); ok && accounts.AccountsEnabled() {
 		snapshot := accounts.AccountsSnapshot()

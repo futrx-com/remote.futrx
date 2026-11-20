@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const maxAPIKeyValidationResponseBytes = 1 << 20
@@ -20,7 +20,7 @@ var (
 	ErrTokenPlanKeyRequired        = fmt.Errorf(
 		"MiniMax requires a Token Plan subscription key with the %q prefix; pay-as-you-go API keys are not supported: %w",
 		configconstants.MiniMaxTokenPlanKeyPrefix,
-		agentauth.ErrAPIKeyRejected,
+		harnessauth.ErrAPIKeyRejected,
 	)
 )
 
@@ -77,7 +77,7 @@ func (v *apiKeyValidator) tokenPlan(ctx context.Context, key string) ([]json.Raw
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, agentauth.ErrAPIKeyRejected
+		return nil, harnessauth.ErrAPIKeyRejected
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("%w (HTTP %d)", ErrAPIKeyValidationUnavailable, response.StatusCode)
@@ -103,11 +103,11 @@ func (v *apiKeyValidator) tokenPlan(ctx context.Context, key string) ([]json.Raw
 		}
 		return *tokenPlan.ModelRemains, nil
 	case 1004, 1008, 2049:
-		return nil, agentauth.ErrAPIKeyRejected
+		return nil, harnessauth.ErrAPIKeyRejected
 	default:
 		return nil, ErrAPIKeyValidationUnavailable
 	}
 }
 
-var _ agentauth.APIKeyValidator = (*apiKeyValidator)(nil)
-var _ agentauth.APIKeyFormatValidator = (*apiKeyValidator)(nil)
+var _ harnessauth.APIKeyValidator = (*apiKeyValidator)(nil)
+var _ harnessauth.APIKeyFormatValidator = (*apiKeyValidator)(nil)

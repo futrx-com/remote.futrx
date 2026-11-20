@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
