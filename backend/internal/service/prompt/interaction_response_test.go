@@ -6,15 +6,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 type interactionResponseProvider struct {
 	started  chan struct{}
 	received chan harness.InteractionResponse
+}
+
+func (*interactionResponseProvider) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
 }
 
 func (p *interactionResponseProvider) ID() harness.ProviderID { return harness.ProviderCodex }
@@ -45,10 +50,11 @@ func (p *interactionResponseProvider) Run(
 func TestRespondInteractionRoutesAnswerToActiveRun(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID:       "aabbccddeeff",
 		Provider: servicechat.ProviderCodex,

@@ -1,20 +1,17 @@
-package filechat
+package sqlitechat
 
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
-	"time"
 
-	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
-func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.T) {
-	root := t.TempDir()
+func TestTranscriptCollapsesTelemetryAndLoadsFullResponses(t *testing.T) {
 	toolOutput := strings.Repeat("tool-result-🙂\n", 4_000)
 	subagentOutput := strings.Repeat("subagent-tool-output\n", 3_000)
 	subagentMessage := strings.Repeat("final subagent report\n", 3_000)
@@ -47,11 +44,9 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 		{Seq: 8, T: 8, Type: "user", TurnID: "turn-2", Text: "next question"},
 		{Seq: 9, T: 9, Type: "complete", TurnID: "turn-2"},
 	}
-	writeStoredChat(t, root, "abcd", events)
-	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
-		t.Fatal(err)
-	}
+	store := testStore(t)
+	makeChat(t, store, "abcd")
+	appendEvents(t, store, "abcd", events...)
 
 	page, err := store.ReadTranscriptPage(
 		context.Background(), "abcd", servicechat.TranscriptPageQuery{Limit: 10},
@@ -59,19 +54,19 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Indexing != nil || len(page.Turns) != 2 {
-		t.Fatalf("projected page = %#v", page)
+	if len(page.Turns) != 2 {
+		t.Fatalf("displayed page = %#v", page)
 	}
-	var projected []servicechat.Event
+	var displayed []servicechat.Event
 	for _, turn := range page.Turns {
-		projected = append(projected, turn.Events...)
+		displayed = append(displayed, turn.Events...)
 	}
 	var collaborations int
 	var toolRef, childToolRef, childMessageRef string
-	for _, event := range projected {
+	for _, event := range displayed {
 		switch event.Type {
 		case "provider_event":
-			t.Fatal("provider telemetry leaked into transcript projection")
+			t.Fatal("provider telemetry leaked into transcript")
 		case "tool_use_end":
 			toolRef = event.OutputRef
 			if !event.OutputTruncated || event.OutputBytes != int64(len(toolOutput)) || len(event.Output) >= len(toolOutput) {
@@ -92,30 +87,8 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 			childMessageRef, _ = state["messageRef"].(string)
 		}
 	}
-	var collaborationEndSeq, collaborationTurnOrdinal int64
-	if err := store.index.db.QueryRow(`
-		SELECT end_seq, turn_ordinal
-		FROM chat_transcript_items
-		WHERE chat_id = ? AND item_key = ?`, "abcd", "collaboration:child",
-	).Scan(&collaborationEndSeq, &collaborationTurnOrdinal); err != nil {
-		t.Fatal(err)
-	}
-	if collaborationEndSeq != 6 || collaborationTurnOrdinal != 1 {
-		t.Fatalf("collaboration index end=%d turn=%d", collaborationEndSeq, collaborationTurnOrdinal)
-	}
-	var contentTurnOrdinal int64
-	if err := store.index.db.QueryRow(`
-		SELECT turn_ordinal
-		FROM chat_transcript_content_refs
-		WHERE chat_id = ? AND content_id = ?`, "abcd", childToolRef,
-	).Scan(&contentTurnOrdinal); err != nil {
-		t.Fatal(err)
-	}
-	if contentTurnOrdinal != collaborationTurnOrdinal {
-		t.Fatalf("content reference turn=%d, want %d", contentTurnOrdinal, collaborationTurnOrdinal)
-	}
 	if collaborations != 1 || toolRef == "" || childToolRef == "" || childMessageRef == "" {
-		t.Fatalf("projection refs: collaborations=%d tool=%q childTool=%q childMessage=%q", collaborations, toolRef, childToolRef, childMessageRef)
+		t.Fatalf("transcript refs: collaborations=%d tool=%q childTool=%q childMessage=%q", collaborations, toolRef, childToolRef, childMessageRef)
 	}
 	for ref, want := range map[string]string{
 		toolRef:         toolOutput,
@@ -128,8 +101,7 @@ func TestTranscriptProjectionCollapsesTelemetryAndLoadsFullResponses(t *testing.
 	}
 }
 
-func TestTranscriptProjectionPagesInsideOneLargeTurnByBytes(t *testing.T) {
-	root := t.TempDir()
+func TestTranscriptPagesInsideOneLargeTurnByBytes(t *testing.T) {
 	events := []servicechat.Event{{Seq: 1, T: 1, Type: "user", TurnID: "turn-1", Text: "question"}}
 	for seq := int64(2); seq <= 11; seq++ {
 		events = append(events, servicechat.Event{
@@ -138,11 +110,9 @@ func TestTranscriptProjectionPagesInsideOneLargeTurnByBytes(t *testing.T) {
 		})
 	}
 	events = append(events, servicechat.Event{Seq: 12, T: 12, Type: "complete", TurnID: "turn-1"})
-	writeStoredChat(t, root, "abcd", events)
-	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
-		t.Fatal(err)
-	}
+	store := testStore(t)
+	makeChat(t, store, "abcd")
+	appendEvents(t, store, "abcd", events...)
 
 	before := int64(0)
 	seen := make(map[int64]struct{})
@@ -176,56 +146,93 @@ func TestTranscriptProjectionPagesInsideOneLargeTurnByBytes(t *testing.T) {
 	}
 }
 
-func TestTranscriptProjectionStartsBackgroundBackfillWithTailSequence(t *testing.T) {
-	root := t.TempDir()
-	writeStoredChat(t, root, "abcd", []servicechat.Event{
-		{Seq: 41, T: 1, Type: "user", TurnID: "turn", Text: "question"},
-		{Seq: 42, T: 2, Type: "complete", TurnID: "turn"},
-	})
-	store := newIndexedTestStore(t, root)
+func TestTranscriptContentPreservesByteOffsetBoundaries(t *testing.T) {
+	output := strings.Repeat("a🙂z", 6_000)
+	store := testStore(t)
+	makeChat(t, store, "abcd")
+	appendEvents(t, store, "abcd", servicechat.Event{Type: "tool_use_end", TurnID: "turn", ID: "tool", Output: output})
 	page, err := store.ReadTranscriptPage(context.Background(), "abcd", servicechat.TranscriptPageQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Indexing == nil || !page.Indexing.TailSeqKnown || page.LastSeq != 42 {
-		t.Fatalf("initial background page = %#v", page)
-	}
-	deadline := time.Now().Add(2 * time.Second)
-	for page.Indexing != nil && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-		page, err = store.ReadTranscriptPage(context.Background(), "abcd", servicechat.TranscriptPageQuery{})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	if page.Indexing != nil || len(page.Turns) != 1 {
-		t.Fatalf("completed background page = %#v", page)
+	contentID := page.Turns[0].Events[0].OutputRef
+	for _, test := range []struct {
+		name      string
+		after     int64
+		limit     int
+		content   string
+		next      int64
+		complete  bool
+		wantError error
+	}{
+		{name: "minimum limit ends before rune", limit: 1, content: "a", next: 1},
+		{name: "minimum limit fits rune", after: 1, limit: 1, content: "🙂", next: 5},
+		{name: "offset inside rune advances", after: 2, limit: 4, content: "za", next: 7},
+		{name: "default limit", content: output, complete: true},
+		{name: "end offset", after: int64(len(output)), limit: 4, complete: true},
+		{name: "past end", after: int64(len(output)) + 1, wantError: servicechat.ErrTranscriptContentNotFound},
+		{name: "negative offset", after: -1, wantError: servicechat.ErrTranscriptContentNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			chunk, err := store.ReadTranscriptContent(context.Background(), "abcd", contentID, test.after, test.limit)
+			if !errors.Is(err, test.wantError) {
+				t.Fatalf("content error = %v, want %v", err, test.wantError)
+			}
+			if test.wantError != nil {
+				return
+			}
+			if chunk.ContentID != contentID || chunk.Content != test.content || chunk.NextAfter != test.next ||
+				chunk.Complete != test.complete || chunk.TotalBytes != int64(len(output)) {
+				t.Fatalf("content chunk = %#v", chunk)
+			}
+		})
 	}
 }
 
-func TestChatIndexCheckpointEndsOnARecordBoundary(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "events.jsonl")
-	file, err := os.Create(path)
+func TestTranscriptPagesTenThenTwentyTurnsWithoutGaps(t *testing.T) {
+	events := make([]servicechat.Event, 31)
+	for turn := 1; turn <= len(events); turn++ {
+		events[turn-1] = servicechat.Event{
+			Seq:    int64(turn),
+			T:      int64(turn),
+			Type:   "user",
+			TurnID: fmt.Sprintf("turn-%d", turn),
+			Text:   fmt.Sprintf("question-%d", turn),
+		}
+	}
+	store := testStore(t)
+	makeChat(t, store, "abcd")
+	appendEvents(t, store, "abcd", events...)
+
+	latest, err := store.ReadTranscriptPage(
+		context.Background(),
+		"abcd",
+		servicechat.TranscriptPageQuery{Limit: 10},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	size := configconstants.ChatIndexCheckpointBytes + 20
-	if err := file.Truncate(size); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := file.WriteAt([]byte("abc\ndef"), configconstants.ChatIndexCheckpointBytes); err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	checkpoint, err := chatIndexCheckpoint(path, 0, size)
+	assertTurnPage(t, latest, 22, 31, 22, 31, true)
+
+	older, err := store.ReadTranscriptPage(
+		context.Background(),
+		"abcd",
+		servicechat.TranscriptPageQuery{Limit: 20, BeforeSeq: latest.NextBefore},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if checkpoint != configconstants.ChatIndexCheckpointBytes+4 {
-		t.Fatalf("checkpoint = %d, want %d", checkpoint, configconstants.ChatIndexCheckpointBytes+4)
+	assertTurnPage(t, older, 2, 21, 2, 31, true)
+
+	oldest, err := store.ReadTranscriptPage(
+		context.Background(),
+		"abcd",
+		servicechat.TranscriptPageQuery{Limit: 20, BeforeSeq: older.NextBefore},
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertTurnPage(t, oldest, 1, 1, 0, 31, false)
 }
 
 func readAllTranscriptContent(
@@ -256,26 +263,22 @@ func readAllTranscriptContent(
 	}
 }
 
-func TestTranscriptReplayRetainsPromptAuthorSnapshot(t *testing.T) {
-	root := t.TempDir()
-	writeStoredChat(t, root, "abcd", []servicechat.Event{
-		{Seq: 1, T: 1, Type: "user", TurnID: "turn", Text: "question", UserEmail: "former-member@example.com"},
-		{Seq: 2, T: 2, Type: "complete", TurnID: "turn", UserEmail: "former-member@example.com"},
-	})
-	store := newIndexedTestStore(t, root)
-	if _, err := store.index.syncChat(context.Background(), "abcd", store.eventsPath("abcd")); err != nil {
-		t.Fatal(err)
+func assertTurnPage(
+	t *testing.T,
+	page servicechat.TranscriptPage,
+	first int,
+	last int,
+	nextBefore int64,
+	lastSeq int64,
+	hasMore bool,
+) {
+	t.Helper()
+	if len(page.Turns) != last-first+1 {
+		t.Fatalf("turn count = %d, want %d: %#v", len(page.Turns), last-first+1, page)
 	}
-	page, err := store.ReadTranscriptPage(context.Background(), "abcd", servicechat.TranscriptPageQuery{Limit: 10})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Turns) != 1 {
-		t.Fatalf("missing transcript: %#v", page)
-	}
-	for _, event := range page.Turns[0].Events {
-		if event.UserEmail != "former-member@example.com" {
-			t.Fatalf("lost persisted author: %#v", event)
-		}
+	if page.Turns[0].ID != fmt.Sprintf("turn-%d", first) ||
+		page.Turns[len(page.Turns)-1].ID != fmt.Sprintf("turn-%d", last) ||
+		page.NextBefore != nextBefore || page.LastSeq != lastSeq || page.HasMore != hasMore {
+		t.Fatalf("turn page = %#v", page)
 	}
 }

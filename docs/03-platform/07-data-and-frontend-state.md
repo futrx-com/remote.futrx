@@ -2,8 +2,9 @@
 
 The application does not use an external database service. Conversations use
 an authoritative embedded SQLite database, including metadata, ordered events,
-branches, native session bookmarks and transcript/search projections. Other
-platform metadata remains in JSON files. Project source files and native
+branches, native session bookmarks, indexed event grouping and a rebuildable
+full-text search index. Other platform metadata remains in JSON files.
+Project source files and native
 harness state live in separate persistent host trees.
 
 ## Host storage layout
@@ -128,21 +129,28 @@ A chat's project relationship is optional. Project membership is stored as norma
 ```mermaid
 flowchart LR
     Run["Prompt run"] --> Append["SQLite transaction"]
-    Append --> Events["Ordered events and metadata"]
-    Append --> Index["Transcript and search projections"]
+    Append --> Events["Ordered events, grouping fields and metadata"]
     Events --> Replay["Replay live events after seq"]
-    Index --> Transcript["Page assembled prompt turns"]
+    Events --> Transcript["Assemble requested transcript page"]
     Replay --> Client["Chat UI"]
     Transcript --> Client
+    Client --> Search["Search request"]
+    Search --> CatchUp["Index saved events since checkpoint"]
+    Events --> CatchUp
+    CatchUp --> Index["Derived full-text index"]
+    Index --> Matches["Matching history previews"]
+    Matches --> Client
 ```
 
 Chat metadata includes title, provider, provider session IDs, working directory, project ID, read markers, model/mode controls, selected skills, and fork state. The `running` flag and cancellation handle are computed from the in-memory run hub and are not persisted. Provider child processes may survive a backend restart, so the restarted control plane cannot automatically rediscover or cancel them.
 
-Ordered SQLite events supply live reconnects. History pages use a persisted
-transcript projection by `turnId` (or legacy `user` boundaries), coalescing
-adjacent streaming text/reasoning deltas. Cursors remain event sequences.
-The browser initially requests 10 complete turns and older history in
-20-turn pages. Event and projection updates commit together.
+Ordered SQLite events supply live reconnects. Indexed fields on each event
+locate its turn and display item, using `turnId` or legacy `user` boundaries.
+History reads assemble the requested items on demand and coalesce adjacent
+streaming text/reasoning deltas. Cursors remain event sequences. The browser
+initially requests up to 10 turns and older history in pages of up to 20 turns;
+a byte budget can end a page within a large turn. Search catches up from saved
+events separately from the message-save transaction.
 
 Upgrades perform a one-time streaming migration while the old backend is
 stopped. The new database must never be deleted as a cache: it is the source

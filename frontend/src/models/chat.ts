@@ -96,13 +96,6 @@ export interface ChatEventPage {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
-  indexing?: TranscriptIndexProgress;
-}
-
-export interface TranscriptIndexProgress {
-  indexedBytes: number;
-  totalBytes: number;
-  tailSeqKnown: boolean;
 }
 
 export interface TranscriptContentPage {

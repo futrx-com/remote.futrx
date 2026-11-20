@@ -6,14 +6,15 @@ import (
 	"time"
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 func TestHubSubscribeReplaysAndBroadcasts(t *testing.T) {
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
 		t.Fatal(err)
 	}
@@ -42,10 +43,11 @@ func TestHubSubscribeReplaysAndBroadcasts(t *testing.T) {
 }
 
 func TestHubSubscribeAfterOnlyReplaysMissingEvents(t *testing.T) {
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
 		t.Fatal(err)
 	}

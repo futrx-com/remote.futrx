@@ -34,9 +34,9 @@ type TranscriptEventWindowSource interface {
 	) (TranscriptEventWindow, error)
 }
 
-// TranscriptProjectionSource serves the durable, compact read model directly.
-// Authoritative events remain separate from this derived read model.
-type TranscriptProjectionSource interface {
+// TranscriptReader reads bounded display pages and large content fields from
+// saved events. Implementations may use indexed event grouping to select items.
+type TranscriptReader interface {
 	ReadTranscriptPage(ctx context.Context, id ID, query TranscriptPageQuery) (TranscriptPage, error)
 	ReadTranscriptContent(
 		ctx context.Context,

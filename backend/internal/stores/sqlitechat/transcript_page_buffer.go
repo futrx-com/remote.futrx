@@ -7,7 +7,7 @@ import (
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
-type projectedTranscriptItem struct {
+type transcriptItem struct {
 	turnOrdinal  int64
 	turnID       string
 	turnStart    int64
@@ -24,7 +24,7 @@ type transcriptPageBuffer struct {
 	byteLimit int
 	usedBytes int
 	hasMore   bool
-	items     []projectedTranscriptItem
+	items     []transcriptItem
 	turns     map[int64]struct{}
 }
 
@@ -32,12 +32,12 @@ func newTranscriptPageBuffer(turnLimit, byteLimit int) *transcriptPageBuffer {
 	return &transcriptPageBuffer{
 		turnLimit: turnLimit,
 		byteLimit: byteLimit,
-		items:     make([]projectedTranscriptItem, 0, 64),
+		items:     make([]transcriptItem, 0, 64),
 		turns:     make(map[int64]struct{}, turnLimit),
 	}
 }
 
-func (buffer *transcriptPageBuffer) appendItem(item projectedTranscriptItem) bool {
+func (buffer *transcriptPageBuffer) appendItem(item transcriptItem) bool {
 	_, knownTurn := buffer.turns[item.turnOrdinal]
 	if (!knownTurn && len(buffer.turns) == buffer.turnLimit) ||
 		(len(buffer.items) > 0 && buffer.usedBytes+item.payloadBytes > buffer.byteLimit) {
@@ -55,13 +55,13 @@ func (buffer *transcriptPageBuffer) page(lastSeq int64) servicechat.TranscriptPa
 	for left, right := 0, len(buffer.items)-1; left < right; left, right = left+1, right-1 {
 		buffer.items[left], buffer.items[right] = buffer.items[right], buffer.items[left]
 	}
-	projectedTurns := make([]servicechat.TranscriptTurn, 0, len(buffer.turns))
+	turns := make([]servicechat.TranscriptTurn, 0, len(buffer.turns))
 	var lastTurnOrdinal int64 = -1
 	for _, item := range buffer.items {
-		last := len(projectedTurns) - 1
+		last := len(turns) - 1
 		if last < 0 || lastTurnOrdinal != item.turnOrdinal {
-			projectedTurns = append(projectedTurns, servicechat.TranscriptTurn{
-				ID:       projectedTurnID(item),
+			turns = append(turns, servicechat.TranscriptTurn{
+				ID:       transcriptTurnID(item),
 				StartSeq: item.startSeq,
 				EndSeq:   item.endSeq,
 				Events:   append([]servicechat.Event(nil), item.payload...),
@@ -69,14 +69,14 @@ func (buffer *transcriptPageBuffer) page(lastSeq int64) servicechat.TranscriptPa
 			lastTurnOrdinal = item.turnOrdinal
 			continue
 		}
-		if item.endSeq > projectedTurns[last].EndSeq {
-			projectedTurns[last].EndSeq = item.endSeq
+		if item.endSeq > turns[last].EndSeq {
+			turns[last].EndSeq = item.endSeq
 		}
-		projectedTurns[last].Events = append(projectedTurns[last].Events, item.payload...)
+		turns[last].Events = append(turns[last].Events, item.payload...)
 	}
-	for index := range projectedTurns {
-		sort.SliceStable(projectedTurns[index].Events, func(left, right int) bool {
-			return projectedTurns[index].Events[left].Seq < projectedTurns[index].Events[right].Seq
+	for index := range turns {
+		sort.SliceStable(turns[index].Events, func(left, right int) bool {
+			return turns[index].Events[left].Seq < turns[index].Events[right].Seq
 		})
 	}
 
@@ -85,14 +85,14 @@ func (buffer *transcriptPageBuffer) page(lastSeq int64) servicechat.TranscriptPa
 		nextBefore = buffer.items[0].startSeq
 	}
 	return servicechat.TranscriptPage{
-		Turns:      projectedTurns,
+		Turns:      turns,
 		NextBefore: nextBefore,
 		LastSeq:    lastSeq,
 		HasMore:    buffer.hasMore,
 	}
 }
 
-func projectedTurnID(item projectedTranscriptItem) string {
+func transcriptTurnID(item transcriptItem) string {
 	if item.turnID != "" {
 		return item.turnID
 	}

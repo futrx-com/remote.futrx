@@ -39,7 +39,6 @@ export function ChatContainer({
     eventCount,
     hasOlder,
     loadingOlder,
-    indexingProgress,
     status,
     locallyStartedTurn,
     error,
@@ -217,7 +216,6 @@ export function ChatContainer({
             hydratedTextPart={hydratedTextPart}
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
-            indexingProgress={indexingProgress}
             status={status}
             locallyStartedTurn={locallyStartedTurn}
             streamingPresentation={streamingPresentation}

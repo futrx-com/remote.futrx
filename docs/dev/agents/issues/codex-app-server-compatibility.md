@@ -295,17 +295,24 @@ Required UI-only behavior:
 
 ## CUI-009: continuity and steering are reconstructed outside Codex
 
-Native `thread/start`, `thread/resume`, and `thread/fork` are correctly used,
-and new thread IDs and resolved models are persisted. Chat forks also defer to
-Codex's native fork operation when the descriptor permits it. These are strong
-parts of the current integration.
-
-However, rewind clears the Codex session ID in
-[`filechat/store.go`](../../../../backend/internal/stores/filechat/store.go).
-The next turn reconstructs context using a bounded visible prose transcript in
+Ordinary turns use native `thread/start` and `thread/resume`, and new thread IDs
+and resolved models are persisted. Remote's SQLite forks and rewinds create a
+new branch with cleared native-session mappings in
+[`sqlitechat/branches.go`](../../../../backend/internal/stores/sqlitechat/branches.go).
+Their next turn starts a fresh native session with retained portable history.
+Missing-thread recovery follows the fresh-session path coordinated by
 [`prompt/service.go`](../../../../backend/internal/service/prompt/service.go).
-Missing-thread recovery does the same. The reconstructed transcript omits tool
-state, reasoning, native items, and older context.
+
+The portable history includes user and assistant messages, tool calls/results
+and attachments, with original provider, account, turn and message attribution.
+Adjacent assistant fragments are joined without changing their text. Remote
+does not truncate or summarize this history, but supplies it as historical
+context with the current prompt rather than inserting native historical turns.
+Reasoning, native protocol envelopes, collaboration telemetry and provider
+compaction state are not transferred. Native input limits can reject large
+transfers. See
+[`chat.ConversationRecords`](../../../../backend/internal/service/chat/handoffs.go)
+and the [conversation storage guide](../../conversation-storage.md#existing-native-sessions).
 
 Input composed during a run is queued as another Remote turn. Native
 `turn/steer` is not used, so steering intent cannot affect the active turn.
@@ -313,8 +320,7 @@ Input composed during a run is queued as another Remote turn. Native
 Required UI-only behavior:
 
 - prefer native thread operations whenever Codex exposes them;
-- expose the lossy nature of transcript recovery rather than presenting it as
-  full continuity;
+- distinguish portable-context recovery from native history continuation;
 - preserve native history/item references needed by supported rollback flows;
 - offer `turn/steer` for active-turn input when supported, while keeping a
   clearly distinct "next turn" queue; and

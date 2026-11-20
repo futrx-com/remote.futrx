@@ -54,7 +54,7 @@ type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
-	servicechat.TranscriptProjectionSource
+	servicechat.TranscriptReader
 }
 
 // PushStore persists Web Push registrations and the server's long-lived VAPID
@@ -261,7 +261,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithAudit(auditLog),
 		servicechat.WithTranscriptEventSource(deps.Chats),
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
-		servicechat.WithTranscriptProjectionSource(deps.Chats),
+		servicechat.WithTranscriptReader(deps.Chats),
 		servicechat.WithCopiedEventAppender(chats),
 		servicechat.WithSessionPolicy(harnessRuntime),
 		servicechat.WithProviderPolicy(harnessRuntime),

@@ -59,9 +59,12 @@ Concurrent chats in one project share the same files, processes, ports, browser 
 
 ![The same durable project with provider controls available in the composer](/assets/docs/screenshots/20-agent-switching-controls-15m15s.webp)
 
-The files stay in the project. Provider-native session state does not transfer
-cleanly; when a provider session is missing, Remote supplies a bounded visible
-transcript to a fresh session. Kimi and Antigravity forks start fresh.
+The files stay in the project. Remote supplies the selected session's missing
+user and assistant messages, tool records and attachments as historical
+context. A fresh session receives the retained conversation history. Remote
+does not truncate that history, but native input limits still apply and
+provider-internal state does not transfer. Forks start fresh sessions with
+their retained history.
 
 Antigravity must first be signed in by running `agy` in that project's
 Terminal. Exit the CLI and choose **Refresh models** in the chat picker before

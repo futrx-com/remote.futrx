@@ -77,7 +77,7 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 }
 
 type transcriptItemHeader struct {
-	item           projectedTranscriptItem
+	item           transcriptItem
 	key, eventType string
 	mode           transcriptItemMode
 }
@@ -108,7 +108,7 @@ func (s *Store) readTranscriptHeaders(ctx context.Context, seg branchSegment, be
 	return headers, nil
 }
 
-func (s *Store) readTranscriptItem(ctx context.Context, seg branchSegment, h transcriptItemHeader) (projectedTranscriptItem, error) {
+func (s *Store) readTranscriptItem(ctx context.Context, seg branchSegment, h transcriptItemHeader) (transcriptItem, error) {
 	item, key, mode, eventType := h.item, h.key, h.mode, h.eventType
 	var seqs []int64
 	if mode == transcriptItemSingle {

@@ -48,7 +48,7 @@ type ChatStore interface {
 	servicechat.Repository
 	servicechat.TranscriptEventSource
 	servicechat.TranscriptEventWindowSource
-	servicechat.TranscriptProjectionSource
+	servicechat.TranscriptReader
 }
 
 // PushStore exposes the subscription, account-cleanup, and VAPID capabilities

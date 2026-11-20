@@ -335,18 +335,18 @@ Claude, Codex, and MiniMax.
 | Fork | Creates a branch sharing retained history; next run supplies it to a fresh native session |
 | Rewind | Creates a branch retaining events before the selected point; unavailable while running |
 | Delete | Cancels an active run, then removes chat metadata and history |
-| Load older | Pages backward in complete prompt turns projected from SQLite events |
+| Load older | Assembles older SQLite events into prompt turns, subject to turn and byte budgets |
 
 Draft text and queued prompts are mirrored into per-tab `sessionStorage` by
 chat ID. They survive switching chats, navigation, and reloads in the same tab,
 but are not server-authoritative and do not cross tabs, browsers, devices, or
 users. A background chat's queue waits until that chat is active again.
 
-Live replay remains event-based and sequence-addressed. Historical reads use a
-separate turn projection: new runs carry a durable `turnId`, legacy histories
-fall back to `user` event boundaries, and adjacent assistant/reasoning deltas
-are compacted before the page is sent. Provider delta size therefore does not
-change how many conversation turns a history page contains.
+Live replay remains event-based and sequence-addressed. Historical reads use
+indexed grouping fields on the saved events: new runs carry a durable `turnId`,
+and legacy histories fall back to `user` event boundaries. Pages are assembled
+on request, with adjacent assistant/reasoning deltas coalesced before sending.
+The byte budget can end a page between display items within a large turn.
 
 ## Scheduled turns
 
@@ -404,8 +404,8 @@ second username directory. The server takes it from the authenticated connection
 not from a client-supplied author field. Scheduled prompts record the task owner's
 stored email and retain their scheduled-task marker.
 
-Attribution stays with the event history across reloads, transcript indexing and
+Attribution stays with the event history across reloads, history reads and
 forks, even if the user is removed later. Usage-ledger rebuilds recover it from
 new completion events. Old prompts without author data show `Unknown user`;
 Remote does not guess who wrote them. Attribution follows chat-history retention:
-deleting a chat or rewinding away messages removes those messages as before.
+deleting a chat or rewinding away messages removes them from its visible history.

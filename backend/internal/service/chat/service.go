@@ -15,23 +15,23 @@ import (
 )
 
 type Service struct {
-	accountAccess        AccountAccess
-	selectionMu          sync.Mutex
-	authorizer           Authorizer
-	audit                audit.Recorder
-	repo                 Repository
-	transcriptEvents     TranscriptEventSource
-	transcriptWindow     TranscriptEventWindowSource
-	transcriptProjection TranscriptProjectionSource
-	transcriptSearch     TranscriptSearchSource
-	branchForker         BranchForker
-	branchRewinder       BranchRewinder
-	copiedEvents         CopiedEventAppender
-	projects             ProjectResolver
-	tmux                 TmuxResolver
-	runs                 RunController
-	sessions             SessionPolicy
-	providers            ProviderPolicy
+	accountAccess    AccountAccess
+	selectionMu      sync.Mutex
+	authorizer       Authorizer
+	audit            audit.Recorder
+	repo             Repository
+	transcriptEvents TranscriptEventSource
+	transcriptWindow TranscriptEventWindowSource
+	transcriptReader TranscriptReader
+	transcriptSearch TranscriptSearchSource
+	branchForker     BranchForker
+	branchRewinder   BranchRewinder
+	copiedEvents     CopiedEventAppender
+	projects         ProjectResolver
+	tmux             TmuxResolver
+	runs             RunController
+	sessions         SessionPolicy
+	providers        ProviderPolicy
 }
 
 // SessionPolicy supplies provider-native behavior from the agent module

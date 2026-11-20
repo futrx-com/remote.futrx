@@ -115,7 +115,10 @@ The harness creates a fresh App Server process for each Remote run. Native
 continuity survives because the returned Codex thread ID is stored in chat
 metadata and supplied as `ResumeID` on a later run. A missing resumed thread is
 mapped to `harness.ErrSessionNotFound`, after which the prompt service clears the
-stale session and retries with bounded visible history.
+stale session and retries with retained portable conversation history. This
+history is supplied as context, without Remote truncation, and remains subject
+to native input limits; see the
+[conversation storage guide](../conversation-storage.md#existing-native-sessions).
 
 ## Identity domains
 
@@ -182,9 +185,9 @@ The main projections are:
 
 [`prompt.chatEventFromAgentEvent`](../../../backend/internal/service/prompt/agent_events.go)
 copies native, interaction, and status fields into the chat event.
-[`filechat.eventRecord`](../../../backend/internal/stores/filechat/records.go)
-persists those fields. `runhub.Emit` appends before broadcasting, so replay and
-live clients receive the same sequenced representation.
+[`sqlitechat.appendEventTx`](../../../backend/internal/stores/sqlitechat/events.go)
+persists the event payload. `runhub.Emit` appends before broadcasting, so replay
+and live clients receive the same sequenced representation.
 
 The frontend folds replayed and live events through the same
 [`chatEventStateProjector`](../../../frontend/src/state/hooks/chat/chatEventStateProjector.ts)

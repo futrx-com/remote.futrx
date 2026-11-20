@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Conversation migration is an explicit offline phase, outside startup's
-# HTTP health deadline. The updater's existing run freeze remains in effect.
+# HTTP health deadline. The backend is stopped before conversion begins.
 
 remote_storage_version() {
     "$1" storage-version 2>/dev/null

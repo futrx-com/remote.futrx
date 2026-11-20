@@ -15,7 +15,6 @@ import type {
   ChatRenderState,
   ChatStatus,
   PromptOutcome,
-  TranscriptIndexProgress,
 } from "../../../models/chat";
 import { chatEventStateProjector } from "./chatEventStateProjector";
 import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
@@ -29,7 +28,6 @@ interface UseChatResult {
   eventCount: number;
   hasOlder: boolean;
   loadingOlder: boolean;
-  indexingProgress: TranscriptIndexProgress | null;
   status: ChatStatus;
   locallyStartedTurn: boolean;
   error: string | null;
@@ -63,7 +61,6 @@ export function useChat(chatId: string): UseChatResult {
   const [synced, setSynced] = useState(false);
   const [promptOutcome, setPromptOutcome] = useState<PromptOutcome | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [indexingProgress, setIndexingProgress] = useState<TranscriptIndexProgress | null>(null);
   const [historyReadyForStream, setHistoryReadyForStream] = useState(false);
   const streamRef = useRef<ChatStream | null>(null);
   const pendingEventsRef = useRef<ChatEvent[]>([]);
@@ -126,21 +123,19 @@ export function useChat(chatId: string): UseChatResult {
     setSynced(false);
     setPromptOutcome(null);
     setLoadingOlder(false);
-    setIndexingProgress(null);
     setHistoryReadyForStream(false);
     lastSeqRef.current = 0;
     hydratedTextPartRef.current = null;
 
     (async () => {
       try {
-        const [m, initialPage] = await Promise.all([
+        const [m, page] = await Promise.all([
           chatApi.fetch(chatId),
           chatApi.fetchTranscript(chatId, {
             limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
           }),
         ]);
         if (cancelled) return;
-        let page = initialPage;
         lastSeqRef.current = Math.max(
           page.lastSeq,
           chatEventStateProjector.latestSequence(page.events)
@@ -152,32 +147,12 @@ export function useChat(chatId: string): UseChatResult {
           ? { assistantT: tail.t, partIndex }
           : null;
         setRenderState(initialState);
-        setIndexingProgress(page.indexing ?? null);
-        setHistoryReadyForStream(!page.indexing || page.indexing.tailSeqKnown);
+        setHistoryReadyForStream(true);
         setMeta(m);
         // The server reports whether a run holds the lock right now. Seeding
         // from it keeps queued prompts from firing into a mid-run chat before
         // the socket's sync event corrects the status.
         setStatus(m.running ? "streaming" : "ready");
-
-        while (page.indexing) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          if (cancelled) return;
-          page = await chatApi.fetchTranscript(chatId, {
-            limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
-          });
-          if (cancelled) return;
-          setIndexingProgress(page.indexing ?? null);
-          lastSeqRef.current = Math.max(
-            lastSeqRef.current,
-            page.lastSeq,
-            chatEventStateProjector.latestSequence(page.events),
-          );
-          if (!page.indexing) {
-            setRenderState((current) => chatEventStateProjector.prepend(current, page));
-            setHistoryReadyForStream(true);
-          }
-        }
       } catch (e) {
         if (!cancelled) {
           setError((e as Error).message);
@@ -189,9 +164,7 @@ export function useChat(chatId: string): UseChatResult {
     return () => { cancelled = true; };
   }, [chatId]);
 
-  // Open WS once the server knows the canonical tail sequence. Modern legacy
-  // logs can stream while their projection builds; unsequenced logs wait so a
-  // since=0 connection cannot replay the entire raw file.
+  // Open WS after the first transcript page establishes the latest sequence.
   useEffect(() => {
     if (!meta || meta.id !== chatId || !historyReadyForStream) return;
     const streamChatId = meta.id;
@@ -367,12 +340,10 @@ export function useChat(chatId: string): UseChatResult {
     eventCount: renderState.eventCount,
     hasOlder: renderState.hasOlder,
     loadingOlder,
-    indexingProgress,
     status,
     locallyStartedTurn,
     error,
-    // A known canonical tail lets the socket synchronize safely even while
-    // older transcript items continue materializing in the background.
+    // Wait for the socket to synchronize before admitting a new prompt.
     canSendPrompt: wsReady && synced && status === "ready",
     sendPrompt,
     promptOutcome,

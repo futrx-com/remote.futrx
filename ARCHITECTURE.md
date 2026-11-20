@@ -259,9 +259,9 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Project membership | `DATA_DIR/projectaccess/<id>.json` | JSON | flat email list |
 | Project secrets | `DATA_DIR/projectsecrets/<id>.json` | JSON | **plaintext**, mode 0600, not encrypted at rest |
 | Public preview links | `DATA_DIR/projectshares/<id>.json` | JSON | SHA-256 token digests only, mode 0600 |
-| Conversations | `DATA_DIR/conversations.sqlite` | SQLite | authoritative metadata, events, branches, session bookmarks and handoffs; WAL transactions |
+| Conversations | `DATA_DIR/conversations.sqlite` | SQLite | authoritative metadata, events, branches and current native-session state; WAL transactions |
 | Agent quota snapshots | `DATA_DIR/agent-quota.json` | JSON | latest provider-reported plan windows per provider account, mode 0600 |
-| Chat transcript/search projections | tables in `DATA_DIR/conversations.sqlite` | SQLite/FTS5 | derived from authoritative events in the same database |
+| Conversation search index | `transcript_search` in `DATA_DIR/conversations.sqlite` | SQLite/FTS5 | rebuildable cache derived from saved events when search is requested |
 | Legacy chat backup | `DATA_DIR/chats/<id>/` after migration | JSON/JSONL | inactive pre-cutover backup; never receives new writes |
 | Application agent receipts | `DATA_DIR/application-turns/<instance-hash>/<request-hash>.json` | JSON | accepted input, turn identity and execution results |
 | Application workflow state | each backend instance's `DataDir` | application-owned | Scheduled Tasks stores definitions, deadlines and claims in `tasks.json` |
@@ -277,10 +277,13 @@ A chat with **no project** ("loose chat") runs the CLI directly on the host inst
 | Agent homes | `/var/lib/remote/projects/<slug>/agent-home/*` | on-disk tree | bind-mounted to `/root/.claude` etc. |
 
 Conversations use transactional SQLite with WAL, full synchronous durability,
-foreign keys and an exclusive store lease. Events and their transcript/search
-projections commit together. Other JSON stores continue using temp-file +
-rename and do not share a cross-store transaction. Application agent receipts
-and Scheduled Tasks snapshots fsync both file and directory. The design still
+foreign keys and an exclusive store lease. Event payloads, indexed grouping
+fields, branch counters and relevant metadata commit together. Transcript
+pages are assembled from those events on demand. The search index catches up
+separately when requested, so an indexing failure does not reject a message.
+Other JSON stores continue using temp-file + rename and do not share a
+cross-store transaction. Application agent receipts and Scheduled Tasks
+snapshots fsync both file and directory. The design still
 assumes one backend process. The old disposable `transcript-index.sqlite` is
 removed only after validated migration. See the
 [conversation storage and migration guide](docs/dev/conversation-storage.md)

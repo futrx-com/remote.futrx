@@ -1,32 +1,18 @@
-package filechat
+package sqlitechat
 
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 )
 
-func TestStoreListUsesCachedMetadata(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "chats", "abcd")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(dir, "meta.json"),
-		[]byte(`{"id":"abcd","title":"Existing","createdAt":1,"lastMessageAt":10}`),
-		0o644,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := New(root)
-	if err != nil {
+func TestStoreListTracksMetadataChanges(t *testing.T) {
+	store := testStore(t)
+	if _, err := store.Create(context.Background(), servicechat.Meta{
+		ID: "abcd", Title: "Existing", CreatedAt: 1, LastMessageAt: 10,
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -38,10 +24,10 @@ func TestStoreListUsesCachedMetadata(t *testing.T) {
 		t.Fatalf("loaded list = %#v", list)
 	}
 	if list[0].LastReadAt != 10 {
-		t.Fatalf("legacy chat should start read, got lastReadAt=%d", list[0].LastReadAt)
+		t.Fatalf("chat should start read, got lastReadAt=%d", list[0].LastReadAt)
 	}
 	if list[0].AccountID != "" || list[0].SetupRepair {
-		t.Fatalf("legacy chat gained recovery configuration: %+v", list[0])
+		t.Fatalf("chat gained recovery configuration: %+v", list[0])
 	}
 
 	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "beef", Title: "New", CreatedAt: 2, LastMessageAt: 20}); err != nil {
@@ -99,6 +85,7 @@ func TestStorePreservesRecoveryConfigurationAfterReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	for _, meta := range []servicechat.Meta{
 		{ID: "abcd", Provider: servicechat.ProviderCodex, AccountID: "selected-account"},
 		{ID: "beef", Provider: servicechat.ProviderCodex, AccountID: "selected-account", SetupRepair: true},
@@ -129,87 +116,8 @@ func TestStorePreservesRecoveryConfigurationAfterReopen(t *testing.T) {
 	}
 }
 
-func TestStoreReadsEventPages(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 5; i++ {
-		if _, err := store.AppendEvent(context.Background(), "abcd", servicechat.Event{
-			T:    int64(i),
-			Type: "user",
-			Text: string(rune('a' + i - 1)),
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	page, err := store.ReadEventsPage(context.Background(), "abcd", servicechat.EventPageQuery{Limit: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Events) != 2 || page.Events[0].Seq != 4 || page.Events[1].Seq != 5 {
-		t.Fatalf("latest page = %#v", page)
-	}
-	if !page.HasMore || page.NextBefore != 4 || page.LastSeq != 5 {
-		t.Fatalf("latest page cursors = %#v", page)
-	}
-
-	older, err := store.ReadEventsPage(context.Background(), "abcd", servicechat.EventPageQuery{Limit: 2, BeforeSeq: page.NextBefore})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(older.Events) != 2 || older.Events[0].Seq != 2 || older.Events[1].Seq != 3 {
-		t.Fatalf("older page = %#v", older)
-	}
-
-	after, err := store.ReadEventsAfter(context.Background(), "abcd", 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(after) != 2 || after[0].Seq != 4 || after[1].Seq != 5 {
-		t.Fatalf("after = %#v", after)
-	}
-}
-
-func TestStoreScansRawEventsInStorageOrder(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
-		t.Fatal(err)
-	}
-	for _, event := range []servicechat.Event{
-		{T: 1, Type: "user", TurnID: "turn-1", Text: "question"},
-		{T: 2, Type: "assistant_text", TurnID: "turn-1", MessageID: "message-1", Text: "answer"},
-	} {
-		if _, err := store.AppendEvent(context.Background(), "abcd", event); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	var events []servicechat.Event
-	if err := store.ScanEvents(context.Background(), "abcd", func(event servicechat.Event) {
-		events = append(events, event)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != 2 || events[0].Seq != 1 || events[1].Seq != 2 ||
-		events[0].TurnID != "turn-1" || events[1].TurnID != "turn-1" ||
-		events[1].MessageID != "message-1" {
-		t.Fatalf("scanned events = %#v", events)
-	}
-}
-
 func TestStoreScanEventsHonorsCancellation(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := testStore(t)
 	if _, err := store.Create(context.Background(), servicechat.Meta{ID: "abcd"}); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +131,7 @@ func TestStoreScanEventsHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	visited := false
-	err = store.ScanEvents(ctx, "abcd", func(servicechat.Event) {
+	err := store.ScanEvents(ctx, "abcd", func(servicechat.Event) {
 		visited = true
 	})
 	if !errors.Is(err, context.Canceled) {
@@ -235,17 +143,14 @@ func TestStoreScanEventsHonorsCancellation(t *testing.T) {
 }
 
 func TestStoreRewindClearsProviderSessionIDs(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := testStore(t)
 	if _, err := store.Create(context.Background(), servicechat.Meta{
 		ID:            "abcd",
 		CreatedAt:     10,
 		LastMessageAt: 10,
 		Sessions: servicechat.SessionIDs{
 			servicechat.ProviderAntigravity: "agy-session",
-			"future-agent":                  "future-session",
+			"future-harness":                "future-session",
 		},
 		ClaudeSessionID: "claude-session",
 		CodexSessionID:  "codex-session",
@@ -310,12 +215,13 @@ func TestStorePersistsGenericAndLegacySessionShapes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	created, err := store.Create(context.Background(), servicechat.Meta{
 		ID:       "abcd",
 		Provider: servicechat.ProviderAntigravity,
 		Sessions: servicechat.SessionIDs{
 			servicechat.ProviderAntigravity: "agy-session",
-			"future-agent":                  "future-session",
+			"future-harness":                "future-session",
 		},
 	})
 	if err != nil {
@@ -325,77 +231,37 @@ func TestStorePersistsGenericAndLegacySessionShapes(t *testing.T) {
 		t.Fatalf("legacy Antigravity session = %q", created.AntigravitySessionID)
 	}
 	event := servicechat.Event{T: 10, Type: "session"}
-	event.SetSession("future-agent", "event-session")
+	event.SetSession("future-harness", "event-session")
 	if _, err := store.AppendEvent(context.Background(), "abcd", event); err != nil {
 		t.Fatal(err)
 	}
 
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = reopened.Close() })
 	meta, err := reopened.Get(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta.SessionID(servicechat.ProviderAntigravity) != "agy-session" || meta.SessionID("future-agent") != "future-session" {
+	if meta.SessionID(servicechat.ProviderAntigravity) != "agy-session" || meta.SessionID("future-harness") != "future-session" {
 		t.Fatalf("reloaded sessions = %#v", meta.Sessions)
 	}
 	events, err := reopened.ReadEvents(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 1 || events[0].Provider != "future-agent" || events[0].SessionID != "event-session" {
+	if len(events) != 1 || events[0].Provider != "future-harness" || events[0].SessionID != "event-session" {
 		t.Fatalf("reloaded events = %#v", events)
 	}
 }
 
-func TestStoreImportsLegacySessionFields(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "chats", "abcd")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(dir, "meta.json"),
-		[]byte(`{"id":"abcd","title":"Legacy","createdAt":1,"lastMessageAt":1,"antigravitySessionId":"agy-legacy"}`),
-		0o644,
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(dir, "events.jsonl"),
-		[]byte("{\"t\":2,\"type\":\"session\",\"kimiSessionId\":\"kimi-legacy\"}\n"),
-		0o644,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	store, err := New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	meta, err := store.Get(context.Background(), "abcd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if meta.SessionID(servicechat.ProviderAntigravity) != "agy-legacy" {
-		t.Fatalf("legacy metadata sessions = %#v", meta.Sessions)
-	}
-	events, err := store.ReadEvents(context.Background(), "abcd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(events) != 1 || events[0].Provider != servicechat.ProviderKimi || events[0].SessionID != "kimi-legacy" {
-		t.Fatalf("legacy event = %#v", events)
-	}
-}
-
 func TestStorePersistsSelectedSkills(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := testStore(t)
 
 	created, err := store.Create(context.Background(), servicechat.Meta{
 		ID:       "abcd",
@@ -434,10 +300,14 @@ func TestStorePersistsSelectedSkills(t *testing.T) {
 		t.Fatalf("updated skills = %#v", updated.SelectedSkills)
 	}
 
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := New(store.root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = reopened.Close() })
 	loaded, err = reopened.Get(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
@@ -447,11 +317,8 @@ func TestStorePersistsSelectedSkills(t *testing.T) {
 	}
 }
 
-func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestStorePersistsHarnessSelectionsAfterReopen(t *testing.T) {
+	store := testStore(t)
 	if _, err := store.Create(context.Background(), servicechat.Meta{
 		ID:              "abcd",
 		Provider:        servicechat.ProviderClaude,
@@ -464,10 +331,14 @@ func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
 	reopened, err := New(store.root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = reopened.Close() })
 	loaded, err := reopened.Get(context.Background(), "abcd")
 	if err != nil {
 		t.Fatal(err)
@@ -483,12 +354,13 @@ func TestStorePersistsAgentSelectionsAcrossInstances(t *testing.T) {
 }
 
 func TestPromptAuthorsSurviveReopenAndFork(t *testing.T) {
-	ctx := rbac.ContextWithSystemActor(context.Background())
+	ctx := context.Background()
 	root := t.TempDir()
 	store, err := New(root)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{ID: "abcd", Provider: servicechat.ProviderClaude})
 	if err != nil {
 		t.Fatal(err)
@@ -507,7 +379,7 @@ func TestPromptAuthorsSurviveReopenAndFork(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	forked, err := servicechat.New(reopened, nil, nil, nil).Fork(ctx, meta.ID)
+	forked, err := reopened.ForkChat(ctx, meta.ID, servicechat.Meta{ID: "beef", Provider: servicechat.ProviderClaude}, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,6 +390,18 @@ func TestPromptAuthorsSurviveReopenAndFork(t *testing.T) {
 		}
 		if len(events) != len(authors) {
 			t.Fatalf("chat %s lost messages", id)
+		}
+		page, err := reopened.ReadTranscriptPage(ctx, id, servicechat.TranscriptPageQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Turns) != len(authors) {
+			t.Fatalf("chat %s lost transcript turns: %#v", id, page)
+		}
+		for i, turn := range page.Turns {
+			if len(turn.Events) != 1 || turn.Events[0].UserEmail != authors[i] {
+				t.Fatalf("chat %s lost transcript author: %#v", id, turn)
+			}
 		}
 		for i, event := range events {
 			if event.UserEmail != authors[i] {

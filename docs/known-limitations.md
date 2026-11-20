@@ -12,7 +12,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 - **No external database service.** Conversations use `DATA_DIR/conversations.sqlite` with WAL transactions, full synchronous durability and an exclusive process lease. Other JSON stores retain their own durability behavior and do not participate in the conversation transaction. SQLite permits one writer at a time per database; large concurrent workloads need measurement. *(`backend/internal/stores/`)*
 - **Backups remain operator-managed.** Use a supported SQLite online backup for the conversation database, and separately protect other Remote state, native provider homes and workspaces. Copying only the live SQLite main file can omit WAL changes. Git safety checkpoints protect code rather than chat or harness state. See [conversation backup and recovery](dev/conversation-storage.md#backup-recovery-and-rollback).
-- **Conversation history grows without automatic retention.** Events, transcript projections, search indexes and retained branch history consume host disk. Native harness stores also retain their own data. The authoritative SQLite database must never be deleted as a cache. Large history handoffs are not silently truncated, but can exceed native input limits.
+- **Conversation history grows without automatic retention.** Event payloads, indexes and retained branch history consume host disk. Native harness stores also retain their own data. The authoritative SQLite database must never be deleted as a cache. Large history handoffs are not silently truncated, but can exceed native input limits.
 - **No cross-store transactions.** Project metadata, membership, and secrets are three separate files that can go out of sync. Deleting a project does not cascade-delete chats that reference it; deleting a user does not sweep their project-access records.
 - **Secrets are plaintext at rest.** Project secrets, the Google OAuth client secret, and the session signing key are unencrypted files (mode 0600). Encryption at rest is not provided. See the [threat model](threat-model.md).
 
@@ -106,20 +106,26 @@ These are the constraints worth understanding before you deploy or rely on remot
   in that tab, but not tab closure or another tab/browser/device. A background
   chat's queue sends only after that chat is opened again. Use scheduled tasks
   for host-owned future work.
-- **Session recovery drops context.** When a provider session is missing (or you switch provider mid-chat), the chat is "recovered" by replaying at most the last ~24 KB of visible transcript as plain text into a fresh session — earlier context and all tool-call state are dropped.
+- **Portable history cannot recreate native session state.** Missing-session
+  recovery, forks and rewinds start fresh sessions with retained user and
+  assistant messages, tool calls/results and attachments. Harness switches
+  deliver history beyond the selected session's safe bookmark, or the full
+  retained history for a fresh session. Remote does not truncate or summarize
+  that history, but sends it as context rather than native historical turns.
+  Reasoning, native protocol state and provider compaction state are not
+  transferred, and native input limits can reject large transfers.
 - **Provider Plan modes differ.** Remote forwards provider-native Default and
   Plan modes instead of adding workflow prompts. Claude Plan is read-only;
   Codex and MiniMax Plan use a Codex-harness collaboration-instruction preset
   rather than an OS-level read-only sandbox. Default project runs bypass provider approvals,
   and Remote has no human-confirmation gate for irreversible or external
   actions.
-- **Provider-specific gaps.** Kimi has no fork primitive (forked Kimi chats
-  silently start fresh) and reports no usage data. Its discovered per-model
+- **Provider-specific gaps.** Kimi reports no usage data. Its discovered per-model
   Thinking choice is displayed and saved but is not forwarded to the Kimi run,
   and the currently pinned Kimi CLI rejects its advertised Plan flag with the
-  prompt mode Remote requires. Antigravity forks also
-  start fresh; print mode exposes plain streamed text rather than structured
-  tool/usage events, selected skills use explicit `SKILL.md` instruction paths
+  prompt mode Remote requires. Antigravity print mode exposes plain streamed
+  text rather than structured tool/usage events, selected skills use explicit
+  `SKILL.md` instruction paths
   rather than native triggers, and Browser MCP is unavailable. Model catalogs
   reflect the installed CLI, its configuration,
   the signed-in account, and current entitlements; they are not a promise that

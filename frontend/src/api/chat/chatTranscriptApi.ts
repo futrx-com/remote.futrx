@@ -3,7 +3,6 @@ import type {
   ChatEvent,
   ChatEventPage,
   TranscriptContentPage,
-  TranscriptIndexProgress,
 } from "../../models/chat.ts";
 import { requestJson } from "../apiRequest.ts";
 
@@ -19,7 +18,6 @@ interface ChatTranscriptPagePayload {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
-  indexing?: TranscriptIndexProgress;
 }
 
 export async function fetchTranscript(
@@ -43,7 +41,6 @@ function transcriptPageToEventPage(page: ChatTranscriptPagePayload): ChatEventPa
     nextBefore: page.nextBefore,
     lastSeq: page.lastSeq,
     hasMore: page.hasMore,
-    ...(page.indexing ? { indexing: page.indexing } : {}),
   };
 }
 

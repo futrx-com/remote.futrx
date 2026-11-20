@@ -29,23 +29,13 @@ cutover status and resumable checkpoints. SQLite's internal FTS tables are
 implementation details of that one index.
 
 Turns, tool-call grouping, and display items are located through indexed fields
-on events. A transcript page assembles only the requested items; it does not
-replay the whole conversation. Large tool inputs and outputs are read from
-their original event fields on demand. There are no stored transcript snapshots,
-separate content blobs, or run/handoff audit tables. Imported `raw_json` remains
-an exact copy of the legacy source record alongside the normalized event; the
-simplification does not remove that preservation copy.
+on events. There are no stored transcript snapshots, separate content blobs,
+or run/handoff audit tables. Imported `raw_json` remains an exact copy of the
+legacy source record alongside the normalized event; the simplification does
+not remove that preservation copy.
 
 An event append commits its original payload, grouping fields, branch counters,
-and any metadata change in one transaction. Search catches up lazily from saved
-events when requested, using bounded text chunks to match text split across
-streaming fragments. Its per-branch checkpoint avoids reindexing unchanged
-history on later searches. Search respects each ancestor's retained cutoff,
-including a document that crosses that cutoff. Search processing is outside the
-message-save transaction, so a search-index failure does not reject a message.
-The first search after upgrading can take longer while its index is populated.
-If the search table is missing at startup, only that cache is recreated and its
-checkpoints reset so subsequent searches rebuild from saved events.
+and any metadata change in one transaction.
 
 The connection uses WAL, `synchronous=FULL`, foreign keys, and a busy timeout.
 An exclusive `.conversations.lock` lease allows one backend or offline importer
@@ -53,11 +43,39 @@ to own the store. Do not delete this lock file while a process holds it.
 `PRAGMA user_version` identifies the supported schema; an unknown version or
 missing authoritative table fails closed instead of recreating history.
 
+## Transcript reads and search
+
+The chat service's
+[`TranscriptReader`](../../backend/internal/service/chat/ports.go) port reads
+pages and expanded content. Its SQLite implementation in
+[`transcript_reader.go`](../../backend/internal/stores/sqlitechat/transcript_reader.go)
+locates the requested items through event indexes and assembles them on demand;
+it does not replay the whole conversation. Item identity rules live in
+[`transcript_items.go`](../../backend/internal/stores/sqlitechat/transcript_items.go).
+Adjacent text and reasoning fragments are coalesced for display. Pages have a
+turn limit and a byte budget; that budget can end a page between items within
+a large turn. Large tool inputs and outputs use previews, with expanded content
+read from the original event fields on demand. Content reads must remain within
+the active branch's retained history.
+
+Search catches up lazily from saved events when requested, using bounded text
+chunks to match text split across streaming fragments. Its per-branch checkpoint
+avoids reindexing unchanged history on later searches. Search respects each
+ancestor's retained cutoff, including a document that crosses that cutoff.
+Search processing is outside the message-save transaction, so a search-index
+failure does not reject a message. The first search after upgrading can take
+longer while its index is populated. If the search table is missing at startup,
+only that cache is recreated and its checkpoints reset so subsequent searches
+rebuild from saved events. The index and catch-up logic live in
+[`search_index.go`](../../backend/internal/stores/sqlitechat/search_index.go).
+
 ## Upgrade migration
 
-The production installer/updater and QA deployers run migration after stopping
-the old backend, using the update's existing run freeze. The 30-second HTTP
-health deadline begins only after this separate migration phase finishes.
+The production installer/updater and QA deployers stop the backend before
+running migration. This prevents new runs and chat writes during the offline
+phase, but does not drain active runs before stopping; those runs can be
+interrupted. The 30-second HTTP health deadline begins only after this separate
+migration phase finishes.
 The migration command is also available for stopped-service recovery:
 
 ```bash

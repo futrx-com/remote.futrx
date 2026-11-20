@@ -27,7 +27,7 @@ const schemaVersion = 2
 var _ servicechat.Repository = (*Store)(nil)
 var _ servicechat.TranscriptEventSource = (*Store)(nil)
 var _ servicechat.TranscriptEventWindowSource = (*Store)(nil)
-var _ servicechat.TranscriptProjectionSource = (*Store)(nil)
+var _ servicechat.TranscriptReader = (*Store)(nil)
 var _ servicechat.CopiedEventAppender = (*Store)(nil)
 
 type Store struct {

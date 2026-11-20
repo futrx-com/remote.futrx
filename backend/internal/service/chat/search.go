@@ -43,7 +43,7 @@ func (s *Service) SearchTranscript(ctx context.Context, id ID, query string, lim
 		limit = 100
 	}
 	if s.transcriptSearch == nil {
-		return nil, ErrTranscriptProjectionUnavailable
+		return nil, ErrTranscriptUnavailable
 	}
 	return s.transcriptSearch.SearchTranscript(ctx, id, query, limit)
 }
