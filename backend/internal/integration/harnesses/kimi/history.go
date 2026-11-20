@@ -2,8 +2,8 @@ package kimi
 
 import (
 	"fmt"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // HistoryInput translates Remote's portable history into context accepted by

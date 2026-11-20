@@ -10,8 +10,8 @@ import (
 	"time"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var errAppServerInterruptTimeout = fmt.Errorf(
@@ -515,10 +515,10 @@ func (run *appServerRun) finish() error {
 	waitErr, stderrText := run.process.wait()
 
 	if run.protocolErr != nil {
-		return &agentruntime.ProcessError{Err: run.protocolErr, Stderr: stderrText}
+		return &harnessruntime.ProcessError{Err: run.protocolErr, Stderr: stderrText}
 	}
 	if run.runFailed {
-		return &agentruntime.ProcessError{Err: harness.ErrRunFailed, Stderr: stderrText}
+		return &harnessruntime.ProcessError{Err: harness.ErrRunFailed, Stderr: stderrText}
 	}
 	if run.interrupted {
 		return nil
@@ -527,7 +527,7 @@ func (run *appServerRun) finish() error {
 		if waitErr == nil {
 			waitErr = fmt.Errorf("%s app-server closed before the turn completed", run.providerLabel)
 		}
-		return &agentruntime.ProcessError{Err: waitErr, Stderr: stderrText}
+		return &harnessruntime.ProcessError{Err: waitErr, Stderr: stderrText}
 	}
 	return nil
 }

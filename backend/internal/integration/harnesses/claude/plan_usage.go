@@ -17,8 +17,8 @@ import (
 	"time"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // claudeUsageRequestID names the one control request a usage read sends.
@@ -123,7 +123,7 @@ func readClaudeUsage(ctx context.Context, configDir string) ([]harness.Quota, er
 	cmd.Env = claudeUsageEnv(os.Environ(), configDir)
 	cmd.Dir = os.TempDir()
 	var report claudeUsageReport
-	stderr, err := agentruntime.Converse(ctx, cmd, configconstants.ClaudePlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+	stderr, err := harnessruntime.Converse(ctx, cmd, configconstants.ClaudePlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
 		var err error
 		report, err = requestClaudeUsage(stdin, stdout)
 		return err

@@ -22,7 +22,7 @@ The governing constraint for every item in this document is:
 The protocol reference is the
 [official Codex App Server documentation](https://developers.openai.com/codex/app-server/).
 The exact compatibility baseline is the version pinned in
-[`versions.env`](../../../../backend/internal/harness/provisioning/versions.env).
+[`versions.env`](../../../../backend/internal/service/harness/provisioning/versions.env).
 At the time of the audit, the pinned `0.149.1` schema was also compared with
 the then-current `0.152.0` schema to identify forward-compatibility risks.
 
@@ -133,12 +133,12 @@ Required UI-only behavior:
 ## CUI-003: the event bridge is a lossy whitelist
 
 The neutral event model in
-[`backend/internal/harness/model.go`](../../../../backend/internal/harness/model.go)
+[`backend/internal/service/harness/model.go`](../../../../backend/internal/service/harness/model.go)
 supports session, text, reasoning, basic tool, usage, completion, and error
 events. The Codex parser in
 [`app_server_events.go`](../../../../backend/internal/integration/harnesses/codexharness/app_server_events.go)
 recognizes only a subset of notification methods and item types. Raw envelopes
-are temporarily retained on `agent.Event`, then discarded by
+are temporarily retained on `harness.Event`, then discarded by
 [`agent_events.go`](../../../../backend/internal/service/prompt/agent_events.go)
 when events become persisted chat events. The frontend message model in
 [`chatMessage.ts`](../../../../frontend/src/models/chatMessage.ts) consequently
@@ -475,7 +475,7 @@ the only persisted representation when doing so destroys Codex semantics.
 ## Primary source locations
 
 - [`backend/internal/integration/harnesses/codex/`](../../../../backend/internal/integration/harnesses/codex)
-- [`backend/internal/harness/model.go`](../../../../backend/internal/harness/model.go)
+- [`backend/internal/service/harness/model.go`](../../../../backend/internal/service/harness/model.go)
 - [`backend/internal/service/prompt/`](../../../../backend/internal/service/prompt)
 - [`backend/internal/service/runhub/hub.go`](../../../../backend/internal/service/runhub/hub.go)
 - [`backend/internal/transport/ws/chat_socket.go`](../../../../backend/internal/transport/ws/chat_socket.go)

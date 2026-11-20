@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
@@ -136,7 +136,7 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 		runhub.New(store),
 		registry,
 		WithApplicationToolIssuer(issuer),
-		WithAgentPolicy(codexTestAgentPolicy()),
+		WithHarnessPolicy(codexTestHarnessPolicy()),
 	)
 
 	actor := Actor{Email: "owner@example.com", IsAdmin: true}
@@ -215,7 +215,7 @@ func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 		runhub.New(store),
 		registry,
 		WithApplicationToolIssuer(issuer),
-		WithAgentPolicy(codexTestAgentPolicy()),
+		WithHarnessPolicy(codexTestHarnessPolicy()),
 	)
 
 	const scheduledTaskID = "task-123"
@@ -390,7 +390,7 @@ func TestInstalledSchedulerInjectsAccessWithoutSelectedSkill(t *testing.T) {
 				t.Fatal(err)
 			}
 			issuer := installedScheduleIssuer{recordingApplicationIssuer: &recordingApplicationIssuer{access: ApplicationToolAccess{Env: map[string]string{"REMOTE_APPLICATION_API": "https://remote.test/agent-api/applications", "REMOTE_APPLICATION_GRANT": "grant"}, Skills: []servicechat.SkillRef{{Name: "Example App", Command: "example-app", Source: "remote"}}}}, available: installed}
-			service := New(store, nil, nil, runhub.New(store), registry, WithApplicationToolIssuer(issuer), WithAgentPolicy(codexTestAgentPolicy()))
+			service := New(store, nil, nil, runhub.New(store), registry, WithApplicationToolIssuer(issuer), WithHarnessPolicy(codexTestHarnessPolicy()))
 			handle, err := service.Start(StartInput{ChatID: meta.ID, Prompt: "notify me daily at 15:00 UTC", Actor: Actor{Email: "owner@example.com"}}, nil)
 			if err != nil {
 				t.Fatal(err)

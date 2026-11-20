@@ -4,11 +4,11 @@ import (
 	"context"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type Provider struct {
@@ -22,7 +22,7 @@ type Provider struct {
 
 type apiKeySource interface {
 	APIKey() (string, bool)
-	APIKeyForRun(context.Context, string) (agentauth.RunAPIKey, bool, error)
+	APIKeyForRun(context.Context, string) (harnessauth.RunAPIKey, bool, error)
 	RequireRunAccess(context.Context, string) error
 }
 
@@ -65,7 +65,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if emit == nil {
 		emit = func(harness.Event) {}
 	}
-	emit = agentruntime.EmitForAccount(emit, req.AccountID)
+	emit = harnessruntime.EmitForAccount(emit, req.AccountID)
 	if p.models == nil {
 		return ErrMiniMaxModelDiscoveryUnavailable
 	}

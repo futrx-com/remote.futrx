@@ -15,9 +15,9 @@ import (
 	"time"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var _ harness.PlanUsageReader = (*Provider)(nil)
@@ -118,7 +118,7 @@ func readCodexRateLimits(ctx context.Context, home string) ([]harness.Quota, err
 		cmd.Env = isolatedCodexAuthEnvFor(os.Environ(), home)
 	}
 	var result json.RawMessage
-	_, err := agentruntime.Converse(ctx, cmd, configconstants.CodexPlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
+	_, err := harnessruntime.Converse(ctx, cmd, configconstants.CodexPlanUsageExitGrace, func(stdin io.Writer, stdout io.Reader) error {
 		var err error
 		result, err = requestCodexRateLimits(stdin, stdout)
 		return err

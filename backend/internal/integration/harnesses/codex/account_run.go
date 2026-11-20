@@ -5,10 +5,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 const codexAccountCommand = `set -eu
@@ -25,14 +25,14 @@ done
 exec "$@"`
 
 type accountRun struct {
-	saved         agentauth.RunCredential
+	saved         harnessauth.RunCredential
 	hostHome      string
 	containerHome string
 	credentials   provisioning.CredentialSpec
 }
 
-func newAccountRun(req harness.RunRequest, saved agentauth.RunCredential) (*accountRun, error) {
-	scope := agentruntime.AccountHomeScope(saved.AccountID, req.ProjectID, req.ConversationID)
+func newAccountRun(req harness.RunRequest, saved harnessauth.RunCredential) (*accountRun, error) {
+	scope := harnessruntime.AccountHomeScope(saved.AccountID, req.ProjectID, req.ConversationID)
 	hostHome := filepath.Join(codexHomeDir(), "run-accounts", scope, ".codex")
 	containerHome := filepath.Join(containerCodexDir, "run-accounts", scope, ".codex")
 	if err := os.MkdirAll(hostHome, 0o700); err != nil {
@@ -41,7 +41,7 @@ func newAccountRun(req harness.RunRequest, saved agentauth.RunCredential) (*acco
 	if err := os.Chmod(hostHome, 0o700); err != nil {
 		return nil, fmt.Errorf("secure isolated Codex account home: %w", err)
 	}
-	if err := agentauth.WriteCredentialFile(filepath.Join(hostHome, "auth.json"), saved.Credential); err != nil {
+	if err := harnessauth.WriteCredentialFile(filepath.Join(hostHome, "auth.json"), saved.Credential); err != nil {
 		return nil, fmt.Errorf("materialize Codex account: %w", err)
 	}
 	if err := linkCodexSharedState(hostHome, codexHomeDir()); err != nil {

@@ -1,32 +1,32 @@
 package kimi
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // NewFactory returns Kimi's complete module definition, including its runtime,
 // authentication flow, feature declarations, and provisioning profile.
-func NewFactory() (agentmodule.Factory, error) {
+func NewFactory() (harnessmodule.Factory, error) {
 	profile := Profile()
-	return agentmodule.NewFactory(agentmodule.Descriptor{
+	return harnessmodule.NewFactory(harnessmodule.Descriptor{
 		ID:                  harness.ProviderKimi,
 		Label:               "Kimi",
-		ExecutionScopes:     []agentmodule.ExecutionScope{agentmodule.ScopeHost, agentmodule.ScopeProject},
-		Auth:                agentmodule.AuthManagedDevice,
+		ExecutionScopes:     []harnessmodule.ExecutionScope{harnessmodule.ScopeHost, harnessmodule.ScopeProject},
+		Auth:                harnessmodule.AuthManagedDevice,
 		AuthInstructions:    "Starts `kimi login` on the host. Sign in with your Kimi Code subscription using the displayed device code.",
 		SatisfiesAccessGate: true,
-		Features: agentmodule.Features{
-			Sessions:              agentmodule.SessionSupport{Resume: true},
-			Skills:                agentmodule.SkillsInstructions,
+		Features: harnessmodule.Features{
+			Sessions:              harnessmodule.SessionSupport{Resume: true},
+			Skills:                harnessmodule.SkillsInstructions,
 			ApplicationTools:      true,
-			StreamingPresentation: agentmodule.StreamingBlocks,
+			StreamingPresentation: harnessmodule.StreamingBlocks,
 		},
-	}, &profile, func(deps agentmodule.Dependencies, validatedProfile *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewDeviceBinding(harness.ProviderKimi, NewAuth())
-		return agentmodule.Components{
+	}, &profile, func(deps harnessmodule.Dependencies, validatedProfile *provisioning.Profile) (harnessmodule.Components, error) {
+		binding := harnessauth.NewDeviceBinding(harness.ProviderKimi, NewAuth())
+		return harnessmodule.Components{
 			Provider: newProvider(
 				deps.ProjectPreparer,
 				deps.CredentialCollector,
@@ -36,12 +36,12 @@ func NewFactory() (agentmodule.Factory, error) {
 			),
 			Auth: &binding,
 		}, nil
-	}, agentmodule.WithProjectPreparation(agentmodule.ProjectPreparationPolicy{
+	}, harnessmodule.WithProjectPreparation(harnessmodule.ProjectPreparationPolicy{
 		BrowserAssets: true,
 	}))
 }
 
 var (
-	_ harness.Provider           = (*Provider)(nil)
-	_ agentmodule.FactoryBuilder = NewFactory
+	_ harness.Provider             = (*Provider)(nil)
+	_ harnessmodule.FactoryBuilder = NewFactory
 )

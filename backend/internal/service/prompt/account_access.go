@@ -4,8 +4,8 @@ import (
 	"context"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type AccountAccess interface {

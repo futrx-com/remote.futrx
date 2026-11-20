@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var (

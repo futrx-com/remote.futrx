@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
@@ -38,7 +38,7 @@ type agentBrowserActivityRecorder interface {
 }
 
 var ErrPromptAlreadyRunning = errors.New("a previous prompt is still running")
-var ErrUnsupportedAgentScope = errors.New("agent does not support this chat execution scope")
+var ErrUnsupportedHarnessScope = errors.New("agent does not support this chat execution scope")
 var ErrMaintenance = errors.New("an infrastructure update is recycling workspaces; prompts will be available when it finishes")
 
 type Actor struct {
@@ -137,18 +137,18 @@ func WithQuotaRecorder(recorder QuotaRecorder) Option {
 	}
 }
 
-type AgentPolicy interface {
-	Descriptor(provider string) (agentmodule.Descriptor, bool)
-	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+type HarnessPolicy interface {
+	Descriptor(provider string) (harnessmodule.Descriptor, bool)
+	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 }
 
-type AgentRegistry interface {
+type HarnessRegistry interface {
 	Lookup(harness.ProviderID) harness.Provider
 }
 
-func WithAgentPolicy(policy AgentPolicy) Option {
+func WithHarnessPolicy(policy HarnessPolicy) Option {
 	return func(service *Service) {
-		service.agentPolicy = policy
+		service.harnessPolicy = policy
 	}
 }
 
@@ -163,8 +163,8 @@ type Service struct {
 	tmux                TmuxClient
 	projects            ProjectResolver
 	hub                 *runhub.Hub
-	agents              AgentRegistry
-	agentPolicy         AgentPolicy
+	harnesses           HarnessRegistry
+	harnessPolicy       HarnessPolicy
 	applicationTools    ApplicationToolIssuer
 	usage               UsageRecorder
 	quota               QuotaRecorder
@@ -179,8 +179,7 @@ func New(
 	tmux TmuxClient,
 	projects ProjectResolver,
 	hub *runhub.Hub,
-	agents AgentRegistry,
-	options ...Option,
+	harnesses HarnessRegistry, options ...Option,
 ) *Service {
 	if hub == nil {
 		hub = runhub.New(store)
@@ -190,7 +189,7 @@ func New(
 		tmux:         tmux,
 		projects:     projects,
 		hub:          hub,
-		agents:       agents,
+		harnesses:    harnesses,
 		interactions: newInteractionResponseRouter(),
 		audit:        audit.Nop{},
 	}
@@ -378,16 +377,16 @@ func (rnr *Service) runPromptAs(
 	}
 
 	providerID := providerIDFromChatProvider(meta.Provider)
-	descriptor := agentmodule.Descriptor{}
-	if rnr.agentPolicy != nil {
-		descriptor, _ = rnr.agentPolicy.Descriptor(string(providerID))
-		scope := agentmodule.ScopeHost
+	descriptor := harnessmodule.Descriptor{}
+	if rnr.harnessPolicy != nil {
+		descriptor, _ = rnr.harnessPolicy.Descriptor(string(providerID))
+		scope := harnessmodule.ScopeHost
 		if meta.ProjectID != "" {
-			scope = agentmodule.ScopeProject
+			scope = harnessmodule.ScopeProject
 		}
-		if !rnr.agentPolicy.SupportsScope(string(providerID), scope) {
-			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedAgentScope.Error()})
-			return ErrUnsupportedAgentScope
+		if !rnr.harnessPolicy.SupportsScope(string(providerID), scope) {
+			emitTransient(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: ErrUnsupportedHarnessScope.Error()})
+			return ErrUnsupportedHarnessScope
 		}
 	}
 	promptSkills := append([]servicechat.SkillRef(nil), meta.SelectedSkills...)
@@ -420,11 +419,11 @@ func (rnr *Service) runPromptAs(
 		}
 	}
 	resumeID := sessionIDForProvider(meta, providerID)
-	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume {
+	if rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Resume {
 		resumeID = ""
 	}
 	forkSession := meta.ForkPending
-	if rnr.agentPolicy != nil && !descriptor.Features.Sessions.Fork {
+	if rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Fork {
 		forkSession = false
 	}
 	effectivePrompt := prompt
@@ -442,7 +441,7 @@ func (rnr *Service) runPromptAs(
 		effectivePrompt,
 	)
 
-	provider := rnr.agents.Lookup(providerID)
+	provider := rnr.harnesses.Lookup(providerID)
 	if provider == nil {
 		err := errors.New(string(providerID) + " provider not configured")
 		emit(ChatEvent{T: time.Now().UnixMilli(), Type: "error", Message: err.Error()})
@@ -454,7 +453,7 @@ func (rnr *Service) runPromptAs(
 	if rnr.conversationRuntime != nil {
 		prepared, err = rnr.conversationRuntime.PrepareRun(ctx, servicechat.RunPreparation{
 			ChatID: id, RunID: ledgerRunID, Provider: providerID,
-			AccountID: meta.AccountID, ForceFresh: forkSession || (rnr.agentPolicy != nil && !descriptor.Features.Sessions.Resume),
+			AccountID: meta.AccountID, ForceFresh: forkSession || (rnr.harnessPolicy != nil && !descriptor.Features.Sessions.Resume),
 		})
 		if err != nil {
 			return err
@@ -619,14 +618,14 @@ func hasBrowserSkill(skills []servicechat.SkillRef) bool {
 }
 
 func promptWithSelectedSkills(
-	strategy agentmodule.SkillStrategy,
+	strategy harnessmodule.SkillStrategy,
 	providerLabel string,
 	provider harness.ProviderID,
 	skills []servicechat.SkillRef,
 	projectScoped bool,
 	prompt string,
 ) string {
-	if len(skills) == 0 || strategy == agentmodule.SkillsNone {
+	if len(skills) == 0 || strategy == harnessmodule.SkillsNone {
 		return prompt
 	}
 
@@ -644,11 +643,11 @@ func promptWithSelectedSkills(
 		}
 
 		switch strategy {
-		case agentmodule.SkillsSlashCommand:
+		case harnessmodule.SkillsSlashCommand:
 			triggers = append(triggers, "/"+name)
-		case agentmodule.SkillsDollarMention:
+		case harnessmodule.SkillsDollarMention:
 			triggers = append(triggers, "$"+name)
-		case agentmodule.SkillsInstructions:
+		case harnessmodule.SkillsInstructions:
 			if name == "." || name == ".." || path.Base(name) != name {
 				continue
 			}
@@ -664,14 +663,14 @@ func promptWithSelectedSkills(
 	}
 
 	switch strategy {
-	case agentmodule.SkillsSlashCommand:
+	case harnessmodule.SkillsSlashCommand:
 		return strings.Join(triggers, "\n") + "\n\n" + prompt
-	case agentmodule.SkillsDollarMention:
+	case harnessmodule.SkillsDollarMention:
 		if strings.TrimSpace(providerLabel) == "" {
 			providerLabel = string(provider)
 		}
 		return "Use these " + providerLabel + " skills for this request: " + strings.Join(triggers, " ") + "\n\n" + prompt
-	case agentmodule.SkillsInstructions:
+	case harnessmodule.SkillsInstructions:
 		return "Read and follow the selected skill instructions at " +
 			strings.Join(triggers, ", ") + ".\n\n" + prompt
 	default:

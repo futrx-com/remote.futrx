@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // queryEffortOptions asks Claude Code's local /effort command for the choices
@@ -18,7 +18,7 @@ func queryEffortOptions(
 	ctx context.Context,
 	req harness.CapabilityRequest,
 ) ([]harness.CapabilityOption, error) {
-	cmd := agentruntime.NewCapabilityCommand(
+	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "IS_SANDBOX=1"},

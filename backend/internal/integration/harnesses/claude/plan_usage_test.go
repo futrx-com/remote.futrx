@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 // fakeClaudeUsage answers get_usage for whichever account the config
@@ -65,16 +65,16 @@ func TestReadPlanUsageReadsEverySavedAccountInItsOwnHome(t *testing.T) {
 		`{"claudeAiOauth":{"refreshToken":"saved-one"}}`,
 		`{"oauthAccount":{"accountUuid":"uuid-one","emailAddress":"one@example.test"}}`,
 	)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "one",
-		Accounts: []agentauth.AccountRecord{
+		Accounts: []harnessauth.AccountRecord{
 			{ID: "one", Label: "One", Credential: testClaudeCredential("saved-one", "uuid-one", "one@example.test")},
 			{ID: "two", Label: "Two", Credential: testClaudeCredential("saved-two", "uuid-two", "two@example.test")},
 			{ID: "three", Label: "Three", Credential: testClaudeCredential("saved-three", "uuid-three", "three@example.test")},
 		},
 	}}
-	provider := newTestRuntime(agentmodule.BuildDependencies{
-		Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
+	provider := newTestRuntime(harnessmodule.BuildDependencies{
+		Accounts: harnessauth.NewAccountVault(store, allowAccountUse{}),
 	}).Lookup(harness.ProviderClaude).(*Provider)
 
 	usages := provider.ReadPlanUsage(context.Background())
@@ -119,18 +119,18 @@ func TestReadPlanUsageReadsTheHostLoginOnlyWhileNoAccountIsActive(t *testing.T) 
 
 	for _, test := range []struct {
 		name     string
-		accounts agentauth.AccountSet
+		accounts harnessauth.AccountSet
 		want     []string
 	}{
 		{name: "no saved accounts", want: []string{"=session=7"}},
-		{name: "saved account not active", accounts: agentauth.AccountSet{Accounts: []agentauth.AccountRecord{
+		{name: "saved account not active", accounts: harnessauth.AccountSet{Accounts: []harnessauth.AccountRecord{
 			{ID: "three", Label: "Three", Credential: testClaudeCredential("saved-three", "uuid-three", "three@example.test")},
 		}}, want: []string{"three=error", "=session=7"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := &memoryAccountStore{accounts: test.accounts}
-			provider := newTestRuntime(agentmodule.BuildDependencies{
-				Accounts: agentauth.NewAccountVault(store, allowAccountUse{}),
+			provider := newTestRuntime(harnessmodule.BuildDependencies{
+				Accounts: harnessauth.NewAccountVault(store, allowAccountUse{}),
 			}).Lookup(harness.ProviderClaude).(*Provider)
 			var got []string
 			for _, usage := range provider.ReadPlanUsage(context.Background()) {
@@ -153,7 +153,7 @@ func TestReadPlanUsageSkipsAHostWithoutASubscriptionLogin(t *testing.T) {
 	host := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", host)
 	writeHostFiles(t, host, `{"mcpOAuth":{}}`, `{}`)
-	provider := newTestRuntime(agentmodule.BuildDependencies{}).Lookup(harness.ProviderClaude).(*Provider)
+	provider := newTestRuntime(harnessmodule.BuildDependencies{}).Lookup(harness.ProviderClaude).(*Provider)
 	if usages := provider.ReadPlanUsage(context.Background()); len(usages) != 0 {
 		t.Fatalf("usages = %+v", usages)
 	}

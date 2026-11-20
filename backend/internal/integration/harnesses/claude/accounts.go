@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 // accountCredentialKeys are the .credentials.json entries that belong to one
@@ -20,7 +20,7 @@ var accountCredentialKeys = []string{"claudeAiOauth", "organizationUuid"}
 // writeCredentialFile replaces one CLI file atomically. Tests replace it to
 // provoke write failures that file permissions cannot, since they may run as
 // root.
-var writeCredentialFile = agentauth.WriteCredentialFile
+var writeCredentialFile = harnessauth.WriteCredentialFile
 
 // accountCredential is the opaque value saved per account: the account's
 // token entries plus the oauthAccount profile the CLI keeps in .claude.json.
@@ -33,10 +33,10 @@ type accountCredential struct {
 // in two CLI files, the CLI validates it, and oauthAccount identifies it.
 type accountCredentials struct {
 	// validate is validateAccountCredential; tests replace it.
-	validate func(context.Context, json.RawMessage) (agentauth.ValidatedAccount, error)
+	validate func(context.Context, json.RawMessage) (harnessauth.ValidatedAccount, error)
 }
 
-var _ agentauth.AccountCredentials = (*accountCredentials)(nil)
+var _ harnessauth.AccountCredentials = (*accountCredentials)(nil)
 
 func (c *accountCredentials) ReadHost() (json.RawMessage, error) {
 	return readAccountCredential(claudeCredentialPath(), claudeGlobalConfigPath())
@@ -46,18 +46,18 @@ func (c *accountCredentials) WriteHost(credential json.RawMessage) error {
 	return writeAccountCredential(claudeCredentialPath(), claudeGlobalConfigPath(), credential)
 }
 
-func (c *accountCredentials) Validate(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+func (c *accountCredentials) Validate(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 	return c.validate(ctx, credential)
 }
 
-func (c *accountCredentials) Identity(credential json.RawMessage) agentauth.AccountIdentity {
+func (c *accountCredentials) Identity(credential json.RawMessage) harnessauth.AccountIdentity {
 	return accountIdentity(credential)
 }
 
 // accountIdentity reads the account a saved credential signs in as from its
 // oauthAccount profile: the stable account UUID and the email address.
-func accountIdentity(credential []byte) agentauth.AccountIdentity {
-	identity := agentauth.AccountIdentity{}
+func accountIdentity(credential []byte) harnessauth.AccountIdentity {
+	identity := harnessauth.AccountIdentity{}
 	var stored accountCredential
 	if json.Unmarshal(credential, &stored) != nil || len(stored.OAuthAccount) == 0 {
 		return identity
@@ -85,7 +85,7 @@ func accountIdentity(credential []byte) agentauth.AccountIdentity {
 // AccountService.FinishLogin.
 type accountLoginFlow struct{ auth *Auth }
 
-var _ agentauth.AccountLoginFlow = accountLoginFlow{}
+var _ harnessauth.AccountLoginFlow = accountLoginFlow{}
 
 // Reset stops a code login that was abandoned or timed out, which never
 // resolves on its own, so a new account login replaces it instead of waiting
@@ -94,7 +94,7 @@ func (f accountLoginFlow) Reset(ctx context.Context) error {
 	return f.auth.code.Cancel(ctx)
 }
 
-func (f accountLoginFlow) Prepare() (agentauth.AccountLogin, error) {
+func (f accountLoginFlow) Prepare() (harnessauth.AccountLogin, error) {
 	root, home, err := prepareIsolatedClaudeHome("remote-claude-login-*")
 	if err != nil {
 		return nil, err
@@ -102,12 +102,12 @@ func (f accountLoginFlow) Prepare() (agentauth.AccountLogin, error) {
 	return &accountLogin{root: root, home: home}, nil
 }
 
-func (f accountLoginFlow) Start(ctx context.Context) (agentauth.LoginSnapshot, error) {
+func (f accountLoginFlow) Start(ctx context.Context) (harnessauth.LoginSnapshot, error) {
 	if _, err := f.auth.code.Start(ctx); err != nil {
-		return agentauth.LoginSnapshot{}, err
+		return harnessauth.LoginSnapshot{}, err
 	}
 	state := f.auth.code.Status().Login
-	return agentauth.LoginSnapshot{
+	return harnessauth.LoginSnapshot{
 		Active: state.Active, URL: state.AuthURL, AwaitingCode: state.AwaitingCode,
 		StartedAt: state.StartedAt, Completed: state.Completed, Error: state.Error,
 	}, nil
@@ -121,7 +121,7 @@ type accountLogin struct {
 	home string
 }
 
-var _ agentauth.AccountLogin = (*accountLogin)(nil)
+var _ harnessauth.AccountLogin = (*accountLogin)(nil)
 
 func (l *accountLogin) Env(base []string) []string {
 	return isolatedClaudeAuthEnvFor(base, l.home)

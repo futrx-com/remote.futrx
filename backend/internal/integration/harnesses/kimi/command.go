@@ -5,8 +5,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // containerKimiHome is the KIMI_CODE_HOME inside a project container — where
@@ -59,7 +59,7 @@ func (p *Provider) buildCmd(
 	if err != nil {
 		return nil, "", err
 	}
-	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
+	cmd := harnessruntime.BuildContainerCommand(ctx, harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  []string{"HOME=/root", "KIMI_CODE_HOME=" + containerKimiHome},
 		Secrets:            project.Secrets,

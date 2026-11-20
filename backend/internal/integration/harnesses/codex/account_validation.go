@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 type accountReadResponse struct {
@@ -24,17 +24,17 @@ type accountReadResponse struct {
 	RequiresOpenAIAuth bool `json:"requiresOpenaiAuth"`
 }
 
-func validateAccountCredential(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+func validateAccountCredential(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 	if len(credential) == 0 {
-		return agentauth.ValidatedAccount{}, errors.New("saved Codex credential is empty")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Codex credential is empty")
 	}
 	var raw map[string]any
 	if err := json.Unmarshal(credential, &raw); err != nil {
-		return agentauth.ValidatedAccount{}, errors.New("saved Codex credential is not valid JSON")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Codex credential is not valid JSON")
 	}
 	mode, usesAPIKey := codexAuthModeFromRaw(raw)
 	if usesAPIKey || mode != "chatgpt" {
-		return agentauth.ValidatedAccount{}, errors.New("saved Codex account is not a ChatGPT subscription login")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Codex account is not a ChatGPT subscription login")
 	}
 	if credentialPath, ok := snapCodexCredentialPath(); ok {
 		return validateAccountCredentialAtPath(ctx, credential, credentialPath)
@@ -42,29 +42,29 @@ func validateAccountCredential(ctx context.Context, credential json.RawMessage) 
 
 	root, home, err := prepareIsolatedCodexHome("remote-codex-validate-*")
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("prepare Codex validation: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("prepare Codex validation: %w", err)
 	}
 	defer os.RemoveAll(root)
 	credentialPath := filepath.Join(home, "auth.json")
 	if err := os.WriteFile(credentialPath, credential, 0o600); err != nil {
-		return agentauth.ValidatedAccount{}, err
+		return harnessauth.ValidatedAccount{}, err
 	}
 	return inspectAccountCredential(ctx, home, credentialPath)
 }
 
-func validateAccountCredentialAtPath(ctx context.Context, credential json.RawMessage, credentialPath string) (agentauth.ValidatedAccount, error) {
+func validateAccountCredentialAtPath(ctx context.Context, credential json.RawMessage, credentialPath string) (harnessauth.ValidatedAccount, error) {
 	previous, readErr := os.ReadFile(credentialPath)
 	hadPrevious := readErr == nil
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("read current Codex credential: %w", readErr)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("read current Codex credential: %w", readErr)
 	}
-	if err := agentauth.WriteCredentialFile(credentialPath, credential); err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("stage Codex credential for validation: %w", err)
+	if err := harnessauth.WriteCredentialFile(credentialPath, credential); err != nil {
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("stage Codex credential for validation: %w", err)
 	}
 	validated, validationErr := inspectAccountCredential(ctx, filepath.Dir(credentialPath), credentialPath)
 	var restoreErr error
 	if hadPrevious {
-		restoreErr = agentauth.WriteCredentialFile(credentialPath, previous)
+		restoreErr = harnessauth.WriteCredentialFile(credentialPath, previous)
 	} else {
 		restoreErr = os.Remove(credentialPath)
 		if errors.Is(restoreErr, os.ErrNotExist) {
@@ -72,24 +72,24 @@ func validateAccountCredentialAtPath(ctx context.Context, credential json.RawMes
 		}
 	}
 	if restoreErr != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("restore current Codex credential after validation: %w", restoreErr)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("restore current Codex credential after validation: %w", restoreErr)
 	}
 	return validated, validationErr
 }
 
-func inspectAccountCredential(ctx context.Context, home, credentialPath string) (agentauth.ValidatedAccount, error) {
+func inspectAccountCredential(ctx context.Context, home, credentialPath string) (harnessauth.ValidatedAccount, error) {
 	account, err := readCodexAccount(ctx, home)
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("validate Codex account: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("validate Codex account: %w", err)
 	}
 	if account.Account == nil || account.Account.Type != "chatgpt" {
-		return agentauth.ValidatedAccount{}, errors.New("Codex did not recognize a ChatGPT account")
+		return harnessauth.ValidatedAccount{}, errors.New("Codex did not recognize a ChatGPT account")
 	}
 	refreshed, err := os.ReadFile(credentialPath)
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("read refreshed Codex credential: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("read refreshed Codex credential: %w", err)
 	}
-	return agentauth.ValidatedAccount{
+	return harnessauth.ValidatedAccount{
 		Email: account.Account.Email, PlanType: account.Account.PlanType,
 		Credential: append(json.RawMessage(nil), refreshed...),
 	}, nil

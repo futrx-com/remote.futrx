@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 //go:embed assets/agent-browser-install.sh

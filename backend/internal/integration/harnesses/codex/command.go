@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func (p *Provider) args(req harness.RunRequest) []string {
@@ -82,7 +82,7 @@ func (p *Provider) buildCmdForAccount(
 		binary = "sh"
 		arguments = codexAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
 	}
-	cmd := agentruntime.BuildContainerCommand(context.WithoutCancel(ctx), agentruntime.ContainerCommandSpec{
+	cmd := harnessruntime.BuildContainerCommand(context.WithoutCancel(ctx), harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  prefixEnvironment,
 		Secrets:            project.Secrets,

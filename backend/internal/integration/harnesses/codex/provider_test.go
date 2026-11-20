@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentexecution "github.com/futrx-com/remote.futrx.com/internal/service/agent/execution"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessexecution "github.com/futrx-com/remote.futrx.com/internal/service/harness/execution"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func newTestProvider(
@@ -27,11 +27,11 @@ func newTestProvider(
 	if err != nil {
 		panic(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		panic(err)
 	}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{
+	runtime, err := catalog.Build(harnessmodule.BuildDependencies{
 		Projects:              projects,
 		Containers:            dependencies,
 		CredentialSyncTimeout: 30 * time.Second,
@@ -56,21 +56,21 @@ func TestFactoryAttachesSavedAccountsOnlyWithAVault(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
 	for _, tc := range []struct {
 		name  string
-		vault *agentauth.AccountVault
+		vault *harnessauth.AccountVault
 	}{
 		{"without a vault", nil},
-		{"with a vault", agentauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{})},
+		{"with a vault", harnessauth.NewAccountVault(&memoryAccountStore{}, allowAccountUse{})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, err := NewFactory()
 			if err != nil {
 				t.Fatal(err)
 			}
-			catalog, err := agentmodule.NewCatalog(factory)
+			catalog, err := harnessmodule.NewCatalog(factory)
 			if err != nil {
 				t.Fatal(err)
 			}
-			runtime, err := catalog.Build(agentmodule.BuildDependencies{Accounts: tc.vault, CredentialSyncTimeout: time.Second})
+			runtime, err := catalog.Build(harnessmodule.BuildDependencies{Accounts: tc.vault, CredentialSyncTimeout: time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -175,10 +175,10 @@ func TestContainerCredentialsRejectAPIKeyAuthBeforeProvisioning(t *testing.T) {
 		ContainerName: "project",
 		Status:        harness.ProjectStatusRunning,
 	}
-	preparer := agentexecution.New(
+	preparer := harnessexecution.New(
 		fakeCodexProjects{project: project},
 		codexContainerDependencies(credentials, &fakeCodexBrowser{}),
-		agentexecution.Options{
+		harnessexecution.Options{
 			Provider:          harness.ProviderCodex,
 			Profile:           profile,
 			BeforeCredentials: validateSubscriptionCredentials,
@@ -341,17 +341,17 @@ func TestContainerRunKeepsOnlyTheActiveAccountsLogin(t *testing.T) {
 	installFakeContainerAppServer(t)
 	saved := codexTestCredential("personal", "saved")
 	writeCodexHostCredential(t, hostPath, saved)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "personal",
-		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
+		Accounts:        []harnessauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
 	}}
 	auth := newTestAuth(t, store)
 	var validated []string
-	auth.credentials.validate = func(_ context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+	auth.credentials.validate = func(_ context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 		validated = append(validated, string(credential))
 		// Validation refreshes the login through the Codex app server.
 		refreshed := bytes.Replace(credential, []byte(`"access_token":"`), []byte(`"access_token":"validated-`), 1)
-		return agentauth.ValidatedAccount{Email: "personal@example.test", PlanType: "plus", Credential: refreshed}, nil
+		return harnessauth.ValidatedAccount{Email: "personal@example.test", PlanType: "plus", Credential: refreshed}, nil
 	}
 
 	project := harness.Project{ID: harness.ProjectID("abcd"), ContainerName: "account-project", Status: harness.ProjectStatusRunning}
@@ -410,9 +410,9 @@ func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
 	)
 	saved := codexTestCredential("personal", "saved")
 	writeCodexHostCredential(t, filepath.Join(codexHome, "auth.json"), saved)
-	store := &memoryAccountStore{accounts: agentauth.AccountSet{
+	store := &memoryAccountStore{accounts: harnessauth.AccountSet{
 		ActiveAccountID: "personal",
-		Accounts:        []agentauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
+		Accounts:        []harnessauth.AccountRecord{{ID: "personal", Label: "Personal", Credential: saved}},
 	}}
 	project := harness.Project{ID: harness.ProjectID("abcd"), ContainerName: "account-project", Status: harness.ProjectStatusRunning}
 	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(&fakeCodexCredentials{}, &fakeCodexBrowser{}))
@@ -437,7 +437,7 @@ func TestRunAttributesPlanLimitsToTheAccountThatRan(t *testing.T) {
 
 func TestAccountRunHomesSeparateChats(t *testing.T) {
 	t.Setenv("CODEX_HOME", t.TempDir())
-	saved := agentauth.RunCredential{AccountID: "personal", Credential: codexTestCredential("personal", "token")}
+	saved := harnessauth.RunCredential{AccountID: "personal", Credential: codexTestCredential("personal", "token")}
 	first, err := newAccountRun(harness.RunRequest{ConversationID: "chat-one", ProjectID: "project"}, saved)
 	if err != nil {
 		t.Fatal(err)
@@ -459,7 +459,7 @@ func TestBuildCmdUsesTheSelectedChatsPrivateAccountHome(t *testing.T) {
 	credentials := &fakeCodexCredentials{}
 	provider := newTestProvider(fakeCodexProjects{project: project}, codexContainerDependencies(credentials, &fakeCodexBrowser{}))
 	req := harness.RunRequest{ProjectID: string(project.ID), ConversationID: "chat-one"}
-	run, err := newAccountRun(req, agentauth.RunCredential{
+	run, err := newAccountRun(req, harnessauth.RunCredential{
 		AccountID: "personal", Credential: codexTestCredential("personal", "token"),
 	})
 	if err != nil {
@@ -557,12 +557,12 @@ func (f *fakeCodexCredentials) SyncFromContainer(_ context.Context, _ string, sp
 	if f.synced == nil {
 		return nil
 	}
-	return agentauth.WriteCredentialFile(spec.Files[0].HostPath, f.synced)
+	return harnessauth.WriteCredentialFile(spec.Files[0].HostPath, f.synced)
 }
 
 type fakeCodexWorkspace struct{}
 
-func (fakeCodexWorkspace) EnsureAgentInstructions(context.Context, string) error { return nil }
+func (fakeCodexWorkspace) EnsureHarnessInstructions(context.Context, string) error { return nil }
 
 func (fakeCodexWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 

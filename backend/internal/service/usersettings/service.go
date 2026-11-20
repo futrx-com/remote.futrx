@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 type Service struct {
@@ -17,11 +17,11 @@ type Service struct {
 
 type ProviderCatalog interface {
 	HasProvider(provider string) bool
-	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 }
 
 type defaultProviderCatalog interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) harness.ProviderID
+	DefaultProvider(scope harnessmodule.ExecutionScope) harness.ProviderID
 }
 
 type Option func(*Service)
@@ -85,10 +85,10 @@ func (s *Service) Update(ctx context.Context, key Key, input UpdateInput) (Setti
 		settings.Appearance.Theme = theme
 	}
 
-	if err := s.applyChatUpdate(&settings.Chat, input.Chat, agentmodule.ScopeHost); err != nil {
+	if err := s.applyChatUpdate(&settings.Chat, input.Chat, harnessmodule.ScopeHost); err != nil {
 		return Settings{}, err
 	}
-	if err := s.applyChatUpdate(&settings.ProjectChat, input.ProjectChat, agentmodule.ScopeProject); err != nil {
+	if err := s.applyChatUpdate(&settings.ProjectChat, input.ProjectChat, harnessmodule.ScopeProject); err != nil {
 		return Settings{}, err
 	}
 
@@ -106,28 +106,28 @@ func (s *Service) normalize(settings Settings) Settings {
 	// Preserve that preference when its provider can also run in a project.
 	projectChat := settings.ProjectChat
 	if normalizeChatProvider(projectChat.Provider) == "" &&
-		s.validProviderForScope(settings.Chat.Provider, agentmodule.ScopeProject) {
+		s.validProviderForScope(settings.Chat.Provider, harnessmodule.ScopeProject) {
 		projectChat = settings.Chat
 	}
-	settings.Chat = s.normalizeChat(settings.Chat, defaults.Chat, agentmodule.ScopeHost)
-	settings.ProjectChat = s.normalizeChat(projectChat, defaults.ProjectChat, agentmodule.ScopeProject)
+	settings.Chat = s.normalizeChat(settings.Chat, defaults.Chat, harnessmodule.ScopeHost)
+	settings.ProjectChat = s.normalizeChat(projectChat, defaults.ProjectChat, harnessmodule.ScopeProject)
 	return settings
 }
 
 func (s *Service) defaultSettings() Settings {
 	settings := DefaultSettings()
 	if providers, ok := s.providers.(defaultProviderCatalog); ok {
-		if provider := providers.DefaultProvider(agentmodule.ScopeHost); provider != "" {
+		if provider := providers.DefaultProvider(harnessmodule.ScopeHost); provider != "" {
 			settings.Chat.Provider = provider
 		}
-		if provider := providers.DefaultProvider(agentmodule.ScopeProject); provider != "" {
+		if provider := providers.DefaultProvider(harnessmodule.ScopeProject); provider != "" {
 			settings.ProjectChat.Provider = provider
 		}
 	}
 	return settings
 }
 
-func (s *Service) applyChatUpdate(chat *Chat, update *ChatUpdate, scope agentmodule.ExecutionScope) error {
+func (s *Service) applyChatUpdate(chat *Chat, update *ChatUpdate, scope harnessmodule.ExecutionScope) error {
 	if update == nil {
 		return nil
 	}
@@ -187,7 +187,7 @@ func (s *Service) applyChatUpdate(chat *Chat, update *ChatUpdate, scope agentmod
 	return nil
 }
 
-func (s *Service) normalizeChat(chat, defaults Chat, scope agentmodule.ExecutionScope) Chat {
+func (s *Service) normalizeChat(chat, defaults Chat, scope harnessmodule.ExecutionScope) Chat {
 	chat.Provider = normalizeChatProvider(chat.Provider)
 	if !s.validProviderForScope(chat.Provider, scope) {
 		chat.Provider = defaults.Provider
@@ -222,7 +222,7 @@ func normalizeChatProvider(provider ChatProvider) ChatProvider {
 	return harness.NormalizeProviderID(string(provider))
 }
 
-func (s *Service) validProviderForScope(provider ChatProvider, scope agentmodule.ExecutionScope) bool {
+func (s *Service) validProviderForScope(provider ChatProvider, scope harnessmodule.ExecutionScope) bool {
 	if !ValidChatProvider(provider) {
 		return false
 	}

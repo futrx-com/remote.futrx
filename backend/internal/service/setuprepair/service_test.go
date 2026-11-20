@@ -13,9 +13,9 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -80,7 +80,7 @@ func (*repairAgent) Capabilities(context.Context, harness.CapabilityRequest) (ha
 }
 func (p *repairAgent) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	p.requests = append(p.requests, req)
-	if _, err := p.projects.StartForAgent(ctx, serviceproject.ID(req.ProjectID)); err != nil {
+	if _, err := p.projects.StartForHarness(ctx, serviceproject.ID(req.ProjectID)); err != nil {
 		return err
 	}
 	if p.entered != nil {
@@ -254,7 +254,7 @@ func TestFailedOrUnverifiedRepairsDoNotLoopAfterRestart(t *testing.T) {
 				t.Fatal("unsuccessful repair retried automatically")
 			}
 			// The failed repair must not lock users out of their harness.
-			if _, err := f.projects.StartForAgent(context.Background(), m.ID); err != nil {
+			if _, err := f.projects.StartForHarness(context.Background(), m.ID); err != nil {
 				t.Fatal(err)
 			}
 		})

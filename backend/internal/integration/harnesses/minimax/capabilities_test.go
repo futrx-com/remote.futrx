@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func TestCapabilitiesExposeDiscoveredMiniMaxModels(t *testing.T) {

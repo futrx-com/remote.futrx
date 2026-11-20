@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var ErrNoPendingInteraction = errors.New("no active agent interaction for this chat")

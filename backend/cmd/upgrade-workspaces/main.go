@@ -34,7 +34,7 @@ func main() {
 		log.Fatalf("init stores: %v", err)
 	}
 	lxcClient := lxc.New()
-	agentModules, err := config.NewAgentModules()
+	harnessModules, err := config.NewHarnessModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("load application catalog: %v", err)
 	}
-	containerStack := config.NewContainerStack(lxcClient, agentModules.Profiles(), config.ContainerStackOptions{
+	containerStack := config.NewContainerStack(lxcClient, harnessModules.Profiles(), config.ContainerStackOptions{
 		AppRegistry: registry, DataDir: cfg.DataDir,
 	})
 	projects := serviceproject.New(

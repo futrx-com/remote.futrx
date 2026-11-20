@@ -1,7 +1,7 @@
 package codexharness
 
 import (
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"testing"
 )
 

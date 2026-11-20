@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestModelCatalogDiscoversLanguageModelsFromMiniMax(t *testing.T) {
@@ -58,7 +58,7 @@ func TestModelCatalogRejectsCredentialWithoutLeakingBody(t *testing.T) {
 
 	catalog := &modelCatalogClient{client: server.Client(), endpoint: server.URL}
 	_, err := catalog.Models(context.Background(), "sk-cp-revoked")
-	if !errors.Is(err, ErrMiniMaxModelDiscoveryUnavailable) || !errors.Is(err, agentauth.ErrAPIKeyRejected) {
+	if !errors.Is(err, ErrMiniMaxModelDiscoveryUnavailable) || !errors.Is(err, harnessauth.ErrAPIKeyRejected) {
 		t.Fatalf("error = %v", err)
 	}
 	if strings.Contains(err.Error(), "body-must-not-escape") {

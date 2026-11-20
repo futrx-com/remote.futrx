@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // Parser converts @moonshot-ai/kimi-code `kimi -p --output-format stream-json`

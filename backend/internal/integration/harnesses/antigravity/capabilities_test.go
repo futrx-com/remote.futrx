@@ -3,7 +3,7 @@ package antigravity
 import (
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func TestParseCapabilitiesFromCLIOutput(t *testing.T) {

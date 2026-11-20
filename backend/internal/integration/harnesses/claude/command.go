@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func (p *Provider) args(req harness.RunRequest) []string {
@@ -115,7 +115,7 @@ func (p *Provider) buildCmdForAccount(
 		binary = "sh"
 		arguments = claudeAccountContainerArgs(run.containerHome, p.profile.CLI.Binary, args)
 	}
-	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
+	cmd := harnessruntime.BuildContainerCommand(ctx, harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  prefixEnvironment,
 		Secrets:            project.Secrets,

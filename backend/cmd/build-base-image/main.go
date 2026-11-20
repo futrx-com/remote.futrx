@@ -45,13 +45,13 @@ func run(alias string, overwrite bool) error {
 	if !lxcClient.Available() {
 		return errors.New("lxc CLI not found on PATH - install LXD on the host first")
 	}
-	agentModules, err := config.NewAgentModules()
+	harnessModules, err := config.NewHarnessModules()
 	if err != nil {
 		return fmt.Errorf("configure agent modules: %w", err)
 	}
 	containerStack := config.NewContainerStack(
 		lxcClient,
-		agentModules.Profiles(),
+		harnessModules.Profiles(),
 		config.ContainerStackOptions{
 			ImageBuildProgress: newLogBuildProgressReporter(log.Default()),
 		},

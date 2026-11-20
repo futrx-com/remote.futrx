@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 // authStatusResponse is the subset of `claude auth status --json` used to
@@ -27,48 +27,48 @@ type authStatusResponse struct {
 
 // validateAccountCredential asks the CLI, in a private config directory,
 // whether credential is a usable Claude subscription login.
-func validateAccountCredential(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+func validateAccountCredential(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 	if len(credential) == 0 {
-		return agentauth.ValidatedAccount{}, errors.New("saved Claude credential is empty")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Claude credential is empty")
 	}
 	var stored accountCredential
 	if err := json.Unmarshal(credential, &stored); err != nil {
-		return agentauth.ValidatedAccount{}, errors.New("saved Claude credential is not valid JSON")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Claude credential is not valid JSON")
 	}
 	if len(stored.Credentials["claudeAiOauth"]) == 0 {
-		return agentauth.ValidatedAccount{}, errors.New("saved Claude account is not a Claude subscription login")
+		return harnessauth.ValidatedAccount{}, errors.New("saved Claude account is not a Claude subscription login")
 	}
 	if err := checkOAuthUsable(stored.Credentials["claudeAiOauth"], time.Now()); err != nil {
-		return agentauth.ValidatedAccount{}, err
+		return harnessauth.ValidatedAccount{}, err
 	}
 
 	root, home, err := prepareIsolatedClaudeHome("remote-claude-validate-*")
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("prepare Claude validation: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("prepare Claude validation: %w", err)
 	}
 	defer os.RemoveAll(root)
 	credentialPath := filepath.Join(home, ".credentials.json")
 	configPath := filepath.Join(home, ".claude.json")
 	if err := writeAccountCredential(credentialPath, configPath, credential); err != nil {
-		return agentauth.ValidatedAccount{}, err
+		return harnessauth.ValidatedAccount{}, err
 	}
 	status, err := readClaudeAuthStatus(ctx, home)
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("validate Claude account: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("validate Claude account: %w", err)
 	}
 	if !status.LoggedIn || status.AuthMethod != "claude.ai" {
-		return agentauth.ValidatedAccount{}, errors.New("Claude did not recognize a Claude subscription login")
+		return harnessauth.ValidatedAccount{}, errors.New("Claude did not recognize a Claude subscription login")
 	}
 	// The CLI may refresh tokens while inspecting them; keep what it wrote.
 	refreshed, err := readAccountCredential(credentialPath, configPath)
 	if err != nil {
-		return agentauth.ValidatedAccount{}, fmt.Errorf("read refreshed Claude credential: %w", err)
+		return harnessauth.ValidatedAccount{}, fmt.Errorf("read refreshed Claude credential: %w", err)
 	}
 	email := status.Email
 	if email == "" {
 		email = oauthAccountEmail(stored.OAuthAccount)
 	}
-	return agentauth.ValidatedAccount{Email: email, PlanType: status.SubscriptionType, Credential: refreshed}, nil
+	return harnessauth.ValidatedAccount{Email: email, PlanType: status.SubscriptionType, Credential: refreshed}, nil
 }
 
 // checkOAuthUsable rejects a login the CLI can no longer use. `claude auth

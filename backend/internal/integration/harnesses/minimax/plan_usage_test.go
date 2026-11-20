@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 type planKeySource struct {
 	keys     map[string]string
-	accounts []agentauth.Account
+	accounts []harnessauth.Account
 }
 
 func (s planKeySource) APIKey() (string, bool) { return s.APIKeyFor("") }
@@ -24,13 +24,13 @@ func (s planKeySource) APIKeyFor(id string) (string, bool) {
 	key, ok := s.keys[id]
 	return key, ok
 }
-func (s planKeySource) APIKeyForRun(_ context.Context, id string) (agentauth.RunAPIKey, bool, error) {
+func (s planKeySource) APIKeyForRun(_ context.Context, id string) (harnessauth.RunAPIKey, bool, error) {
 	key, ok := s.APIKeyFor(id)
-	return agentauth.RunAPIKey{AccountID: id, Key: key}, ok, nil
+	return harnessauth.RunAPIKey{AccountID: id, Key: key}, ok, nil
 }
 func (s planKeySource) AccountsEnabled() bool { return s.accounts != nil }
-func (s planKeySource) AccountsSnapshot() agentauth.AccountsSnapshot {
-	return agentauth.AccountsSnapshot{Items: s.accounts}
+func (s planKeySource) AccountsSnapshot() harnessauth.AccountsSnapshot {
+	return harnessauth.AccountsSnapshot{Items: s.accounts}
 }
 
 func TestMiniMaxReadsEachSavedKeyAndOnlyTheCodingBucket(t *testing.T) {
@@ -59,7 +59,7 @@ func TestMiniMaxReadsEachSavedKeyAndOnlyTheCodingBucket(t *testing.T) {
 	defer server.Close()
 	source := planKeySource{
 		keys:     map[string]string{"one": "sk-cp-one", "two": "sk-cp-two"},
-		accounts: []agentauth.Account{{ID: "one"}, {ID: "two"}},
+		accounts: []harnessauth.Account{{ID: "one"}, {ID: "two"}},
 	}
 	provider := &Provider{apiKeys: source, planUsage: &apiKeyValidator{client: server.Client(), endpoint: server.URL + "/v1/token_plan/remains"}}
 	got := provider.ReadPlanUsage(context.Background())
@@ -106,7 +106,7 @@ func TestMiniMaxLegacyKeyAndAPIError(t *testing.T) {
 		planUsage: &apiKeyValidator{client: server.Client(), endpoint: server.URL},
 	}
 	got := provider.ReadPlanUsage(context.Background())
-	if len(got) != 1 || got[0].AccountID != "" || !errors.Is(got[0].Err, agentauth.ErrAPIKeyRejected) {
+	if len(got) != 1 || got[0].AccountID != "" || !errors.Is(got[0].Err, harnessauth.ErrAPIKeyRejected) {
 		t.Fatalf("legacy reading = %#v", got)
 	}
 	if strings.Contains(got[0].Err.Error(), "do not expose") || len(got[0].Windows) != 0 {

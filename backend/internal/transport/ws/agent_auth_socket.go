@@ -6,23 +6,23 @@ import (
 	"net/http"
 	"time"
 
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/gorilla/websocket"
 )
 
 // AgentAuthSocket exposes every catalog-registered agent status stream without
 // depending on any concrete provider package.
 type AgentAuthSocket struct {
-	accountAccess *agentaccountaccess.Service
-	bindings      []agentauth.Binding
+	accountAccess *harnessaccountaccess.Service
+	bindings      []harnessauth.Binding
 }
 
-func NewAgentAuthSocket(bindings []agentauth.Binding) *AgentAuthSocket {
-	return &AgentAuthSocket{bindings: append([]agentauth.Binding(nil), bindings...)}
+func NewAgentAuthSocket(bindings []harnessauth.Binding) *AgentAuthSocket {
+	return &AgentAuthSocket{bindings: append([]harnessauth.Binding(nil), bindings...)}
 }
 
-func (s *AgentAuthSocket) WithAccountAccess(access *agentaccountaccess.Service) *AgentAuthSocket {
+func (s *AgentAuthSocket) WithAccountAccess(access *harnessaccountaccess.Service) *AgentAuthSocket {
 	s.accountAccess = access
 	return s
 }
@@ -37,18 +37,18 @@ func (s *AgentAuthSocket) RegisterRoutes(mux *http.ServeMux, upgrader websocket.
 	}
 }
 
-func (s *AgentAuthSocket) handleSnapshot(binding agentauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
+func (s *AgentAuthSocket) handleSnapshot(binding harnessauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
 	return s.handleSubscription(binding, upgrader, binding.SubscribeSnapshots, true)
 }
 
-func (s *AgentAuthSocket) handle(binding agentauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
+func (s *AgentAuthSocket) handle(binding harnessauth.Binding, upgrader websocket.Upgrader) http.HandlerFunc {
 	return s.handleSubscription(binding, upgrader, binding.Subscribe, false)
 }
 
 func (s *AgentAuthSocket) handleSubscription(
-	binding agentauth.Binding,
+	binding harnessauth.Binding,
 	upgrader websocket.Upgrader,
-	subscribe func() (agentauth.Subscription, error),
+	subscribe func() (harnessauth.Subscription, error),
 	normalized bool,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +103,7 @@ func (s *AgentAuthSocket) handleSubscription(
 	}
 }
 
-func writeAgentAuthStatuses(ctx context.Context, conn *websocket.Conn, subscription agentauth.Subscription, filter func(any) (any, error)) {
+func writeAgentAuthStatuses(ctx context.Context, conn *websocket.Conn, subscription harnessauth.Subscription, filter func(any) (any, error)) {
 	defer conn.Close()
 	for {
 		tick, cancel := context.WithTimeout(ctx, 15*time.Second)

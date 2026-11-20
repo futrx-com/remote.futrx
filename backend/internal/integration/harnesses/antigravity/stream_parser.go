@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // streamParser uses the documented headless NDJSON protocol. In particular,

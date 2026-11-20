@@ -3,7 +3,7 @@ package skills
 import (
 	"errors"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var ErrInvalidProvider = errors.New("invalid skill provider")

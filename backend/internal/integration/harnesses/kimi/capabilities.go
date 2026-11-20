@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
@@ -13,7 +13,7 @@ func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityReque
 	if req.ContainerName == "" {
 		kimiHome = hostKimiHome()
 	}
-	modelsCmd := agentruntime.NewCapabilityCommand(
+	modelsCmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "KIMI_CODE_HOME=" + kimiHome},
@@ -23,7 +23,7 @@ func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityReque
 		"--json",
 	)
 	modelsOutput, modelsErr := modelsCmd.Output()
-	defaultsCmd := agentruntime.NewCapabilityCommand(
+	defaultsCmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "KIMI_CODE_HOME=" + kimiHome},
@@ -32,7 +32,7 @@ func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityReque
 		"list",
 	)
 	defaultsOutput, defaultsErr := defaultsCmd.Output()
-	helpCmd := agentruntime.NewCapabilityCommand(
+	helpCmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "KIMI_CODE_HOME=" + kimiHome},

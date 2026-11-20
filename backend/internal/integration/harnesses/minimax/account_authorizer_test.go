@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 type runAccountAuthorizer struct{ checks []rbac.Check }
@@ -24,12 +24,12 @@ func TestFactoryRequiresMiniMaxAccountUseBeforeModelDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	deny := &runAccountAuthorizer{}
-	runtime, err := catalog.Build(agentmodule.BuildDependencies{AccountAuthorizer: deny})
+	runtime, err := catalog.Build(harnessmodule.BuildDependencies{AccountAuthorizer: deny})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestFactoryRequiresMiniMaxAccountUseBeforeModelDiscovery(t *testing.T) {
 	if err := provider.Run(context.Background(), harness.RunRequest{ProjectID: "project"}, nil); !errors.Is(err, rbac.ErrDenied) {
 		t.Fatalf("denied run reached model discovery: %v", err)
 	}
-	if len(deny.checks) != 1 || deny.checks[0].Permission != agentauth.PermissionAccountUse || deny.checks[0].Scope != rbac.ProviderAccountScope("minimax", "") {
+	if len(deny.checks) != 1 || deny.checks[0].Permission != harnessauth.PermissionAccountUse || deny.checks[0].Scope != rbac.ProviderAccountScope("minimax", "") {
 		t.Fatalf("account checks = %#v", deny.checks)
 	}
 }
@@ -50,9 +50,9 @@ func (s *revokingAPIKeySource) APIKey() (string, bool) {
 	panic("run bypassed authorized acquisition")
 }
 
-func (s *revokingAPIKeySource) APIKeyForRun(_ context.Context, id string) (agentauth.RunAPIKey, bool, error) {
+func (s *revokingAPIKeySource) APIKeyForRun(_ context.Context, id string) (harnessauth.RunAPIKey, bool, error) {
 	s.accountIDs = append(s.accountIDs, id)
-	return agentauth.RunAPIKey{AccountID: "work", Key: "work-key"}, true, nil
+	return harnessauth.RunAPIKey{AccountID: "work", Key: "work-key"}, true, nil
 }
 
 func (s *revokingAPIKeySource) RequireRunAccess(_ context.Context, id string) error {

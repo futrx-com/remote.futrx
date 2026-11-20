@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 type Provider struct {
@@ -19,7 +19,7 @@ type Provider struct {
 	profile               provisioning.Profile
 	credentialSyncTimeout time.Duration
 	// accounts is nil when saved accounts are unavailable.
-	accounts *agentauth.AccountService
+	accounts *harnessauth.AccountService
 }
 
 func newProvider(
@@ -27,7 +27,7 @@ func newProvider(
 	credentialCollector provisioning.CredentialCollector,
 	profile provisioning.Profile,
 	credentialSyncTimeout time.Duration,
-	accounts *agentauth.AccountService,
+	accounts *harnessauth.AccountService,
 ) *Provider {
 	return &Provider{
 		projectPreparer:       projectPreparer,
@@ -74,7 +74,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		emit = func(harness.Event) {}
 	}
 	if run != nil {
-		emit = agentruntime.EmitForAccount(emit, run.saved.AccountID)
+		emit = harnessruntime.EmitForAccount(emit, run.saved.AccountID)
 	}
 	if req.Provider == "" {
 		req.Provider = harness.ProviderClaude
@@ -91,13 +91,13 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		}
 		emit(event)
 	}
-	err = agentruntime.RunProcess(ctx, cmd, p.Parser(req), runEmit, agentruntime.ProcessOptions{
+	err = harnessruntime.RunProcess(ctx, cmd, p.Parser(req), runEmit, harnessruntime.ProcessOptions{
 		Name:           "claude",
 		LogID:          req.ConversationID,
 		Provider:       harness.ProviderClaude,
 		ConversationID: req.ConversationID,
 	})
-	if req.ResumeID != "" && (missingSession || isMissingSessionMessage(agentruntime.ErrorStderr(err), req.ResumeID)) {
+	if req.ResumeID != "" && (missingSession || isMissingSessionMessage(harnessruntime.ErrorStderr(err), req.ResumeID)) {
 		return fmt.Errorf("%w: Claude cannot resume the selected session", harness.ErrSessionNotFound)
 	}
 	// An isolated account run refreshes only its private home. Pull that exact

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	permission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
 type forkRepository struct {
@@ -25,14 +25,14 @@ func (p forkSessionPolicy) SupportsNativeFork(provider string) bool {
 type forkProviderPolicy map[string]bool
 
 func (p forkProviderPolicy) HasProvider(provider string) bool { return p[provider] }
-func (p forkProviderPolicy) SupportsScope(provider string, _ agentmodule.ExecutionScope) bool {
+func (p forkProviderPolicy) SupportsScope(provider string, _ harnessmodule.ExecutionScope) bool {
 	return p[provider]
 }
 
-type scopedProviderPolicy map[string]map[agentmodule.ExecutionScope]bool
+type scopedProviderPolicy map[string]map[harnessmodule.ExecutionScope]bool
 
 func (p scopedProviderPolicy) HasProvider(provider string) bool { return p[provider] != nil }
-func (p scopedProviderPolicy) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+func (p scopedProviderPolicy) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
 	return p[provider][scope]
 }
 
@@ -41,7 +41,7 @@ type defaultScopedProviderPolicy struct {
 	provider Provider
 }
 
-func (p defaultScopedProviderPolicy) DefaultProvider(agentmodule.ExecutionScope) Provider {
+func (p defaultScopedProviderPolicy) DefaultProvider(harnessmodule.ExecutionScope) Provider {
 	return p.provider
 }
 
@@ -70,7 +70,7 @@ func TestCreateUsesCatalogDefaultAndRejectsUnsafeExplicitProvider(t *testing.T) 
 	repo := &forkRepository{}
 	policy := defaultScopedProviderPolicy{
 		scopedProviderPolicy: scopedProviderPolicy{
-			"future-agent": {agentmodule.ScopeHost: true},
+			"future-agent": {harnessmodule.ScopeHost: true},
 		},
 		provider: "future-agent",
 	}
@@ -89,8 +89,8 @@ func TestCreateUsesCatalogDefaultAndRejectsUnsafeExplicitProvider(t *testing.T) 
 
 func TestCreateAndUpdateEnforceProviderExecutionScope(t *testing.T) {
 	policy := scopedProviderPolicy{
-		"host-agent":    {agentmodule.ScopeHost: true},
-		"project-agent": {agentmodule.ScopeProject: true},
+		"host-agent":    {harnessmodule.ScopeHost: true},
+		"project-agent": {harnessmodule.ScopeProject: true},
 	}
 	service := New(&forkRepository{}, nil, nil, nil, WithProviderPolicy(policy))
 	if _, err := service.Create(permission.ContextWithSystemActor(context.Background()), CreateInput{Provider: "host-agent", ProjectID: "abcd"}); err != ErrInvalidProvider {

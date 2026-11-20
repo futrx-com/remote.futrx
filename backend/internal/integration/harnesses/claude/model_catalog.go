@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 const modelResolutionWorkers = 4
@@ -102,7 +102,7 @@ func runModelCommand(
 		args = append(args, "--model", selection)
 	}
 	args = append(args, "/model")
-	cmd := agentruntime.NewCapabilityCommand(
+	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "IS_SANDBOX=1"},

@@ -4,16 +4,16 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityRequest) (harness.Capabilities, error) {
 	environment := []string{"HOME=" + containerAgentHome}
 
-	modelsCmd := agentruntime.NewCapabilityCommand(ctx, req, environment, "agy", "models")
+	modelsCmd := harnessruntime.NewCapabilityCommand(ctx, req, environment, "agy", "models")
 	modelsOutput, modelsErr := modelsCmd.CombinedOutput()
-	helpCmd := agentruntime.NewCapabilityCommand(ctx, req, environment, "agy", "--help")
+	helpCmd := harnessruntime.NewCapabilityCommand(ctx, req, environment, "agy", "--help")
 	helpOutput, helpErr := helpCmd.CombinedOutput()
 
 	if modelsErr != nil && helpErr != nil {

@@ -12,10 +12,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 // Provisioner installs provider-defined and embedded assets — shared agent
@@ -44,9 +44,9 @@ func NewProvisioner(
 	}
 }
 
-// EnsureAgentInstructions pushes the shared system-instructions template to
+// EnsureHarnessInstructions pushes the shared system-instructions template to
 // all configured targets, grouped by hash marker. Idempotent.
-func (p *Provisioner) EnsureAgentInstructions(ctx context.Context, containerName string) error {
+func (p *Provisioner) EnsureHarnessInstructions(ctx context.Context, containerName string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}

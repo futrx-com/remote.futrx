@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 const fastServiceTier = "fast"
@@ -54,7 +54,7 @@ func (p *Provider) Capabilities(ctx context.Context, req harness.CapabilityReque
 }
 
 func queryHelpEffortOptions(ctx context.Context, req harness.CapabilityRequest) []harness.CapabilityOption {
-	helpCmd := agentruntime.NewCapabilityCommand(
+	helpCmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "IS_SANDBOX=1"},

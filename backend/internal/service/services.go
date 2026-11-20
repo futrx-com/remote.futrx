@@ -10,20 +10,20 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
 
 	"github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/smtp"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/webpush"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceemail "github.com/futrx-com/remote.futrx.com/internal/service/email"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnesscapability "github.com/futrx-com/remote.futrx.com/internal/service/harness/capability"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 	servicepresence "github.com/futrx-com/remote.futrx.com/internal/service/presence"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	"github.com/futrx-com/remote.futrx.com/internal/service/prompt"
@@ -83,14 +83,14 @@ type Dependencies struct {
 	Push              PushStore
 	Usage             serviceusage.Repository
 	Email             emailoutbound.ConfigurationStore
-	AgentQuota        agentquota.Repository
+	HarnessQuota      harnessquota.Repository
 	AuthBaseURL       string
 	ProjectContainers serviceproject.ContainerDependencies
-	AgentContainers   provisioning.ContainerDependencies
-	AgentModules      *agentmodule.Catalog
-	AgentAPIKeys      agentauth.APIKeyStore
-	AgentAccounts     agentauth.AccountStore
-	AgentOptions      AgentOptions
+	HarnessContainers provisioning.ContainerDependencies
+	HarnessModules    *harnessmodule.Catalog
+	HarnessAPIKeys    harnessauth.APIKeyStore
+	HarnessAccounts   harnessauth.AccountStore
+	HarnessOptions    HarnessOptions
 	TmuxClient        TmuxClient
 	ValidTmuxName     func(string) bool
 	PromptStartGate   prompt.StartGate
@@ -118,9 +118,9 @@ type Dependencies struct {
 	ApplicationEvents serviceapplications.EventSource
 }
 
-// AgentOptions mirrors application-wide agent policy without coupling the
+// HarnessOptions mirrors application-wide harness policy without coupling the
 // service layer to the config package.
-type AgentOptions struct {
+type HarnessOptions struct {
 	CapabilityTimeout          time.Duration
 	CapabilityCacheTTL         time.Duration
 	DegradedCapabilityCacheTTL time.Duration
@@ -139,47 +139,47 @@ type AuthOptions struct {
 }
 
 type Services struct {
-	AccountAccess     *agentaccountaccess.Service
-	SetupRepair       *setuprepair.Service
-	Chats             *servicechat.Service
-	ChatAccess        *servicechat.AccessService
-	Projects          *serviceproject.Service
-	Shares            *serviceshare.Service
-	Prompt            *prompt.Service
-	Agents            *agentmodule.Runtime
-	AgentCapabilities *agentcapability.Service
-	Runs              *runhub.Hub
-	Workspace         *workspacehub.Hub
-	Auth              *serviceauth.Service
-	Users             *serviceuser.Service
-	Permissions       *servicepermission.Service
-	UserSettings      *serviceusersettings.Service
-	Skills            *serviceskills.Catalog
-	Access            *serviceauth.AccessVerifier
-	Applications      *serviceapplications.Service
-	Push              *servicepush.Service
-	Presence          *servicepresence.Service
-	Usage             *serviceusage.Service
-	Email             *serviceemail.Service
+	AccountAccess       *harnessaccountaccess.Service
+	SetupRepair         *setuprepair.Service
+	Chats               *servicechat.Service
+	ChatAccess          *servicechat.AccessService
+	Projects            *serviceproject.Service
+	Shares              *serviceshare.Service
+	Prompt              *prompt.Service
+	Harnesses           *harnessmodule.Runtime
+	HarnessCapabilities *harnesscapability.Service
+	Runs                *runhub.Hub
+	Workspace           *workspacehub.Hub
+	Auth                *serviceauth.Service
+	Users               *serviceuser.Service
+	Permissions         *servicepermission.Service
+	UserSettings        *serviceusersettings.Service
+	Skills              *serviceskills.Catalog
+	Access              *serviceauth.AccessVerifier
+	Applications        *serviceapplications.Service
+	Push                *servicepush.Service
+	Presence            *servicepresence.Service
+	Usage               *serviceusage.Service
+	Email               *serviceemail.Service
 	// Mailer is the entry point every other service uses to send email. It
 	// hides credentials, MIME and HTML email markup behind a builder; see
 	// service/email.Mail.
-	Mailer     *serviceemail.Mailer
-	AgentQuota *agentquota.Service
-	Audit      *serviceaudit.Service
+	Mailer       *serviceemail.Mailer
+	HarnessQuota *harnessquota.Service
+	Audit        *serviceaudit.Service
 }
 
 func New(ctx context.Context, deps Dependencies) (Services, error) {
-	if err := deps.AgentContainers.Validate(); err != nil {
+	if err := deps.HarnessContainers.Validate(); err != nil {
 		return Services{}, fmt.Errorf("agent container dependencies: %w", err)
 	}
-	if deps.AgentModules == nil {
+	if deps.HarnessModules == nil {
 		return Services{}, errors.New("agent module catalog is required")
 	}
 	if deps.Auth == nil {
 		return Services{}, errors.New("authentication service is required")
 	}
-	if err := deps.AgentModules.ValidateAccessGate(); err != nil {
+	if err := deps.HarnessModules.ValidateAccessGate(); err != nil {
 		return Services{}, fmt.Errorf("agent module catalog: %w", err)
 	}
 	if deps.Permissions == nil {
@@ -230,19 +230,19 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			},
 		}),
 	)
-	agentRuntime, err := deps.AgentModules.Build(agentmodule.BuildDependencies{
-		Projects:              agentProjectResolver{projects: projectService},
-		Containers:            deps.AgentContainers,
-		APIKeys:               deps.AgentAPIKeys,
-		Accounts:              agentauth.NewAccountVault(deps.AgentAccounts, permissionService).WithAudit(auditLog),
+	harnessRuntime, err := deps.HarnessModules.Build(harnessmodule.BuildDependencies{
+		Projects:              harnessProjectResolver{projects: projectService},
+		Containers:            deps.HarnessContainers,
+		APIKeys:               deps.HarnessAPIKeys,
+		Accounts:              harnessauth.NewAccountVault(deps.HarnessAccounts, permissionService).WithAudit(auditLog),
 		AccountAuthorizer:     permissionService,
-		CredentialSyncTimeout: deps.AgentOptions.CredentialSyncTimeout,
+		CredentialSyncTimeout: deps.HarnessOptions.CredentialSyncTimeout,
 	})
 	if err != nil {
 		return Services{}, fmt.Errorf("build agent modules: %w", err)
 	}
-	accountAccess := agentaccountaccess.New(permissionService, agentRuntime.Bindings())
-	projectService.StartAgentBrowserReaper(ctx, deps.AgentOptions.BrowserIdleTTL)
+	accountAccess := harnessaccountaccess.New(permissionService, harnessRuntime.Bindings())
+	projectService.StartAgentBrowserReaper(ctx, deps.HarnessOptions.BrowserIdleTTL)
 	runs = runhub.New(chats)
 	runs.SetRunningSubscriber(func(id servicechat.ID, _ bool) {
 		chats.publishChat(context.Background(), id)
@@ -263,8 +263,8 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		servicechat.WithTranscriptEventWindowSource(deps.Chats),
 		servicechat.WithTranscriptProjectionSource(deps.Chats),
 		servicechat.WithCopiedEventAppender(chats),
-		servicechat.WithSessionPolicy(agentRuntime),
-		servicechat.WithProviderPolicy(agentRuntime),
+		servicechat.WithSessionPolicy(harnessRuntime),
+		servicechat.WithProviderPolicy(harnessRuntime),
 		servicechat.WithAuthorizer(permissionService),
 		servicechat.WithAccountAccess(accountAccess),
 	)
@@ -293,7 +293,7 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	var usageService *serviceusage.Service
 	promptOptions := []prompt.Option{
 		prompt.WithAudit(auditLog),
-		prompt.WithAgentPolicy(agentRuntime),
+		prompt.WithHarnessPolicy(harnessRuntime),
 	}
 	if runtime, ok := deps.Chats.(servicechat.ConversationRuntime); ok {
 		promptOptions = append(promptOptions, prompt.WithConversationRuntime(runtime))
@@ -307,33 +307,33 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	}
 	// The quota service is built even without a store: readings still show for
 	// the life of the process, they just do not survive a restart.
-	agentQuotaService := agentquota.New(ctx, deps.AgentQuota, agentRuntime.PlanUsageReaders()...)
-	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(agentQuotaService))
+	harnessQuotaService := harnessquota.New(ctx, deps.HarnessQuota, harnessRuntime.PlanUsageReaders()...)
+	promptOptions = append(promptOptions, prompt.WithQuotaRecorder(harnessQuotaService))
 	promptOptions = append(promptOptions, prompt.WithAccountAccess(accountAccess))
 	promptService := prompt.New(
 		chats,
 		deps.TmuxClient,
 		projectService,
 		runs,
-		agentRuntime,
+		harnessRuntime,
 		promptOptions...,
 	)
 	userSettingsService := serviceusersettings.New(
 		deps.UserSettings,
-		serviceusersettings.WithProviderCatalog(agentRuntime),
+		serviceusersettings.WithProviderCatalog(harnessRuntime),
 	)
-	skillService := serviceskills.New(serviceskills.WithProviderCatalog(agentRuntime))
+	skillService := serviceskills.New(serviceskills.WithProviderCatalog(harnessRuntime))
 	skillCatalog := serviceskills.NewCatalog(skillService, projectService, authService)
-	agentCapabilities := agentcapability.New(
-		agentRuntime,
+	harnessCapabilities := harnesscapability.New(
+		harnessRuntime,
 		projectService,
 		authService,
-		agentcapability.Settings{
-			CapabilityTimeout:          deps.AgentOptions.CapabilityTimeout,
-			CapabilityCacheTTL:         deps.AgentOptions.CapabilityCacheTTL,
-			DegradedCapabilityCacheTTL: deps.AgentOptions.DegradedCapabilityCacheTTL,
+		harnesscapability.Settings{
+			CapabilityTimeout:          deps.HarnessOptions.CapabilityTimeout,
+			CapabilityCacheTTL:         deps.HarnessOptions.CapabilityCacheTTL,
+			DegradedCapabilityCacheTTL: deps.HarnessOptions.DegradedCapabilityCacheTTL,
 		},
-		agentcapability.WithModulePolicy(agentRuntime),
+		harnesscapability.WithModulePolicy(harnessRuntime),
 	)
 	var accessVerifier *serviceauth.AccessVerifier
 	if authService != nil {
@@ -396,31 +396,31 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 	mailer := serviceemail.NewMailer(emailService, emailDirectory{users: userService})
 
 	return Services{
-		AccountAccess:     accountAccess,
-		SetupRepair:       setuprepair.New(projectService, chats, authService, promptService, deps.PromptStartGate),
-		Chats:             chatService,
-		ChatAccess:        chatAccessService,
-		Projects:          projectService,
-		Shares:            shareService,
-		Prompt:            promptService,
-		Agents:            agentRuntime,
-		AgentCapabilities: agentCapabilities,
-		Runs:              runs,
-		Workspace:         workspace,
-		Auth:              authService,
-		Users:             userService,
-		Permissions:       permissionService,
-		UserSettings:      userSettingsService,
-		Skills:            skillCatalog,
-		Access:            accessVerifier,
-		Applications:      applicationsService,
-		Push:              pushService,
-		Presence:          presenceService,
-		Usage:             usageService,
-		Email:             emailService,
-		Mailer:            mailer,
-		AgentQuota:        agentQuotaService,
-		Audit:             auditLog,
+		AccountAccess:       accountAccess,
+		SetupRepair:         setuprepair.New(projectService, chats, authService, promptService, deps.PromptStartGate),
+		Chats:               chatService,
+		ChatAccess:          chatAccessService,
+		Projects:            projectService,
+		Shares:              shareService,
+		Prompt:              promptService,
+		Harnesses:           harnessRuntime,
+		HarnessCapabilities: harnessCapabilities,
+		Runs:                runs,
+		Workspace:           workspace,
+		Auth:                authService,
+		Users:               userService,
+		Permissions:         permissionService,
+		UserSettings:        userSettingsService,
+		Skills:              skillCatalog,
+		Access:              accessVerifier,
+		Applications:        applicationsService,
+		Push:                pushService,
+		Presence:            presenceService,
+		Usage:               usageService,
+		Email:               emailService,
+		Mailer:              mailer,
+		HarnessQuota:        harnessQuotaService,
+		Audit:               auditLog,
 	}, nil
 }
 

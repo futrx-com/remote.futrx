@@ -8,10 +8,10 @@ import (
 	"strconv"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/codexharness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 var (
@@ -77,7 +77,7 @@ func (p *Provider) buildCmd(
 	runtimeEnvironment[configconstants.MiniMaxAPIKeyEnvironment] = apiKey
 	// The app-server process must outlive request cancellation long enough for
 	// codexharness.Run to send turn/interrupt and receive the terminal status.
-	return agentruntime.BuildContainerCommand(context.WithoutCancel(ctx), agentruntime.ContainerCommandSpec{
+	return harnessruntime.BuildContainerCommand(context.WithoutCancel(ctx), harnessruntime.ContainerCommandSpec{
 		ContainerName: project.ContainerName,
 		Secrets:       project.Secrets,
 		ExcludedSecrets: []string{

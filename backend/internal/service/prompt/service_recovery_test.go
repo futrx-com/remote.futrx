@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
@@ -133,12 +133,12 @@ func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
+	policy := testHarnessPolicy{"codex": {
 		ID: harness.ProviderCodex, Label: "Codex",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
-		Features:        agentmodule.Features{Skills: agentmodule.SkillsNone},
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
+		Features:        harnessmodule.Features{Skills: harnessmodule.SkillsNone},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	service.runPrompt(ctx, meta.ID, "continue", func(ChatEvent) {}, func(ChatEvent) {})
 
 	if len(provider.requests) != 1 {
@@ -177,12 +177,12 @@ func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
+	policy := testHarnessPolicy{"codex": {
 		ID:              harness.ProviderCodex,
 		Label:           "Codex",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeProject},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	if err := service.runPrompt(ctx, meta.ID, "use the browser", func(ChatEvent) {}, func(ChatEvent) {}); err != nil {
 		t.Fatal(err)
 	}
@@ -225,12 +225,12 @@ func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
-		ID: harness.ProviderCodex, Label: "Codex", ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+	policy := testHarnessPolicy{"codex": {
+		ID: harness.ProviderCodex, Label: "Codex", ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	err = service.runPrompt(ctx, meta.ID, "do work", func(ChatEvent) {}, func(ChatEvent) {})
-	if err != ErrUnsupportedAgentScope {
+	if err != ErrUnsupportedHarnessScope {
 		t.Fatalf("runPrompt error = %v, want ErrUnsupportedAgentScope", err)
 	}
 	if len(provider.requests) != 0 {

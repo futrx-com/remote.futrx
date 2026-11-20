@@ -10,7 +10,7 @@ files, or the harness's compaction state.
 ## Ownership and schema
 
 `internal/stores/sqlitechat` implements the chat repository and run persistence
-ports. `internal/harness` owns common runtime contracts;
+ports. `internal/service/harness` owns common runtime contracts;
 `internal/integration/harnesses/<provider>` owns native protocol translation.
 The prompt service coordinates history delivery, without putting SQL inside
 harness adapters.

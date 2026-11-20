@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 // fakeClaudeLogin behaves like `claude auth login --claudeai`: it prints the
@@ -70,9 +70,9 @@ func newClaudeLoginHarness(t *testing.T) *claudeLoginHarness {
 	)
 	store := &memoryAccountStore{}
 	auth := newTestAuth(t, store)
-	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (agentauth.ValidatedAccount, error) {
+	auth.credentials.validate = func(ctx context.Context, credential json.RawMessage) (harnessauth.ValidatedAccount, error) {
 		if strings.Contains(string(credential), `"rejected"`) {
-			return agentauth.ValidatedAccount{}, errors.New("Claude did not recognize a Claude subscription login")
+			return harnessauth.ValidatedAccount{}, errors.New("Claude did not recognize a Claude subscription login")
 		}
 		return acceptCredential(ctx, credential)
 	}
@@ -124,7 +124,7 @@ func (h *claudeLoginHarness) requireLoginRootsRemoved(t *testing.T) {
 	}
 }
 
-func (h *claudeLoginHarness) account(t *testing.T, label string) agentauth.AccountRecord {
+func (h *claudeLoginHarness) account(t *testing.T, label string) harnessauth.AccountRecord {
 	t.Helper()
 	for _, record := range h.store.accounts.Accounts {
 		if record.Label == label {
@@ -132,7 +132,7 @@ func (h *claudeLoginHarness) account(t *testing.T, label string) agentauth.Accou
 		}
 	}
 	t.Fatalf("account %q not saved: %#v", label, h.store.accounts)
-	return agentauth.AccountRecord{}
+	return harnessauth.AccountRecord{}
 }
 
 func TestClaudeAccountLoginWorkflowAddsAndSwitchesAccounts(t *testing.T) {
@@ -326,7 +326,7 @@ func TestClaudeAccountLoginDuringRunSavesWithoutActivating(t *testing.T) {
 	}
 	defer done()
 
-	if _, err := h.auth.accounts.StartAccountLogin(context.Background(), "Company", ""); !errors.Is(err, agentauth.ErrAccountInUse) {
+	if _, err := h.auth.accounts.StartAccountLogin(context.Background(), "Company", ""); !errors.Is(err, harnessauth.ErrAccountInUse) {
 		t.Fatalf("login during a run: %v", err)
 	}
 	h.requireLoginRootsRemoved(t)

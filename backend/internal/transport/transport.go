@@ -36,7 +36,7 @@ type Dependencies struct {
 
 func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	var auditLog serviceaudit.Recorder = deps.Services.Audit
-	agentAuthBindings := deps.Services.Agents.Bindings()
+	agentAuthBindings := deps.Services.Harnesses.Bindings()
 	var auth httptransport.RouteRegistrar
 	var middleware httptransport.Middleware
 	if deps.Services.Auth != nil {
@@ -55,7 +55,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		middleware = httpmiddleware.NewAuth(deps.Services.Auth).
 			RequireLocalAdminSetup(deps.Services.Auth.LocalAdminConfigured).
 			RequireProviderLogin(
-				deps.Services.Agents.AccessReady,
+				deps.Services.Harnesses.AccessReady,
 				providerAuthPrefixes...,
 			)
 	}
@@ -86,7 +86,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 	}
 	agentApplicationsHandler := httphandlers.NewAgentApplicationsHandler(agentApplications)
 	usageHandler := httphandlers.NewUsageHandler(deps.Services.Usage, deps.Services.Auth)
-	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.AgentQuota, deps.Services.Auth).WithAccountAccess(deps.Services.AccountAccess)
+	agentQuotaHandler := httphandlers.NewAgentQuotaHandler(deps.Services.HarnessQuota, deps.Services.Auth).WithAccountAccess(deps.Services.AccountAccess)
 	chatHandler := httphandlers.NewChatHandler(
 		deps.Services.Chats,
 		deps.Services.ChatAccess,
@@ -115,9 +115,9 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		AgentAuth: httphandlers.NewAgentAuthHandler(
 			agentAuthBindings,
 			deps.Services.Auth,
-			deps.Services.Agents,
+			deps.Services.Harnesses,
 		).WithAccountAccess(deps.Services.AccountAccess).WithAudit(auditLog),
-		AgentCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.AgentCapabilities),
+		HarnessCapabilities: httphandlers.NewAgentCapabilitiesHandler(deps.Services.HarnessCapabilities),
 		UserSettings: httphandlers.NewUserSettingsHandler(
 			deps.Services.UserSettings,
 			deps.Services.Auth,
@@ -137,7 +137,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		AgentApplications: agentApplicationsHandler,
 		Permissions:       httphandlers.NewPermissionsHandler(deps.Services.Permissions).WithAccounts(deps.Services.AccountAccess),
 		Usage:             usageHandler,
-		AgentQuota:        agentQuotaHandler,
+		HarnessQuota:      agentQuotaHandler,
 		Uploads:           uploads,
 		ChatWS:            chatSocket,
 		WorkspaceWS:       workspaceSocket,

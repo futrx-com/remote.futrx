@@ -184,7 +184,7 @@ func TestActorConstructorsAreCalledOnlyFromReviewedEntryPoints(t *testing.T) {
 			"cmd/upgrade-workspaces/main.go",                      // root-run fleet maintenance has no user actor
 			"internal/integration/harnesses/claude/plan_usage.go", // internal quota sampling, outward reads are filtered
 			"internal/integration/harnesses/codex/plan_usage.go",  // internal quota sampling, outward reads are filtered
-			"internal/service/agent_project_resolver.go",          // agent runs start containers from background contexts
+			"internal/service/harness_project_resolver.go",        // agent runs start containers from background contexts
 			"internal/service/chat_notification_audience.go",      // notification fan-out reads members
 			"internal/service/services.go",                        // application container readiness
 			"internal/service/user_removal_cleanup.go",            // removing a user revokes their access

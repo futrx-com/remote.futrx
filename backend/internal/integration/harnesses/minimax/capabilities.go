@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func (p *Provider) Capabilities(ctx context.Context, _ harness.CapabilityRequest) (harness.Capabilities, error) {

@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 var (
@@ -132,8 +132,8 @@ func defaultChatSettings() Chat {
 		Mode:            ChatModeDefault,
 		ReasoningEffort: ReasoningEffortAuto,
 		ServiceTier:     ServiceTierAuto,
-		ApprovalPolicy:  ApprovalPolicy(configconstants.DefaultAgentApprovalPolicy),
-		SandboxPolicy:   SandboxPolicy(configconstants.DefaultAgentSandboxPolicy),
+		ApprovalPolicy:  ApprovalPolicy(configconstants.DefaultHarnessApprovalPolicy),
+		SandboxPolicy:   SandboxPolicy(configconstants.DefaultHarnessSandboxPolicy),
 	}
 }
 

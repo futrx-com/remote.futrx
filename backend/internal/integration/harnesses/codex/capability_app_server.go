@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type rpcResponse struct {
@@ -25,7 +25,7 @@ func queryAppServerCapabilities(
 	ctx context.Context,
 	req harness.CapabilityRequest,
 ) (modelListResponse, collaborationModeListResponse, error) {
-	cmd := agentruntime.NewCapabilityCommand(
+	cmd := harnessruntime.NewCapabilityCommand(
 		ctx,
 		req,
 		[]string{"HOME=/root", "CODEX_HOME=/root/.codex", "OPENAI_API_KEY="},

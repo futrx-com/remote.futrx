@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
 	serviceapplications "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	servicepush "github.com/futrx-com/remote.futrx.com/internal/service/push"
 	serviceshare "github.com/futrx-com/remote.futrx.com/internal/service/share"
@@ -75,10 +75,10 @@ type Stores struct {
 	ApplicationTurns serviceapplications.AgentTurnRepository
 	Push             PushStore
 	Usage            serviceusage.Repository
-	AgentAPIKeys     agentauth.APIKeyStore
+	HarnessAPIKeys   harnessauth.APIKeyStore
 	Email            emailoutbound.ConfigurationStore
-	AgentQuota       agentquota.Repository
-	AgentAccounts    agentauth.AccountStore
+	HarnessQuota     harnessquota.Repository
+	HarnessAccounts  harnessauth.AccountStore
 	ProjectShares    serviceshare.Repository
 	Permissions      servicepermission.Repository
 }
@@ -166,7 +166,7 @@ func New(dataDir string) (Stores, error) {
 		return Stores{}, fmt.Errorf("init permissions store: %w", err)
 	}
 
-	agentQuota, err := fileagentquota.New(dataDir)
+	harnessQuota, err := fileagentquota.New(dataDir)
 	if err != nil {
 		return Stores{}, fmt.Errorf("init agent quota store: %w", err)
 	}
@@ -195,10 +195,10 @@ func New(dataDir string) (Stores, error) {
 		ApplicationTurns: fileapplicationturns.New(dataDir),
 		Push:             push,
 		Usage:            usage,
-		AgentAPIKeys:     authStore,
+		HarnessAPIKeys:   authStore,
 		Email:            email,
-		AgentQuota:       agentQuota,
-		AgentAccounts:    authStore,
+		HarnessQuota:     harnessQuota,
+		HarnessAccounts:  authStore,
 		ProjectShares:    projectShares,
 		Permissions:      permissions,
 	}, nil

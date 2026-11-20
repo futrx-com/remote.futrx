@@ -10,9 +10,9 @@ import (
 	"testing"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/harness/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 func TestMiniMaxConfigUsesSelectedModelResponsesAndEnvironmentKey(t *testing.T) {
@@ -196,8 +196,8 @@ func (s miniMaxTestAPIKeys) APIKey() (string, bool) {
 	return s.key, s.key != ""
 }
 
-func (s miniMaxTestAPIKeys) APIKeyForRun(_ context.Context, id string) (agentauth.RunAPIKey, bool, error) {
-	return agentauth.RunAPIKey{AccountID: id, Key: s.key}, s.key != "", nil
+func (s miniMaxTestAPIKeys) APIKeyForRun(_ context.Context, id string) (harnessauth.RunAPIKey, bool, error) {
+	return harnessauth.RunAPIKey{AccountID: id, Key: s.key}, s.key != "", nil
 }
 
 type miniMaxTestPreparer struct {

@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	chat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 func TestAppendItemPreservesCurrentAndPreviousNativePayloads(t *testing.T) {

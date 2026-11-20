@@ -7,22 +7,22 @@ import (
 	"path/filepath"
 	"testing"
 
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 )
 
-type skillTestProviderCatalog map[string]agentmodule.Descriptor
+type skillTestProviderCatalog map[string]harnessmodule.Descriptor
 
 func (c skillTestProviderCatalog) HasProvider(provider string) bool {
 	_, ok := c[provider]
 	return ok
 }
 
-func (c skillTestProviderCatalog) Descriptor(provider string) (agentmodule.Descriptor, bool) {
+func (c skillTestProviderCatalog) Descriptor(provider string) (harnessmodule.Descriptor, bool) {
 	descriptor, ok := c[provider]
 	return descriptor, ok
 }
 
-func (c skillTestProviderCatalog) SupportsScope(provider string, scope agentmodule.ExecutionScope) bool {
+func (c skillTestProviderCatalog) SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool {
 	descriptor, ok := c[provider]
 	if !ok {
 		return false
@@ -49,19 +49,19 @@ type defaultSkillTestProviderCatalog struct {
 	provider Provider
 }
 
-func (c defaultSkillTestProviderCatalog) DefaultProvider(agentmodule.ExecutionScope) Provider {
+func (c defaultSkillTestProviderCatalog) DefaultProvider(harnessmodule.ExecutionScope) Provider {
 	return c.provider
 }
 
 func TestDefaultProviderUsesModuleCatalog(t *testing.T) {
 	catalog := defaultSkillTestProviderCatalog{
 		skillTestProviderCatalog: skillTestProviderCatalog{"future-agent": {
-			ID: "future-agent", ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+			ID: "future-agent", ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
 		}},
 		provider: "future-agent",
 	}
 	service := NewWithSkillHomes(t.TempDir(), t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
-	if got := service.DefaultProvider(agentmodule.ScopeHost); got != "future-agent" {
+	if got := service.DefaultProvider(harnessmodule.ScopeHost); got != "future-agent" {
 		t.Fatalf("default provider = %q, want future-agent", got)
 	}
 }
@@ -218,9 +218,9 @@ func TestListUsesFutureProviderSkillAndScopeDeclaration(t *testing.T) {
 	writeSkill(t, filepath.Join(workspace, ".claude", "skills", "claude-only", "SKILL.md"), `# Claude Only`)
 	catalog := skillTestProviderCatalog{"future-agent": {
 		ID:              "future-agent",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
-		Features: agentmodule.Features{
-			Skills: agentmodule.SkillsInstructions,
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeProject},
+		Features: harnessmodule.Features{
+			Skills: harnessmodule.SkillsInstructions,
 		},
 	}}
 	service := NewWithSkillHomes(t.TempDir(), t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
@@ -242,8 +242,8 @@ func TestListReturnsEmptyWhenModuleDisablesSkills(t *testing.T) {
 	writeSkill(t, filepath.Join(agentsHome, "skills", "custom", "SKILL.md"), `# Custom`)
 	catalog := skillTestProviderCatalog{"no-skills": {
 		ID:              "no-skills",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
-		Features:        agentmodule.Features{Skills: agentmodule.SkillsNone},
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
+		Features:        harnessmodule.Features{Skills: harnessmodule.SkillsNone},
 	}}
 	service := NewWithSkillHomes(agentsHome, t.TempDir(), t.TempDir(), WithProviderCatalog(catalog))
 	got, err := service.List(context.Background(), "no-skills", "")

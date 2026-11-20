@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // printTimeout bounds one agy print-mode run. The CLI default (5m) is far too
@@ -86,7 +86,7 @@ func (p *Provider) buildCmd(
 	if err != nil {
 		return nil, "", err
 	}
-	cmd := agentruntime.BuildContainerCommand(ctx, agentruntime.ContainerCommandSpec{
+	cmd := harnessruntime.BuildContainerCommand(ctx, harnessruntime.ContainerCommandSpec{
 		ContainerName:      project.ContainerName,
 		PrefixEnvironment:  []string{"HOME=" + containerAgentHome},
 		Secrets:            project.Secrets,

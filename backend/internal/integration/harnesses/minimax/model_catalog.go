@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 const maxModelCatalogResponseBytes = 1 << 20
@@ -57,7 +57,7 @@ func (c *modelCatalogClient) Models(ctx context.Context, key string) ([]string, 
 	defer response.Body.Close()
 
 	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("%w: %w", ErrMiniMaxModelDiscoveryUnavailable, agentauth.ErrAPIKeyRejected)
+		return nil, fmt.Errorf("%w: %w", ErrMiniMaxModelDiscoveryUnavailable, harnessauth.ErrAPIKeyRejected)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("%w (HTTP %d)", ErrMiniMaxModelDiscoveryUnavailable, response.StatusCode)

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/futrx-com/remote.futrx.com/internal/harness"
 	chat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 // runDelivery separates protocol acceptance from UI completion. A completed
