@@ -42,10 +42,14 @@ func (s *Store) projectEventTx(ctx context.Context, tx *sql.Tx, branch string, o
 		}
 		if err == nil {
 			if mode == transcriptItemAppend {
-				if err = json.Unmarshal(prior, &payload); err != nil {
+				// Decode into fresh events: reusing payload would overwrite the
+				// current event's shared RawMessage buffers and retain fields that
+				// are absent from the previous event.
+				var previous []servicechat.Event
+				if err = json.Unmarshal(prior, &previous); err != nil {
 					return err
 				}
-				payload = append(payload, projected)
+				payload = append(previous, projected)
 			} else {
 				payload[0].Seq = start
 			}

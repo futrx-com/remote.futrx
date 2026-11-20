@@ -48,8 +48,14 @@ func (p *switchingProvider) Run(ctx context.Context, req harness.RunRequest, emi
 	if !p.noAcceptance {
 		emit(harness.Event{Type: harness.EventInputAccepted, SessionID: native, Status: "test_native_ack"})
 	}
-	emit(harness.Event{Type: harness.EventToolStarted, ItemID: "call-1", ToolName: "shell", Input: []byte(`{"command":"tests"}`)})
-	emit(harness.Event{Type: harness.EventToolCompleted, ItemID: "call-1", Output: string(p.id) + " tests passed"})
+	emit(harness.Event{
+		Type: harness.EventToolStarted, ItemID: "call-1", ToolName: "shell", Input: []byte(`{"command":"tests"}`),
+		Raw: []byte(`{"item":{"id":"call-1","type":"commandExecution","status":"inProgress"}}`),
+	})
+	emit(harness.Event{
+		Type: harness.EventToolCompleted, ItemID: "call-1", Output: string(p.id) + " tests passed",
+		Raw: []byte(`{"item":{"id":"call-1","type":"commandExecution","status":"completed","aggregatedOutput":"tests passed","exitCode":0}}`),
+	})
 	emit(harness.Event{Type: harness.EventAssistantTextDelta, Text: string(p.id) + " reply"})
 	if p.interrupt {
 		emit(harness.Event{Type: harness.EventRunInterrupted})
