@@ -188,3 +188,28 @@ func (s *Store) Verify(ctx context.Context) error {
 	}
 	return fk.Err()
 }
+
+type branchSegment struct {
+	id      string
+	through int64
+}
+
+func branchSegments(ctx context.Context, q sqlQuerier, branch string, through int64) ([]branchSegment, error) {
+	rows, err := q.QueryContext(ctx, `WITH RECURSIVE lineage(id,max_seq,depth) AS (
+ SELECT ?,?,0 UNION ALL SELECT b.parent_branch_id,min(l.max_seq,b.fork_seq),depth+1
+ FROM lineage l JOIN branches b ON b.id=l.id WHERE b.parent_branch_id IS NOT NULL
+ ) SELECT id,max_seq FROM lineage ORDER BY depth`, branch, through)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []branchSegment
+	for rows.Next() {
+		var seg branchSegment
+		if err = rows.Scan(&seg.id, &seg.through); err != nil {
+			return nil, err
+		}
+		out = append(out, seg)
+	}
+	return out, rows.Err()
+}
