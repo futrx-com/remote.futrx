@@ -25,8 +25,15 @@ var (
 	ErrNoSession      = errors.New("no login session in progress - call /api/claude/login/start first")
 	ErrClaudeNotFound = errors.New("claude CLI not found on PATH - install it first")
 
-	claudeAuthURLRE = regexp.MustCompile(`https://claude\.com/cai/oauth/authorize\?[^\s]+`)
+	// The CLI prints the URL as an OSC 8 terminal hyperlink, so the match must
+	// stop at the ESC and BEL bytes that wrap it; otherwise they end up inside
+	// the OAuth state parameter.
+	claudeAuthURLRE = regexp.MustCompile(`https://claude\.com/cai/oauth/authorize\?[^\s\x07\x1b]+`)
 )
+
+// claudeFullSignInLinkEnv makes newer CLIs print the full authorization URL
+// that claudeAuthURLRE matches instead of the short claude.ai link.
+const claudeFullSignInLinkEnv = "CLAUDE_CODE_FULL_SIGN_IN_LINK=1"
 
 type AuthStatus = harnessauth.CodeStatus
 type LoginState = harnessauth.CodeLoginState
@@ -135,14 +142,27 @@ func (a *Auth) SubmitCode(ctx context.Context, code string) error {
 func (a *Auth) Cancel(ctx context.Context) error { return a.code.Cancel(ctx) }
 
 // codeAuthEnv points the CLI at the private directory of a pending account
-// login. A plain login keeps the host environment.
+// login. A plain login keeps the host environment. Both ask for the full
+// authorization URL.
 func (a *Auth) codeAuthEnv(base []string) []string {
+	env := base
 	if a.accounts != nil {
-		if env, ok := a.accounts.LoginEnv(base); ok {
-			return env
+		if accountEnv, ok := a.accounts.LoginEnv(base); ok {
+			env = accountEnv
 		}
 	}
-	return base
+	return withFullSignInLink(env)
+}
+
+func withFullSignInLink(base []string) []string {
+	name, _, _ := strings.Cut(claudeFullSignInLinkEnv, "=")
+	out := make([]string, 0, len(base)+1)
+	for _, env := range base {
+		if !strings.HasPrefix(env, name+"=") {
+			out = append(out, env)
+		}
+	}
+	return append(out, claudeFullSignInLinkEnv)
 }
 
 // resolveCompletion hands the result of an account login to AccountService.
