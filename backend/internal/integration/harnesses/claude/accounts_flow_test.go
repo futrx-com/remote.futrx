@@ -17,11 +17,16 @@ import (
 // authorization URL, reads the pasted code, and stores the login where the
 // real CLI does, preferring CLAUDE_SECURESTORAGE_CONFIG_DIR for tokens. The
 // pasted code doubles as the account name unless FAKE_CLAUDE_ACCOUNT names
-// the account.
+// the account. Like Claude Code 2.1.330, it prints the short claude.ai link
+// unless CLAUDE_CODE_FULL_SIGN_IN_LINK=1 asks for the full OSC 8 hyperlink.
 const fakeClaudeLogin = `
 if [ "$1 $2" = "auth login" ]; then
   printf 'Opening browser to sign in...\n'
-  printf "If the browser didn't open, visit: \033]8;;https://claude.com/cai/oauth/authorize?code=true&state=test\007https://claude.com/cai/oauth/authorize?code=true&state=test\033]8;;\007\n"
+  if [ "$CLAUDE_CODE_FULL_SIGN_IN_LINK" = "1" ]; then
+    printf "If the browser didn't open, visit: \033]8;;https://claude.com/cai/oauth/authorize?code=true&state=test\007https://claude.com/cai/oauth/authorize?code=true&state=test\033]8;;\007\n"
+  else
+    printf "If the browser didn't open, visit: https://claude.ai/oauth/authorize/short\n"
+  fi
   printf 'Paste code here if prompted > '
   if [ -n "$FAKE_CLAUDE_BROWSER_LOGIN" ]; then
     # The browser the CLI opened completed the login via its local callback.
@@ -56,7 +61,7 @@ type claudeLoginHarness struct {
 func newClaudeLoginHarness(t *testing.T) *claudeLoginHarness {
 	t.Helper()
 	installFakeClaude(t, fakeClaudeLogin)
-	for _, name := range []string{"FAKE_CLAUDE_WRITE", "FAKE_CLAUDE_MESSAGE", "FAKE_CLAUDE_EXIT", "FAKE_CLAUDE_BROWSER_LOGIN", "FAKE_CLAUDE_ACCOUNT", "CLAUDE_SECURESTORAGE_CONFIG_DIR"} {
+	for _, name := range []string{"FAKE_CLAUDE_WRITE", "FAKE_CLAUDE_MESSAGE", "FAKE_CLAUDE_EXIT", "FAKE_CLAUDE_BROWSER_LOGIN", "FAKE_CLAUDE_ACCOUNT", "CLAUDE_SECURESTORAGE_CONFIG_DIR", "CLAUDE_CODE_FULL_SIGN_IN_LINK"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name)
 	}
@@ -87,7 +92,9 @@ func (h *claudeLoginHarness) login(t *testing.T, code, label, accountID string) 
 	if err != nil {
 		t.Fatalf("start account login: %v", err)
 	}
-	if !snapshot.Active || !snapshot.AwaitingCode || !strings.HasPrefix(snapshot.URL, "https://claude.com/cai/oauth/authorize") {
+	// The fake prints the URL as an OSC 8 hyperlink; the captured URL must not
+	// carry its ESC/BEL bytes.
+	if !snapshot.Active || !snapshot.AwaitingCode || snapshot.URL != "https://claude.com/cai/oauth/authorize?code=true&state=test" {
 		t.Fatalf("login snapshot = %#v", snapshot)
 	}
 	root := h.pendingLoginRoot(t)
