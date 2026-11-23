@@ -10,6 +10,7 @@ import { getTextAlignClass, isRtlText } from "./bidi";
 import { useRevealHeight } from "./useRevealHeight";
 import { isMermaidLanguage } from "./mermaidSupport";
 import { MermaidBlock } from "./MermaidBlock";
+import { CopyCodeButton } from "./CopyCodeButton";
 
 export function Markdown({ children, chatId, cwd }: { children: string; chatId?: string; cwd?: string }) {
   const openFileUrl = useWorkspaceFileUrl();
@@ -104,7 +105,7 @@ function renderCode(block: Extract<MarkdownBlock, { type: "code" }>, key: string
     return <MermaidBlock key={key} source={block.text} idHint={block.lang} />;
   }
   return (
-    <div key={key} dir="ltr" class={`relative my-3 rounded-lg border border-line bg-surface overflow-hidden text-left${reveal}`}>
+    <div key={key} dir="ltr" class={`group relative my-3 rounded-lg border border-line bg-surface overflow-hidden text-left${reveal}`}>
       {block.lang && (
         <div dir="ltr" class="px-3 py-1 text-[11px] text-ink-300 border-b border-line bg-tint text-left">
           {block.lang}
@@ -113,6 +114,7 @@ function renderCode(block: Extract<MarkdownBlock, { type: "code" }>, key: string
       <pre dir="ltr" class="md-code overflow-x-auto touch-scroll p-3 text-[12.5px] leading-relaxed font-mono text-left">
         <code dir="ltr">{highlightCode(block.text, block.lang)}</code>
       </pre>
+      <CopyCodeButton text={block.text} />
     </div>
   );
 }
