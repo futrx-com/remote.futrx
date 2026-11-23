@@ -1,0 +1,94 @@
+{
+  "id": "s3disk",
+  "name": "s3disk",
+  "description": "Mount an S3 bucket as a normal filesystem inside this project's container, and copy chat attachments onto it as they finish uploading.",
+  "category": "storage",
+  "version": "0.5.4",
+  "icon": "disk",
+  "scopes": [
+    "project"
+  ],
+  "env": [
+    {
+      "key": "S3DISK_BUCKET",
+      "label": "Bucket (s3://bucket or s3://bucket/prefix)",
+      "required": true
+    },
+    {
+      "key": "S3DISK_MOUNTPOINT",
+      "label": "Mount at (keep it inside /workspace so agents can write to it)",
+      "required": false,
+      "default": "/workspace/s3"
+    },
+    {
+      "key": "AWS_ACCESS_KEY_ID",
+      "label": "Access key ID",
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "AWS_SECRET_ACCESS_KEY",
+      "label": "Secret access key",
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "AWS_REGION",
+      "label": "Region",
+      "required": false,
+      "default": "us-east-1"
+    },
+    {
+      "key": "S3DISK_ENDPOINT",
+      "label": "Endpoint URL (MinIO, Ceph, R2 — blank for AWS)",
+      "required": false
+    },
+    {
+      "key": "S3DISK_UPLOADS_DIR",
+      "label": "Copy chat attachments into this directory of the bucket (\".\" for its root)",
+      "required": false,
+      "default": "uploads"
+    },
+    {
+      "key": "S3DISK_MOUNT_ARGS",
+      "label": "Extra mount options (e.g. --path-style --cache-size 16G)",
+      "required": false
+    }
+  ],
+  "service": {
+    "name": "s3disk",
+    "description": "S3Disk filesystem mount",
+    "command": ["/usr/local/bin/s3disk", "service"],
+    "restart": "on-failure",
+    "restartSec": 5,
+    "environment": [
+      {"key": "S3DISK_BUCKET_B64", "fromEnv": "S3DISK_BUCKET", "encoding": "base64"},
+      {"key": "S3DISK_MOUNTPOINT_B64", "fromEnv": "S3DISK_MOUNTPOINT", "encoding": "base64"},
+      {"key": "AWS_ACCESS_KEY_ID_B64", "fromEnv": "AWS_ACCESS_KEY_ID", "encoding": "base64"},
+      {"key": "AWS_SECRET_ACCESS_KEY_B64", "fromEnv": "AWS_SECRET_ACCESS_KEY", "encoding": "base64"},
+      {"key": "AWS_REGION_B64", "fromEnv": "AWS_REGION", "encoding": "base64"},
+      {"key": "S3DISK_ENDPOINT_B64", "fromEnv": "S3DISK_ENDPOINT", "encoding": "base64"},
+      {"key": "S3DISK_MOUNT_ARGS_B64", "fromEnv": "S3DISK_MOUNT_ARGS", "encoding": "base64"}
+    ]
+  },
+  "install": "infra/install.sh",
+  "publishers": [
+    {
+      "name": "push",
+      "events": [
+        {
+          "name": "completed",
+          "version": 1,
+          "description": "A chat attachment push request finished, including partial outcomes."
+        }
+      ]
+    }
+  ],
+  "backend": {
+    "access": "registered",
+    "timeoutMs": 120000
+  },
+  "ui": {
+    "entry": "scripts/main.js"
+  }
+}
