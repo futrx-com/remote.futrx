@@ -185,3 +185,29 @@ test("rewind opts into metadata errors so the live hook can report refresh failu
   assert.equal(dialogs[1].title, "Chat refresh failed");
   assert.equal(dialogs[1].message, "metadata unavailable");
 });
+
+test("retry queues the prompt again instead of restoring it to the composer", async () => {
+  const { events, dialogs, options } = setup();
+  await runChatRewind({ ...options, resend: (text: string) => { events.push(`resend: ${text}`); } });
+  assert.equal(dialogs[0].title, "Retry response");
+  assert.equal(dialogs[0].confirmLabel, "Retry");
+  assert.match(String(dialogs[0].message), /sent again/);
+  assert.deepEqual(events, [
+    "dialog: Retry response", "rewind: 123", "clear queue",
+    "resend: original prompt", "refresh metadata", "focus composer",
+  ]);
+});
+
+test("retry while streaming stops the agent first", async () => {
+  const { events, dialogs, options } = setup("streaming");
+  await runChatRewind({ ...options, resend: (text: string) => { events.push(`resend: ${text}`); } });
+  assert.equal(dialogs[0].confirmLabel, "Stop and retry");
+  assert.deepEqual(events.slice(0, 3), ["dialog: Retry response", "stop agent", "rewind: 123"]);
+});
+
+test("a cancelled retry sends nothing", async () => {
+  const { events, options } = setup();
+  options.confirm = async () => false;
+  await runChatRewind({ ...options, resend: (text: string) => { events.push(`resend: ${text}`); } });
+  assert.deepEqual(events, []);
+});

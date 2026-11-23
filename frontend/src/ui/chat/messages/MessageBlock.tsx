@@ -3,6 +3,7 @@ import { AssistantMessage } from "./AssistantMessage";
 import { ErrorMessage } from "./ErrorMessage";
 import { UserMessage } from "./UserMessage";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
+import type { AssistantTurnActions } from "./turnActions";
 
 export function MessageBlock({
   block,
@@ -14,6 +15,9 @@ export function MessageBlock({
   onRespondInteraction,
   onRewind,
   streamingPresentation,
+  actions,
+  onRetry,
+  onBranch,
 }: {
   block: ChatMessageBlock;
   hydratedPartIndex?: number;
@@ -24,6 +28,9 @@ export function MessageBlock({
   onRespondInteraction?: ChatInteractionResponder;
   onRewind?: (t: number, text: string) => void;
   streamingPresentation: "blocks" | "tokens";
+  actions?: AssistantTurnActions | null;
+  onRetry?: (t: number, text: string) => void;
+  onBranch?: (beforeT?: number) => void;
 }) {
   if (block.type === "user") {
     return (
@@ -52,6 +59,9 @@ export function MessageBlock({
       cwd={cwd}
       onAnswerQuestion={onAnswerQuestion}
       onRespondInteraction={onRespondInteraction}
+      actions={actions}
+      onRetry={onRetry}
+      onBranch={onBranch}
     />
   );
 }

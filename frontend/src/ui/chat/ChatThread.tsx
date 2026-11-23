@@ -32,6 +32,8 @@ export function ChatThread({
   onRespondInteraction,
   onLoadOlder,
   onRewind,
+  onRetry,
+  onBranch,
   actions,
   projectName,
   streamingPresentation,
@@ -58,6 +60,8 @@ export function ChatThread({
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
+  onRetry?: (t: number, text: string) => void;
+  onBranch?: (beforeT?: number) => void;
   /** Workspace controls. Rendered in the header on desktop and in the toolbar
    *  strip below it on mobile — only ever one of the two is visible. */
   actions: ComponentChildren;
@@ -99,6 +103,8 @@ export function ChatThread({
             onRespondInteraction={onRespondInteraction}
             onLoadOlder={onLoadOlder}
             onRewind={onRewind}
+            onRetry={onRetry}
+            onBranch={onBranch}
           />
           <ChatFindBar find={find} hasUnloadedMessages={hasOlder} />
           {showJump && <JumpToLatestButton onClick={onJumpToBottom} />}

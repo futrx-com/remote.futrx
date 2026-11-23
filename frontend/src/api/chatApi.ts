@@ -23,8 +23,9 @@ export const chatApi = {
     requestJson<ChatMeta>("POST", API_ROUTES.chats.unread(id), {}),
   delete: (id: string) =>
     requestJson<{ ok: boolean }>("DELETE", API_ROUTES.chats.item(id)),
-  fork: (id: string) =>
-    requestJson<ChatMeta>("POST", API_ROUTES.chats.fork(id), {}),
+  /** `beforeT` keeps only the history before that event; omit it to copy everything. */
+  fork: (id: string, beforeT?: number) =>
+    requestJson<ChatMeta>("POST", API_ROUTES.chats.fork(id), beforeT ? { beforeT } : {}),
   fetchTranscript,
   fetchTranscriptContent,
   fetchFullTranscriptContent,

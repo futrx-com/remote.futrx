@@ -10,6 +10,11 @@ interface ChatRewindFlowOptions {
   rewind: (rewindBeforeTimestamp: number) => Promise<unknown>;
   clearQueuedPrompts: () => void;
   restorePrompt: (text: string) => void;
+  /**
+   * Retry instead of edit: the prompt is sent again once the chat is ready,
+   * rather than put back in the composer.
+   */
+  resend?: (text: string) => void;
   refreshMeta: (throwOnError?: boolean) => Promise<void>;
   onComplete: () => void;
 }
@@ -24,18 +29,23 @@ export async function runChatRewind({
   rewind,
   clearQueuedPrompts,
   restorePrompt,
+  resend,
   refreshMeta,
   onComplete,
 }: ChatRewindFlowOptions): Promise<void> {
   const hasActiveRun = status === "streaming";
 
   const confirmed = await confirm({
-    title: "Rewind chat",
+    title: resend ? "Retry response" : "Rewind chat",
     description: "This action cannot be undone.",
     message: hasActiveRun
-      ? "The current agent run will be stopped, then every message from this prompt forward will be removed. The prompt will be restored to the composer."
-      : "Every message from this prompt forward is removed, and the prompt is put back in the composer.",
-    confirmLabel: hasActiveRun ? "Stop and rewind" : "Rewind",
+      ? "The current agent run will be stopped, then every message from this prompt forward will be removed. " +
+        (resend ? "The prompt will be sent again." : "The prompt will be restored to the composer.")
+      : "Every message from this prompt forward is removed, and the prompt is " +
+        (resend ? "sent again." : "put back in the composer."),
+    confirmLabel: resend
+      ? (hasActiveRun ? "Stop and retry" : "Retry")
+      : (hasActiveRun ? "Stop and rewind" : "Rewind"),
     pendingLabel: hasActiveRun ? "Stopping and rewinding…" : "Rewinding…",
     // Cancel only requests a stop. Wait for the backend run lock to clear
     // before rewinding; failures remain inline and retryable in ConfirmDialog.
@@ -49,7 +59,8 @@ export async function runChatRewind({
   // The server has completed the destructive action. Do not modify local drafts
   // or queues if the user cancelled or the rewind request failed.
   clearQueuedPrompts();
-  restorePrompt(promptText);
+  if (resend) resend(promptText);
+  else restorePrompt(promptText);
   try {
     await refreshMeta(true);
   } catch (error) {

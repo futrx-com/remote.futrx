@@ -22,6 +22,7 @@ import { streamingPresentationFor } from "../../services/chat/streamingPresentat
 import { useChatReadMarker } from "../../state/hooks/chat/useChatReadMarker";
 import { useDismissShortcut } from "../../state/hooks/shared/useDismissShortcut.ts";
 import { useWorkspaceGitRepos } from "../../state/hooks/chat/useWorkspaceGitRepos";
+import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
 
 export function ChatContainer({
   chat,
@@ -53,6 +54,7 @@ export function ChatContainer({
     loadOlder,
     refreshMeta,
   } = useChat(chat.id);
+  const { forkChat } = useWorkspaceContext();
   const preferences = useChatPreferences({ chat, loadedMeta: meta, refreshMeta });
   const { displayMeta, displayMode, selectedSkills } = preferences;
   const agentCapabilities = useAgentCapabilities(displayMeta.projectId);
@@ -164,6 +166,16 @@ export function ChatContainer({
     });
   }, [activePane]);
 
+  // Branching opens the new chat; it is the same action as forking from the
+  // sidebar, cut at the chosen reply.
+  const branchChat = async (beforeT?: number) => {
+    try {
+      await forkChat(chat.id, beforeT);
+    } catch (error) {
+      alert("branch failed: " + (error as Error).message);
+    }
+  };
+
   const composerView: ChatComposerProps = {
     projectId: displayMeta.projectId,
     streaming: status === "streaming",
@@ -233,6 +245,8 @@ export function ChatContainer({
             onRespondInteraction={respondInteraction}
             onLoadOlder={loadOlder}
             onRewind={composer.handleRewind}
+            onRetry={composer.handleRetry}
+            onBranch={branchChat}
             projectName={project?.name}
             actions={<WorkspaceActions {...workspaceActions} orientation="horizontal" />}
           />

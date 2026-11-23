@@ -203,8 +203,19 @@ func (s *Service) create(ctx context.Context, in CreateInput) (Meta, error) {
 // agent session. The fork materializes on the next prompt through each
 // provider's native fork mechanism, so the parent is never mutated.
 func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
+	return s.ForkBefore(ctx, id, 0)
+}
+
+// ForkBefore copies a chat with only the events before beforeT; zero copies
+// the whole history. A partial copy starts a fresh agent session, as a rewind
+// does: the provider session also holds the turns that were left out, so the
+// next prompt gets the copied transcript as context instead.
+func (s *Service) ForkBefore(ctx context.Context, id ID, beforeT int64) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
+	}
+	if beforeT < 0 {
+		return Meta{}, ErrInvalidRewindTimestamp
 	}
 	src, err := s.repo.Get(ctx, id)
 	if err != nil {
@@ -223,6 +234,16 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if err != nil {
 		return Meta{}, err
 	}
+	partial := beforeT > 0
+	if partial {
+		kept := events[:0:0]
+		for _, ev := range events {
+			if ev.T < beforeT {
+				kept = append(kept, ev)
+			}
+		}
+		events = kept
+	}
 
 	title := strings.TrimSpace(src.Title)
 	if title == "" {
@@ -234,8 +255,10 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	// copied — a fork must not hijack the parent's terminal.
 	sessions := src.SessionSnapshot()
 	nativeFork := s.sessions != nil && s.sessions.SupportsNativeFork(string(src.Provider))
-	forkPending := nativeFork && src.SessionID(src.Provider) != ""
-	if !nativeFork {
+	forkPending := !partial && nativeFork && src.SessionID(src.Provider) != ""
+	if partial {
+		sessions = nil
+	} else if !nativeFork {
 		delete(sessions, src.Provider)
 	}
 	forkMeta := Meta{

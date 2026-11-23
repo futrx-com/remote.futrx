@@ -36,6 +36,7 @@ export const TerminalIcon = (p: P) => (<svg {...base} {...p}><path d="m4 9 4 4-4
 export const AlertCircle = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>);
 export const Loader = (p: P) => (<svg {...base} {...p}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>);
 export const Check = (p: P) => (<svg {...base} {...p}><path d="M20 6 9 17l-5-5"/></svg>);
+export const Copy = (p: P) => (<svg {...base} {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>);
 export const LogOut = (p: P) => (<svg {...base} {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>);
 export const Clock = (p: P) => (<svg {...base} {...p}><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>);
 export const CalendarClock = (p: P) => (<svg {...base} {...p}><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v5M12 21H5a2 2 0 0 1-2-2V6"/><circle cx="17" cy="17" r="4"/><path d="M17 15v2l1.5 1"/></svg>);

@@ -7,6 +7,7 @@ import { MessageSkeleton } from "./MessageSkeleton";
 import { ThreadEmptyState } from "./ThreadEmptyState";
 import { TurnActivity } from "./TurnActivity";
 import { showTurnActivity } from "./turnVisibility";
+import { assistantTurnActions } from "./turnActions";
 import type { ChatInteractionResponder } from "../../../types/chatApi";
 
 const INITIAL_VISIBLE_BLOCKS = 80;
@@ -31,6 +32,8 @@ export function MessageList({
   onRespondInteraction,
   onLoadOlder,
   onRewind,
+  onRetry,
+  onBranch,
   streamingPresentation,
 }: {
   status: ChatStatus;
@@ -51,6 +54,8 @@ export function MessageList({
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
   onRewind: (t: number, text: string) => void;
+  onRetry?: (t: number, text: string) => void;
+  onBranch?: (beforeT?: number) => void;
   streamingPresentation: "blocks" | "tokens";
 }) {
   const [visibleBlockCount, setVisibleBlockCount] = useState(INITIAL_VISIBLE_BLOCKS);
@@ -119,19 +124,23 @@ export function MessageList({
 
         {visibleBlocks.map((block, index) => {
           const blockIndex = firstVisibleIndex + index;
+          const streaming = status === "streaming" && blockIndex === blocks.length - 1;
           return (
             <MessageBlock
               key={`${block.type}-${block.t}-${blockIndex}`}
               block={block}
               hydratedPartIndex={block.type === "assistant" && block.t === hydratedTextPart?.assistantT
                 ? hydratedTextPart.partIndex : -1}
-              streaming={status === "streaming" && blockIndex === blocks.length - 1}
+              streaming={streaming}
               streamingPresentation={streamingPresentation}
               chatId={chatId}
               cwd={cwd}
               onAnswerQuestion={onAnswerQuestion}
               onRespondInteraction={onRespondInteraction}
               onRewind={onRewind}
+              actions={assistantTurnActions(blocks, blockIndex, streaming)}
+              onRetry={onRetry}
+              onBranch={onBranch}
             />
           );
         })}
