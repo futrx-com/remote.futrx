@@ -48,8 +48,9 @@ type Service struct {
 	// image) is relaunched exactly once even under concurrent prompts. It also
 	// keeps an explicit stop, restart, or delete from racing an agent-triggered
 	// recovery. Different projects remain independent.
-	runState          keyedMutex
-	containerRestorer func(context.Context, string) error
+	runState           keyedMutex
+	containerRestorer  func(context.Context, string) error
+	applicationCleanup func(context.Context, ID) error
 }
 
 // SetContainerRestorer attaches optional application recovery after a missing
@@ -57,6 +58,11 @@ type Service struct {
 // services exist, avoiding a construction cycle.
 func (s *Service) SetContainerRestorer(restore func(context.Context, string) error) {
 	s.containerRestorer = restore
+}
+
+// SetApplicationCleanup attaches application cleanup before project deletion.
+func (s *Service) SetApplicationCleanup(cleanup func(context.Context, ID) error) {
+	s.applicationCleanup = cleanup
 }
 
 func New(
@@ -440,6 +446,11 @@ func (s *Service) delete(ctx context.Context, id ID) (Meta, error) {
 	if s.chats != nil {
 		if err := s.chats.DeleteProjectChats(ctx, id); err != nil {
 			return m, fmt.Errorf("delete project chats: %w", err)
+		}
+	}
+	if s.applicationCleanup != nil {
+		if err := s.applicationCleanup(ctx, id); err != nil {
+			return m, fmt.Errorf("delete project applications: %w", err)
 		}
 	}
 	s.browsers.clearState(id)
