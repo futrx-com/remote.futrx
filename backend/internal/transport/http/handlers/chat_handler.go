@@ -267,7 +267,15 @@ func (h *ChatHandler) handleFork(w http.ResponseWriter, r *http.Request, id serv
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	forked, err := h.chats.Fork(r.Context(), id)
+	// The body is optional: an empty one forks the whole chat.
+	var body struct {
+		BeforeT int64 `json:"beforeT"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		httptransport.SendErr(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	forked, err := h.chats.ForkBefore(r.Context(), id, body.BeforeT)
 	if err != nil {
 		sendChatError(w, err)
 		return
