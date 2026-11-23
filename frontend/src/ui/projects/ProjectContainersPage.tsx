@@ -17,6 +17,7 @@ import {
 import { ProjectPreviewSharesSection } from "./project-containers/ProjectPreviewSharesSection";
 import { ProjectSharingSection } from "./project-containers/ProjectSharingSection";
 import { ProjectResourceLimits } from "./project-containers/ProjectResourceLimits";
+import { ProjectNameSettings } from "./project-containers/ProjectNameSettings";
 import { ProjectUsageLine } from "./project-containers/ProjectUsageLine";
 import { formatRelativeTime as fmtRelative } from "./project-containers/projectContainerFormat";
 import type {
@@ -39,6 +40,7 @@ import {
   Key,
   Loader,
   Menu,
+  Edit,
   RotateCcw,
   Server,
   Settings,
@@ -114,6 +116,7 @@ export function ProjectContainersPage({
   onRevokeShare,
   onRepairNetwork,
   onSetResourceLimits,
+  onRenameProject,
   onStartProject,
   onStopProject,
   onRestartProject,
@@ -145,6 +148,7 @@ export function ProjectContainersPage({
   onRevokeShare: (shareId: string) => Promise<void>;
   onRepairNetwork: () => Promise<void>;
   onSetResourceLimits: (limits: ContainerLimits) => Promise<void>;
+  onRenameProject: (name: string) => Promise<void>;
   onStartProject: () => Promise<void>;
   onStopProject: () => Promise<void>;
   onRestartProject: () => Promise<void>;
@@ -273,6 +277,17 @@ export function ProjectContainersPage({
                 {activeTab === "settings" && (
                   <div class="space-y-4">
                     <ExtensionSlot name={EXTENSION_SLOTS.projectSettingsPanel} scope="project" projectId={project.id} />
+                    <ProjectSettingsPanel
+                      title="Project name"
+                      description="The name shown in the sidebar and project lists."
+                      Icon={Edit}
+                    >
+                      <ProjectNameSettings
+                        project={project}
+                        canRename={canControls}
+                        onRename={onRenameProject}
+                      />
+                    </ProjectSettingsPanel>
                     <ProjectResourceLimits
                       effective={infoRecord.data?.limits}
                       overrides={infoRecord.data ? infoRecord.data.limitOverrides : project.resourceLimits}
