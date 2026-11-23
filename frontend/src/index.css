@@ -182,6 +182,12 @@ html[data-theme="light"] {
     overscroll-behavior: contain;
     overscroll-behavior-y: contain;
   }
+  /* Code blocks and tables scroll sideways only. Containing the y axis too
+     would swallow wheel events meant for the chat around them. */
+  .touch-scroll-x {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
   .mobile-sheet {
     height: var(--app-height, 100vh);
     height: var(--app-height, 100dvh);

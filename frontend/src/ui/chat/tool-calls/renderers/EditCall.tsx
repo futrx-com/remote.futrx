@@ -39,7 +39,7 @@ export function EditCall({ input, output, outputRef, outputExpanded, status, isE
     >
       <div class="divide-y divide-ink-500">
         {patches.map((parts, index) => (
-          <pre key={index} class="overflow-x-auto touch-scroll p-3 text-[12.5px] leading-relaxed font-mono">
+          <pre key={index} class="overflow-x-auto touch-scroll-x p-3 text-[12.5px] leading-relaxed font-mono">
             {parts.map((part, partIndex) => (
               <span
                 key={partIndex}

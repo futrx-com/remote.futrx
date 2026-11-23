@@ -60,7 +60,7 @@ function FileCard({ file }: { file: DiffFile }) {
       </button>
 
       {!collapsed && (
-        <div class="overflow-x-auto touch-scroll">
+        <div class="overflow-x-auto touch-scroll-x">
           {file.binary ? (
             <div class="px-3 py-2 text-[12px] text-ink-400">Binary file — no text diff.</div>
           ) : file.hunks.length === 0 ? (

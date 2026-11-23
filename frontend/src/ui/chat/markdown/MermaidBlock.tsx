@@ -143,7 +143,7 @@ export function MermaidBlock({
     return (
       <div
         ref={ref}
-        class="my-3 overflow-x-auto touch-scroll rounded-lg border border-line bg-surface p-4 flex justify-center"
+        class="my-3 overflow-x-auto touch-scroll-x rounded-lg border border-line bg-surface p-4 flex justify-center"
         data-testid="mermaid-block"
         aria-label={idHint ? `${idHint} diagram` : "Mermaid diagram"}
       >
@@ -179,7 +179,7 @@ function MermaidFallback({ source, error }: { source: string; error: string }) {
       <div class="flex items-center gap-1.5 bg-accent-red/15 px-3 py-1.5 text-[11.5px] text-accent-red">
         <AlertTriangle class="h-3.5 w-3.5" /> Diagram failed to render ({error}).
       </div>
-      <pre dir="ltr" class="md-code overflow-x-auto touch-scroll p-3 text-[12.5px] leading-relaxed font-mono text-left bg-surface/70">
+      <pre dir="ltr" class="md-code overflow-x-auto touch-scroll-x p-3 text-[12.5px] leading-relaxed font-mono text-left bg-surface/70">
         <code dir="ltr">{source}</code>
       </pre>
     </div>

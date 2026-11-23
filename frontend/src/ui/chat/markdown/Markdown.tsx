@@ -110,7 +110,7 @@ function renderCode(block: Extract<MarkdownBlock, { type: "code" }>, key: string
           {block.lang}
         </div>
       )}
-      <pre dir="ltr" class="md-code overflow-x-auto touch-scroll p-3 text-[12.5px] leading-relaxed font-mono text-left">
+      <pre dir="ltr" class="md-code overflow-x-auto touch-scroll-x p-3 text-[12.5px] leading-relaxed font-mono text-left">
         <code dir="ltr">{highlightCode(block.text, block.lang)}</code>
       </pre>
     </div>
@@ -149,7 +149,7 @@ function renderTable(
   reveal = "",
 ) {
   return (
-    <div key={key} class={`max-w-full overflow-x-auto touch-scroll my-3 border border-line rounded-lg${reveal}`}>
+    <div key={key} class={`max-w-full overflow-x-auto touch-scroll-x my-3 border border-line rounded-lg${reveal}`}>
       <table class="md-table w-full text-sm border-collapse">
         <thead class="bg-tint">
           <tr>
