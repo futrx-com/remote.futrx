@@ -4,15 +4,15 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Scale and availability
 
-- **Single server, single process.** The backend is one systemd unit bound to `127.0.0.1:7682` on the same host as Caddy and LXD. Authoritative state lives in local files guarded by in-process mutexes; the persisted SQLite chat index is disposable derived state. A second backend instance — even on the same box — would corrupt or diverge state. There is no clustering, load balancing, failover, or multi-node support. If the server dies, everything (app, workspaces, previews, IDEs) is down. *(`infra/templates/remote.futrx.service.tmpl`, `backend/internal/stores/`)*
+- **Single server, single process.** The backend is one systemd unit bound to `127.0.0.1:7682` on the same host as Caddy and LXD. Conversations live in authoritative SQLite with an exclusive backend/importer lease; other platform stores remain local files. A second backend is unsupported and cannot acquire the conversation store lease. There is no clustering, load balancing, failover, or multi-node support. If the server dies, everything (app, workspaces, previews, IDEs) is down. *(`infra/templates/remote.futrx.service.tmpl`, `backend/internal/stores/`)*
 - **Capacity is bounded by the one host.** Projects, chats, and exposed ports all consume resources on a single box. The "unlimited projects/chats/ports" framing is a server-bound statement, not a product guarantee.
 - **No horizontal scaling of any runtime component.** The run hub, workspace hub, tus upload store, login limiter, and archive-download semaphore are all in-process. Slow WebSocket subscribers are dropped once their buffer fills.
 
 ## Data, durability, and backups
 
-- **No external database service.** Every authoritative datastore is a flat JSON file or per-chat JSONL log under `DATA_DIR` (`/opt/remote.futrx/data`). `transcript-index.sqlite` is a disposable derived index, not a source of truth. JSON and metadata writes use temp-file + rename, while chat events append directly to JSONL with `O_APPEND`. The authoritative paths use neither `fsync` nor file locking, so a crash, power loss, or stray second process can lose or corrupt state. *(`backend/internal/stores/`)*
-- **No backup or restore mechanism.** Nothing snapshots, exports, or restores `DATA_DIR`, the workspaces at `/var/lib/remote/projects`, or the containers. The only recovery-adjacent feature is the per-project Git "safety checkpoint," which protects code the agent edits — not chats, users, secrets, sessions, or container state. Disaster recovery is entirely the operator's responsibility, and a hand-rolled backup taken while the service runs can capture a torn view. **Snapshot the host or copy `DATA_DIR` yourself, ideally with the service stopped.**
-- **Chat logs and their derived index grow without bound.** Per-chat `events.jsonl` files have no rotation or compaction. The disposable SQLite offset/turn index grows with those logs and can be deleted and rebuilt, so practical scale is still bounded by host disk and one-time backfill cost.
+- **No external database service.** Conversations use `DATA_DIR/conversations.sqlite` with WAL transactions, full synchronous durability and an exclusive process lease. Other JSON stores retain their own durability behavior and do not participate in the conversation transaction. SQLite permits one writer at a time per database; large concurrent workloads need measurement. *(`backend/internal/stores/`)*
+- **Backups remain operator-managed.** Use a supported SQLite online backup for the conversation database, and separately protect other Remote state, native provider homes and workspaces. Copying only the live SQLite main file can omit WAL changes. Git safety checkpoints protect code rather than chat or harness state. See [conversation backup and recovery](dev/conversation-storage.md#backup-recovery-and-rollback).
+- **Conversation history grows without automatic retention.** Event payloads, indexes and retained branch history consume host disk. Native harness stores also retain their own data. The authoritative SQLite database must never be deleted as a cache. Large history handoffs are not silently truncated, but can exceed native input limits.
 - **No cross-store transactions.** Project metadata, membership, and secrets are three separate files that can go out of sync. Deleting a project does not cascade-delete chats that reference it; deleting a user does not sweep their project-access records.
 - **Secrets are plaintext at rest.** Project secrets, the Google OAuth client secret, and the session signing key are unencrypted files (mode 0600). Encryption at rest is not provided. See the [threat model](threat-model.md).
 
@@ -106,20 +106,28 @@ These are the constraints worth understanding before you deploy or rely on remot
   in that tab, but not tab closure or another tab/browser/device. A background
   chat's queue sends only after that chat is opened again. Use scheduled tasks
   for host-owned future work.
-- **Session recovery drops context.** When a provider session is missing (or you switch provider mid-chat), the chat is "recovered" by replaying at most the last ~24 KB of visible transcript as plain text into a fresh session — earlier context and all tool-call state are dropped.
+- **Portable history cannot recreate native session state.** Forks and rewinds
+  prefer native forks at saved checkpoints. Missing or unsupported checkpoints,
+  including older history without them, and missing-session recovery start
+  fresh with retained user and assistant messages, tool calls/results and
+  attachments. Harness switches
+  deliver history beyond the selected session's safe bookmark, or the full
+  retained history for a fresh session. Remote does not truncate or summarize
+  that history, but sends it as context rather than native historical turns.
+  Reasoning, native protocol state and provider compaction state are not
+  transferred, and native input limits can reject large transfers.
 - **Provider Plan modes differ.** Remote forwards provider-native Default and
   Plan modes instead of adding workflow prompts. Claude Plan is read-only;
   Codex and MiniMax Plan use a Codex-harness collaboration-instruction preset
   rather than an OS-level read-only sandbox. Default project runs bypass provider approvals,
   and Remote has no human-confirmation gate for irreversible or external
   actions.
-- **Provider-specific gaps.** Kimi has no fork primitive (forked Kimi chats
-  silently start fresh) and reports no usage data. Its discovered per-model
+- **Provider-specific gaps.** Kimi reports no usage data. Its discovered per-model
   Thinking choice is displayed and saved but is not forwarded to the Kimi run,
   and the currently pinned Kimi CLI rejects its advertised Plan flag with the
-  prompt mode Remote requires. Antigravity forks also
-  start fresh; print mode exposes plain streamed text rather than structured
-  tool/usage events, selected skills use explicit `SKILL.md` instruction paths
+  prompt mode Remote requires. Antigravity print mode exposes plain streamed
+  text rather than structured tool/usage events, selected skills use explicit
+  `SKILL.md` instruction paths
   rather than native triggers, and Browser MCP is unavailable. Model catalogs
   reflect the installed CLI, its configuration,
   the signed-in account, and current entitlements; they are not a promise that

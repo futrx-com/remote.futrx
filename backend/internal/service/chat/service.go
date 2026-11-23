@@ -15,20 +15,23 @@ import (
 )
 
 type Service struct {
-	accountAccess        AccountAccess
-	selectionMu          sync.Mutex
-	authorizer           Authorizer
-	audit                audit.Recorder
-	repo                 Repository
-	transcriptEvents     TranscriptEventSource
-	transcriptWindow     TranscriptEventWindowSource
-	transcriptProjection TranscriptProjectionSource
-	copiedEvents         CopiedEventAppender
-	projects             ProjectResolver
-	tmux                 TmuxResolver
-	runs                 RunController
-	sessions             SessionPolicy
-	providers            ProviderPolicy
+	accountAccess    AccountAccess
+	selectionMu      sync.Mutex
+	authorizer       Authorizer
+	audit            audit.Recorder
+	repo             Repository
+	transcriptEvents TranscriptEventSource
+	transcriptWindow TranscriptEventWindowSource
+	transcriptReader TranscriptReader
+	transcriptSearch TranscriptSearchSource
+	branchForker     BranchForker
+	branchRewinder   BranchRewinder
+	copiedEvents     CopiedEventAppender
+	projects         ProjectResolver
+	tmux             TmuxResolver
+	runs             RunController
+	sessions         SessionPolicy
+	providers        ProviderPolicy
 }
 
 // SessionPolicy supplies provider-native behavior from the agent module
@@ -198,10 +201,9 @@ func (s *Service) create(ctx context.Context, in CreateInput) (Meta, error) {
 	return s.withRunning(meta), nil
 }
 
-// Fork creates an independent copy of a chat from its latest state: same
-// metadata and full visible history, plus a pending fork of the underlying
-// agent session. The fork materializes on the next prompt through each
-// provider's native fork mechanism, so the parent is never mutated.
+// Fork preserves the current metadata and visible history. Branch-capable
+// stores share a retained prefix; next-run preparation selects a safe native
+// checkpoint when available. Legacy repositories retain the copied-history path.
 func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if !ValidID(id) {
 		return Meta{}, ErrInvalidID
@@ -219,11 +221,6 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 	if !s.validProviderScope(src.Provider, src.ProjectID) {
 		return Meta{}, ErrInvalidProvider
 	}
-	events, err := s.repo.ReadEvents(ctx, id)
-	if err != nil {
-		return Meta{}, err
-	}
-
 	title := strings.TrimSpace(src.Title)
 	if title == "" {
 		title = "Untitled"
@@ -255,6 +252,18 @@ func (s *Service) Fork(ctx context.Context, id ID) (Meta, error) {
 		ForkPending:     forkPending,
 	}
 	forkMeta.NormalizeSessions()
+	if s.branchForker != nil {
+		// A new branch starts a new native session. Its first run receives the
+		// retained conversation through the harness's history adapter.
+		forkMeta.ClearSessionIDs()
+		forkMeta.ForkPending = false
+		forked, err := s.branchForker.ForkChat(ctx, id, forkMeta, -1)
+		return s.withRunning(forked), err
+	}
+	events, err := s.repo.ReadEvents(ctx, id)
+	if err != nil {
+		return Meta{}, err
+	}
 	forked, err := s.repo.Create(ctx, forkMeta)
 	if err != nil {
 		return Meta{}, err
@@ -484,10 +493,24 @@ func (s *Service) Rewind(ctx context.Context, id ID, beforeT int64) ([]Event, er
 	if beforeT <= 0 {
 		return nil, ErrInvalidRewindTimestamp
 	}
-	if s.runs != nil && s.runs.IsRunning(id) {
-		return nil, ErrChatRunning
+	var events []Event
+	mutate := func() error {
+		if s.runs != nil && s.runs.IsRunning(id) {
+			return ErrChatRunning
+		}
+		if s.branchRewinder != nil {
+			return s.branchRewinder.RewindBranch(ctx, id, beforeT)
+		}
+		var err error
+		events, err = s.repo.TruncateEventsBefore(ctx, id, beforeT)
+		return err
 	}
-	return s.repo.TruncateEventsBefore(ctx, id, beforeT)
+	if gate, ok := s.runs.(IdleChatMutator); ok {
+		err := gate.MutateIdle(id, mutate)
+		return events, err
+	}
+	err := mutate()
+	return events, err
 }
 
 func (s *Service) UploadTarget(ctx context.Context, id ID) (string, error) {

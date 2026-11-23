@@ -1,6 +1,6 @@
 import type { RefObject } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
-import type { ChatStatus, TranscriptIndexProgress } from "../../../models/chat";
+import type { ChatStatus } from "../../../models/chat";
 import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
 import { MessageBlock } from "./MessageBlock";
 import { MessageSkeleton } from "./MessageSkeleton";
@@ -19,7 +19,6 @@ export function MessageList({
   hydratedTextPart,
   hasOlder,
   loadingOlder,
-  indexingProgress,
   error,
   chatId,
   cwd,
@@ -39,7 +38,6 @@ export function MessageList({
   hydratedTextPart?: HydratedTextPart | null;
   hasOlder: boolean;
   loadingOlder: boolean;
-  indexingProgress: TranscriptIndexProgress | null;
   error: string | null;
   chatId: string;
   cwd?: string;
@@ -92,13 +90,7 @@ export function MessageList({
       <div ref={contentRef} class="mx-auto w-full min-w-0 max-w-[54rem] space-y-5 md:space-y-6">
         {status === "loading" && <MessageSkeleton />}
 
-        {indexingProgress && (
-          <div class="rounded-card border border-line bg-surface p-4 text-[13px] text-ink-300">
-            Preparing conversation… {indexPercent(indexingProgress)}%
-          </div>
-        )}
-
-        {status !== "loading" && status !== "streaming" && blocks.length === 0 && !indexingProgress && <ThreadEmptyState cwd={cwd} />}
+        {status !== "loading" && status !== "streaming" && blocks.length === 0 && <ThreadEmptyState cwd={cwd} />}
 
         {(hiddenCount > 0 || hasOlder) && (
           <div class="flex justify-center">
@@ -148,9 +140,4 @@ export function MessageList({
       </div>
     </div>
   );
-}
-
-function indexPercent(progress: TranscriptIndexProgress): number {
-  if (progress.totalBytes <= 0) return 0;
-  return Math.min(99, Math.floor((progress.indexedBytes / progress.totalBytes) * 100));
 }

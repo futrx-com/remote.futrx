@@ -9,6 +9,10 @@ import (
 var ErrRunFailed = errors.New("agent run failed")
 var ErrSessionNotFound = errors.New("agent session not found")
 
+// ErrNativeCheckpointUnavailable means native branching failed before the
+// current prompt was delivered. Callers may reconstruct a fresh session.
+var ErrNativeCheckpointUnavailable = errors.New("native checkpoint unavailable")
+
 type ProviderID string
 
 const (
@@ -37,7 +41,7 @@ const (
 
 	// EventQuotaUpdated carries a subscription window the CLI volunteered
 	// mid-run. It is not a request this platform can make, so it arrives when
-	// it arrives — see agent/quota.go.
+	// it arrives — see quota.go.
 	EventQuotaUpdated       EventType = "quota.updated"
 	EventProviderNative     EventType = "provider.native"
 	EventInteractionRequest EventType = "interaction.request"
@@ -103,7 +107,9 @@ type NativeEnvelope struct {
 // RunRequest is provider-neutral. Provider adapters translate it into the
 // concrete CLI flags and runtime setup required by Claude Code, Codex, etc.
 type RunRequest struct {
-	Provider ProviderID
+	// TrackInputAcceptance asks the adapter for evidence the native run consumed input.
+	TrackInputAcceptance bool
+	Provider             ProviderID
 	// AccountID selects a saved provider account for this run. An empty value
 	// keeps the provider's current active account for backwards compatibility.
 	AccountID      string
@@ -115,7 +121,13 @@ type RunRequest struct {
 	ResumeID       string
 	ProjectID      string
 	Fork           bool
-	Preferences    RunPreferences
+	// NativeCheckpoint is an adapter-owned exact history cursor. With Fork it
+	// constrains the new native session to this boundary before accepting input.
+	NativeCheckpoint string
+	// NativeConversationID identifies the chat whose account-scoped native home
+	// owns this session. A fork keeps that home while receiving a new session ID.
+	NativeConversationID string
+	Preferences          RunPreferences
 	// EnableBrowser wires the Agent Browser MCP tools into the agent launch.
 	// Set when the `browser` skill is selected for the prompt.
 	EnableBrowser bool
@@ -166,6 +178,9 @@ type Event struct {
 
 	// NotificationSummary is an internal completion hint, never provider input.
 	NotificationSummary string `json:"-"`
+	// NativeCheckpoint is reported only with successful completion. Its format
+	// belongs to the provider and must support exact native branching.
+	NativeCheckpoint string `json:"-"`
 }
 
 type CapabilityProvider interface {

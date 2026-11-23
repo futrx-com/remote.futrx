@@ -6,14 +6,19 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 type collaborationPromptProvider struct {
 	events []harness.Event
+}
+
+func (*collaborationPromptProvider) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
 }
 
 func (p *collaborationPromptProvider) ID() harness.ProviderID { return harness.ProviderCodex }
@@ -144,10 +149,11 @@ func TestStripSubagentNotificationSummariesKeepsMalformedPayloadBytes(t *testing
 
 func TestRelayStripsNotificationSummaryFromSubagentMessages(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	chat, err := store.Create(ctx, servicechat.Meta{ID: "abcdef12", Provider: servicechat.ProviderCodex})
 	if err != nil {
 		t.Fatal(err)

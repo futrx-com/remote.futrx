@@ -89,7 +89,7 @@ are sent when the harness starts or resumes a thread and again for each turn.
 | Plan mode | Declared native mode | Discovered app-server mode | Codex-harness native mode | Advertised but incompatible with Remote prompt mode in the currently pinned Kimi CLI | Discovered native mode |
 | Approval and sandbox controls | No | Yes | Yes | No | No |
 | Usage telemetry | Yes | Yes | Yes | No | No |
-| Provider session fork | Yes | Yes, native app-server fork | Yes, native app-server fork | No; starts fresh | No; starts fresh |
+| Provider session fork / rewind | Native fork at a saved assistant checkpoint | Native fork at a verified completed turn | Native fork at a verified completed turn | Starts fresh with retained history | Starts fresh with retained history |
 | Selected skill trigger | Slash command | Dollar mention | Dollar mention | Canonical `SKILL.md` instruction | Canonical `SKILL.md` instruction |
 | Browser MCP | Yes | Yes | Yes | No equivalent plumbing | No equivalent plumbing |
 | Structured tool stream | Yes | Yes | Yes | Yes | No; plain streamed text |

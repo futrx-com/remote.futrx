@@ -1,8 +1,6 @@
-// Package antigravity adapts Google's Antigravity CLI (`agy`) as a headless
-// agent provider. The CLI has a print mode but no structured event stream, so
-// runs surface as plain streaming text; conversation ids are recovered from
-// the CLI's on-disk brain directory because print mode never emits them
-// (github.com/google-antigravity/antigravity-cli issue #7).
+// Package antigravity adapts Google's Antigravity CLI (agy). Tracked runs use
+// the pinned CLI's stdin/stream-json interface; legacy direct calls retain the
+// plain-text print interface for compatibility.
 package antigravity
 
 import (

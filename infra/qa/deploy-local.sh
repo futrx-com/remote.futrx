@@ -32,7 +32,8 @@ directory on the QA server. The installed Git checkout is not changed.
 The deployment rebuilds the frontend and backend, atomically replaces the
 application binary, restarts remote.futrx.service, and verifies local and
 public health. Restart or local health-check failure restores the previous
-binary. Host dependencies, Caddy, LXD, the base image, and project containers
+binary only if storage-compatible; SQLite cutover blocks JSONL-only rollback.
+Host dependencies, Caddy, LXD, the base image, and project containers
 are not changed.
 EOF
 }
@@ -186,13 +187,26 @@ cp -p "$binary" "$previous_binary"
 install -m 0755 "$stage_dir/remote" "$candidate_binary"
 
 rollback() {
+    if ! remote_storage_rollback_safe "$binary" "$previous_binary" "$install_dir/data"; then
+        systemctl stop "$service_name" || true
+        return 1
+    fi
     echo "Local QA deployment failed; restoring the previous application binary" >&2
     install -m 0755 "$previous_binary" "$candidate_binary"
     mv -f "$candidate_binary" "$binary"
     systemctl restart "$service_name" || true
 }
 
+# The candidate owns its storage migration/compatibility contract even when
+# the installed checkout remains on an older application version.
+# shellcheck source=../lib/chat-migration.sh
+. "$stage_dir/infra/lib/chat-migration.sh"
+remote_check_storage_compatibility "$candidate_binary" "$install_dir/data"
 mv -f "$candidate_binary" "$binary"
+if ! remote_migrate_conversations "$binary" "$install_dir/data" "$service_name"; then
+    rollback
+    exit 1
+fi
 if ! systemctl restart "$service_name"; then
     rollback
     exit 1

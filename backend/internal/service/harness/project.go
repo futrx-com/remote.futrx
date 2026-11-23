@@ -20,7 +20,7 @@ type ProjectStatus string
 
 const ProjectStatusRunning ProjectStatus = "running"
 
-// Project contains only the project state an agent needs to prepare and run a
+// Project contains only the project state a harness needs to prepare and run a
 // CLI inside its workspace container.
 type Project struct {
 	ID            ProjectID
@@ -28,7 +28,7 @@ type Project struct {
 	Status        ProjectStatus
 }
 
-// ProjectSecret is an environment variable made available to an agent run.
+// ProjectSecret is an environment variable made available to a harness run.
 type ProjectSecret struct {
 	Key   string
 	Value string

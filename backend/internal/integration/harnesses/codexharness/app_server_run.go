@@ -26,6 +26,7 @@ const (
 	appServerThreadRequestID
 	appServerTurnRequestID
 	appServerInterruptRequestID
+	appServerCheckpointRequestID
 )
 
 type appServerRun struct {
@@ -84,6 +85,9 @@ func newAppServerRun(
 }
 
 func (run *appServerRun) execute() error {
+	if run.req.NativeCheckpoint != "" && (!run.req.Fork || run.req.ResumeID == "") {
+		return fmt.Errorf("%w: native checkpoint requires a source session and fork", harness.ErrNativeCheckpointUnavailable)
+	}
 	if err := run.start(); err != nil {
 		return err
 	}
@@ -403,6 +407,9 @@ func (run *appServerRun) maybeInterrupt() error {
 
 func (run *appServerRun) responseError(responseID appServerRequestID, message string) error {
 	message = strings.TrimSpace(message)
+	if run.req.NativeCheckpoint != "" && (responseID == appServerThreadRequestID || responseID == appServerCheckpointRequestID) {
+		return fmt.Errorf("%w: %s app-server checkpoint request: %s", harness.ErrNativeCheckpointUnavailable, run.providerLabel, message)
+	}
 	if responseID == appServerThreadRequestID && run.req.ResumeID != "" && isMissingThread(message) {
 		return fmt.Errorf("%w: %s", harness.ErrSessionNotFound, message)
 	}
@@ -437,21 +444,14 @@ func (run *appServerRun) handleResponse(responseID appServerRequestID, resultJSO
 		// The server resolves aliases such as "auto" to the concrete model.
 		// Carry that model into the completion usage persisted for rebuilds.
 		run.eventParser.req.Model = result.Model
-		if result.Thread.ID != run.req.ResumeID {
-			run.emit(harness.Event{
-				T:              time.Now().UnixMilli(),
-				Type:           harness.EventSessionUpdated,
-				Provider:       run.req.Provider,
-				ConversationID: run.req.ConversationID,
-				SessionID:      result.Thread.ID,
-				Model:          result.Model,
-			})
+		if run.req.NativeCheckpoint != "" {
+			run.protocolErr = run.verifyForkCheckpoint()
+			return
 		}
-		run.protocolErr = run.process.write(map[string]any{
-			"method": "turn/start",
-			"id":     appServerTurnRequestID,
-			"params": buildAppServerTurnParams(run.req, result.Thread.ID, result.Model),
-		})
+		run.protocolErr = run.startThreadTurn()
+
+	case appServerCheckpointRequestID:
+		run.protocolErr = run.handleForkCheckpoint(resultJSON)
 
 	case appServerTurnRequestID:
 		var result struct {
@@ -466,6 +466,13 @@ func (run *appServerRun) handleResponse(responseID appServerRequestID, resultJSO
 			return
 		}
 		run.turnID = result.Turn.ID
+		if run.req.TrackInputAcceptance {
+			run.emit(harness.Event{
+				Type: harness.EventInputAccepted, Provider: run.req.Provider,
+				SessionID: run.threadID, Status: "codex_turn_start_acknowledged",
+				Native: &harness.NativeEnvelope{SchemaVersion: harness.NativeEnvelopeSchemaVersion, Method: "turn/start", ThreadID: run.threadID, TurnID: run.turnID, Payload: resultJSON},
+			})
+		}
 		if run.cancelRequested {
 			run.protocolErr = run.maybeInterrupt()
 		}

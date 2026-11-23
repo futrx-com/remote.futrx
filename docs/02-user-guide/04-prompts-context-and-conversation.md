@@ -31,7 +31,7 @@ flowchart LR
     Skills["Selected skill triggers"] --> Request
     Files["Uploaded absolute paths"] --> Request
     Session["Provider session ID, when valid"] --> Request
-    History["Bounded visible transcript after rewind or lost session"] --> Request
+    History["Retained history needed by the selected session"] --> Request
     Request --> Agent["Claude, Codex/MiniMax, Kimi, or Antigravity CLI"]
 ```
 
@@ -40,17 +40,21 @@ the provider session are related but not identical.
 
 - A normal continuation sends the current prompt with the stored provider
   session identifier.
-- A rewind clears provider session identifiers. The next run starts fresh and
-  prepends a bounded transcript of the remaining visible user and assistant
-  text.
-- If provider session state is missing, Remote can use the same visible-history
-  recovery path.
-- The recovery transcript is bounded to roughly 24 KiB, so very old detail may
-  be omitted. Put essential constraints, decisions, and filenames in the new
-  prompt after a rewind or recovery.
+- Switching provider or account supplies the history that its saved session
+  has not received. If there is no safe session to resume, Remote starts fresh
+  with the retained conversation history.
+- Rewind and fork prefer a native fork at a saved checkpoint within the
+  retained history, then supply any missing history after it. If the provider
+  cannot fork safely, Remote starts fresh with the retained history.
+- Missing-session recovery uses the same retained-history path.
 
-Tool output, hidden provider context, and every historical event are not
-guaranteed to be reconstructed into a fresh session.
+Transferred history includes user and assistant messages, exposed tool calls
+and results, and attachments. Remote sends it as historical context with the
+current prompt, preserving its original provider attribution. It does not
+insert native historical turns or replay old tool calls. Remote does not
+truncate or summarize that history, but a provider's input limit can reject a
+large transfer. Reasoning, hidden provider state and native compaction state
+are not transferred.
 
 ## Attachments
 
@@ -120,7 +124,7 @@ For work that must start when no browser tab is open, use
 
 | Control | Task and outcome |
 | --- | --- |
-| **Load older messages** / **Show _n_ older messages** | Page backward through complete earlier turns without splitting an assistant response |
+| **Load older messages** / **Show _n_ older messages** | Load earlier history in pages; a large turn can span more than one page |
 | **Rewind** | Remove the selected user prompt and every event after it, then place that prompt text back in the composer |
 | **Fork from last message** | Create a separate chat from the visible history without changing the parent |
 | **Mark read** / **Mark unread** | Change the sidebar unread marker |
@@ -133,11 +137,13 @@ For work that must start when no browser tab is open, use
 3. Confirm **Rewind to this prompt? Messages from this point forward will be
    removed.**
 4. Edit the restored prompt in the composer.
-5. Send it to start a fresh provider session with bounded visible-history
-   context.
+5. Send it to continue from a native fork within the retained conversation
+   history, or a fresh session when no safe native checkpoint is available.
 
 Rewind is unavailable while the chat is running. Select **Cancel** first.
 Rewind also clears the chat's page-memory prompt queue.
+The original native session remains intact. Rewind does not undo workspace
+files or effects of earlier tool calls.
 
 ### Fork a chat
 
@@ -146,10 +152,11 @@ Rewind also clears the chat's page-memory prompt queue.
 3. Open the newly created chat.
 4. Continue with different controls or instructions.
 
-Claude can request a provider session fork. Codex and MiniMax clone their
-stored app-server thread to a new session identifier. Kimi and Antigravity
-currently start the fork's next run as a fresh session. In all cases, the
-parent chat remains unchanged.
+The fork shares its retained history with the parent until new events are
+added. Its next run prefers the selected provider's native fork at a retained
+checkpoint, then receives any missing history. A fresh session is the fallback
+when no safe native operation is available. The parent chat and native session
+remain unchanged; both chats use the same workspace files.
 
 ## Parallel conversation pattern
 

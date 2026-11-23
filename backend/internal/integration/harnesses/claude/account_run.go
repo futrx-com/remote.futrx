@@ -35,7 +35,11 @@ type accountRun struct {
 }
 
 func newAccountRun(req harness.RunRequest, saved harnessauth.RunCredential) (*accountRun, error) {
-	scope := harnessruntime.AccountHomeScope(saved.AccountID, req.ProjectID, req.ConversationID)
+	nativeConversationID := req.NativeConversationID
+	if nativeConversationID == "" {
+		nativeConversationID = req.ConversationID
+	}
+	scope := harnessruntime.AccountHomeScope(saved.AccountID, req.ProjectID, nativeConversationID)
 	hostHome := filepath.Join(claudeHomeDir(), "run-accounts", scope)
 	containerHome := filepath.Join(containerClaudeHome, "run-accounts", scope)
 	if err := os.MkdirAll(hostHome, 0o700); err != nil {

@@ -9,8 +9,9 @@
 # The target must resolve as a release tag after the script fetches tags from
 # the installed checkout's origin. It builds the frontend and a staged backend
 # binary, replaces the live binary, restarts remote.futrx.service, and verifies
-# the local HTTP endpoint. If the build, restart, or health check fails, it
-# restores the previous checkout and, if replaced, the previous binary.
+# the local HTTP endpoint. Failure restores the previous checkout/binary only
+# when it can read the current storage format. After SQLite cutover, rollback
+# to a JSONL-only binary is blocked and the service stays stopped for recovery.
 #
 # This script does NOT converge host dependencies, Caddy, systemd units, LXD,
 # the workspace base image, or project containers. It rejects major/minor
@@ -33,11 +34,15 @@ finish() {
     local status="$1"
     trap - EXIT
     if [ "$DEPLOYMENT_SUCCEEDED" -ne 1 ]; then
-        echo "Application deployment failed; restoring the previous release" >&2
-        git reset --hard "$PREVIOUS_SHA" >/dev/null 2>&1 || true
-        if [ "$BINARY_REPLACED" -eq 1 ]; then
-            install -m 0755 "$PREVIOUS_BINARY" "$BINARY" || true
-            systemctl restart "$SERVICE_NAME" || true
+        if remote_storage_rollback_safe "$BINARY" "$PREVIOUS_BINARY" "$INSTALL_DIR/data"; then
+            echo "Application deployment failed; restoring the previous release" >&2
+            git reset --hard "$PREVIOUS_SHA" >/dev/null 2>&1 || true
+            if [ "$BINARY_REPLACED" -eq 1 ]; then
+                install -m 0755 "$PREVIOUS_BINARY" "$BINARY" || true
+                systemctl restart "$SERVICE_NAME" || true
+            fi
+        else
+            systemctl stop "$SERVICE_NAME" || true
         fi
     fi
     rm -f "$PREVIOUS_BINARY" "$STAGED_BINARY"
@@ -50,6 +55,8 @@ SCRIPT_INFRA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 . "$SCRIPT_INFRA_DIR/lib/common.sh"
 # shellcheck source=lib/../config/defaults.sh
 . "$SCRIPT_INFRA_DIR/config/defaults.sh"
+# shellcheck source=lib/chat-migration.sh
+. "$SCRIPT_INFRA_DIR/lib/chat-migration.sh"
 
 DEFAULT_INSTALL_DIR="${INSTALL_DIR:-$FUTRX_DEFAULT_INSTALL_DIR}"
 INSTALL_DIR="${FUTRX_INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
@@ -161,11 +168,14 @@ APP_VERSION="$TARGET_REF"
         -o "$STAGED_BINARY" ./cmd/remote
 )
 
+remote_check_storage_compatibility "$STAGED_BINARY" "$INSTALL_DIR/data"
 install -m 0755 "$STAGED_BINARY" "$BINARY"
 BINARY_REPLACED=1
 }
 
 remote_verify_deployment() {
+write_update_progress "conversation-migration" "Migrating conversation storage"
+remote_migrate_conversations "$BINARY" "$INSTALL_DIR/data" "$SERVICE_NAME"
 write_update_progress "application-restart" "Restarting the application"
 systemctl restart "$SERVICE_NAME"
 

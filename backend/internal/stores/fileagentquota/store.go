@@ -1,4 +1,4 @@
-// Package fileagentquota stores the last subscription-quota reading from each
+// Package fileharnessquota stores the last subscription-quota reading from each
 // provider account at <dataDir>/agent-quota.json.
 //
 // Mode 0600 like the other settings stores, though this document holds no

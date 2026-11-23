@@ -7,7 +7,7 @@ import (
 
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 func TestChatEventFromAgentEventKeepsProviderlessSessionGeneric(t *testing.T) {
@@ -26,10 +26,11 @@ func TestChatEventFromAgentEventKeepsProviderlessSessionGeneric(t *testing.T) {
 
 func TestEmitAgentEventUsesSelectedProviderWhenAdapterOmitsIt(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID: "abcdef123456", Provider: "future-agent",
 	})

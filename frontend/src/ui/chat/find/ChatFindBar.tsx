@@ -16,11 +16,8 @@ const stepButtonClass =
  */
 export function ChatFindBar({
   find,
-  hasUnloadedMessages,
 }: {
   find: ChatFind;
-  /** Older messages exist on the server, so the thread is not all here yet. */
-  hasUnloadedMessages: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,6 +64,7 @@ export function ChatFindBar({
           }}
           placeholder="Find in chat"
           class="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
+          maxLength={512}
           autocomplete="off"
           spellcheck={false}
           aria-label="Find in chat"
@@ -81,7 +79,9 @@ export function ChatFindBar({
             ? ""
             : status.kind === "empty"
               ? "No results"
-              : `${status.position} of ${status.total}`}
+              : status.kind === "loading" ? "Searching…"
+              : status.kind === "error" ? "Search failed"
+              : `${status.position} of ${status.total}${status.total === 100 ? "+" : ""}`}
         </span>
         <button
           type="button"
@@ -114,10 +114,26 @@ export function ChatFindBar({
         </button>
       </div>
 
-      {hasUnloadedMessages && (
-        <p class="text-[10.5px] leading-tight text-ink-400">
-          Searching the messages loaded so far — load older ones to include them.
-        </p>
+      <p class="text-[10.5px] leading-tight text-ink-400">
+        Searching the full conversation. {status.kind === "matched" && "Results are matching messages and tool outputs."}
+      </p>
+      {status.kind === "error" && <p role="alert" class="text-xs text-accent-red">{status.message}</p>}
+      {find.selectedHit && (
+        <section aria-label="Search result preview" class="mt-2 max-h-[55vh] w-[min(36rem,80vw)] overflow-auto border-t border-line pt-2 text-xs">
+          <p class="mb-2 whitespace-pre-wrap break-words text-ink-100">{find.selectedHit.text}</p>
+          {find.previewLoading && <p class="text-ink-400">Loading conversation turn…</p>}
+          {find.previewError && <p role="alert" class="text-accent-red">{find.previewError}</p>}
+          {find.preview.map((event, index) => {
+            const text = event.type === "tool_use_end" ? event.output : (event.type === "user" || event.type === "assistant_text") ? event.text : "";
+            if (!text) return null;
+            const label = event.type === "user" ? "You" : event.type === "tool_use_end" ? "Tool output" : "Assistant";
+            return <div key={`${event.seq}-${index}`} class="mb-3 rounded-control bg-surface p-2">
+              <p class="mb-1 font-medium text-ink-400">{label}</p>
+              <p class="whitespace-pre-wrap break-words text-ink-200">{text.slice(0, 12000)}</p>
+              {(text.length > 12000 || (event.type === "tool_use_end" && event.outputTruncated)) && <p class="mt-1 text-ink-400">Preview excerpt</p>}
+            </div>;
+          })}
+        </section>
       )}
     </div>
   );

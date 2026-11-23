@@ -1,5 +1,5 @@
 // usage-rebuild regenerates DATA_DIR/usage/usage-YYYY-MM.jsonl from the
-// persisted chat event logs.
+// authoritative SQLite conversation history.
 //
 // It is the offline twin of POST /api/admin/usage/rebuild and exists for
 // installs that upgraded into the usage feature with years of chat history:
@@ -23,9 +23,9 @@ import (
 
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileusage"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 func main() {
@@ -37,17 +37,21 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "report what would be written without touching the ledger")
 	flag.Parse()
 
-	if err := run(context.Background(), *dataDir, *dryRun); err != nil {
+	if err := run(context.Background(), *dataDir, fileproject.WorkspaceRoot, *dryRun); err != nil {
 		log.Fatalf("usage-rebuild: %v", err)
 	}
 }
 
-func run(ctx context.Context, dataDir string, dryRun bool) error {
-	chats, err := filechat.New(dataDir)
+func run(ctx context.Context, dataDir, workspaceRoot string, dryRun bool) error {
+	chats, err := sqlitechat.New(dataDir)
 	if err != nil {
-		return fmt.Errorf("open chat store: %w", err)
+		return fmt.Errorf("open chat store (stop the backend before offline rebuild): %w", err)
 	}
-	projects, err := fileproject.New(dataDir)
+	defer chats.Close()
+	if err := chats.EnsureRuntimeReady(ctx, dataDir); err != nil {
+		return fmt.Errorf("conversation migration required before usage rebuild: %w", err)
+	}
+	projects, err := fileproject.NewWithWorkspaceRoot(dataDir, workspaceRoot)
 	if err != nil {
 		return fmt.Errorf("open project store: %w", err)
 	}
