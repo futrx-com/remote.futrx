@@ -81,7 +81,7 @@ export function useChatComposerController({
     scroll.unlockAutoScroll();
   }, [chatId]);
 
-  async function handleRewind(rewindBeforeTimestamp: number, promptText: string) {
+  async function handleRewind(rewindBeforeTimestamp: number, promptText: string, retry = false) {
     // The server may become idle between cancellation and rewind. Hold queued
     // prompts during the whole dialog so none start a new run in that gap.
     if (rewindPendingRef.current) return;
@@ -97,6 +97,7 @@ export function useChatComposerController({
         rewind,
         clearQueuedPrompts: queue.clearQueuedPrompts,
         restorePrompt: setText,
+        resend: retry ? queue.queuePrompt : undefined,
         refreshMeta,
         onComplete: () => {
           scroll.unlockAutoScroll();
@@ -110,6 +111,10 @@ export function useChatComposerController({
       rewindPendingRef.current = false;
       setRewindPending(false);
     }
+  }
+
+  function handleRetry(rewindBeforeTimestamp: number, promptText: string) {
+    return handleRewind(rewindBeforeTimestamp, promptText, true);
   }
 
   function handlePaste(event: ClipboardEvent) {
@@ -172,5 +177,6 @@ export function useChatComposerController({
     handleSend,
     handleAnswerQuestion,
     handleRewind,
+    handleRetry,
   };
 }
