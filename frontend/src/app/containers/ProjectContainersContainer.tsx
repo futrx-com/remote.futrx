@@ -10,6 +10,7 @@ import { useServerInfo } from "../../state/hooks/server/useServerInfo";
 import { useProjectUsage } from "../../state/hooks/usage/useProjectUsage";
 import { useProjectApplications } from "../../state/hooks/applications/useApplications";
 import { extensionHost } from "../extensions/extensionHost";
+import { projectApi } from "../../api/projectApi";
 
 export function ProjectContainersContainer({
   projects,
@@ -43,6 +44,12 @@ export function ProjectContainersContainer({
     onBack();
   }, [selectedProject, onBack, onDeleteProject]);
 
+  // The server pushes the renamed project to every open sidebar.
+  const renameSelectedProject = useCallback(async (name: string) => {
+    if (!selectedProject) return;
+    await projectApi.update(selectedProject.id, { name });
+  }, [selectedProject]);
+
   return (
     <ProjectContainersPage
       activeTab={activeTab}
@@ -71,6 +78,7 @@ export function ProjectContainersContainer({
       onRevokeShare={shares.revoke}
       onRepairNetwork={info.repairNetwork}
       onSetResourceLimits={info.setLimits}
+      onRenameProject={renameSelectedProject}
       onStartProject={info.start}
       onStopProject={info.stop}
       onRestartProject={info.restart}
