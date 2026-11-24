@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
-import {
-  CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
-  CHAT_JUMP_CONTEXT_TURNS,
-  CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-} from "../../../config/api.ts";
+import { CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT } from "../../../config/api.ts";
 import type {
   ChatInteractionResponder,
   ChatStream,
@@ -21,6 +17,7 @@ import { chatEventStateProjector } from "./chatEventStateProjector";
 import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
 import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
 import { stopRunningChat } from "./stopRunningChat";
+import { useChatTranscriptWindow } from "./useChatTranscriptWindow";
 
 interface UseChatResult {
   meta: ChatMeta | null;
@@ -69,17 +66,7 @@ export function useChat(chatId: string): UseChatResult {
   // state is unknown (the HTTP snapshot may be stale), so sends are held.
   const [synced, setSynced] = useState(false);
   const [promptOutcome, setPromptOutcome] = useState<PromptOutcome | null>(null);
-  const [loadingOlder, setLoadingOlder] = useState(false);
   const [historyReadyForStream, setHistoryReadyForStream] = useState(false);
-  // Read by loops that page through history across several awaits.
-  const renderStateRef = useRef(renderState);
-  renderStateRef.current = renderState;
-  const [hasNewer, setHasNewer] = useState(false);
-  const [loadingNewer, setLoadingNewer] = useState(false);
-  // While a window of older messages is shown, live events wait here so they
-  // are not drawn after it with a gap between.
-  const detachedRef = useRef(false);
-  const detachedEventsRef = useRef<ChatEvent[]>([]);
   const streamRef = useRef<ChatStream | null>(null);
   const pendingEventsRef = useRef<ChatEvent[]>([]);
   const pendingFrameRef = useRef<number | null>(null);
@@ -90,12 +77,27 @@ export function useChat(chatId: string): UseChatResult {
   const reloadHistoryRef = useRef<(() => Promise<void>) | null>(null);
   const hydratedTextPartRef = useRef<HydratedTextPart | null>(null);
 
-  // The batcher reaches state only through refs and setState updaters, so these
-  // three close over nothing that can go stale and take no dependencies. They
-  // are wrapped because callers already capture them: rewind's useCallback
-  // below pins whichever clearPendingEvents existed when it was created, and
-  // chatId never changes for a given instance (ChatContainer is keyed on it and
-  // remounts), so that capture lasts the whole session.
+  const {
+    loadingOlder,
+    loadOlder,
+    hasNewer,
+    loadingNewer,
+    showAround,
+    loadNewer,
+    isDetached,
+    bufferLiveEvents,
+    resetWindow,
+    resetOlderLoad,
+  } = useChatTranscriptWindow({
+    chatId,
+    renderState,
+    setRenderState,
+    historyGenerationRef,
+    historyNeedsRefreshRef,
+  });
+
+  // The socket keeps these callbacks for the life of its connection. Read
+  // mutable state through refs and apply changes with setState updaters.
   const clearPendingEvents = useCallback(() => {
     if (pendingFrameRef.current !== null) {
       cancelAnimationFrame(pendingFrameRef.current);
@@ -113,14 +115,15 @@ export function useChat(chatId: string): UseChatResult {
       lastSeqRef.current,
       chatEventStateProjector.latestSequence(events)
     );
-    if (detachedRef.current) detachedEventsRef.current.push(...events);
-    else setRenderState((current) => chatEventStateProjector.append(current, events));
+    if (!bufferLiveEvents(events)) {
+      setRenderState((current) => chatEventStateProjector.append(current, events));
+    }
     setStatus((current) => chatEventStateProjector.statusAfter(events[events.length - 1], current));
     if (events.some((event) => event.type === "user" || event.type === "complete" || event.type === "error"
       || (event.type === "turn_status" && isTerminalTurnStatus(event.status)))) {
       setLocallyStartedTurn(false);
     }
-  }, []);
+  }, [bufferLiveEvents]);
 
   const enqueueEvent = useCallback((event: ChatEvent) => {
     pendingEventsRef.current.push(event);
@@ -141,12 +144,7 @@ export function useChat(chatId: string): UseChatResult {
     setWsReady(false);
     setSynced(false);
     setPromptOutcome(null);
-    setLoadingOlder(false);
     setHistoryReadyForStream(false);
-    detachedRef.current = false;
-    detachedEventsRef.current = [];
-    setHasNewer(false);
-    setLoadingNewer(false);
     lastSeqRef.current = 0;
     hydratedTextPartRef.current = null;
 
@@ -198,7 +196,7 @@ export function useChat(chatId: string): UseChatResult {
     const refreshHistory = async () => {
       const generation = ++historyGenerationRef.current;
       historyNeedsRefreshRef.current = true;
-      setLoadingOlder(false);
+      resetOlderLoad();
       refreshingHistory = true;
       eventsDuringRefresh = [];
       clearPendingEvents();
@@ -209,9 +207,7 @@ export function useChat(chatId: string): UseChatResult {
         const suffix = eventsDuringRefresh.filter((event) => !event.seq || event.seq > page.lastSeq);
         lastSeqRef.current = Math.max(page.lastSeq, chatEventStateProjector.latestSequence(suffix));
         // A reload always shows the latest messages, leaving any window.
-        detachedRef.current = false;
-        detachedEventsRef.current = [];
-        setHasNewer(false);
+        resetWindow();
         setRenderState(chatEventStateProjector.append(chatEventStateProjector.fromEvents(page.events, page), suffix));
         hydratedTextPartRef.current = null;
         historyNeedsRefreshRef.current = false;
@@ -286,7 +282,7 @@ export function useChat(chatId: string): UseChatResult {
       clearPendingEvents();
       stream.close();
     };
-  }, [meta?.id, chatId, historyReadyForStream]);
+  }, [meta?.id, chatId, historyReadyForStream, resetOlderLoad, resetWindow]);
 
   const sendPrompt = useCallback((text: string, clientId?: string) => {
     const stream = streamRef.current;
@@ -295,10 +291,10 @@ export function useChat(chatId: string): UseChatResult {
     setStatus("streaming");
     setLocallyStartedTurn(true);
     // A prompt belongs after the latest messages, not a window of old ones.
-    if (detachedRef.current) void reloadHistoryRef.current?.();
+    if (isDetached()) void reloadHistoryRef.current?.();
     stream.sendPrompt(text, clientId);
     return true;
-  }, [status, wsReady, synced]);
+  }, [status, wsReady, synced, isDetached]);
 
   const cancel = useCallback(() => {
     const stream = streamRef.current;
@@ -335,91 +331,10 @@ export function useChat(chatId: string): UseChatResult {
     }
   }, [chatId]);
 
-  const loadOlder = useCallback(async () => {
-    if (loadingOlder || historyNeedsRefreshRef.current || !renderState.hasOlder || !renderState.nextBefore) return;
-    const generation = historyGenerationRef.current;
-    setLoadingOlder(true);
-    try {
-      const page = await chatApi.fetchTranscript(chatId, {
-        limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-        before: renderState.nextBefore,
-      });
-      if (generation !== historyGenerationRef.current) return;
-      setRenderState((current) => chatEventStateProjector.prepend(current, page));
-    } finally {
-      if (generation === historyGenerationRef.current) setLoadingOlder(false);
-    }
-  }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
-
-  // Leaves a detached window and shows the live conversation again.
-  const reattach = useCallback((state: ChatRenderState) => {
-    const buffered = detachedEventsRef.current;
-    detachedEventsRef.current = [];
-    detachedRef.current = false;
-    setHasNewer(false);
-    setRenderState(chatEventStateProjector.append(state, buffered));
-  }, []);
-
-  const showAround = useCallback(async (seq: number) => {
-    if (historyNeedsRefreshRef.current) return;
-    const loaded = renderStateRef.current.events;
-    const earliest = loaded.reduce(
-      (min, event) => (event.seq ? Math.min(min, event.seq) : min),
-      Number.POSITIVE_INFINITY,
-    );
-    const latest = chatEventStateProjector.latestSequence(loaded);
-    if (seq >= earliest && (!detachedRef.current || seq <= latest)) return;
-    const generation = historyGenerationRef.current;
-    setLoadingOlder(true);
-    try {
-      const page = await chatApi.fetchTranscript(chatId, {
-        limit: CHAT_JUMP_CONTEXT_TURNS * 2 + 1,
-        anchor: seq,
-        newer: CHAT_JUMP_CONTEXT_TURNS,
-      });
-      if (generation !== historyGenerationRef.current) return;
-      const current = renderStateRef.current;
-      if (!detachedRef.current && (!page.newerFrom || page.newerFrom >= earliest)) {
-        // The window meets the loaded conversation: one continuous thread.
-        setRenderState(chatEventStateProjector.prepend(current, page));
-      } else if (!page.newerFrom) {
-        reattach(chatEventStateProjector.fromEvents(page.events, page));
-      } else {
-        // A gap separates the window from the latest messages. Show the
-        // window alone; newer pages close the gap on request.
-        detachedRef.current = true;
-        setHasNewer(true);
-        setRenderState(chatEventStateProjector.fromEvents(page.events, page));
-      }
-    } finally {
-      if (generation === historyGenerationRef.current) setLoadingOlder(false);
-    }
-  }, [chatId, reattach]);
-
-  const loadNewer = useCallback(async () => {
-    if (!detachedRef.current || loadingNewer) return;
-    const generation = historyGenerationRef.current;
-    const latest = chatEventStateProjector.latestSequence(renderStateRef.current.events);
-    setLoadingNewer(true);
-    try {
-      const page = await chatApi.fetchTranscript(chatId, {
-        limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-        anchor: latest,
-        newer: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-      });
-      if (generation !== historyGenerationRef.current || !detachedRef.current) return;
-      const extended = chatEventStateProjector.append(renderStateRef.current, page.events);
-      if (page.newerFrom) setRenderState(extended);
-      else reattach(extended);
-    } finally {
-      if (generation === historyGenerationRef.current) setLoadingNewer(false);
-    }
-  }, [chatId, loadingNewer, reattach]);
-
   const returnToLatest = useCallback(async () => {
-    if (!detachedRef.current) return;
+    if (!isDetached()) return;
     await reloadHistoryRef.current?.();
-  }, []);
+  }, [isDetached]);
 
   const refreshMeta = useCallback(async (throwOnError = false) => {
     if (!chatId) return;
