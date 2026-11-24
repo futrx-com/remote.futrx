@@ -43,11 +43,14 @@ type appServerThreadRequest struct {
 type appServerThreadParams struct {
 	ApprovalPolicy string `json:"approvalPolicy"`
 	Cwd            string `json:"cwd,omitempty"`
-	Model          string `json:"model,omitempty"`
-	Sandbox        string `json:"sandbox"`
-	ServiceName    string `json:"serviceName,omitempty"`
-	ServiceTier    string `json:"serviceTier,omitempty"`
-	ThreadID       string `json:"threadId,omitempty"`
+	// DeveloperInstructions adds Remote's guidance as developer-role
+	// instructions next to Codex's own base instructions, which stay unset.
+	DeveloperInstructions string `json:"developerInstructions,omitempty"`
+	Model                 string `json:"model,omitempty"`
+	Sandbox               string `json:"sandbox"`
+	ServiceName           string `json:"serviceName,omitempty"`
+	ServiceTier           string `json:"serviceTier,omitempty"`
+	ThreadID              string `json:"threadId,omitempty"`
 }
 
 type appServerTurnParams struct {

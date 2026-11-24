@@ -26,6 +26,10 @@ func buildAppServerThreadRequest(req harness.RunRequest) appServerThreadRequest 
 	if tier := serviceTierArg(req.Preferences.ServiceTier); tier != "" {
 		request.Params.ServiceTier = tier
 	}
+	// Sent on start, resume and fork alike. A resumed or forked thread may
+	// still see its stored instructions on the first turn after a cold resume
+	// (openai/codex#19045); new threads are not affected.
+	request.Params.DeveloperInstructions = req.SystemInstructions
 	if req.ResumeID == "" {
 		return request
 	}

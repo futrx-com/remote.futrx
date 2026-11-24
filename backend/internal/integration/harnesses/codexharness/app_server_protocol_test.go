@@ -1,6 +1,8 @@
 package codexharness
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
@@ -137,5 +139,28 @@ func TestForkUsesNativeThreadFork(t *testing.T) {
 	request := buildAppServerThreadRequest(harness.RunRequest{ResumeID: "thread-123", Fork: true})
 	if request.Method != "thread/fork" || request.Params.ThreadID != "thread-123" {
 		t.Fatalf("thread request = %#v", request)
+	}
+}
+
+func TestThreadRequestsCarryDeveloperInstructions(t *testing.T) {
+	for _, req := range []harness.RunRequest{
+		{SystemInstructions: "shared"},
+		{SystemInstructions: "shared", ResumeID: "thread-123"},
+		{SystemInstructions: "shared", ResumeID: "thread-123", Fork: true},
+	} {
+		request := buildAppServerThreadRequest(req)
+		if request.Params.DeveloperInstructions != "shared" {
+			t.Fatalf("%s request = %#v, want developer instructions", request.Method, request.Params)
+		}
+	}
+}
+
+func TestThreadRequestOmitsEmptyDeveloperInstructions(t *testing.T) {
+	encoded, err := json.Marshal(buildAppServerThreadRequest(harness.RunRequest{}).Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "developerInstructions") {
+		t.Fatalf("host thread request sent developer instructions: %s", encoded)
 	}
 }
