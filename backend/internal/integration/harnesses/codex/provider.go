@@ -78,6 +78,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if req.Provider == "" {
 		req.Provider = harness.ProviderCodex
 	}
+	req.SystemInstructions = harness.ProjectInstructions(p.projectPreparer, req.ProjectID)
 
 	cmd, containerName, err := p.buildCmdForAccount(ctx, req, p.args(req), emit, run)
 	if err != nil {
