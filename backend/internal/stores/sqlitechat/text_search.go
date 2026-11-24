@@ -2,6 +2,7 @@ package sqlitechat
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,6 +18,19 @@ const searchLineageSQL = `WITH RECURSIVE lineage(id,max_seq) AS (
  SELECT b.parent_branch_id,min(l.max_seq,b.fork_seq)
  FROM lineage l JOIN branches b ON b.id=l.id WHERE b.parent_branch_id IS NOT NULL
 ) `
+
+// The start event supplies the hit's time and its real type: grouped
+// thinking and answer text share one index label.
+const searchEventTimeSQL = `coalesce((SELECT source.t FROM events source WHERE source.branch_id=transcript_search.branch_id AND source.seq=CAST(transcript_search.start_seq AS INTEGER)),0)`
+
+const searchMatchesSQL = searchLineageSQL + `SELECT transcript_search.rowid,turn_id,CAST(start_seq AS INTEGER),CAST(end_seq AS INTEGER),snippet(transcript_search,0,'` + snippetMatchOpen + `','` + snippetMatchClose + `',' … ',32),
+ coalesce((SELECT source.event_type FROM events source WHERE source.branch_id=transcript_search.branch_id AND source.seq=CAST(transcript_search.start_seq AS INTEGER)),transcript_search.event_type),
+ ` + searchEventTimeSQL + `
+ FROM transcript_search JOIN lineage l ON l.id=transcript_search.branch_id
+ WHERE transcript_search MATCH ? AND CAST(end_seq AS INTEGER)<=l.max_seq AND (?=0 OR CAST(start_seq AS INTEGER)<?)
+ AND (?=0 OR ` + searchEventTimeSQL + `<=?)
+ AND (CAST(item_mode AS INTEGER)=0 OR NOT EXISTS(SELECT 1 FROM events newer WHERE newer.branch_id=transcript_search.branch_id AND newer.turn_ordinal=CAST(transcript_search.turn_ordinal AS INTEGER) AND newer.item_key=transcript_search.item_key AND newer.event_type=transcript_search.event_type AND newer.seq>CAST(transcript_search.end_seq AS INTEGER) AND newer.seq<=l.max_seq))
+ ORDER BY CAST(start_seq AS INTEGER) DESC LIMIT ?`
 
 func (s *Store) SearchTranscript(ctx context.Context, id chat.ID, text string, limit int) ([]chat.SearchHit, error) {
 	return s.SearchTranscriptPage(ctx, id, text, limit, 0)
@@ -72,25 +86,20 @@ func (s *Store) searchTranscript(ctx context.Context, id chat.ID, text string, l
 	// The query's last word matches as a prefix, so results follow typing:
 	// "t" finds "test" and "turn", not only a standalone "t".
 	phrase := `text : ` + ftsPhrase(text) + `* AND branch_id : (` + strings.Join(scopes, ` OR `) + `)`
-	// The start event supplies the hit's time and its real type: grouped
-	// thinking and answer text share one index label.
-	rows, err := s.db.QueryContext(ctx, searchLineageSQL+`SELECT transcript_search.rowid,turn_id,CAST(start_seq AS INTEGER),CAST(end_seq AS INTEGER),snippet(transcript_search,0,char(57344),char(57345),' … ',32),
- coalesce((SELECT source.event_type FROM events source WHERE source.branch_id=transcript_search.branch_id AND source.seq=CAST(transcript_search.start_seq AS INTEGER)),transcript_search.event_type),
- coalesce((SELECT source.t FROM events source WHERE source.branch_id=transcript_search.branch_id AND source.seq=CAST(transcript_search.start_seq AS INTEGER)),0)
- FROM transcript_search JOIN lineage l ON l.id=transcript_search.branch_id
- WHERE transcript_search MATCH ? AND CAST(end_seq AS INTEGER)<=l.max_seq AND (?=0 OR CAST(start_seq AS INTEGER)<?)
- AND (?=0 OR coalesce((SELECT source.t FROM events source WHERE source.branch_id=transcript_search.branch_id AND source.seq=CAST(transcript_search.start_seq AS INTEGER)),0)<=?)
- AND (CAST(item_mode AS INTEGER)=0 OR NOT EXISTS(SELECT 1 FROM events newer WHERE newer.branch_id=transcript_search.branch_id AND newer.turn_ordinal=CAST(transcript_search.turn_ordinal AS INTEGER) AND newer.item_key=transcript_search.item_key AND newer.event_type=transcript_search.event_type AND newer.seq>CAST(transcript_search.end_seq AS INTEGER) AND newer.seq<=l.max_seq))
- ORDER BY CAST(start_seq AS INTEGER) DESC LIMIT ?`, branch, phrase, before, before, maxT, maxT, limit*3)
+	rows, err := s.db.QueryContext(ctx, searchMatchesSQL, branch, phrase, before, before, maxT, maxT, limit*3)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	return readSearchHits(rows, limit)
+}
+
+func readSearchHits(rows *sql.Rows, limit int) ([]chat.SearchHit, error) {
 	out := []chat.SearchHit{}
 	for rows.Next() {
 		var h chat.SearchHit
 		var row int64
-		if err = rows.Scan(&row, &h.TurnID, &h.StartSeq, &h.EndSeq, &h.Text, &h.Kind, &h.T); err != nil {
+		if err := rows.Scan(&row, &h.TurnID, &h.StartSeq, &h.EndSeq, &h.Text, &h.Kind, &h.T); err != nil {
 			return nil, err
 		}
 		h.Text, h.Highlights = searchSnippet(h.Text)
@@ -100,7 +109,7 @@ func (s *Store) searchTranscript(ctx context.Context, id chat.ID, text string, l
 		}
 		out = append(out, h)
 	}
-	if err = rows.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	unique := out[:0]

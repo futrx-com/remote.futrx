@@ -149,49 +149,53 @@ func readSearchBatch(ctx context.Context, tx *sql.Tx, seg branchSegment, cursor 
 
 func indexSearchEvent(ctx context.Context, tx *sql.Tx, branch string, p *pendingText, e searchEvent, emit func(pendingText) error) error {
 	if e.typ == "assistant_text" || e.typ == "thinking" {
-		if err := p.appendText(e.seq, e.ordinal, e.turn, e.group, e.text, emit); err != nil {
+		return indexSearchText(ctx, tx, branch, p, e, emit)
+	}
+	switch e.typ {
+	case "user", "tool_use_start", "tool_use_end", "complete", "error", "collaboration", "interaction_request":
+		if err := p.flush(false, emit); err != nil {
 			return err
 		}
-		// A single assistant event may contain a whole answer. Read its text
-		// once: extracting per chunk re-parses the payload each time, which is
-		// quadratic and stalls search on multi-megabyte answers.
-		if int64(len(e.text)) >= e.textBytes {
-			return nil
-		}
-		var text []byte
-		err := tx.QueryRowContext(ctx, `SELECT CAST(json_extract(payload_json,'$.text') AS BLOB) FROM events WHERE branch_id=? AND seq=?`, branch, e.seq).Scan(&text)
+	}
+	if e.visible {
+		// Keep full search content inside SQLite, including oversized outputs.
+		_, err := tx.ExecContext(ctx, `INSERT INTO transcript_search(text,branch_id,turn_id,start_seq,end_seq,item_key,item_mode,turn_ordinal,event_type,parts_json)
+     SELECT coalesce(json_extract(payload_json,'$.text'),'')||char(10)||coalesce(json_extract(payload_json,'$.name'),'')||char(10)||coalesce(json_extract(payload_json,'$.output'),'')||char(10)||coalesce(payload_json -> '$.input','')||char(10)||coalesce(json_extract(payload_json,'$.message'),'')||char(10)||CASE WHEN event_type='collaboration' THEN coalesce(payload_json -> '$.data','') ELSE '' END,
+     branch_id,turn_key,seq,seq,item_key,item_mode,turn_ordinal,event_type,'[]' FROM events WHERE branch_id=? AND seq=?`, branch, e.seq)
 		if err != nil {
 			return err
 		}
-		if int64(len(text)) != e.textBytes {
-			return fmt.Errorf("search text at %d changed size while indexing", e.seq)
+	}
+	return nil
+}
+
+func indexSearchText(ctx context.Context, tx *sql.Tx, branch string, p *pendingText, e searchEvent, emit func(pendingText) error) error {
+	if err := p.appendText(e.seq, e.ordinal, e.turn, e.group, e.text, emit); err != nil {
+		return err
+	}
+	// A single assistant event may contain a whole answer. Read its text
+	// once: extracting per chunk re-parses the payload each time, which is
+	// quadratic and stalls search on multi-megabyte answers.
+	if int64(len(e.text)) >= e.textBytes {
+		return nil
+	}
+	var text []byte
+	err := tx.QueryRowContext(ctx, `SELECT CAST(json_extract(payload_json,'$.text') AS BLOB) FROM events WHERE branch_id=? AND seq=?`, branch, e.seq).Scan(&text)
+	if err != nil {
+		return err
+	}
+	if int64(len(text)) != e.textBytes {
+		return fmt.Errorf("search text at %d changed size while indexing", e.seq)
+	}
+	for offset := int64(len(e.text)); offset < e.textBytes; {
+		chunk := utf8Prefix(string(text[offset:min(offset+searchChunkBytes+utf8.UTFMax, e.textBytes)]), searchChunkBytes)
+		if len(chunk) == 0 {
+			return fmt.Errorf("empty search text chunk at %d", offset)
 		}
-		for offset := int64(len(e.text)); offset < e.textBytes; {
-			chunk := utf8Prefix(string(text[offset:min(offset+searchChunkBytes+utf8.UTFMax, e.textBytes)]), searchChunkBytes)
-			if len(chunk) == 0 {
-				return fmt.Errorf("empty search text chunk at %d", offset)
-			}
-			if err := p.appendText(e.seq, e.ordinal, e.turn, e.group, chunk, emit); err != nil {
-				return err
-			}
-			offset += int64(len(chunk))
+		if err := p.appendText(e.seq, e.ordinal, e.turn, e.group, chunk, emit); err != nil {
+			return err
 		}
-	} else {
-		switch e.typ {
-		case "user", "tool_use_start", "tool_use_end", "complete", "error", "collaboration", "interaction_request":
-			if err := p.flush(false, emit); err != nil {
-				return err
-			}
-		}
-		if e.visible {
-			// Keep full search content inside SQLite, including oversized outputs.
-			_, err := tx.ExecContext(ctx, `INSERT INTO transcript_search(text,branch_id,turn_id,start_seq,end_seq,item_key,item_mode,turn_ordinal,event_type,parts_json)
-     SELECT coalesce(json_extract(payload_json,'$.text'),'')||char(10)||coalesce(json_extract(payload_json,'$.name'),'')||char(10)||coalesce(json_extract(payload_json,'$.output'),'')||char(10)||coalesce(payload_json -> '$.input','')||char(10)||coalesce(json_extract(payload_json,'$.message'),'')||char(10)||CASE WHEN event_type='collaboration' THEN coalesce(payload_json -> '$.data','') ELSE '' END,
-     branch_id,turn_key,seq,seq,item_key,item_mode,turn_ordinal,event_type,'[]' FROM events WHERE branch_id=? AND seq=?`, branch, e.seq)
-			if err != nil {
-				return err
-			}
-		}
+		offset += int64(len(chunk))
 	}
 	return nil
 }

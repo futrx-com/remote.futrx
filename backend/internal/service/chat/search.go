@@ -1,11 +1,13 @@
 package chat
 
 import (
+	"cmp"
 	"context"
 	"errors"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // SearchHit identifies a matching item in the active conversation branch.
@@ -63,12 +65,19 @@ func ParseChatSearchCursor(raw string) (ChatSearchCursor, error) {
 	return ChatSearchCursor{T: t, ChatID: ID(parts[1]), StartSeq: seq}, nil
 }
 
-// after reports whether hit h in chat id comes after the cursor.
-func (c ChatSearchCursor) after(id ID, h SearchHit) bool {
-	if c.T == 0 || h.T != c.T {
-		return c.T == 0 || h.T < c.T
+// compare orders positions newest first, using chat and sequence to settle ties.
+func (c ChatSearchCursor) compare(other ChatSearchCursor) int {
+	if order := cmp.Compare(other.T, c.T); order != 0 {
+		return order
 	}
-	return id < c.ChatID || (id == c.ChatID && h.StartSeq < c.StartSeq)
+	if order := cmp.Compare(other.ChatID, c.ChatID); order != 0 {
+		return order
+	}
+	return cmp.Compare(other.StartSeq, c.StartSeq)
+}
+
+func (h ChatSearchHit) position() ChatSearchCursor {
+	return ChatSearchCursor{T: h.T, ChatID: h.ChatID, StartSeq: h.StartSeq}
 }
 
 var ErrInvalidSearchCursor = errors.New("invalid search cursor")
@@ -92,44 +101,29 @@ func (s *Service) SearchTranscript(ctx context.Context, id ID, query string, lim
 	if !ValidID(id) {
 		return nil, ErrInvalidID
 	}
-	query = strings.TrimSpace(query)
-	if len([]rune(query)) > 512 {
-		return nil, ErrInvalidSearch
+	query, limit, err := normalizeSearchRequest(query, limit)
+	if err != nil {
+		return nil, err
 	}
 	if query == "" {
 		return []SearchHit{}, nil
 	}
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
 	if s.transcriptSearch == nil {
 		return nil, ErrTranscriptUnavailable
 	}
-	if before < 0 {
-		before = 0
-	}
-	return s.transcriptSearch.SearchTranscriptPage(ctx, id, query, limit, before)
+	return s.transcriptSearch.SearchTranscriptPage(ctx, id, query, limit, max(0, before))
 }
 
 // SearchChats finds messages across the given chats, newest first. Callers
 // pass only chats the requester may read. A chat without a searchable
 // transcript is skipped rather than failing the whole search.
 func (s *Service) SearchChats(ctx context.Context, ids []ID, query string, limit int, cursor ChatSearchCursor) ([]ChatSearchHit, error) {
-	query = strings.TrimSpace(query)
-	if len([]rune(query)) > 512 {
-		return nil, ErrInvalidSearch
+	query, limit, err := normalizeSearchRequest(query, limit)
+	if err != nil {
+		return nil, err
 	}
 	if query == "" || len(ids) == 0 {
 		return []ChatSearchHit{}, nil
-	}
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
 	}
 	if s.transcriptSearch == nil {
 		return nil, ErrTranscriptUnavailable
@@ -149,25 +143,30 @@ func (s *Service) SearchChats(ctx context.Context, ids []ID, query string, limit
 			return nil, err
 		}
 		for _, hit := range hits {
-			if cursor.after(id, hit) {
-				out = append(out, ChatSearchHit{ChatID: id, SearchHit: hit})
+			match := ChatSearchHit{ChatID: id, SearchHit: hit}
+			if cursor.T == 0 || match.position().compare(cursor) > 0 {
+				out = append(out, match)
 			}
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.T != b.T {
-			return a.T > b.T
-		}
-		if a.ChatID != b.ChatID {
-			return a.ChatID > b.ChatID
-		}
-		return a.StartSeq > b.StartSeq
+	slices.SortFunc(out, func(a, b ChatSearchHit) int {
+		return a.position().compare(b.position())
 	})
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func normalizeSearchRequest(query string, limit int) (string, int, error) {
+	query = strings.TrimSpace(query)
+	if utf8.RuneCountInString(query) > 512 {
+		return "", 0, ErrInvalidSearch
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	return query, min(limit, 100), nil
 }
 
 // BranchForker creates an independent branch referencing a retained prefix.
