@@ -6,7 +6,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/command"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
@@ -30,16 +29,14 @@ type Adapter struct {
 func NewAdapter(
 	runner command.Runner,
 	profileSource serviceprofiles.Source,
-	agentInstructions []byte,
 ) *Adapter {
 	commands := &quickCommandRunner{runner: runner, timeout: inspectQuickTimeout}
 	return &Adapter{
 		lxd:   containerLXDInspector{commands: commands},
 		guest: containerGuestInspector{commands: commands},
 		agents: containerAgentInspector{
-			commands:        commands,
-			profiles:        profileSource,
-			instructionHash: assets.Hash(agentInstructions),
+			commands: commands,
+			profiles: profileSource,
 		},
 		credentials: containerCredentialInspector{commands: commands, profiles: profileSource},
 	}

@@ -31,9 +31,12 @@ type CredentialSynchronizer interface {
 	CredentialCollector
 }
 
-// WorkspaceProvisioner publishes shared harness instructions and workspace links.
+// WorkspaceProvisioner supplies the shared harness instructions, removes the
+// copies earlier releases wrote into provider homes, and publishes workspace
+// links.
 type WorkspaceProvisioner interface {
-	EnsureHarnessInstructions(context.Context, string) error
+	HarnessInstructions() string
+	RetireHarnessInstructions(context.Context, string) error
 	EnsureSkillLinks(context.Context, string) error
 }
 

@@ -104,6 +104,10 @@ func (s CredentialSpec) Empty() bool {
 	return len(s.Files) == 0 && s.Directory == nil
 }
 
+// InstructionTarget is where an earlier release wrote the shared instructions
+// in a provider home, with the marker that recorded the written bytes. The
+// instructions now reach the agent as system instructions at launch; these
+// locations are kept only to remove the generated copies left behind.
 type InstructionTarget struct {
 	Path     string
 	HashPath string
@@ -247,7 +251,7 @@ type Profile struct {
 	CLI                 CLISpec
 	Credentials         CredentialSpec
 	PersistentState     []PersistentDirectory
-	Instructions        *InstructionTarget
+	LegacyInstructions  *InstructionTarget
 	WorkspaceSkills     *WorkspaceSkills
 	RuntimeAssets       []RuntimeAsset
 	BrowserMCPTemplates []TemplateFile
@@ -257,9 +261,9 @@ func (p Profile) Clone() Profile {
 	p.CLI.VersionArgs = append([]string(nil), p.CLI.VersionArgs...)
 	p.Credentials = p.Credentials.Clone()
 	p.PersistentState = append([]PersistentDirectory(nil), p.PersistentState...)
-	if p.Instructions != nil {
-		instructions := *p.Instructions
-		p.Instructions = &instructions
+	if p.LegacyInstructions != nil {
+		instructions := *p.LegacyInstructions
+		p.LegacyInstructions = &instructions
 	}
 	if p.WorkspaceSkills != nil {
 		skills := *p.WorkspaceSkills

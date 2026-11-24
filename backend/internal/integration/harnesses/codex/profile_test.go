@@ -46,7 +46,7 @@ func TestProfileMatchesCodexProvisioningPolicy(t *testing.T) {
 			HostDirectory: "codex",
 			ContainerPath: "/root/.codex",
 		}},
-		Instructions: &provisioning.InstructionTarget{
+		LegacyInstructions: &provisioning.InstructionTarget{
 			Path:     "/root/.codex/AGENTS.md",
 			HashPath: "/root/.claude/.agents-md.sha256",
 		},

@@ -19,7 +19,7 @@ var miniMaxProfile = provisioning.Profile{
 		HostDirectory: configconstants.MiniMaxHostDirectory,
 		ContainerPath: configconstants.MiniMaxContainerHome,
 	}},
-	Instructions: &provisioning.InstructionTarget{
+	LegacyInstructions: &provisioning.InstructionTarget{
 		Path:     configconstants.MiniMaxContainerInstructions,
 		HashPath: configconstants.MiniMaxContainerInstructionsHash,
 	},

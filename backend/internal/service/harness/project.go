@@ -63,6 +63,25 @@ type PreparedProject struct {
 	Secrets       []ProjectSecret
 }
 
+// InstructionSource is implemented by preparers that hold the shared Remote
+// guidance for agents in project containers.
+type InstructionSource interface {
+	Instructions() string
+}
+
+// ProjectInstructions returns the shared guidance a provider passes as system
+// instructions for a project run, or "" for host runs and preparers without it.
+func ProjectInstructions(preparer ProjectPreparer, projectID string) string {
+	if projectID == "" || preparer == nil {
+		return ""
+	}
+	source, ok := preparer.(InstructionSource)
+	if !ok {
+		return ""
+	}
+	return source.Instructions()
+}
+
 // ProjectPreparer owns the shared project lifecycle and provisioning workflow.
 // Providers retain responsibility for their CLI arguments and wire protocol.
 type ProjectPreparer interface {

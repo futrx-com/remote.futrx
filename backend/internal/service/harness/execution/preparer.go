@@ -91,6 +91,14 @@ func (p *Preparer) Prepare(
 	return prepared, nil
 }
 
+// Instructions returns the shared guidance for agents in project containers.
+func (p *Preparer) Instructions() string {
+	if p.containers.Workspace == nil {
+		return ""
+	}
+	return p.containers.Workspace.HarnessInstructions()
+}
+
 func (p *Preparer) prepareContainer(
 	ctx context.Context,
 	request harness.ProjectPreparationRequest,
@@ -113,9 +121,9 @@ func (p *Preparer) prepareContainer(
 			return fmt.Errorf("%s: %w", p.credentialErrorOperation(), err)
 		}
 	}
-	if err := p.containers.Workspace.EnsureHarnessInstructions(ctx, containerName); err != nil {
-		return fmt.Errorf("push agent instructions to container: %w", err)
-	}
+	// Best effort: a copy that cannot be removed only means the text may also
+	// load as user memory, which must not block the run.
+	_ = p.containers.Workspace.RetireHarnessInstructions(ctx, containerName)
 	if err := p.containers.RuntimeAssets.Ensure(ctx, containerName, p.options.Profile.RuntimeAssets); err != nil {
 		return fmt.Errorf("push agent runtime assets to container: %w", err)
 	}

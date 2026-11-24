@@ -84,6 +84,7 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		return err
 	}
 
+	req.SystemInstructions = harness.ProjectInstructions(p.projectPreparer, req.ProjectID)
 	cmd, err := p.buildCmd(ctx, req, p.args(req), key, catalog, emit)
 	if err != nil {
 		return err

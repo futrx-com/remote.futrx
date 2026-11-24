@@ -12,13 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
 	serviceprofiles "github.com/futrx-com/remote.futrx.com/internal/service/container/profiles"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
-
-var testAgentInstructions = provisioning.InstructionsTemplate("remote.futrx.com")
 
 func TestAdapterLXDProbesPopulateProviderNeutralSnapshot(t *testing.T) {
 	runner := &inspectionRecordingRunner{responses: map[string]inspectionResponse{
@@ -56,7 +53,7 @@ func TestAdapterLXDProbesPopulateProviderNeutralSnapshot(t *testing.T) {
 			}}
 		}`},
 	}}
-	adapter := NewAdapter(runner, serviceprofiles.NewCatalog(nil), testAgentInstructions)
+	adapter := NewAdapter(runner, serviceprofiles.NewCatalog(nil))
 	out := serviceproject.ContainerInspect{Name: "c1"}
 
 	adapter.InspectConfiguration(context.Background(), "c1", &out)
@@ -81,7 +78,7 @@ func TestAdapterLXDProbesPopulateProviderNeutralSnapshot(t *testing.T) {
 
 func TestAdapterLXDProbeFailuresLeaveExistingSnapshotUntouched(t *testing.T) {
 	runner := &inspectionRecordingRunner{fallback: inspectionResponse{err: errors.New("query failed")}}
-	adapter := NewAdapter(runner, serviceprofiles.NewCatalog(nil), testAgentInstructions)
+	adapter := NewAdapter(runner, serviceprofiles.NewCatalog(nil))
 	want := serviceproject.ContainerInspect{Name: "c1", State: serviceproject.ContainerStateRunning}
 	got := want
 
@@ -94,7 +91,6 @@ func TestAdapterLXDProbeFailuresLeaveExistingSnapshotUntouched(t *testing.T) {
 }
 
 func TestAdapterGuestAndAgentProbesTranslateCommandOutput(t *testing.T) {
-	instructionHash := assets.Hash(testAgentInstructions)
 	runner := &inspectionRecordingRunner{respond: func(args []string) inspectionResponse {
 		joined := strings.Join(args, " ")
 		switch joined {
@@ -102,10 +98,6 @@ func TestAdapterGuestAndAgentProbesTranslateCommandOutput(t *testing.T) {
 			return inspectionResponse{}
 		case "exec c1 -- claude version --short":
 			return inspectionResponse{output: "claude 1.2.3\n"}
-		case "exec c1 -- test -f /workspace/CLAUDE.md":
-			return inspectionResponse{}
-		case "exec c1 -- cat /workspace/.claude.hash":
-			return inspectionResponse{output: instructionHash + "\n"}
 		}
 		if len(args) >= 5 && args[0] == "exec" && args[3] == "sh" && args[4] == "-c" {
 			return inspectionResponse{output: `=== OS_RELEASE ===
@@ -129,12 +121,12 @@ Filesystem 1B-blocks Used Available Capacity MountedOn
 	profiles := serviceprofiles.NewCatalog([]provisioning.Profile{{
 		ID:  "claude",
 		CLI: provisioning.CLISpec{Name: "Claude Code", Binary: "claude", VersionArgs: []string{"version", "--short"}},
-		Instructions: &provisioning.InstructionTarget{
+		LegacyInstructions: &provisioning.InstructionTarget{
 			Path:     "/workspace/CLAUDE.md",
 			HashPath: "/workspace/.claude.hash",
 		},
 	}})
-	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+	adapter := NewAdapter(runner, profiles)
 
 	osInfo, disks := adapter.InspectGuest(context.Background(), "c1")
 	agents := adapter.InspectAgents(context.Background(), "c1")
@@ -158,13 +150,10 @@ Filesystem 1B-blocks Used Available Capacity MountedOn
 		t.Fatalf("disks = %#v, want %#v", disks, want)
 	}
 	if want := []serviceproject.AgentContainerStatus{{
-		ID:                    "claude",
-		Label:                 "Claude Code",
-		Installed:             true,
-		Version:               "claude 1.2.3",
-		InstructionsPath:      "/workspace/CLAUDE.md",
-		InstructionsInstalled: true,
-		InstructionsInSync:    true,
+		ID:        "claude",
+		Label:     "Claude Code",
+		Installed: true,
+		Version:   "claude 1.2.3",
 	}}; !reflect.DeepEqual(agents, want) {
 		t.Fatalf("agents = %#v, want %#v", agents, want)
 	}
@@ -191,7 +180,7 @@ func TestAdapterCredentialProbeGatesGuestStatsByState(t *testing.T) {
 			}},
 		},
 	}})
-	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+	adapter := NewAdapter(runner, profiles)
 
 	stopped := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateStopped)
 	if len(runner.calls) != 0 {
@@ -235,7 +224,7 @@ func TestAdapterCredentialProbeIncludesDynamicDirectoryFiles(t *testing.T) {
 			},
 		},
 	}})
-	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+	adapter := NewAdapter(runner, profiles)
 
 	running := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateRunning)
 	if len(running) != 1 || len(running[0].Files) != 2 {
@@ -273,7 +262,7 @@ func TestAdapterCredentialProbeEncodesAnEmptyDirectoryAsAnArray(t *testing.T) {
 			},
 		},
 	}})
-	adapter := NewAdapter(runner, profiles, testAgentInstructions)
+	adapter := NewAdapter(runner, profiles)
 
 	bundles := adapter.InspectCredentials(context.Background(), "c1", serviceproject.ContainerStateRunning)
 	if len(bundles) != 1 || bundles[0].Files == nil || len(bundles[0].Files) != 0 {

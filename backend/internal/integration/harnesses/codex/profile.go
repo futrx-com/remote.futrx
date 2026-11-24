@@ -42,7 +42,7 @@ var codexProfile = provisioning.Profile{
 		HostDirectory: "codex",
 		ContainerPath: containerCodexDir,
 	}},
-	Instructions: &provisioning.InstructionTarget{
+	LegacyInstructions: &provisioning.InstructionTarget{
 		Path:     containerCodexInstructions,
 		HashPath: containerInstructionsHash,
 	},

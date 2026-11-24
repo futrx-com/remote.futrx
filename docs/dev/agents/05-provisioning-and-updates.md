@@ -274,12 +274,19 @@ into an error. Antigravity has no sync step.
 ## Instructions, runtime assets, skills, Browser, and schedules
 
 Remote renders one embedded instruction template with the installation's public
-hostname. The workspace provisioner publishes it idempotently to every
-profile-declared instruction target, grouping targets that share a hash marker.
-Claude currently targets `/root/.claude/CLAUDE.md`; Codex targets
-`/root/.codex/AGENTS.md`; MiniMax targets `/root/.minimax/AGENTS.md`. Shared project preparation asks the workspace
-provisioner to converge the configured targets; provider command code does not
-embed instruction text itself.
+hostname. Providers pass it to the agent as system instructions when a project
+run starts: Claude with `--append-system-prompt`, Codex and MiniMax with
+`developerInstructions` on `thread/start`, `thread/resume`, and `thread/fork`.
+They read it through `harness.ProjectInstructions`, which returns nothing for
+host runs; provider command code does not embed instruction text itself. Kimi
+and Antigravity do not receive it yet.
+
+Earlier releases published the template into provider homes instead
+(`/root/.claude/CLAUDE.md`, `/root/.codex/AGENTS.md`,
+`/root/.minimax/AGENTS.md`), where the CLIs loaded it as user memory. Profiles
+keep those paths as `LegacyInstructions`, and shared project preparation removes
+a copy only while its bytes still match the hash marker written next to it, so
+an edited file is kept.
 
 The [`runtimeassets.Adapter`](../../../backend/internal/integration/containers/runtimeassets/adapter.go)
 separately publishes only the selected profile's
