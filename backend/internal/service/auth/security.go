@@ -179,6 +179,7 @@ func (s *Service) SecuritySummary(ctx context.Context, email string) (SecuritySu
 		return SecuritySummary{}, err
 	}
 	return SecuritySummary{
+		PasswordSignIn:           s.local.isLocalAdmin(email),
 		TwoFactorEnabled:         s.twoFactor.Enabled(ctx, email),
 		RecoveryCodesRemaining:   s.twoFactor.RecoveryCodesRemaining(ctx, email),
 		SingleSessionEnabled:     prefs.SingleSessionEnabled,

@@ -197,3 +197,124 @@ func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 		t.Fatalf("round trip = %#v", got)
 	}
 }
+
+func TestReplaceLocalAdminNormalizesAndKeepsPrivateMode(t *testing.T) {
+	dir := t.TempDir()
+	store := New(dir)
+	original := serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "old-hash"}
+	if err := store.CreateLocalAdmin(context.Background(), original); err != nil {
+		t.Fatal(err)
+	}
+	expected := original
+	expected.Email = " ADMIN@example.com "
+	next := serviceauth.LocalAdminCredential{Email: " ADMIN@example.com ", PasswordHash: "new-hash"}
+	if err := store.ReplaceLocalAdmin(context.Background(), expected, next); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LocalAdmin(context.Background())
+	next.Email = "admin@example.com"
+	if err != nil || got == nil || *got != next {
+		t.Fatalf("replacement = %#v, %v; want %#v", got, err, next)
+	}
+	info, err := os.Stat(filepath.Join(dir, "local-admin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("mode = %o, want 600", got)
+	}
+}
+
+func TestReplaceLocalAdminRefusesChangedOrMissingCredential(t *testing.T) {
+	original := serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "old-hash"}
+	next := serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "new-hash"}
+	for _, tc := range []struct {
+		name     string
+		expected serviceauth.LocalAdminCredential
+		missing  bool
+	}{
+		{name: "wrong email", expected: serviceauth.LocalAdminCredential{Email: "other@example.com", PasswordHash: "old-hash"}},
+		{name: "wrong hash", expected: serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "different"}},
+		{name: "missing", expected: original, missing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			store := New(dir)
+			path := filepath.Join(dir, "local-admin.json")
+			var before []byte
+			if !tc.missing {
+				if err := store.CreateLocalAdmin(context.Background(), original); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				before, err = os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := store.ReplaceLocalAdmin(context.Background(), tc.expected, next); !errors.Is(err, serviceauth.ErrLocalAdminCredentialChanged) {
+				t.Fatalf("error = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if tc.missing {
+				if !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("missing file after refused replace: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("refused replacement changed file bytes")
+			}
+		})
+	}
+}
+
+func TestReplaceLocalAdminRejectsInvalidInputWithoutMutation(t *testing.T) {
+	original := serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "old-hash"}
+	next := serviceauth.LocalAdminCredential{Email: "admin@example.com", PasswordHash: "new-hash"}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, tc := range []struct {
+		name           string
+		ctx            context.Context
+		expected, next serviceauth.LocalAdminCredential
+		want           error
+	}{
+		{name: "canceled", ctx: canceled, expected: original, next: next, want: context.Canceled},
+		{name: "missing expected email", expected: serviceauth.LocalAdminCredential{PasswordHash: "old-hash"}, next: next},
+		{name: "missing expected hash", expected: serviceauth.LocalAdminCredential{Email: original.Email}, next: next},
+		{name: "missing next email", expected: original, next: serviceauth.LocalAdminCredential{PasswordHash: "new-hash"}},
+		{name: "missing next hash", expected: original, next: serviceauth.LocalAdminCredential{Email: original.Email}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			store := New(dir)
+			if err := store.CreateLocalAdmin(context.Background(), original); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "local-admin.json")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := tc.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			err = store.ReplaceLocalAdmin(ctx, tc.expected, tc.next)
+			if err == nil || (tc.want != nil && !errors.Is(err, tc.want)) {
+				t.Fatalf("error = %v", err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("invalid input changed file bytes")
+			}
+		})
+	}
+}

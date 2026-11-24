@@ -300,6 +300,31 @@ func (s *Store) DeleteLocalAdmin(ctx context.Context, expected serviceauth.Local
 	return nil
 }
 
+func (s *Store) ReplaceLocalAdmin(ctx context.Context, expected, next serviceauth.LocalAdminCredential) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	expected.Email = strings.ToLower(strings.TrimSpace(expected.Email))
+	if expected.Email == "" || expected.PasswordHash == "" {
+		return errors.New("expected local admin credential is incomplete")
+	}
+	next.Email = strings.ToLower(strings.TrimSpace(next.Email))
+	if next.Email == "" || next.PasswordHash == "" {
+		return errors.New("local admin credential is incomplete")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, err := s.localAdminLocked()
+	if err != nil {
+		return err
+	}
+	if current == nil || current.Email != expected.Email || current.PasswordHash != expected.PasswordHash {
+		return serviceauth.ErrLocalAdminCredentialChanged
+	}
+	return s.writeJSONLocked("local-admin.json", next)
+}
+
 func (s *Store) SetupToken(ctx context.Context) (*serviceauth.SetupTokenRecord, error) {
 	select {
 	case <-ctx.Done():

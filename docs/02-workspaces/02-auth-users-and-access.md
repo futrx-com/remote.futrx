@@ -46,7 +46,7 @@ have opted into TOTP 2FA (see below); every other account skips straight from
 
 | Identity | Sign-in | Scope |
 | --- | --- | --- |
-| Local administrator | Email and a password of 12–1024 characters | Cannot be removed or demoted; manages host-wide setup |
+| Local administrator | Email and a password of at least 12 Unicode characters, at most 1024 UTF-8 bytes | Cannot be removed or demoted; manages host-wide setup |
 | Invited administrator | Google OAuth | Admin routes and all projects |
 | Invited member | Google OAuth | Only projects where their email is a member, plus loose chats |
 
@@ -87,6 +87,33 @@ From Settings → Security, any account (local admin or invited user) can indepe
 Enrollment issues a TOTP secret (shown as a QR code and as text for manual entry), confirms one code from the user's authenticator app, and returns ten one-time recovery codes shown exactly once. Because that is the only time they are shown, the panel offers them as a downloadable PDF or `.txt` file (built in the browser from the codes already on screen — they are never re-fetched, and no download endpoint exists). Confirming enrollment, or turning on single active session, re-issues the browser's *current* session as tracked in the same response, so the tab that just made the change is never immediately treated as "the other device."
 
 An account that leaves all four toggles off — the default for every account, including ones that predate this feature — sees byte-for-byte the same login flow, session cookie, and `/auth/me` response as before any of this existed.
+
+## Change a password
+
+In Settings → Security, accounts with a password see a Password card. Enter the
+current password, a different new password, and its confirmation. If 2FA is on,
+also enter an authenticator code or an unused recovery code; a recovery code is
+consumed. Google-only accounts do not see this card.
+
+`POST /api/me/security/password` verifies the current password and required
+second factor before revoking sessions and atomically replacing the password
+hash. The new password must have at least 12 Unicode characters and fit within
+1024 UTF-8 bytes, with no composition rules. Other sessions issued before the
+persisted `sessionsValidAfter` cut-off stop working on their next authenticated
+request; the changing browser receives a fresh session and stays signed in.
+Because issue times have one-second resolution, cookies issued during the same
+second as the change can survive. Existing WebSocket connections are not closed
+by this check; new connections must pass it.
+
+Incorrect password or 2FA proof returns 403 without clearing the current browser
+session. Five failed proofs per client IP/account in five minutes block further
+attempts with 429. A failed credential save after revocation leaves the old
+password valid and reports that other sessions were signed out. If only session
+renewal fails after the save, the message says to sign in with the new password.
+
+**Rollback note:** older binaries ignore `sessionsValidAfter`. Rolling back can
+make previously revoked cookies valid again until their original expiry. No
+credential-format migration is needed; `local-admin.json` keeps its shape.
 
 ## Invited user flow
 
