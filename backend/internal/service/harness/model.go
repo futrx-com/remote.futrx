@@ -125,6 +125,9 @@ type RunRequest struct {
 	// InteractionResponses carries UI answers back to server-initiated
 	// requests while the provider turn remains active.
 	InteractionResponses <-chan InteractionResponse
+	// SystemInstructions is set by a provider from its prepared project and
+	// sent through the CLI's system-instruction channel. Empty for host runs.
+	SystemInstructions string
 }
 
 // Event is the normalized backend event shape emitted by headless harness
