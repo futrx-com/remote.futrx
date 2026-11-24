@@ -199,7 +199,9 @@ func (f antigravityTestCredentials) SyncFromContainer(context.Context, string, p
 
 type antigravityTestWorkspace struct{ calls *antigravityPreparationCalls }
 
-func (f antigravityTestWorkspace) EnsureHarnessInstructions(context.Context, string) error {
+func (antigravityTestWorkspace) HarnessInstructions() string { return "" }
+
+func (f antigravityTestWorkspace) RetireHarnessInstructions(context.Context, string) error {
 	f.calls.instructions++
 	return nil
 }
