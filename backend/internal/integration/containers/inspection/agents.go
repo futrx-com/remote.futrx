@@ -8,11 +8,11 @@ import (
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
-// containerAgentInspector reports provider CLI and instruction readiness.
+// containerAgentInspector reports provider CLI readiness. Shared instructions
+// are passed at launch, so there is no instruction file to probe.
 type containerAgentInspector struct {
-	commands        *quickCommandRunner
-	profiles        serviceprofiles.Source
-	instructionHash string
+	commands *quickCommandRunner
+	profiles serviceprofiles.Source
 }
 
 func (i *containerAgentInspector) inspect(ctx context.Context, containerName string) []serviceproject.AgentContainerStatus {
@@ -29,15 +29,6 @@ func (i *containerAgentInspector) inspect(ctx context.Context, containerName str
 				if err == nil {
 					status.Version = strings.TrimSpace(version)
 				}
-			}
-		}
-		if profile.Instructions != nil {
-			status.InstructionsPath = profile.Instructions.Path
-			if _, err := i.commands.run(ctx, "exec", containerName, "--", "test", "-f", profile.Instructions.Path); err == nil {
-				status.InstructionsInstalled = true
-			}
-			if hash, err := i.commands.run(ctx, "exec", containerName, "--", "cat", profile.Instructions.HashPath); err == nil {
-				status.InstructionsInSync = strings.TrimSpace(hash) == i.instructionHash
 			}
 		}
 		statuses = append(statuses, status)
