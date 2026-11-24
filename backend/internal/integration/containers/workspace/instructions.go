@@ -2,14 +2,15 @@
 // topology inside project containers.
 package workspace
 
-// Agent-instruction provisioning ships the shared template to every target
-// declared by the configured profiles.
+// The shared instructions reach the agent as system instructions at launch.
+// Earlier releases wrote them into each provider home instead, where the CLIs
+// loaded them as user memory; those generated copies are removed here so the
+// text is not loaded twice.
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"path"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/futrx-com/remote.futrx.com/internal/integration/containers/assets"
@@ -18,14 +19,19 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
-// Provisioner installs provider-defined and embedded assets — shared agent
-// instructions and skill compatibility links — in the persistent project
-// workspace.
+const retireTimeout = 30 * time.Second
+
+// Provisioner installs provider-defined and embedded assets — skill
+// compatibility links — in the persistent project workspace, and supplies the
+// shared agent instructions.
 type Provisioner struct {
 	runner       command.Runner
 	profiles     serviceprofiles.Source
 	publisher    *assets.Publisher
-	instructions []byte
+	instructions string
+	// retired records containers already confirmed free of legacy copies.
+	// Nothing writes them any more, so later runs skip the checks.
+	retired sync.Map
 }
 
 // NewProvisioner returns a workspace provisioner backed by shared container
@@ -40,72 +46,91 @@ func NewProvisioner(
 		runner:       runner,
 		profiles:     profileSource,
 		publisher:    publisher,
-		instructions: append([]byte(nil), instructions...),
+		instructions: string(instructions),
 	}
 }
 
-// EnsureHarnessInstructions pushes the shared system-instructions template to
-// all configured targets, grouped by hash marker. Idempotent.
-func (p *Provisioner) EnsureHarnessInstructions(ctx context.Context, containerName string) error {
+// HarnessInstructions returns the rendered shared instructions that providers
+// pass to the agent as system instructions.
+func (p *Provisioner) HarnessInstructions() string {
+	return p.instructions
+}
+
+// retireScript removes one legacy file in a single shell. The file is first
+// renamed to a staging name, which is atomic, and only the staged copy is
+// checked, so a file replaced at the same moment is never the one deleted.
+// A staged file that does not match goes back to its path, or stays under the
+// staging name if the path was taken meanwhile. It prints absent, removed or
+// kept; anything else, including a failed exec, means unknown.
+const retireScript = `path=$1; marker=$2; stage="$path.remote-retire.$$"
+if [ ! -e "$path" ] && [ ! -L "$path" ]; then echo absent; exit 0; fi
+if [ -L "$path" ] || [ ! -f "$path" ]; then echo kept; exit 0; fi
+want=$(cat -- "$marker" 2>/dev/null) || want=
+if [ -z "$want" ]; then echo kept; exit 0; fi
+mv -- "$path" "$stage" || { echo kept; exit 0; }
+if [ ! -L "$stage" ] && [ -f "$stage" ] && [ "$(sha256sum < "$stage" | cut -d' ' -f1)" = "$want" ]; then
+  rm -f -- "$stage" && { echo removed; exit 0; }
+fi
+if [ ! -e "$path" ] && [ ! -L "$path" ]; then mv -- "$stage" "$path"; fi
+echo kept`
+
+// RetireHarnessInstructions removes instruction files an earlier release
+// generated in provider homes. A file is removed only when it is a regular
+// file whose bytes still hash to the marker written next to it, so a copy
+// someone edited or replaced is kept. A marker is removed only once every file
+// that shares it is confirmed gone. Idempotent.
+func (p *Provisioner) RetireHarnessInstructions(ctx context.Context, containerName string) error {
 	if !p.runner.Available() {
 		return command.ErrUnavailable
 	}
-	targets := configuredInstructionTargets(p.profiles.Snapshot())
+	if _, done := p.retired.Load(containerName); done {
+		return nil
+	}
+	targets := legacyInstructionTargets(p.profiles.Snapshot())
 	if len(targets) == 0 {
 		return nil
 	}
-	if len(p.instructions) == 0 {
-		return errors.New("agent instructions not configured")
-	}
+	rctx, cancel := context.WithTimeout(ctx, retireTimeout)
+	defer cancel()
 
-	dctx, cancelD := context.WithTimeout(ctx, 30*time.Second)
-	defer cancelD()
-	created := map[string]bool{}
+	markerOrder := []string{}
+	markerClear := map[string]bool{}
 	for _, target := range targets {
-		directory := path.Dir(target.Path)
-		if created[directory] {
-			continue
+		if _, seen := markerClear[target.HashPath]; !seen {
+			markerOrder = append(markerOrder, target.HashPath)
+			markerClear[target.HashPath] = true
 		}
-		if out, err := p.runner.Run(dctx, "exec", containerName, "--",
-			"install", "-d", "-m", "700", directory); err != nil {
-			return fmt.Errorf("mkdir %s: %w; output: %s", directory, err, out)
-		}
-		created[directory] = true
-	}
-
-	type batch struct {
-		hashPath string
-		paths    []string
-	}
-	var batches []batch
-	for _, target := range targets {
-		index := -1
-		for i := range batches {
-			if batches[i].hashPath == target.HashPath {
-				index = i
-				break
+		out, err := p.runner.Run(rctx, "exec", containerName, "--",
+			"sh", "-c", retireScript, "sh", target.Path, target.HashPath)
+		switch strings.TrimSpace(out) {
+		case "absent", "removed":
+			if err == nil {
+				continue
 			}
 		}
-		if index < 0 {
-			batches = append(batches, batch{hashPath: target.HashPath})
-			index = len(batches) - 1
-		}
-		batches[index].paths = append(batches[index].paths, target.Path)
+		markerClear[target.HashPath] = false
 	}
-	for _, batch := range batches {
-		if err := p.publisher.Push(ctx, containerName, p.instructions,
-			batch.hashPath, "644", batch.paths...); err != nil {
-			return err
+	clean := true
+	for _, hashPath := range markerOrder {
+		if !markerClear[hashPath] {
+			clean = false
+			continue
 		}
+		if _, err := p.runner.Run(rctx, "exec", containerName, "--", "rm", "-f", "--", hashPath); err != nil {
+			clean = false
+		}
+	}
+	if clean {
+		p.retired.Store(containerName, true)
 	}
 	return nil
 }
 
-func configuredInstructionTargets(profiles []provisioning.Profile) []provisioning.InstructionTarget {
+func legacyInstructionTargets(profiles []provisioning.Profile) []provisioning.InstructionTarget {
 	targets := make([]provisioning.InstructionTarget, 0, len(profiles))
 	for _, profile := range profiles {
-		if profile.Instructions != nil {
-			targets = append(targets, *profile.Instructions)
+		if profile.LegacyInstructions != nil {
+			targets = append(targets, *profile.LegacyInstructions)
 		}
 	}
 	return targets
