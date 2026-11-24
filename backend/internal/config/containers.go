@@ -141,11 +141,7 @@ func NewContainerStack(
 		launchProvisioner,
 		profiles,
 	)
-	inspectionAdapter := containerinspection.NewAdapter(
-		runner,
-		profiles,
-		options.HarnessInstructions,
-	)
+	inspectionAdapter := containerinspection.NewAdapter(runner, profiles)
 	inspection := serviceinspection.NewService(serviceinspection.Dependencies{
 		States:        lifecycle,
 		Configuration: inspectionAdapter,
