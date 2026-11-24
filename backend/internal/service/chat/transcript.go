@@ -38,6 +38,11 @@ type TranscriptPageQuery struct {
 	Limit     int
 	BeforeSeq int64
 	ByteLimit int
+	// NewerTurns, with AnchorSeq, ends the page NewerTurns turns after the
+	// turn holding AnchorSeq instead of at BeforeSeq: a window around a
+	// message, such as a search result, without loading everything newer.
+	AnchorSeq  int64
+	NewerTurns int
 }
 
 // TranscriptTurn groups the events selected for one prompt run. Events retain
@@ -55,6 +60,9 @@ type TranscriptPage struct {
 	NextBefore int64            `json:"nextBefore,omitempty"`
 	LastSeq    int64            `json:"lastSeq"`
 	HasMore    bool             `json:"hasMore"`
+	// NewerFrom is the first sequence after an anchored page when newer turns
+	// exist beyond it; zero means the page reaches the end of the transcript.
+	NewerFrom int64 `json:"newerFrom,omitempty"`
 }
 
 // TranscriptContentPage is one valid UTF-8 chunk of an oversized transcript

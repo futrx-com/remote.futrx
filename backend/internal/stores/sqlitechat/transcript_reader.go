@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"slices"
 
 	constants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -37,6 +38,17 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 	segments, err := branchSegments(ctx, s.db, branch, last)
 	if err != nil {
 		return servicechat.TranscriptPage{}, err
+	}
+	var newerFrom int64
+	if q.NewerTurns > 0 {
+		newerFrom, err = s.newerTurnBoundary(ctx, segments, q.AnchorSeq, min(q.NewerTurns, constants.MaxChatTranscriptTurnLimit))
+		if err != nil {
+			return servicechat.TranscriptPage{}, err
+		}
+		before = math.MaxInt64
+		if newerFrom > 0 {
+			before = newerFrom
+		}
 	}
 	buffer := newTranscriptPageBuffer(limit, budget)
 	for _, seg := range segments {
@@ -73,7 +85,42 @@ func (s *Store) ReadTranscriptPage(ctx context.Context, id servicechat.ID, q ser
 			break
 		}
 	}
-	return buffer.page(last), nil
+	page := buffer.page(last)
+	page.NewerFrom = newerFrom
+	return page, nil
+}
+
+// newerTurnBoundary returns where the turn n+1 turns after the one holding
+// anchor begins, or zero when the transcript ends sooner. Sequences grow
+// across a fork's lineage, so each segment's turn starts merge in order.
+func (s *Store) newerTurnBoundary(ctx context.Context, segments []branchSegment, anchor int64, n int) (int64, error) {
+	var starts []int64
+	for _, seg := range segments {
+		rows, err := s.db.QueryContext(ctx, `SELECT seq FROM events WHERE branch_id=? AND seq=turn_start_seq AND seq>? AND seq<=?
+                ORDER BY seq LIMIT ?`, seg.id, anchor, seg.through, n+1)
+		if err != nil {
+			return 0, err
+		}
+		for rows.Next() {
+			var seq int64
+			if err = rows.Scan(&seq); err != nil {
+				rows.Close()
+				return 0, err
+			}
+			starts = append(starts, seq)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return 0, err
+		}
+	}
+	slices.Sort(starts)
+	starts = slices.Compact(starts)
+	if len(starts) <= n {
+		return 0, nil
+	}
+	return starts[n], nil
 }
 
 type transcriptItemHeader struct {

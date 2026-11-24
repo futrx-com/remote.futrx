@@ -168,20 +168,44 @@ class TextMatchService {
   }
 
   /**
-   * Find `token` as an ordered subsequence of `folded`, preferring characters
-   * that sit at word starts. Catches acronym-ish input like "wss" for
-   * "workspace sidebar state".
+   * Find `token` as an ordered subsequence of `folded` in which every
+   * character starts a word or continues the one matched just before it.
+   * Catches acronym-ish input like "wss" for "workspace sidebar state" and
+   * "sbst" for "sidebar state", but not letters scattered through words:
+   * "test" does not match "Postgres migration".
    */
   #matchSubsequence(folded: string, token: string): MatchSpan[] | null {
+    const positions: number[] = [];
+    // A (token index, cursor) pair that failed once fails every time; keeping
+    // them bounds the backtracking to the field's length per character.
+    const failed = new Set<number>();
+    const place = (index: number, cursor: number): boolean => {
+      if (index === token.length) return true;
+      const key = index * (folded.length + 1) + cursor;
+      if (failed.has(key)) return false;
+      const char = token[index];
+      // Continuing the previous match keeps a run whole, so try it first.
+      if (index > 0 && folded[cursor] === char) {
+        positions.push(cursor);
+        if (place(index + 1, cursor + 1)) return true;
+        positions.pop();
+      }
+      for (let at = folded.indexOf(char, cursor); at >= 0; at = folded.indexOf(char, at + 1)) {
+        if (!this.#isWordStart(folded, at)) continue;
+        positions.push(at);
+        if (place(index + 1, at + 1)) return true;
+        positions.pop();
+      }
+      failed.add(key);
+      return false;
+    };
+    if (!place(0, 0)) return null;
+
     const spans: MatchSpan[] = [];
-    let cursor = 0;
-    for (const char of token) {
-      const found = folded.indexOf(char, cursor);
-      if (found < 0) return null;
+    for (const at of positions) {
       const last = spans[spans.length - 1];
-      if (last && last.end === found) last.end = found + 1;
-      else spans.push({ start: found, end: found + 1 });
-      cursor = found + 1;
+      if (last && last.end === at) last.end = at + 1;
+      else spans.push({ start: at, end: at + 1 });
     }
     return spans;
   }

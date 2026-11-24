@@ -39,6 +39,14 @@ class ChatFindHighlightService {
     // thread's own header out of view.
     scroller.scrollTop += rect.top - box.top - (box.height - rect.height) / 2;
   }
+
+  /** Scroll `element`'s top into view inside `scroller`, the same way. */
+  revealElement(scroller: HTMLElement | null, element: HTMLElement): void {
+    if (!scroller) return;
+    const rect = element.getBoundingClientRect();
+    const box = scroller.getBoundingClientRect();
+    scroller.scrollTop += rect.top - box.top - CHAT_FIND_REVEAL_MARGIN;
+  }
 }
 
 export const chatFindHighlightService = new ChatFindHighlightService();

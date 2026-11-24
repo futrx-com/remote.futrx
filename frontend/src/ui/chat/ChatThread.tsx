@@ -30,6 +30,10 @@ export function ChatThread({
   onAnswerQuestion,
   onRespondInteraction,
   onLoadOlder,
+  hasNewer,
+  loadingNewer,
+  onLoadNewer,
+  revealT,
   onRewind,
   actions,
   projectName,
@@ -55,6 +59,12 @@ export function ChatThread({
   onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
+  /** A window of older messages is shown, with newer ones not loaded. */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  onLoadNewer: () => Promise<void>;
+  /** Event time whose message must stay rendered, for find's jumps. */
+  revealT: number | null;
   onRewind: (t: number, text: string) => void;
   /** Workspace controls. Rendered in the header on desktop and in the toolbar
    *  strip below it on mobile — only ever one of the two is visible. */
@@ -95,6 +105,10 @@ export function ChatThread({
             onAnswerQuestion={onAnswerQuestion}
             onRespondInteraction={onRespondInteraction}
             onLoadOlder={onLoadOlder}
+            hasNewer={hasNewer}
+            loadingNewer={loadingNewer}
+            onLoadNewer={onLoadNewer}
+            revealT={revealT}
             onRewind={onRewind}
           />
           <ChatFindBar find={find} />

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
 import {
   CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
+  CHAT_JUMP_CONTEXT_TURNS,
   CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
 } from "../../../config/api.ts";
 import type {
@@ -39,6 +40,14 @@ interface UseChatResult {
   respondInteraction: ChatInteractionResponder;
   rewind: (beforeT: number) => Promise<ChatEventPage>;
   loadOlder: () => Promise<void>;
+  /** Newer messages exist below a window opened by `showAround`. */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  /** Load the turns around event `seq` when they are not loaded yet. */
+  showAround: (seq: number) => Promise<void>;
+  loadNewer: () => Promise<void>;
+  /** Leave a window of older messages for the live conversation. */
+  returnToLatest: () => Promise<void>;
   refreshMeta: (throwOnError?: boolean) => Promise<void>;
 }
 
@@ -62,6 +71,15 @@ export function useChat(chatId: string): UseChatResult {
   const [promptOutcome, setPromptOutcome] = useState<PromptOutcome | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [historyReadyForStream, setHistoryReadyForStream] = useState(false);
+  // Read by loops that page through history across several awaits.
+  const renderStateRef = useRef(renderState);
+  renderStateRef.current = renderState;
+  const [hasNewer, setHasNewer] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  // While a window of older messages is shown, live events wait here so they
+  // are not drawn after it with a gap between.
+  const detachedRef = useRef(false);
+  const detachedEventsRef = useRef<ChatEvent[]>([]);
   const streamRef = useRef<ChatStream | null>(null);
   const pendingEventsRef = useRef<ChatEvent[]>([]);
   const pendingFrameRef = useRef<number | null>(null);
@@ -95,7 +113,8 @@ export function useChat(chatId: string): UseChatResult {
       lastSeqRef.current,
       chatEventStateProjector.latestSequence(events)
     );
-    setRenderState((current) => chatEventStateProjector.append(current, events));
+    if (detachedRef.current) detachedEventsRef.current.push(...events);
+    else setRenderState((current) => chatEventStateProjector.append(current, events));
     setStatus((current) => chatEventStateProjector.statusAfter(events[events.length - 1], current));
     if (events.some((event) => event.type === "user" || event.type === "complete" || event.type === "error"
       || (event.type === "turn_status" && isTerminalTurnStatus(event.status)))) {
@@ -124,6 +143,10 @@ export function useChat(chatId: string): UseChatResult {
     setPromptOutcome(null);
     setLoadingOlder(false);
     setHistoryReadyForStream(false);
+    detachedRef.current = false;
+    detachedEventsRef.current = [];
+    setHasNewer(false);
+    setLoadingNewer(false);
     lastSeqRef.current = 0;
     hydratedTextPartRef.current = null;
 
@@ -185,6 +208,10 @@ export function useChat(chatId: string): UseChatResult {
         if (streamRef.current !== stream || generation !== historyGenerationRef.current) return;
         const suffix = eventsDuringRefresh.filter((event) => !event.seq || event.seq > page.lastSeq);
         lastSeqRef.current = Math.max(page.lastSeq, chatEventStateProjector.latestSequence(suffix));
+        // A reload always shows the latest messages, leaving any window.
+        detachedRef.current = false;
+        detachedEventsRef.current = [];
+        setHasNewer(false);
         setRenderState(chatEventStateProjector.append(chatEventStateProjector.fromEvents(page.events, page), suffix));
         hydratedTextPartRef.current = null;
         historyNeedsRefreshRef.current = false;
@@ -267,6 +294,8 @@ export function useChat(chatId: string): UseChatResult {
     if (status !== "ready") return false;
     setStatus("streaming");
     setLocallyStartedTurn(true);
+    // A prompt belongs after the latest messages, not a window of old ones.
+    if (detachedRef.current) void reloadHistoryRef.current?.();
     stream.sendPrompt(text, clientId);
     return true;
   }, [status, wsReady, synced]);
@@ -322,6 +351,76 @@ export function useChat(chatId: string): UseChatResult {
     }
   }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
 
+  // Leaves a detached window and shows the live conversation again.
+  const reattach = useCallback((state: ChatRenderState) => {
+    const buffered = detachedEventsRef.current;
+    detachedEventsRef.current = [];
+    detachedRef.current = false;
+    setHasNewer(false);
+    setRenderState(chatEventStateProjector.append(state, buffered));
+  }, []);
+
+  const showAround = useCallback(async (seq: number) => {
+    if (historyNeedsRefreshRef.current) return;
+    const loaded = renderStateRef.current.events;
+    const earliest = loaded.reduce(
+      (min, event) => (event.seq ? Math.min(min, event.seq) : min),
+      Number.POSITIVE_INFINITY,
+    );
+    const latest = chatEventStateProjector.latestSequence(loaded);
+    if (seq >= earliest && (!detachedRef.current || seq <= latest)) return;
+    const generation = historyGenerationRef.current;
+    setLoadingOlder(true);
+    try {
+      const page = await chatApi.fetchTranscript(chatId, {
+        limit: CHAT_JUMP_CONTEXT_TURNS * 2 + 1,
+        anchor: seq,
+        newer: CHAT_JUMP_CONTEXT_TURNS,
+      });
+      if (generation !== historyGenerationRef.current) return;
+      const current = renderStateRef.current;
+      if (!detachedRef.current && (!page.newerFrom || page.newerFrom >= earliest)) {
+        // The window meets the loaded conversation: one continuous thread.
+        setRenderState(chatEventStateProjector.prepend(current, page));
+      } else if (!page.newerFrom) {
+        reattach(chatEventStateProjector.fromEvents(page.events, page));
+      } else {
+        // A gap separates the window from the latest messages. Show the
+        // window alone; newer pages close the gap on request.
+        detachedRef.current = true;
+        setHasNewer(true);
+        setRenderState(chatEventStateProjector.fromEvents(page.events, page));
+      }
+    } finally {
+      if (generation === historyGenerationRef.current) setLoadingOlder(false);
+    }
+  }, [chatId, reattach]);
+
+  const loadNewer = useCallback(async () => {
+    if (!detachedRef.current || loadingNewer) return;
+    const generation = historyGenerationRef.current;
+    const latest = chatEventStateProjector.latestSequence(renderStateRef.current.events);
+    setLoadingNewer(true);
+    try {
+      const page = await chatApi.fetchTranscript(chatId, {
+        limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
+        anchor: latest,
+        newer: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
+      });
+      if (generation !== historyGenerationRef.current || !detachedRef.current) return;
+      const extended = chatEventStateProjector.append(renderStateRef.current, page.events);
+      if (page.newerFrom) setRenderState(extended);
+      else reattach(extended);
+    } finally {
+      if (generation === historyGenerationRef.current) setLoadingNewer(false);
+    }
+  }, [chatId, loadingNewer, reattach]);
+
+  const returnToLatest = useCallback(async () => {
+    if (!detachedRef.current) return;
+    await reloadHistoryRef.current?.();
+  }, []);
+
   const refreshMeta = useCallback(async (throwOnError = false) => {
     if (!chatId) return;
     try {
@@ -352,6 +451,11 @@ export function useChat(chatId: string): UseChatResult {
     respondInteraction,
     rewind,
     loadOlder,
+    hasNewer,
+    loadingNewer,
+    showAround,
+    loadNewer,
+    returnToLatest,
     refreshMeta,
   };
 }

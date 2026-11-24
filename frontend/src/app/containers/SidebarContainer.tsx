@@ -1,4 +1,7 @@
-import { useMemo } from "preact/hooks";
+import { useCallback, useMemo } from "preact/hooks";
+import type { ChatSearchHit } from "../../api/chat/chatTranscriptApi";
+import { chatJumpRequestService } from "../../services/chat/chatJumpRequestService.ts";
+import { useMessageSearch } from "../../state/hooks/chat/useMessageSearch";
 import { Sidebar } from "../../ui/sidebar/Sidebar";
 import { useAuthContext } from "../../state/context/AuthContext";
 import { useWorkspaceContext } from "../../state/context/WorkspaceContext";
@@ -22,6 +25,17 @@ export function SidebarContainer({ updateTag }: { updateTag: string | null }) {
   const signOut = useAccountSignOut(auth.email || auth.adminEmail);
   const search = useSidebarSearch();
   const openPalette = useOpenCommandPalette();
+  const messageSearch = useMessageSearch(search.query);
+  const titles = useMemo(
+    () => new Map(workspace.chats.map((chat) => [chat.id, chat.title])),
+    [workspace.chats],
+  );
+  const chatTitle = useCallback((chatId: string) => titles.get(chatId) || "Untitled chat", [titles]);
+  const { selectChat } = workspace;
+  const openMessage = useCallback((hit: ChatSearchHit) => {
+    chatJumpRequestService.request({ chatId: hit.chatId, query: search.query.trim(), hit });
+    selectChat(hit.chatId);
+  }, [search.query, selectChat]);
   const model = useMemo(
     () => workspaceSidebarService.model(workspace.chats, workspace.projects),
     [workspace.chats, workspace.projects]
@@ -47,6 +61,9 @@ export function SidebarContainer({ updateTag }: { updateTag: string | null }) {
       onNewChatInProject={commands.newChatInProject}
       onToggleProject={sidebar.toggleCollapsed}
       onSelectChat={workspace.selectChat}
+      messageSearch={messageSearch}
+      chatTitle={chatTitle}
+      onOpenMessage={openMessage}
       onDeleteChat={commands.deleteChat}
       onToggleChatUnread={commands.toggleChatUnread}
       onForkChat={commands.forkChat}

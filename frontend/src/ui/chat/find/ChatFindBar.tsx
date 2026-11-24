@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { CHAT_FIND_SKIP_ATTRIBUTE } from "../../../config/chat.ts";
 import type { ChatFind } from "../../../state/hooks/chat/useChatFind";
 import { shortcutService } from "../../../services/platform/shortcutService.ts";
+import { ChatFindResults } from "./ChatFindResults";
 import { ArrowDown, ArrowUp, Search, X } from "../../primitives/icons";
 
 const stepButtonClass =
@@ -53,6 +54,7 @@ export function ChatFindBar({
             // whole thread, so closing works with the cursor anywhere.
             if (event.key === "Enter") {
               event.preventDefault();
+              find.setListOpen(false);
               event.shiftKey ? find.previous() : find.next();
             } else if (shortcutService.isFind(event)) {
               // Cmd/Ctrl+F again re-selects the query, as a browser's find
@@ -81,7 +83,9 @@ export function ChatFindBar({
               ? "No results"
               : status.kind === "loading" ? "Searching…"
               : status.kind === "error" ? "Search failed"
-              : `${status.position} of ${status.total}${status.total === 100 ? "+" : ""}`}
+              : status.position === 0
+                ? `${status.total}${status.more ? "+" : ""} result${status.total === 1 && !status.more ? "" : "s"}`
+                : `${status.position} of ${status.total}${status.more ? "+" : ""}`}
         </span>
         <button
           type="button"
@@ -114,27 +118,25 @@ export function ChatFindBar({
         </button>
       </div>
 
-      <p class="text-[10.5px] leading-tight text-ink-400">
-        Searching the full conversation. {status.kind === "matched" && "Results are matching messages and tool outputs."}
-      </p>
       {status.kind === "error" && <p role="alert" class="text-xs text-accent-red">{status.message}</p>}
-      {find.selectedHit && (
-        <section aria-label="Search result preview" class="mt-2 max-h-[55vh] w-[min(36rem,80vw)] overflow-auto border-t border-line pt-2 text-xs">
-          <p class="mb-2 whitespace-pre-wrap break-words text-ink-100">{find.selectedHit.text}</p>
-          {find.previewLoading && <p class="text-ink-400">Loading conversation turn…</p>}
-          {find.previewError && <p role="alert" class="text-accent-red">{find.previewError}</p>}
-          {find.preview.map((event, index) => {
-            const text = event.type === "tool_use_end" ? event.output : (event.type === "user" || event.type === "assistant_text") ? event.text : "";
-            if (!text) return null;
-            const label = event.type === "user" ? "You" : event.type === "tool_use_end" ? "Tool output" : "Assistant";
-            return <div key={`${event.seq}-${index}`} class="mb-3 rounded-control bg-surface p-2">
-              <p class="mb-1 font-medium text-ink-400">{label}</p>
-              <p class="whitespace-pre-wrap break-words text-ink-200">{text.slice(0, 12000)}</p>
-              {(text.length > 12000 || (event.type === "tool_use_end" && event.outputTruncated)) && <p class="mt-1 text-ink-400">Preview excerpt</p>}
-            </div>;
-          })}
-        </section>
-      )}
+      {status.kind === "matched" && (find.listOpen ? (
+        <ChatFindResults
+          hits={find.hits}
+          selectedIndex={find.selectedIndex}
+          hasMore={find.hasMore}
+          loadingMore={find.loadingMore}
+          onLoadMore={find.loadMore}
+          onSelect={find.select}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => find.setListOpen(true)}
+          class="self-start rounded px-1 text-[11px] text-ink-400 transition-colors hover:text-ink-100"
+        >
+          Show all results
+        </button>
+      ))}
     </div>
   );
 }

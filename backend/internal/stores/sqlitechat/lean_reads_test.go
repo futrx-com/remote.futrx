@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	constants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	chat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
@@ -137,6 +138,28 @@ func TestLargeSingleTextEventSearchAndForkPrefix(t *testing.T) {
 	}
 }
 
+// Indexing an oversized answer must scale linearly with its size. Re-extracting
+// the payload per chunk was quadratic and timed searches out behind the proxy.
+func TestLargeTextEventIndexingScalesLinearly(t *testing.T) {
+	indexTime := func(megabytes int) time.Duration {
+		s := testStore(t)
+		makeChat(t, s, "aaaa")
+		text := strings.Repeat("🙂 alpha ", megabytes*1024*1024/11) + "tailneedle"
+		appendEvents(t, s, "aaaa", chat.Event{Type: "assistant_text", TurnID: "one", MessageID: "m", Text: text})
+		start := time.Now()
+		hits, err := s.SearchTranscript(testContext, "aaaa", "tailneedle", 10)
+		if err != nil || len(hits) != 1 {
+			t.Fatalf("%dMB answer: %+v %v", megabytes, hits, err)
+		}
+		return time.Since(start)
+	}
+	small, large := indexTime(1), indexTime(8)
+	// Linear indexing costs ~8x here; the quadratic path cost ~64x.
+	if large > 24*small {
+		t.Fatalf("8MB answer took %v, 1MB took %v: indexing is superlinear", large, small)
+	}
+}
+
 func TestCollaborationPreservesOpaqueJSONShapes(t *testing.T) {
 	for _, raw := range []string{
 		`"opaque"`, `42`, `true`, `null`, `["opaque",{"future":true}]`,
@@ -207,5 +230,149 @@ func TestConcurrentFirstSearchWhileTextContinues(t *testing.T) {
 	close(failures)
 	for err := range failures {
 		t.Error(err)
+	}
+}
+
+func TestSearchHitsReportSourceKindAndTime(t *testing.T) {
+	s := testStore(t)
+	makeChat(t, s, "aaaa")
+	appendEvents(t, s, "aaaa",
+		chat.Event{Type: "user", TurnID: "one", Text: "please check kindneedle", T: 100},
+		chat.Event{Type: "thinking", TurnID: "one", MessageID: "think", Text: "kindneedle reasoning", T: 200},
+		chat.Event{Type: "tool_use_start", TurnID: "one", ID: "tool", Name: "Bash", T: 300},
+		chat.Event{Type: "tool_use_end", TurnID: "one", ID: "tool", Output: "kindneedle output", T: 400},
+		chat.Event{Type: "assistant_text", TurnID: "one", MessageID: "answer", Text: "kindneedle ", T: 500},
+		chat.Event{Type: "assistant_text", TurnID: "one", MessageID: "answer", Text: "answer", T: 600},
+	)
+	hits, err := s.SearchTranscript(testContext, "aaaa", "kindneedle", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int64{}
+	for _, hit := range hits {
+		got[hit.Kind] = hit.T
+	}
+	want := map[string]int64{"user": 100, "thinking": 200, "tool_use_end": 400, "assistant_text": 500}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("kinds and times: got %v want %v (hits %+v)", got, want, hits)
+	}
+}
+
+func TestSearchMatchesLastWordAsPrefix(t *testing.T) {
+	s := testStore(t)
+	makeChat(t, s, "aaaa")
+	appendEvents(t, s, "aaaa",
+		chat.Event{Type: "user", TurnID: "one", Text: "please run the integration tests", T: 100},
+		chat.Event{Type: "assistant_text", TurnID: "one", MessageID: "m", Text: "Testing finished: zebra-start passed", T: 200},
+	)
+	for query, want := range map[string]int{
+		"t":                2, // "the", "tests", "Testing"
+		"integ":            1,
+		"integration te":   1, // a phrase whose last word is still being typed
+		"zebra-sta":        1,
+		"tests passed":     0, // earlier words still match whole
+		"-":                0,
+		`"`:                0,
+		"run the integrat": 1,
+	} {
+		hits, err := s.SearchTranscript(testContext, "aaaa", query, 10)
+		if err != nil {
+			t.Fatalf("%q: %v", query, err)
+		}
+		if len(hits) != want {
+			t.Fatalf("%q: got %d hits, want %d: %+v", query, len(hits), want, hits)
+		}
+	}
+}
+
+func TestSearchPagesReachTheOldestMatch(t *testing.T) {
+	s := testStore(t)
+	makeChat(t, s, "aaaa")
+	for i := 0; i < 250; i++ {
+		appendEvents(t, s, "aaaa", chat.Event{Type: "user", TurnID: fmt.Sprintf("turn-%03d", i), Text: fmt.Sprintf("pagedword number %d", i), T: int64(1000 + i)})
+	}
+	var all []chat.SearchHit
+	before := int64(0)
+	for page := 0; page < 10; page++ {
+		hits, err := s.SearchTranscriptPage(testContext, "aaaa", "pagedword", 100, before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(hits) == 0 {
+			break
+		}
+		all = append(all, hits...)
+		before = hits[len(hits)-1].StartSeq
+	}
+	if len(all) != 250 {
+		t.Fatalf("paged through %d hits, want 250", len(all))
+	}
+	for i := 1; i < len(all); i++ {
+		if all[i].StartSeq >= all[i-1].StartSeq {
+			t.Fatalf("hits not strictly newest first at %d: %d then %d", i, all[i-1].StartSeq, all[i].StartSeq)
+		}
+	}
+	if all[0].T != 1249 || all[len(all)-1].T != 1000 {
+		t.Fatalf("pages span %d..%d, want newest 1249 to oldest 1000", all[0].T, all[len(all)-1].T)
+	}
+}
+
+func TestTranscriptWindowAroundAnchor(t *testing.T) {
+	s := testStore(t)
+	makeChat(t, s, "aaaa")
+	userSeq := map[int]int64{}
+	for i := 1; i <= 30; i++ {
+		turn := fmt.Sprintf("turn-%02d", i)
+		seq, err := s.AppendEvent(testContext, "aaaa", chat.Event{Type: "user", TurnID: turn, Text: fmt.Sprintf("question %d", i), T: int64(i * 10)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		userSeq[i] = seq.Seq
+		appendEvents(t, s, "aaaa", chat.Event{Type: "assistant_text", TurnID: turn, MessageID: turn, Text: fmt.Sprintf("answer %d", i), T: int64(i*10 + 1)})
+	}
+	turnsOf := func(page chat.TranscriptPage) []string {
+		var ids []string
+		for _, turn := range page.Turns {
+			ids = append(ids, turn.ID)
+		}
+		return ids
+	}
+
+	page, err := s.ReadTranscriptPage(testContext, "aaaa", chat.TranscriptPageQuery{Limit: 7, AnchorSeq: userSeq[15], NewerTurns: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := turnsOf(page)
+	if len(got) != 7 || got[0] != "turn-12" || got[6] != "turn-18" {
+		t.Fatalf("window around turn 15: got %v, want turn-12..turn-18", got)
+	}
+	if page.NewerFrom != userSeq[19] || !page.HasMore {
+		t.Fatalf("window cursors: newerFrom=%d (want %d) hasMore=%v", page.NewerFrom, userSeq[19], page.HasMore)
+	}
+
+	// Near the end there are fewer newer turns than asked for: the page ends
+	// with the transcript and reports nothing newer.
+	page, err = s.ReadTranscriptPage(testContext, "aaaa", chat.TranscriptPageQuery{Limit: 7, AnchorSeq: userSeq[29], NewerTurns: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = turnsOf(page)
+	if page.NewerFrom != 0 || got[len(got)-1] != "turn-30" {
+		t.Fatalf("window at the end: got %v newerFrom=%d", got, page.NewerFrom)
+	}
+}
+
+func TestSearchUntilBoundsMatchesByTime(t *testing.T) {
+	s := testStore(t)
+	makeChat(t, s, "aaaa")
+	for i := 1; i <= 5; i++ {
+		appendEvents(t, s, "aaaa", chat.Event{Type: "user", TurnID: fmt.Sprintf("turn-%d", i), Text: "timedword", T: int64(i * 100)})
+	}
+	hits, err := s.SearchTranscriptUntil(testContext, "aaaa", "timedword", 10, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 3 || hits[0].T != 300 || hits[2].T != 100 {
+		t.Fatalf("hits until t=300: %+v", hits)
 	}
 }

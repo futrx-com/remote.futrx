@@ -152,15 +152,22 @@ func indexSearchEvent(ctx context.Context, tx *sql.Tx, branch string, p *pending
 		if err := p.appendText(e.seq, e.ordinal, e.turn, e.group, e.text, emit); err != nil {
 			return err
 		}
-		// A single assistant event may contain a whole answer. Transfer
-		// only bounded UTF-8 chunks when indexing such an event.
+		// A single assistant event may contain a whole answer. Read its text
+		// once: extracting per chunk re-parses the payload each time, which is
+		// quadratic and stalls search on multi-megabyte answers.
+		if int64(len(e.text)) >= e.textBytes {
+			return nil
+		}
+		var text []byte
+		err := tx.QueryRowContext(ctx, `SELECT CAST(json_extract(payload_json,'$.text') AS BLOB) FROM events WHERE branch_id=? AND seq=?`, branch, e.seq).Scan(&text)
+		if err != nil {
+			return err
+		}
+		if int64(len(text)) != e.textBytes {
+			return fmt.Errorf("search text at %d changed size while indexing", e.seq)
+		}
 		for offset := int64(len(e.text)); offset < e.textBytes; {
-			var chunk string
-			err := tx.QueryRowContext(ctx, `SELECT substr(CAST(json_extract(payload_json,'$.text') AS BLOB),?,?) FROM events WHERE branch_id=? AND seq=?`, offset+1, searchChunkBytes+utf8.UTFMax, branch, e.seq).Scan(&chunk)
-			if err != nil {
-				return err
-			}
-			chunk = utf8Prefix(chunk, searchChunkBytes)
+			chunk := utf8Prefix(string(text[offset:min(offset+searchChunkBytes+utf8.UTFMax, e.textBytes)]), searchChunkBytes)
 			if len(chunk) == 0 {
 				return fmt.Errorf("empty search text chunk at %d", offset)
 			}

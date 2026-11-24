@@ -58,6 +58,7 @@ func auditWorkspaceTarget(meta servicechat.Meta) serviceaudit.Target {
 
 func (h *ChatHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/chats", h.HandleCollection)
+	mux.HandleFunc("/api/chats/search", h.HandleSearchAll)
 	mux.HandleFunc("/api/chats/", h.HandleResource)
 }
 
@@ -184,13 +185,47 @@ func (h *ChatHandler) handleSearch(w http.ResponseWriter, r *http.Request, id se
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	hits, err := h.chats.SearchTranscript(r.Context(), id, r.URL.Query().Get("q"), intQuery(r, "limit", 50))
+	hits, err := h.chats.SearchTranscript(r.Context(), id, r.URL.Query().Get("q"), intQuery(r, "limit", 50), int64Query(r, "before", 0))
 	if err != nil {
 		sendChatError(w, err)
 		return
 	}
 	if hits == nil {
 		hits = []servicechat.SearchHit{}
+	}
+	httptransport.SendJSON(w, http.StatusOK, hits)
+}
+
+// HandleSearchAll searches message content across every chat the caller can
+// list. Chat IDs are hexadecimal, so this route never shadows a chat.
+func (h *ChatHandler) HandleSearchAll(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	email, isAdmin, err := h.caller(r)
+	if err != nil {
+		httptransport.SendErr(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	cursor, err := servicechat.ParseChatSearchCursor(r.URL.Query().Get("before"))
+	if err != nil {
+		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	metas, err := h.access.List(r.Context(), email, isAdmin)
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	ids := make([]servicechat.ID, 0, len(metas))
+	for _, meta := range metas {
+		ids = append(ids, meta.ID)
+	}
+	hits, err := h.chats.SearchChats(r.Context(), ids, r.URL.Query().Get("q"), intQuery(r, "limit", 50), cursor)
+	if err != nil {
+		sendChatError(w, err)
+		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, hits)
 }
@@ -217,9 +252,11 @@ func (h *ChatHandler) handleTranscript(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	page, err := h.chats.TranscriptPage(r.Context(), id, servicechat.TranscriptPageQuery{
-		Limit:     intQuery(r, "limit", 0),
-		BeforeSeq: int64Query(r, "before", 0),
-		ByteLimit: intQuery(r, "bytes", 0),
+		Limit:      intQuery(r, "limit", 0),
+		BeforeSeq:  int64Query(r, "before", 0),
+		ByteLimit:  intQuery(r, "bytes", 0),
+		AnchorSeq:  int64Query(r, "anchor", 0),
+		NewerTurns: intQuery(r, "newer", 0),
 	})
 	if err != nil {
 		sendChatError(w, err)

@@ -6,6 +6,7 @@ import {
   fetchTranscript,
   fetchTranscriptContent,
   searchTranscript,
+  searchChats,
 } from "./chat/chatTranscriptApi";
 import type { ChatMeta, CreateChatInput, UpdateChatInput } from "../models/chat";
 import { API_ROUTES } from "../config/routes";
@@ -28,6 +29,7 @@ export const chatApi = {
     requestJson<ChatMeta>("POST", API_ROUTES.chats.fork(id), {}),
   fetchTranscript,
   searchTranscript,
+  searchChats,
   fetchTranscriptContent,
   fetchFullTranscriptContent,
   rewind: chatEventsApi.rewind,

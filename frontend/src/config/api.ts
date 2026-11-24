@@ -12,6 +12,10 @@ export const DEFAULT_AUDIT_LOG_LIMIT = 50;
 export const CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT = 10;
 /** Complete conversation turns fetched on each older-history page. */
 export const CHAT_TRANSCRIPT_TURN_PAGE_LIMIT = 20;
+/** Turns loaded on each side of a message that find jumps to. */
+export const CHAT_JUMP_CONTEXT_TURNS = 10;
+/** Find-in-chat matches per page; the server's maximum. */
+export const CHAT_SEARCH_PAGE_LIMIT = 100;
 export const DIRTY_WORKING_TREE_FALLBACK_MESSAGE = "dirty working tree";
 export const DEFAULT_UPLOAD_MEDIA_TYPE = "application/octet-stream";
 export const CHAT_STREAM_MESSAGE_TYPES = {

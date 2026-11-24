@@ -1,6 +1,7 @@
 import type { ChatMeta } from "../../models/chat";
 import type { ProjectMeta } from "../../models/project";
-import { useEffect, useRef } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import type { ConversationSearchHit } from "../../api/chat/chatTranscriptApi";
 import { BrowserDrawer } from "../../ui/chat/browser/BrowserDrawer";
 import { ExtensionDrawer } from "../../ui/chat/extensions/ExtensionDrawer";
 import { ChatThread } from "../../ui/chat/ChatThread";
@@ -16,6 +17,8 @@ import { useChatDrawerController } from "../../state/hooks/chat/useChatDrawerCon
 import { extensionDrawerState } from "../../state/hooks/chat/extensionDrawerState";
 import { useExtensionDrawers } from "../../state/hooks/extensions/useExtensionDrawers";
 import { useChatFind } from "../../state/hooks/chat/useChatFind";
+import { useChatJumpRequest } from "../../state/hooks/chat/useChatJumpRequest";
+import { chatJumpRequestService } from "../../services/chat/chatJumpRequestService.ts";
 import { useChatPreferences } from "../../state/hooks/chat/useChatPreferences";
 import { useAgentCapabilities } from "../../state/hooks/chat/useAgentCapabilities";
 import { streamingPresentationFor } from "../../services/chat/streamingPresentation";
@@ -50,6 +53,11 @@ export function ChatContainer({
     respondInteraction,
     rewind,
     loadOlder,
+    hasNewer,
+    loadingNewer,
+    showAround,
+    loadNewer,
+    returnToLatest,
     refreshMeta,
   } = useChat(chat.id);
   const preferences = useChatPreferences({ chat, loadedMeta: meta, refreshMeta });
@@ -98,12 +106,43 @@ export function ChatContainer({
 
   // `eventCount` stands in for "the thread changed": find re-reads the rendered
   // messages on it, so a match list cannot go stale against a streaming reply.
+  // The event time find last jumped to; the message list keeps its block
+  // rendered even when it is older than the visible window.
+  const [revealT, setRevealT] = useState<number | null>(null);
+  useEffect(() => setRevealT(null), [chat.id]);
+  const { holdPosition } = composer.scroll;
+  const revealHit = useCallback(async (hit: ConversationSearchHit) => {
+    // Loading history grows the thread, which would otherwise pin it to the
+    // bottom again before the jump scrolls.
+    holdPosition();
+    await showAround(hit.startSeq);
+    setRevealT(hit.t);
+  }, [holdPosition, showAround]);
+  // Newer messages grow the thread below the reader; keep their place.
+  const loadNewerMessages = useCallback(async () => {
+    holdPosition();
+    await loadNewer();
+  }, [holdPosition, loadNewer]);
+  const jumpToLatest = useCallback(async () => {
+    await returnToLatest();
+    composer.scroll.jumpToBottom();
+  }, [composer.scroll, returnToLatest]);
   const find = useChatFind({
     chatId: chat.id,
     scrollRef: composer.scroll.scrollRef,
     contentRef: composer.scroll.contentRef,
     revision: eventCount,
+    revealHit,
   });
+
+  // A message search in the sidebar can open this chat at a message. Act on
+  // it once the latest history has loaded, so the jump is not overwritten.
+  const jumpRequest = useChatJumpRequest(chat.id);
+  const { openAt } = find;
+  useEffect(() => {
+    if (!jumpRequest || status === "loading") return;
+    if (chatJumpRequestService.take(jumpRequest)) openAt(jumpRequest.query, jumpRequest.hit);
+  }, [jumpRequest, openAt, status]);
 
   useChatReadMarker({ chatId: chat.id, eventCount, status });
   // Escape cancels the reply being streamed, and is the weakest claim on the
@@ -221,16 +260,20 @@ export function ChatContainer({
             streamingPresentation={streamingPresentation}
             error={error}
             composer={composerView}
-            showJump={composer.scroll.showJump}
+            showJump={composer.scroll.showJump || hasNewer}
             scrollRef={composer.scroll.scrollRef}
             contentRef={composer.scroll.contentRef}
             bottomRef={composer.scroll.bottomRef}
             onHamburger={onHamburger}
             onScroll={composer.scroll.onScroll}
-            onJumpToBottom={composer.scroll.jumpToBottom}
+            onJumpToBottom={() => void jumpToLatest()}
             onAnswerQuestion={composer.handleAnswerQuestion}
             onRespondInteraction={respondInteraction}
             onLoadOlder={loadOlder}
+            hasNewer={hasNewer}
+            loadingNewer={loadingNewer}
+            onLoadNewer={loadNewerMessages}
+            revealT={revealT}
             onRewind={composer.handleRewind}
             projectName={project?.name}
             actions={<WorkspaceActions {...workspaceActions} orientation="horizontal" />}

@@ -96,6 +96,8 @@ export interface ChatEventPage {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
+  /** Set on a window page when newer turns exist after it. */
+  newerFrom?: number;
 }
 
 export interface TranscriptContentPage {

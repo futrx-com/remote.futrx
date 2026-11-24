@@ -1,4 +1,7 @@
 import { useEffectivePermissions } from "../../state/hooks/permissions/useEffectivePermissions";
+import type { ChatSearchHit } from "../../api/chat/chatTranscriptApi";
+import type { MessageSearch } from "../../state/hooks/chat/useMessageSearch";
+import { SidebarMessageResults } from "./SidebarMessageResults";
 import type { ChatMeta } from "../../models/chat";
 import type { WorkspaceSidebarModel } from "../../models/workspace.ts";
 import type { WorkspaceSearch } from "../../state/hooks/workspace/useWorkspaceSearch";
@@ -38,6 +41,9 @@ export function Sidebar({
   onNewChatInProject,
   onToggleProject,
   onSelectChat,
+  messageSearch,
+  chatTitle,
+  onOpenMessage,
   onDeleteChat,
   onToggleChatUnread,
   onForkChat,
@@ -65,6 +71,10 @@ export function Sidebar({
   onNewChatInProject: (projectId?: string) => void;
   onToggleProject: (projectId: string) => void;
   onSelectChat: (chatId: string) => void;
+  /** Messages matching the search query, across every chat. */
+  messageSearch: MessageSearch;
+  chatTitle: (chatId: string) => string;
+  onOpenMessage: (hit: ChatSearchHit) => void;
   onDeleteChat: (chat: ChatMeta, event: Event) => void;
   onToggleChatUnread: (chat: ChatMeta, event: Event) => void;
   onForkChat: (chat: ChatMeta, event: Event) => void;
@@ -223,7 +233,9 @@ export function Sidebar({
             <SidebarEmptyState onNewProject={onNewProject} />
           )}
 
-          {searching && results.length === 0 && <SidebarNoMatches />}
+          {searching && results.length === 0 && !messageSearch.loading && messageSearch.hits.length === 0 && (
+            <SidebarNoMatches />
+          )}
 
           {searching &&
             results.map((hit) => (
@@ -231,9 +243,18 @@ export function Sidebar({
                 key={hit.doc.chat.id}
                 hit={hit}
                 active={hit.doc.chat.id === activeChatId}
+                reason={search.describeMatch(hit)}
                 onSelect={() => onSelectChat(hit.doc.chat.id)}
               />
             ))}
+
+          {searching && (
+            <SidebarMessageResults
+              messages={messageSearch}
+              chatTitle={chatTitle}
+              onOpen={onOpenMessage}
+            />
+          )}
 
           {!searching && model.visibleProjects.map((node) => (
             <ProjectGroup
