@@ -64,7 +64,7 @@ func Profile() provisioning.Profile {
 			HostDirectory: "claude",
 			ContainerPath: "/root/.claude",
 		}},
-		Instructions: &provisioning.InstructionTarget{
+		LegacyInstructions: &provisioning.InstructionTarget{
 			Path:     "/root/.claude/CLAUDE.md",
 			HashPath: "/root/.claude/.agents-md.sha256",
 		},

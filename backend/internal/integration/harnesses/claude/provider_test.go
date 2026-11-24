@@ -478,7 +478,9 @@ func (fakeClaudeCredentials) SyncFromContainer(context.Context, string, provisio
 
 type fakeClaudeWorkspace struct{}
 
-func (fakeClaudeWorkspace) EnsureHarnessInstructions(context.Context, string) error { return nil }
+func (fakeClaudeWorkspace) HarnessInstructions() string { return "" }
+
+func (fakeClaudeWorkspace) RetireHarnessInstructions(context.Context, string) error { return nil }
 
 func (fakeClaudeWorkspace) EnsureSkillLinks(context.Context, string) error { return nil }
 
@@ -530,4 +532,24 @@ func requireClaudeArgPair(t *testing.T, args []string, first, second string) {
 		}
 	}
 	t.Fatalf("command args missing pair %q %q: %#v", first, second, args)
+}
+
+func TestArgsAppendSharedInstructionsToTheSystemPrompt(t *testing.T) {
+	provider := newTestProvider(nil, provisioning.ContainerDependencies{})
+	instructions := "# Sandbox\nmultiline guidance"
+
+	for _, req := range []harness.RunRequest{
+		{SystemInstructions: instructions},
+		{SystemInstructions: instructions, ResumeID: "session-123"},
+		{SystemInstructions: instructions, Mode: harness.RunModePlan},
+	} {
+		args := provider.args(req)
+		index := slices.Index(args, "--append-system-prompt")
+		if index < 0 || index+1 >= len(args) || args[index+1] != instructions {
+			t.Fatalf("args for %#v do not append the instructions: %#v", req, args)
+		}
+	}
+	if args := provider.args(harness.RunRequest{}); slices.Contains(args, "--append-system-prompt") {
+		t.Fatalf("host run appended instructions: %#v", args)
+	}
 }

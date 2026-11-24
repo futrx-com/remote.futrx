@@ -41,6 +41,12 @@ func (p *Provider) args(req harness.RunRequest) []string {
 	if req.EnableBrowser {
 		args = append(args, "--mcp-config", browserMCPConfigPath)
 	}
+	// Appended rather than replacing Claude Code's own system prompt. Passed
+	// inline on every run, resumed ones included, so no file has to exist in
+	// the container.
+	if req.SystemInstructions != "" {
+		args = append(args, "--append-system-prompt", req.SystemInstructions)
+	}
 	return args
 }
 
