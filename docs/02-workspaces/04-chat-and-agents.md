@@ -11,10 +11,10 @@ stateDiagram-v2
     Ready --> Running: send prompt
     Running --> Ready: complete or error, then sync unlocked
     Running --> Ready: cancel
-    Ready --> Rewound: remove selected prompt and later events
-    Rewound --> Ready: next prompt starts fresh with visible transcript
-    Ready --> Forked: copy metadata and visible history
-    Forked --> Ready: next prompt materializes provider session fork
+    Ready --> Rewound: select branch before chosen prompt
+    Rewound --> Ready: native fork or retained-history fallback on next prompt
+    Ready --> Forked: create branch sharing history
+    Forked --> Ready: native fork or retained-history fallback on next prompt
     Ready --> [*]: delete chat
 ```
 
@@ -137,8 +137,10 @@ compatible module in stable registration order.
 Each provider has its own command builder and parser. Claude, Codex, MiniMax,
 and Kimi produce structured streams; MiniMax shares Codex's app-server
 transport while retaining its own provider identity and isolated home.
-Antigravity print mode emits plain text, and its
-adapter recovers the conversation ID from the CLI brain directory. The shared
+Tracked Antigravity runs send structured input through stdin and consume
+newline-delimited JSON events. Its init event supplies the native conversation
+ID, and a completed `user_input` step acknowledges input acceptance. Legacy
+direct calls retain plain-text output and brain-directory ID discovery. The shared
 layer sees whichever normalized session, text, reasoning, tool, completion,
 usage, and error events that provider can supply.
 
@@ -294,8 +296,9 @@ The UI groups text, reasoning, and tool events into readable assistant messages.
 
 The thread also provides Markdown and syntax-highlighted code, grouped tool calls, expandable reasoning blocks, token-usage totals, a working indicator, older-history loading, jump-to-latest behavior, and an error block. An `AskUserQuestion` tool call becomes a paged answer form whose submitted answer is sent as the next prompt.
 
-Antigravity currently contributes streamed assistant text and session/error
-state, not structured reasoning, tools, or usage.
+Tracked Antigravity runs use the CLI's stdin/stream-JSON interface and expose
+session identity, text, tool calls/results and completion/error state. Native
+quota fields are not treated as per-turn token usage.
 
 ## Skills
 
@@ -329,21 +332,21 @@ Claude, Codex, and MiniMax.
 | Read/unread | Updates `lastReadAt` for sidebar indicators |
 | Cancel | Cancels the active provider context and releases the run lock |
 | Queue | Per-tab `sessionStorage` queue sends prompts one at a time after each run unlocks and removes one only after server acceptance |
-| Fork | Copies visible history and provider session IDs; next run forks without mutating the parent |
-| Rewind | Deletes the selected event and everything after it; unavailable while running |
+| Fork | Creates a branch sharing retained history; next run prefers a native fork at a retained checkpoint |
+| Rewind | Creates a branch retaining events before the selected point; unavailable while running |
 | Delete | Cancels an active run, then removes chat metadata and history |
-| Load older | Pages backward in complete prompt turns projected from the JSONL event log |
+| Load older | Assembles older SQLite events into prompt turns, subject to turn and byte budgets |
 
 Draft text and queued prompts are mirrored into per-tab `sessionStorage` by
 chat ID. They survive switching chats, navigation, and reloads in the same tab,
 but are not server-authoritative and do not cross tabs, browsers, devices, or
 users. A background chat's queue waits until that chat is active again.
 
-Live replay remains event-based and sequence-addressed. Historical reads use a
-separate turn projection: new runs carry a durable `turnId`, legacy histories
-fall back to `user` event boundaries, and adjacent assistant/reasoning deltas
-are compacted before the page is sent. Provider delta size therefore does not
-change how many conversation turns a history page contains.
+Live replay remains event-based and sequence-addressed. Historical reads use
+indexed grouping fields on the saved events: new runs carry a durable `turnId`,
+and legacy histories fall back to `user` event boundaries. Pages are assembled
+on request, with adjacent assistant/reasoning deltas coalesced before sending.
+The byte budget can end a page between display items within a large turn.
 
 ## Scheduled turns
 
@@ -358,16 +361,39 @@ selection. Scheduled turns receive a narrower `complete-self` capability tied
 to one task and run. Newly created tasks are active immediately. See
 [Scheduled tasks](06-scheduled-tasks.md).
 
-## Rewind and fresh-session context
+## Harness switching, rewind, and native continuation
 
-Rewind clears provider session IDs. On the next run, the backend converts remaining user and assistant text into a bounded visible transcript and prepends it to the current request. This keeps the visible conversation meaningful while avoiding a resume into the discarded provider session.
+SQLite tracks history delivery for each branch, provider/account and native
+session. Returning to a synchronized session supplies the intervening history
+with the next prompt. A fresh session receives the retained branch history.
+Each harness adapter formats this as explicitly historical context, including
+available user/assistant messages and exposed tool records; it does not import
+those records as native past turns or replay old tool calls.
+
+Rewind and fork create new branches and clear current mappings. Their next run
+prefers the selected harness/account's latest successful checkpoint within the
+retained history. The adapter creates a native fork at that boundary, preserving
+the source session, and Remote supplies only the retained suffix after it.
+Claude uses an assistant UUID; Codex and MiniMax use a verified completed turn.
+Missing or unsupported checkpoints use a fresh session with retained history.
+Workspace files and earlier tool effects are unchanged.
+
+Failed, interrupted or unconfirmed runs leave their native mapping uncertain;
+the next attempt starts fresh. There is no silent
+24 KB history truncation. Very large histories can still exceed a harness's
+input limit, which is reported as a failure. Harnesses retain ownership of
+their compaction and native session state.
+
+Migration assumes the last selected harness already owns the imported prefix
+and records `legacy_assumed`. It does not repair earlier mixed-provider gaps.
+See [conversation storage](../dev/conversation-storage.md).
 
 ## Code map
 
 - Chat service: [`backend/internal/service/chat/service.go`](../../backend/internal/service/chat/service.go)
 - Prompt service: [`backend/internal/service/prompt/service.go`](../../backend/internal/service/prompt/service.go)
 - Run hub: [`backend/internal/service/runhub/hub.go`](../../backend/internal/service/runhub/hub.go)
-- Agent model: [`backend/internal/service/harness/model.go`](../../backend/internal/service/harness/model.go)
+- Harness runtime contracts: [`backend/internal/service/harness/model.go`](../../backend/internal/service/harness/model.go)
 - Harness module contract and runtime: [`backend/internal/service/harness/module/`](../../backend/internal/service/harness/module/)
 - Harness authentication: [`backend/internal/service/harness/auth/`](../../backend/internal/service/harness/auth/)
 - Harness composition root: [`backend/internal/config/harnesses.go`](../../backend/internal/config/harnesses.go)
@@ -385,8 +411,8 @@ second username directory. The server takes it from the authenticated connection
 not from a client-supplied author field. Scheduled prompts record the task owner's
 stored email and retain their scheduled-task marker.
 
-Attribution stays with the event history across reloads, transcript indexing and
+Attribution stays with the event history across reloads, history reads and
 forks, even if the user is removed later. Usage-ledger rebuilds recover it from
 new completion events. Old prompts without author data show `Unknown user`;
 Remote does not guess who wrote them. Attribution follows chat-history retention:
-deleting a chat or rewinding away messages removes those messages as before.
+deleting a chat or rewinding away messages removes them from its visible history.

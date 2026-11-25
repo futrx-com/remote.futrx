@@ -99,15 +99,16 @@ export function CommandPalette({
           <div class="flex min-h-0 flex-1 flex-col">
             <FilterPanelBody
               search={search}
-              resultCount={search.outcome.total}
+              resultCount={search.outcome.hits.length}
               onClose={closeFilters}
             />
           </div>
         ) : (
           <div ref={listRef} class="min-h-0 flex-1 overflow-y-auto touch-scroll scrollbar-thin p-1.5">
             {results.length === 0 ? (
-              <p class="px-3 py-8 text-center text-[13px] text-ink-400">
-                {search.isSearching ? "No chats match." : "Start typing to search."}
+              <p role={search.error ? "alert" : "status"} class="px-3 py-8 text-center text-[13px] text-ink-400">
+                {search.error || (search.loading ? "Searching chats…" :
+                  search.isSearching ? "No chats match." : "Start typing to search.")}
               </p>
             ) : (
               results.map((hit, index) => (

@@ -5,6 +5,9 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
   const contentRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
+  // Set by a jump to an older message. Programmatic scrolls can pass near the
+  // bottom while history loads, so only the user's own scrolling releases it.
+  const heldRef = useRef(false);
   const [showJump, setShowJump] = useState(false);
 
   useEffect(() => {
@@ -31,10 +34,25 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const release = () => { heldRef.current = false; };
+    element.addEventListener("wheel", release, { passive: true });
+    element.addEventListener("touchstart", release, { passive: true });
+    element.addEventListener("keydown", release);
+    return () => {
+      element.removeEventListener("wheel", release);
+      element.removeEventListener("touchstart", release);
+      element.removeEventListener("keydown", release);
+    };
+  }, []);
+
   function onScroll() {
     const element = scrollRef.current;
     if (!element) return;
-    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+    const nearBottom = !heldRef.current &&
+      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
     userScrolledRef.current = !nearBottom;
     setShowJump((current) => (current === !nearBottom ? current : !nearBottom));
   }
@@ -46,7 +64,16 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
   }
 
   function unlockAutoScroll() {
+    heldRef.current = false;
     userScrolledRef.current = false;
+  }
+
+  /** Stop following the bottom, as a user scrolling up does, before a jump
+   *  moves the thread to an older message. */
+  function holdPosition() {
+    heldRef.current = true;
+    userScrolledRef.current = true;
+    setShowJump(true);
   }
 
   function jumpToBottom() {
@@ -63,5 +90,6 @@ export function useThreadScroll(resetKey: string, scrollKey: unknown) {
     onScroll,
     jumpToBottom,
     unlockAutoScroll,
+    holdPosition,
   };
 }

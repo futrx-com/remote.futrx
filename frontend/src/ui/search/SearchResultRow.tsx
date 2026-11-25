@@ -12,10 +12,13 @@ import { Clock, Folder, Loader, MessageSquare } from "../primitives/icons";
 export function SearchResultRow({
   hit,
   active,
+  reason,
   onSelect,
 }: {
   hit: SearchHit;
   active: boolean;
+  /** Why the chat matched, when its title does not show it. */
+  reason?: string | null;
   onSelect: () => void;
 }) {
   const chat = hit.doc.chat;
@@ -61,6 +64,9 @@ export function SearchResultRow({
           <Clock class="h-3 w-3 flex-none" />
           <span class="flex-none">{activityAge}</span>
         </span>
+        {reason && (
+          <span class="mt-0.5 block truncate text-[11px] text-accent-blue/80">Matched {reason}</span>
+        )}
       </span>
     </button>
   );

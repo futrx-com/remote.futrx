@@ -1,5 +1,5 @@
 import type { ComponentChildren, RefObject } from "preact";
-import type { ChatMeta, ChatStatus, TranscriptIndexProgress } from "../../models/chat";
+import type { ChatMeta, ChatStatus } from "../../models/chat";
 import type { ChatMessageBlock, HydratedTextPart } from "../../models/chatMessage";
 import type { ChatFind } from "../../state/hooks/chat/useChatFind";
 import { ChatComposer, type ChatComposerProps } from "./composer/ChatComposer";
@@ -16,7 +16,6 @@ export function ChatThread({
   hydratedTextPart,
   hasOlder,
   loadingOlder,
-  indexingProgress,
   status,
   locallyStartedTurn,
   error,
@@ -31,6 +30,10 @@ export function ChatThread({
   onAnswerQuestion,
   onRespondInteraction,
   onLoadOlder,
+  hasNewer,
+  loadingNewer,
+  onLoadNewer,
+  revealT,
   onRewind,
   actions,
   projectName,
@@ -42,7 +45,6 @@ export function ChatThread({
   hydratedTextPart?: HydratedTextPart | null;
   hasOlder: boolean;
   loadingOlder: boolean;
-  indexingProgress: TranscriptIndexProgress | null;
   status: ChatStatus;
   locallyStartedTurn: boolean;
   error: string | null;
@@ -57,6 +59,12 @@ export function ChatThread({
   onAnswerQuestion: (text: string) => boolean;
   onRespondInteraction?: ChatInteractionResponder;
   onLoadOlder: () => Promise<void>;
+  /** A window of older messages is shown, with newer ones not loaded. */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  onLoadNewer: () => Promise<void>;
+  /** Event time whose message must stay rendered, for find's jumps. */
+  revealT: number | null;
   onRewind: (t: number, text: string) => void;
   /** Workspace controls. Rendered in the header on desktop and in the toolbar
    *  strip below it on mobile — only ever one of the two is visible. */
@@ -87,7 +95,6 @@ export function ChatThread({
             hydratedTextPart={hydratedTextPart}
             hasOlder={hasOlder}
             loadingOlder={loadingOlder}
-            indexingProgress={indexingProgress}
             error={error}
             chatId={chat.id}
             cwd={chat.cwd}
@@ -98,9 +105,13 @@ export function ChatThread({
             onAnswerQuestion={onAnswerQuestion}
             onRespondInteraction={onRespondInteraction}
             onLoadOlder={onLoadOlder}
+            hasNewer={hasNewer}
+            loadingNewer={loadingNewer}
+            onLoadNewer={onLoadNewer}
+            revealT={revealT}
             onRewind={onRewind}
           />
-          <ChatFindBar find={find} hasUnloadedMessages={hasOlder} />
+          <ChatFindBar find={find} />
           {showJump && <JumpToLatestButton onClick={onJumpToBottom} />}
         </div>
 

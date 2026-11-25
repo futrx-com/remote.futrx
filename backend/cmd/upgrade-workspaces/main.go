@@ -19,7 +19,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	serviceapps "github.com/futrx-com/remote.futrx.com/internal/service/applications"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
-	"github.com/futrx-com/remote.futrx.com/internal/stores"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 	flag.Parse()
 
 	cfg := config.Load()
-	storeSet, err := stores.New(cfg.DataDir)
+	storeSet, err := newWorkspaceStores(cfg.DataDir, fileproject.WorkspaceRoot)
 	if err != nil {
 		log.Fatalf("init stores: %v", err)
 	}

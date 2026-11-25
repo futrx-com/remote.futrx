@@ -13,6 +13,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
@@ -21,8 +22,8 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/service/setuprepair"
 	serviceusage "github.com/futrx-com/remote.futrx.com/internal/service/usage"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileproject"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 type lifecycle struct {
@@ -73,6 +74,10 @@ type repairAgent struct {
 	resume            <-chan struct{}
 }
 
+func (*repairAgent) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
+}
+
 func (*repairAgent) ID() harness.ProviderID                       { return harness.ProviderCodex }
 func (*repairAgent) Parser(harness.RunRequest) harness.LineParser { return nil }
 func (*repairAgent) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
@@ -114,7 +119,7 @@ func (u *usageRecorder) RecordRun(_ context.Context, event serviceusage.RunEvent
 type fixture struct {
 	worker     *setuprepair.Service
 	projects   *serviceproject.Service
-	chats      *filechat.Store
+	chats      *sqlitechat.Store
 	prompts    *prompt.Service
 	project    serviceproject.Meta
 	source     servicechat.Meta
@@ -148,10 +153,11 @@ func newFixture(t *testing.T) *fixture {
 	if !errors.Is(err, serviceproject.ErrSetupFailed) {
 		t.Fatal(err)
 	}
-	chats, err := filechat.New(t.TempDir())
+	chats, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = chats.Close() })
 	source, err := chats.Create(ctx, servicechat.Meta{Title: "existing project chat", ProjectID: servicechat.ProjectID(project.ID), Provider: harness.ProviderCodex, AccountID: "saved-account", Model: "chosen-model", Mode: "plan", ApprovalPolicy: "on-request", SandboxPolicy: "workspace-write", Cwd: project.Cwd})
 	if err != nil {
 		t.Fatal(err)

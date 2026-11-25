@@ -53,7 +53,7 @@ type SessionSupport struct {
 	Fork   bool
 }
 
-// Features describes optional behavior the platform may expose for an agent.
+// Features describes optional behavior the platform may expose for a harness.
 // The provider still owns the concrete CLI flags and protocol translation.
 type Features struct {
 	Sessions          SessionSupport

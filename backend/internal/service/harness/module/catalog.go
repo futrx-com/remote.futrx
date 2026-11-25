@@ -15,7 +15,7 @@ var (
 	ErrNoAccessGate   = errors.New("agent module catalog has no access-gate provider")
 )
 
-// Catalog is the immutable composition source for all configured agents.
+// Catalog is the immutable composition source for all configured harnesss.
 // Order is intentional and is preserved in provisioning, runtime, auth, and
 // capability views.
 type Catalog struct {
@@ -262,7 +262,7 @@ func (c *Catalog) HostProfiles() []provisioning.Profile {
 	return profiles
 }
 
-// Runtime is the single validated view of configured agents. It owns the
+// Runtime is the single validated view of configured harnesss. It owns the
 // provider and authentication registries so callers cannot combine runtime
 // components built from different catalogs.
 type Runtime struct {

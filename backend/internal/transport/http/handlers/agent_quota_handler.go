@@ -11,21 +11,21 @@ import (
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
-// AgentQuotaService reports each provider account's plan windows, asking the
+// HarnessQuotaService reports each provider account's plan windows, asking the
 // providers again when its last answer is out of date.
 type AgentQuotaService interface {
 	Refresh(ctx context.Context)
 	View() []harnessquota.AccountView
 }
 
-// AgentQuotaHandler serves the Usage tab's plan-limits section.
+// HarnessQuotaHandler serves the Usage tab's plan-limits section.
 type AgentQuotaHandler struct {
 	accountAccess *harnessaccountaccess.Service
 	quota         AgentQuotaService
 	auth          *serviceauth.Service
 }
 
-// agentQuotaResponse lists readings by provider account. Account IDs are the
+// harnessQuotaResponse lists readings by provider account. Account IDs are the
 // saved-account IDs from the agent-auth snapshot, which owns their labels.
 type agentQuotaResponse struct {
 	Accounts []harnessquota.AccountView `json:"accounts"`

@@ -2,7 +2,9 @@ package claude
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	harnessruntime "github.com/futrx-com/remote.futrx.com/internal/integration/harnesses/runtime"
@@ -45,6 +47,12 @@ func (p *Provider) Parser(req harness.RunRequest) harness.LineParser {
 }
 
 func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
+	if req.NativeCheckpoint != "" && (!req.Fork || req.ResumeID == "") {
+		return fmt.Errorf("Claude native checkpoint requires a source session and fork")
+	}
+	if req.NativeCheckpoint != "" {
+		req.TrackInputAcceptance = true
+	}
 	var run *accountRun
 	var releaseAccount func()
 	if p.accounts != nil {
@@ -82,12 +90,34 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	if err != nil {
 		return err
 	}
-	err = harnessruntime.RunProcess(ctx, cmd, p.Parser(req), emit, harnessruntime.ProcessOptions{
+	missingSession := false
+	missingCheckpoint := false
+	inputStarted := false
+	runEmit := func(event harness.Event) {
+		switch event.Type {
+		case harness.EventInputAccepted, harness.EventAssistantTextDelta, harness.EventToolStarted, harness.EventReasoningDelta:
+			inputStarted = true
+		}
+		if req.ResumeID != "" && event.Type == harness.EventRunFailed && isMissingSessionMessage(event.Message, req.ResumeID) {
+			missingSession = true
+		}
+		if event.Type == harness.EventRunFailed && isUnavailableCheckpointMessage(event.Message, req.NativeCheckpoint) {
+			missingCheckpoint = true
+		}
+		emit(event)
+	}
+	err = harnessruntime.RunProcess(ctx, cmd, p.Parser(req), runEmit, harnessruntime.ProcessOptions{
 		Name:           "claude",
 		LogID:          req.ConversationID,
 		Provider:       harness.ProviderClaude,
 		ConversationID: req.ConversationID,
 	})
+	if !inputStarted && (missingCheckpoint || isUnavailableCheckpointMessage(harnessruntime.ErrorStderr(err), req.NativeCheckpoint)) {
+		return fmt.Errorf("%w: Claude cannot fork at the selected message", harness.ErrNativeCheckpointUnavailable)
+	}
+	if !inputStarted && req.ResumeID != "" && (missingSession || isMissingSessionMessage(harnessruntime.ErrorStderr(err), req.ResumeID)) {
+		return fmt.Errorf("%w: Claude cannot resume the selected session", harness.ErrSessionNotFound)
+	}
 	// An isolated account run refreshes only its private home. Pull that exact
 	// home back from a project container, then offer it to the matching vault
 	// record without changing another chat's credential files.
@@ -139,4 +169,22 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 		}
 	}
 	return err
+}
+
+// Keep recovery narrow: authentication/tool/model errors mentioning a missing
+// resource must not silently launch a new native session.
+func isMissingSessionMessage(message, sessionID string) bool {
+	return sessionID != "" && strings.Contains(message, "No conversation found with session ID: "+sessionID)
+}
+
+func isUnavailableCheckpointMessage(message, checkpoint string) bool {
+	if checkpoint == "" {
+		return false
+	}
+	if strings.Contains(message, "No message found with message.uuid of: "+checkpoint) {
+		return true
+	}
+	// Older CLIs reject an unsupported flag before launching the run. Never
+	// retry by dropping just the boundary: that would restore discarded turns.
+	return strings.Contains(message, "unknown option '--resume-session-at")
 }

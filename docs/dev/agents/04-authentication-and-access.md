@@ -126,8 +126,8 @@ WebSocket implementation, frontend card, or route constant.
 
 | Provider | Mode | Host login and readiness | Project behavior |
 | --- | --- | --- | --- |
-| Claude | `managed-code` | Runs `claude auth login --claudeai` in a PTY, reads the Anthropic URL, and accepts the pasted authorization code. Each login is a [saved-account](#saved-accounts) login in a private `CLAUDE_CONFIG_DIR`. A credential file under `~/.claude` holding a subscription login with a refresh token or an unexpired access token marks it authenticated. | A saved account is materialized into a stable per-chat `CLAUDE_CONFIG_DIR`. Only that private credential bundle is seeded and pulled for the run; refreshed credentials enter the matching vault record only after validation and an identity match. |
-| Codex | `managed-device` | Runs `codex login --device-auth` with `OPENAI_API_KEY` removed. Each login is a [saved-account](#saved-accounts) login in an isolated `CODEX_HOME`. A non-empty auth mode other than `apikey` is considered authenticated; a missing, malformed, or mode-less `auth.json` is not. API-key auth produces a warning and is not considered authenticated. | A saved account is materialized into a stable per-chat `CODEX_HOME`, with API-key environment variables cleared. Only that private `auth.json` is seeded and pulled; refreshed credentials enter the matching vault record only after validation and an identity match. |
+| Claude | `managed-code` | Runs `claude auth login --claudeai` in a PTY, reads the Anthropic URL, and accepts the pasted authorization code. Each login is a [saved-account](#saved-accounts) login in a private `CLAUDE_CONFIG_DIR`. A credential file under `~/.claude` holding a subscription login with a refresh token or an unexpired access token marks it authenticated. | A saved account is materialized into a stable `CLAUDE_CONFIG_DIR` for the native session's original chat. Only that private credential bundle is seeded and pulled for the run; refreshed credentials enter the matching vault record only after validation and an identity match. |
+| Codex | `managed-device` | Runs `codex login --device-auth` with `OPENAI_API_KEY` removed. Each login is a [saved-account](#saved-accounts) login in an isolated `CODEX_HOME`. A non-empty auth mode other than `apikey` is considered authenticated; a missing, malformed, or mode-less `auth.json` is not. API-key auth produces a warning and is not considered authenticated. | A saved account is materialized into a stable `CODEX_HOME` for the native session's original chat, with API-key environment variables cleared. Only that private `auth.json` is seeded and pulled; refreshed credentials enter the matching vault record only after validation and an identity match. |
 | MiniMax | `managed-api-key` | An admin saves one or more named, write-only Token Plan subscription keys in Settings. Remote rejects keys without the documented `sk-cp-…` prefix, then verifies each key with the non-generation `GET /v1/token_plan/remains` endpoint before saving it. Standard pay-as-you-go API keys are unsupported. | Project-only. The account selected on the chat resolves to one key, which is injected as an environment variable into that run's isolated Codex process and is not written into its generated model catalog. |
 | Kimi | `managed-device` | Runs `kimi login`; any regular file under `~/.kimi-code/credentials` marks it authenticated. | The persistent project home can retain project-only credentials. Host credentials are synchronized according to the profile's directory policy. |
 | Antigravity | `external` | Remote has no managed host login/status UI. An operator-prepared host login may support loose chats, but is outside the normal product flow. | Run `agy` in the project terminal and complete its URL/code flow. State survives replacement in the project's persistent Antigravity directory; refresh models afterward. |
@@ -238,10 +238,12 @@ pending.
 For a saved Claude or Codex account, `CredentialForRun` returns an immutable
 credential snapshot without changing the active account or canonical host
 login. The provider derives a filesystem-safe scope from the account, project,
-and chat IDs, writes the snapshot into that stable private home, and overrides
-the run's credential spec and CLI home. Different chats therefore have separate
-credential and provider-session files and may run different accounts
-concurrently. Canonical instructions, settings, and skills are linked into the
+and original native conversation IDs, writes the snapshot into that stable
+private home, and overrides the run's credential spec and CLI home. Independent
+chats have separate credential and provider-session files and may run different
+accounts concurrently. A native fork retains the source conversation's home
+scope across future resumes; its new native session ID remains distinct from
+the source. Canonical instructions, settings, and skills are linked into the
 private home rather than duplicated.
 
 After a successful run, only its private credential files are pulled back.

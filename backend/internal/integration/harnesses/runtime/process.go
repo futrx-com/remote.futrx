@@ -91,6 +91,7 @@ func RunProcess(
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), maxBytes(opts.StdoutMaxLineBytes, 16<<20))
 	runFailed := false
+	var streamErr error
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
@@ -99,6 +100,9 @@ func RunProcess(
 		events, err := parser.ParseLine(line)
 		if err != nil {
 			log.Printf("%s[%s] parse: %v line=%s", name, logID, err, truncate(string(line), 200))
+			if streamErr == nil {
+				streamErr = fmt.Errorf("%s stream decode: %w", name, err)
+			}
 			continue
 		}
 		for _, ev := range events {
@@ -109,6 +113,12 @@ func RunProcess(
 		}
 	}
 	if err := sc.Err(); err != nil && ctx.Err() == nil {
+		streamErr = errors.Join(streamErr, fmt.Errorf("%s stdout: %w", name, err))
+		// Stop a producer whose stdout can no longer be drained; otherwise it
+		// can block forever on the full pipe while we wait for stderr/exit.
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
 		emit(harness.Event{
 			T:              time.Now().UnixMilli(),
 			Type:           harness.EventError,
@@ -125,7 +135,10 @@ func RunProcess(
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return nil
 	}
-	if err != nil && runFailed {
+	if streamErr != nil {
+		return errors.Join(streamErr, err)
+	}
+	if runFailed {
 		return &ProcessError{Err: harness.ErrRunFailed, Stderr: stderrText}
 	}
 	if err != nil {

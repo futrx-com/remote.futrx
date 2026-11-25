@@ -14,17 +14,19 @@ import (
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type ChatHandler struct {
-	chats   *servicechat.Service
-	access  *servicechat.AccessService
-	auth    *serviceauth.Service
-	files   *serviceworkspacefiles.Service
-	history *servicegithistory.Service
-	audit   serviceaudit.Recorder
+	searchProjects *serviceproject.Service
+	chats          *servicechat.Service
+	access         *servicechat.AccessService
+	auth           *serviceauth.Service
+	files          *serviceworkspacefiles.Service
+	history        *servicegithistory.Service
+	audit          serviceaudit.Recorder
 }
 
 func NewChatHandler(
@@ -56,8 +58,15 @@ func auditWorkspaceTarget(meta servicechat.Meta) serviceaudit.Target {
 	return serviceaudit.Target{Type: serviceaudit.TargetChat, ID: string(meta.ID), Name: meta.Title}
 }
 
+func (h *ChatHandler) WithSearchProjects(projects *serviceproject.Service) *ChatHandler {
+	h.searchProjects = projects
+	return h
+}
+
 func (h *ChatHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/chats", h.HandleCollection)
+	mux.HandleFunc("/api/chats/search", h.HandleSearchAll)
+	mux.HandleFunc("/api/chats/search-metadata", h.handleSearchMetadata)
 	mux.HandleFunc("/api/chats/", h.HandleResource)
 }
 
@@ -120,6 +129,8 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 			h.handleEvents(w, r, id)
 		case "transcript":
 			h.handleTranscript(w, r, id)
+		case "search":
+			h.handleSearch(w, r, id)
 		case "transcript/content":
 			h.handleTranscriptContent(w, r, id)
 		case "rewind":
@@ -177,6 +188,22 @@ func (h *ChatHandler) HandleResource(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *ChatHandler) handleSearch(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
+	if r.Method != http.MethodGet {
+		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	hits, err := h.chats.SearchTranscript(r.Context(), id, r.URL.Query().Get("q"), intQuery(r, "limit", 50), int64Query(r, "before", 0))
+	if err != nil {
+		sendChatError(w, err)
+		return
+	}
+	if hits == nil {
+		hits = []servicechat.SearchHit{}
+	}
+	httptransport.SendJSON(w, http.StatusOK, hits)
+}
+
 func (h *ChatHandler) handleEvents(w http.ResponseWriter, r *http.Request, id servicechat.ID) {
 	if r.Method != http.MethodGet {
 		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -199,9 +226,11 @@ func (h *ChatHandler) handleTranscript(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	page, err := h.chats.TranscriptPage(r.Context(), id, servicechat.TranscriptPageQuery{
-		Limit:     intQuery(r, "limit", 0),
-		BeforeSeq: int64Query(r, "before", 0),
-		ByteLimit: intQuery(r, "bytes", 0),
+		Limit:      intQuery(r, "limit", 0),
+		BeforeSeq:  int64Query(r, "before", 0),
+		ByteLimit:  intQuery(r, "bytes", 0),
+		AnchorSeq:  int64Query(r, "anchor", 0),
+		NewerTurns: intQuery(r, "newer", 0),
 	})
 	if err != nil {
 		sendChatError(w, err)
@@ -369,6 +398,7 @@ func sendChatError(w http.ResponseWriter, err error) {
 	case errors.Is(err, permission.ErrDenied), errors.Is(err, permission.ErrActorRequired):
 		httptransport.SendErr(w, http.StatusForbidden, "permission denied")
 	case errors.Is(err, servicechat.ErrInvalidID),
+		errors.Is(err, servicechat.ErrInvalidSearch),
 		errors.Is(err, servicechat.ErrInvalidProvider),
 		errors.Is(err, servicechat.ErrInvalidTmuxSession),
 		errors.Is(err, servicechat.ErrInvalidRewindTimestamp):

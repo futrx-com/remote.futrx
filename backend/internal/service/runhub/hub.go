@@ -23,10 +23,13 @@ type Hub struct {
 }
 
 type room struct {
-	mu      sync.Mutex
-	subs    map[*Subscription]struct{}
-	running *runState
-	nextRun uint64
+	lifecycleMu    sync.Mutex
+	emitMu         sync.Mutex
+	mu             sync.Mutex
+	subs           map[*Subscription]struct{}
+	running        *runState
+	nextRun        uint64
+	persistenceErr error
 }
 
 type runState struct {
@@ -78,10 +81,24 @@ func (h *Hub) SubscribeAfter(
 	afterSeq int64,
 ) (*Subscription, error) {
 	r := h.room(chatID)
+	// Read the branch version and its replay under the same lifecycle gate
+	// used by rewind. They must describe one history snapshot.
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+	r.emitMu.Lock()
+	defer r.emitMu.Unlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var replay []servicechat.Event
+	var historyVersion string
+	if source, ok := h.store.(servicechat.HistoryVersionSource); ok {
+		var err error
+		historyVersion, err = source.HistoryVersion(ctx, chatID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if h.store != nil {
 		var events []servicechat.Event
 		var err error
@@ -104,9 +121,10 @@ func (h *Hub) SubscribeAfter(
 		sub.events <- ev
 	}
 	sub.events <- servicechat.Event{
-		T:       time.Now().UnixMilli(),
-		Type:    "sync",
-		Running: r.running != nil,
+		T:              time.Now().UnixMilli(),
+		Type:           "sync",
+		Running:        r.running != nil,
+		HistoryVersion: historyVersion,
 	}
 	r.subs[sub] = struct{}{}
 	return sub, nil
@@ -152,20 +170,43 @@ func (s *Subscription) closeChannel() {
 }
 
 func (h *Hub) Emit(chatID servicechat.ID, ev servicechat.Event) {
+	r := h.room(chatID)
+	r.emitMu.Lock()
+	defer r.emitMu.Unlock()
+	r.mu.Lock()
+	failed := r.persistenceErr != nil
+	r.mu.Unlock()
+	if failed {
+		return
+	}
 	stored := ev
 	if h.store != nil {
 		next, err := h.store.AppendEvent(context.Background(), chatID, ev)
 		if err != nil {
 			log.Printf("chat %s append: %v", chatID, err)
+			r.mu.Lock()
+			r.persistenceErr = err
+			r.broadcastLocked(servicechat.Event{T: time.Now().UnixMilli(), Type: "error", Message: "Conversation could not be saved. The run was stopped."})
+			r.mu.Unlock()
+			h.CancelRun(chatID)
+			return
 		} else {
 			stored = next
 		}
 	}
 
-	r := h.room(chatID)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.broadcastLocked(stored)
+}
+
+// PersistenceError prevents a caller from advancing a session bookmark after
+// any event in the run failed to commit. StartRun resets it for a new attempt.
+func (h *Hub) PersistenceError(chatID servicechat.ID) error {
+	r := h.room(chatID)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.persistenceErr
 }
 
 func (h *Hub) BroadcastTransient(chatID servicechat.ID, ev servicechat.Event) {
@@ -187,12 +228,15 @@ func (r *room) broadcastLocked(ev servicechat.Event) {
 
 func (h *Hub) StartRun(chatID servicechat.ID, cancel context.CancelFunc) (uint64, bool) {
 	r := h.room(chatID)
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
 	r.mu.Lock()
 	if r.running != nil {
 		r.mu.Unlock()
 		return 0, false
 	}
 	r.nextRun++
+	r.persistenceErr = nil
 	id := r.nextRun
 	r.running = &runState{id: id, cancel: cancel}
 	r.broadcastLocked(servicechat.Event{
@@ -205,8 +249,22 @@ func (h *Hub) StartRun(chatID servicechat.ID, cancel context.CancelFunc) (uint64
 	return id, true
 }
 
+// MutateIdle prevents a run from starting between the idle check and a
+// history mutation. The callback may use ordinary repository notifications.
+func (h *Hub) MutateIdle(chatID servicechat.ID, mutate func() error) error {
+	r := h.room(chatID)
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
+	if h.IsRunning(chatID) {
+		return servicechat.ErrChatRunning
+	}
+	return mutate()
+}
+
 func (h *Hub) FinishRun(chatID servicechat.ID, runID uint64) {
 	r := h.room(chatID)
+	r.lifecycleMu.Lock()
+	defer r.lifecycleMu.Unlock()
 	r.mu.Lock()
 	changed := false
 	if r.running != nil && r.running.id == runID {

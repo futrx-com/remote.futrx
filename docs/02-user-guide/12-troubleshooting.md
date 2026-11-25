@@ -125,7 +125,16 @@ open, use [Scheduled tasks](09-scheduled-tasks.md).
 
 ### The conversation lost earlier context
 
-Provider switches, rewinds, missing sessions, and some forks can start a fresh provider session. Remote then supplies only a bounded visible transcript, approximately 24 KiB. Restate crucial requirements or keep them in project files such as `README.md` or `AGENTS.md`.
+Rewinds and forks prefer a native fork at a saved checkpoint. Missing or
+unsupported checkpoints and missing sessions use a fresh provider session.
+Provider or account switches can do the same if there is no safe session to
+resume. Remote
+supplies retained user and assistant messages, tool records and attachments as
+historical context without truncating or summarizing them. This cannot recreate
+hidden provider state, reasoning or native compaction state. Large history
+transfers can exceed the provider's input limit and fail. Restate crucial
+requirements when needed, or keep them in project files such as `README.md`
+or `AGENTS.md`.
 
 ### A running agent vanished during a deploy or restart
 

@@ -46,6 +46,10 @@ export const API_ROUTES = {
       `/api/chats/${encodeURIComponent(id)}/files/download?path=${encodeURIComponent(path)}`,
     mediaOpen: (id: string, path: string) =>
       `/api/chats/${encodeURIComponent(id)}/media-open?path=${encodeURIComponent(path)}`,
+    search: (id: string, query: string) =>
+      `/api/chats/${encodeURIComponent(id)}/search?${query}`,
+    searchMetadata: "/api/chats/search-metadata",
+    searchAll: (query: string) => `/api/chats/search${query ? `?${query}` : ""}`,
     transcript: (id: string, query: string) =>
       `/api/chats/${encodeURIComponent(id)}/transcript${query ? `?${query}` : ""}`,
     transcriptContent: (id: string, query: string) =>

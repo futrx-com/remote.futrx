@@ -50,15 +50,14 @@ parsers, authentication adapter, capability discovery, and provisioning
 policy. Shared services enforce scope and feature declarations and apply
 provisioning without provider-specific branches.
 
-The package boundary is intentional: `internal/service/harness` contains provider-neutral
-contracts and provisioning policy types; `internal/integration/harnesses`
-contains concrete CLI, protocol, parser, auth, and profile adapters plus their
-shared process/LXC execution mechanics; `internal/service/harness` contains cross-provider
-application workflows such as module construction, authentication lifecycle,
-capability aggregation, and project preparation; `internal/config` owns
-application composition and application-wide agent settings. Concrete adapters
-depend inward on neutral contracts and services. Services never import or
-switch on a concrete provider type.
+The services layer owns the provider-neutral contracts in
+`internal/service/harness`. Its subpackages own provisioning policy, module
+construction, authentication lifecycle, capability aggregation, and project
+preparation. `internal/integration/harnesses` contains concrete CLI, protocol,
+parser, auth, and profile adapters plus their shared process/LXC execution
+mechanics. `internal/config` owns application composition and application-wide
+harness settings. Concrete adapters depend inward on service-owned contracts.
+Services never import or switch on a concrete provider type.
 
 ## Registration and parsing are separate paths
 

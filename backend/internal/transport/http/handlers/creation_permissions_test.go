@@ -9,7 +9,7 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 	httpmiddleware "github.com/futrx-com/remote.futrx.com/internal/transport/http/middleware"
 )
 
@@ -45,7 +45,7 @@ func TestHTTPProjectCreationDenialLeavesRepositoryUntouched(t *testing.T) {
 func TestHTTPHostAndProjectChatCreationAndForkHonorPolicy(t *testing.T) {
 	for _, projectScope := range []bool{false, true} {
 		f := newMembershipRoutesFixture(t)
-		store, err := filechat.New(t.TempDir())
+		store, err := sqlitechat.New(t.TempDir())
 		if err != nil {
 			t.Fatal(err)
 		}

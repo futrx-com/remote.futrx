@@ -32,7 +32,7 @@ func manifestValue(key string) (string, bool) {
 	return "", false
 }
 
-// MustCLIVersion returns the pinned semver for an agent CLI, panicking on a
+// MustCLIVersion returns the pinned semver for a harness CLI, panicking on a
 // missing or malformed entry so a bad manifest fails at startup, not
 // mid-provision.
 func MustCLIVersion(key string) string {

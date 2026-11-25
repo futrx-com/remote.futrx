@@ -2,6 +2,7 @@ import { useEffect, useRef } from "preact/hooks";
 import { CHAT_FIND_SKIP_ATTRIBUTE } from "../../../config/chat.ts";
 import type { ChatFind } from "../../../state/hooks/chat/useChatFind";
 import { shortcutService } from "../../../services/platform/shortcutService.ts";
+import { ChatFindResults } from "./ChatFindResults";
 import { ArrowDown, ArrowUp, Search, X } from "../../primitives/icons";
 
 const stepButtonClass =
@@ -16,11 +17,8 @@ const stepButtonClass =
  */
 export function ChatFindBar({
   find,
-  hasUnloadedMessages,
 }: {
   find: ChatFind;
-  /** Older messages exist on the server, so the thread is not all here yet. */
-  hasUnloadedMessages: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -56,6 +54,7 @@ export function ChatFindBar({
             // whole thread, so closing works with the cursor anywhere.
             if (event.key === "Enter") {
               event.preventDefault();
+              find.setListOpen(false);
               event.shiftKey ? find.previous() : find.next();
             } else if (shortcutService.isFind(event)) {
               // Cmd/Ctrl+F again re-selects the query, as a browser's find
@@ -67,6 +66,7 @@ export function ChatFindBar({
           }}
           placeholder="Find in chat"
           class="min-w-0 flex-1 bg-transparent text-[12.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none"
+          maxLength={512}
           autocomplete="off"
           spellcheck={false}
           aria-label="Find in chat"
@@ -81,7 +81,11 @@ export function ChatFindBar({
             ? ""
             : status.kind === "empty"
               ? "No results"
-              : `${status.position} of ${status.total}`}
+              : status.kind === "loading" ? "Searching…"
+              : status.kind === "error" ? "Search failed"
+              : status.position === 0
+                ? `${status.total}${status.more ? "+" : ""} result${status.total === 1 && !status.more ? "" : "s"}`
+                : `${status.position} of ${status.total}${status.more ? "+" : ""}`}
         </span>
         <button
           type="button"
@@ -114,11 +118,25 @@ export function ChatFindBar({
         </button>
       </div>
 
-      {hasUnloadedMessages && (
-        <p class="text-[10.5px] leading-tight text-ink-400">
-          Searching the messages loaded so far — load older ones to include them.
-        </p>
-      )}
+      {status.kind === "error" && <p role="alert" class="text-xs text-accent-red">{status.message}</p>}
+      {status.kind === "matched" && (find.listOpen ? (
+        <ChatFindResults
+          hits={find.hits}
+          selectedIndex={find.selectedIndex}
+          hasMore={find.hasMore}
+          loadingMore={find.loadingMore}
+          onLoadMore={find.loadMore}
+          onSelect={find.select}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => find.setListOpen(true)}
+          class="self-start rounded px-1 text-[11px] text-ink-400 transition-colors hover:text-ink-100"
+        >
+          Show all results
+        </button>
+      ))}
     </div>
   );
 }

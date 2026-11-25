@@ -6,14 +6,14 @@ import (
 	"strings"
 )
 
-// CLIProvisioner is the agent-execution port for making an agent CLI
+// CLIProvisioner is the harness-execution port for making a harness CLI
 // available inside a project container.
 type CLIProvisioner interface {
 	Ensure(context.Context, string, CLISpec) error
 }
 
 // CredentialProvisioner is the shared-preparation port for seeding credentials
-// into a project container before an agent starts.
+// into a project container before a harness starts.
 type CredentialProvisioner interface {
 	Ensure(context.Context, string, CredentialSpec) error
 }

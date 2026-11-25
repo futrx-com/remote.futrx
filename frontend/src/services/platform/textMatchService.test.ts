@@ -61,3 +61,12 @@ test("bounded typo tolerance accepts near misses and rejects far ones", () => {
   assert.ok(typo.score < exact.score);
   assert.equal(textMatchService.matchField(folded, ["toolbar"]), null);
 });
+
+test("letters in order match word starts, not letters scattered through words", () => {
+  const match = (field: string, query: string) =>
+    textMatchService.matchField(textFoldService.fold(field), textMatchService.tokenize(query));
+  assert.ok(match("workspace sidebar state", "wss"), "acronym of word starts");
+  assert.ok(match("workspace sidebar state", "wosist"), "runs that start at word starts");
+  assert.equal(match("Postgres migration for user settings", "test"), null);
+  assert.equal(match("Set up Nginx reverse proxy with TLS", "test"), null);
+});

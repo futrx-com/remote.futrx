@@ -11,6 +11,7 @@ import {
   UNASSIGNED_PROJECT,
   UNSET_FACET_VALUE,
 } from "../../config/search.ts";
+import type { ProjectMeta } from "../../models/project.ts";
 import type {
   ChatSearchDoc,
   FacetCounts,
@@ -35,9 +36,9 @@ interface FacetDefinition {
    */
   valuesOf(doc: ChatSearchDoc): readonly string[];
   /** Human label for a raw value, used in both the menu and the chips. */
-  labelFor(value: string, doc?: ChatSearchDoc): string;
+  labelFor(value: string, doc?: Pick<ChatSearchDoc, "project">): string;
   /** Optional secondary line in the menu (e.g. a project slug). */
-  hintFor?(value: string, doc?: ChatSearchDoc): string | undefined;
+  hintFor?(value: string, doc?: Pick<ChatSearchDoc, "project">): string | undefined;
 }
 
 // Options come from the chats in use, including free-form model strings,
@@ -234,6 +235,32 @@ class SearchFacetService {
     });
   }
 
+  /** Label the server's scoped options for the filter panel and chips. */
+  viewsFromValues(
+    values: FacetSelections,
+    selected: FacetSelections,
+    counts: FacetCounts,
+    projects: readonly ProjectMeta[],
+  ): FacetView[] {
+    const projectsById = new Map(projects.map((project) => [project.id, project]));
+    return FACET_IDS.map((id) => {
+      const facet = FACETS[id];
+      const options = [...new Set([...values[id], ...selected[id]])].map((value) => {
+        const doc = { project: id === "project" ? projectsById.get(value) ?? null : null };
+        return { value, label: facet.labelFor(value, doc), hint: facet.hintFor?.(value, doc) };
+      });
+      return {
+        id,
+        label: facet.label,
+        advanced: facet.advanced,
+        emptyHint: facet.emptyHint,
+        options: this.#sortOptions(options),
+        selected: selected[id],
+        counts: counts[id],
+      };
+    });
+  }
+
   /**
    * Build the selectable options for one facet from the docs themselves,
    * keeping one representative doc per value so labels can consult sibling
@@ -257,13 +284,16 @@ class SearchFacetService {
       });
     }
 
+    return this.#sortOptions(options);
+  }
+
+  #sortOptions(options: FacetOption[]): FacetOption[] {
     // Unassigned sorts last; everything else alphabetically by label.
-    options.sort((left, right) => {
+    return options.sort((left, right) => {
       if (left.value === UNASSIGNED_PROJECT) return 1;
       if (right.value === UNASSIGNED_PROJECT) return -1;
       return left.label.localeCompare(right.label);
     });
-    return options;
   }
 
   /**

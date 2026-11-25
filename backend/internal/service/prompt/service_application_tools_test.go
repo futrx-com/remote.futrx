@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/futrx-com/remote.futrx.com/internal/model/conversation"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
-	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
+	"github.com/futrx-com/remote.futrx.com/internal/stores/sqlitechat"
 )
 
 type applicationPromptProvider struct {
@@ -23,6 +24,10 @@ type applicationPromptProvider struct {
 	release  <-chan struct{}
 	once     sync.Once
 	output   []string
+}
+
+func (*applicationPromptProvider) HistoryInput(history conversation.History, prompt string) (string, string, error) {
+	return harness.PromptWithHistory(history, prompt)
 }
 
 func (p *applicationPromptProvider) ID() harness.ProviderID { return harness.ProviderCodex }
@@ -96,10 +101,11 @@ func (i *recordingApplicationIssuer) request(t *testing.T, index int) Applicatio
 
 func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID:        "aabbcc11",
 		Title:     "watch deploy",
@@ -185,10 +191,11 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 
 func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID:        "aabbcc22",
 		Title:     "scheduled run",
@@ -255,10 +262,11 @@ func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 
 func TestStartReturnsBusyWhilePriorRunIsActive(t *testing.T) {
 	ctx := context.Background()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(ctx, servicechat.Meta{
 		ID:       "aabbcc33",
 		Title:    "busy",
@@ -302,10 +310,11 @@ func TestStartReturnsBusyWhilePriorRunIsActive(t *testing.T) {
 
 func TestStartCancelsRunWithParentContext(t *testing.T) {
 	t.Parallel()
-	store, err := filechat.New(t.TempDir())
+	store, err := sqlitechat.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	meta, err := store.Create(context.Background(), servicechat.Meta{
 		ID:       "aabbcc44",
 		Title:    "scheduled cancellation",
@@ -376,10 +385,11 @@ func TestInstalledSchedulerInjectsAccessWithoutSelectedSkill(t *testing.T) {
 	for _, installed := range []bool{true, false} {
 		t.Run(fmt.Sprintf("installed=%t", installed), func(t *testing.T) {
 			ctx := context.Background()
-			store, err := filechat.New(t.TempDir())
+			store, err := sqlitechat.New(t.TempDir())
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() { _ = store.Close() })
 			meta, err := store.Create(ctx, servicechat.Meta{ID: "aabbcc66", Provider: servicechat.ProviderCodex, ProjectID: "project"})
 			if err != nil {
 				t.Fatal(err)

@@ -39,7 +39,7 @@ export function useSearchPaletteController({
   }, [open]);
 
   // Any change to the result set invalidates the previous cursor position.
-  useEffect(() => setActiveIndex(0), [search.query, search.filters, open]);
+  useEffect(() => setActiveIndex(0), [search.query, search.filters, search.sort, results.length, open]);
 
   // Keep the highlighted row in view during keyboard navigation.
   useEffect(() => {

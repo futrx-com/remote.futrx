@@ -1,15 +1,21 @@
 # Data and frontend state
 
-The application does not use an external database service. Durable metadata is stored as JSON files; chat events use append-only JSONL. A disposable embedded SQLite database indexes chat event offsets and transcript turns for bounded reads. Project source files live in a separate host workspace tree.
+The application does not use an external database service. Conversations use
+an authoritative embedded SQLite database, including metadata, ordered events,
+branches, native session bookmarks, indexed event grouping and a rebuildable
+full-text search index. Other platform metadata remains in JSON files.
+Project source files and native
+harness state live in separate persistent host trees.
 
 ## Host storage layout
 
 ```text
 /opt/remote.futrx/data/                 DATA_DIR
-├── chats/<chat-id>/
+├── conversations.sqlite                authoritative conversation database
+├── .conversations.lock                 backend/importer ownership lease
+├── chats/<chat-id>/                     inactive legacy backup after migration
 │   ├── meta.json
 │   └── events.jsonl
-├── transcript-index.sqlite              derived chat event offsets and transcript turns
 ├── projects/<project-id>/meta.json
 ├── projectaccess/<project-id>.json
 ├── projectsecrets/<project-id>.json
@@ -51,8 +57,10 @@ retrying the same request can run it again. See
 The host-wide credential sources use provider-owned paths in the host user's home. Credential synchronizers seed or update project-specific credential locations, primarily the mounted provider homes. Claude also requires `/root/.claude.json` outside its mounted home; that file survives replacement through host synchronization rather than the project mount.
 When a chat selects a saved Claude or Codex account, its run uses a stable
 `run-accounts/<scope>` subdirectory inside that provider home. The scope is a
-hash of account, project, and chat identifiers, so concurrent chats do not
-share credential or session files. Shared instructions, settings, and skills
+hash of account, project, and the original native conversation identifiers.
+Independent chats have separate homes; a native fork retains the source home
+scope so its new session and later resumes can find inherited state. Shared
+instructions, settings, and skills
 remain linked from the canonical provider home.
 
 ## Entity relationships
@@ -122,39 +130,36 @@ A chat's project relationship is optional. Project membership is stored as norma
 
 ```mermaid
 flowchart LR
-    Run["Prompt run"] --> Append["Append event to events.jsonl"]
-    Append --> Seq["Assign next monotonic seq"]
-    Seq --> Meta["Update lastMessageAt for visible events"]
-    Meta --> Cache["Refresh in-memory metadata index"]
-    Append -.-> Index["Refresh derived SQLite offset/turn index"]
-    Append --> Replay["Replay live events after seq"]
-    Append --> Transcript["Project complete, compacted turn pages"]
-    Index -.-> Replay
-    Index -.-> Transcript
+    Run["Prompt run"] --> Append["SQLite transaction"]
+    Append --> Events["Ordered events, grouping fields and metadata"]
+    Events --> Replay["Replay live events after seq"]
+    Events --> Transcript["Assemble requested transcript page"]
     Replay --> Client["Chat UI"]
     Transcript --> Client
+    Client --> Search["Search request"]
+    Search --> CatchUp["Index saved events since checkpoint"]
+    Events --> CatchUp
+    CatchUp --> Index["Derived full-text index"]
+    Index --> Matches["Matching history previews"]
+    Matches --> Client
 ```
 
 Chat metadata includes title, provider, provider session IDs, working directory, project ID, read markers, model/mode controls, selected skills, and fork state. The `running` flag and cancellation handle are computed from the in-memory run hub and are not persisted. Provider child processes may survive a backend restart, so the restarted control plane cannot automatically rediscover or cancel them.
 
-The raw event log remains the source for live reconnects. History requests page
-a read-time transcript projection by `turnId` (or legacy `user` boundaries) and
-coalesce adjacent streaming text/reasoning deltas. The cursor is still a raw
-event sequence, so existing chat files require no migration.
+Ordered SQLite events supply live reconnects. Indexed fields on each event
+locate its turn and display item, using `turnId` or legacy `user` boundaries.
+History reads assemble the requested items on demand and coalesce adjacent
+streaming text/reasoning deltas. Cursors remain event sequences. The browser
+initially requests up to 10 turns and older history in pages of up to 20 turns;
+a byte budget can end a page within a large turn. Search catches up from saved
+events separately from the message-save transaction.
 
-`DATA_DIR/transcript-index.sqlite` is derived from the chat JSONL logs. At
-startup, a background worker backfills up to the 10 most recently active chats;
-other chats are backfilled lazily on first access. The result persists across
-backend restarts and is refreshed incrementally as bytes are appended. File
-size and modification time, incomplete-tail state, and a prefix fingerprint
-checked before untrusted growth decide when to rebuild transactionally. A
-rewind requests an immediate rebuild, while deletion removes the chat's rows.
-Indexed-read failures fall back to scanning canonical JSONL. The index can be
-deleted while the service is stopped and will rebuild automatically. The
-browser initially requests 10 complete turns and requests older history in
-20-turn pages. See the
-[durable chat transcript index developer guide](../dev/chat-transcript-index/)
-for the layer ownership and read, write, and recovery flows.
+Upgrades perform a one-time streaming migration while the old backend is
+stopped. The new database must never be deleted as a cache: it is the source
+of truth. Corruption fails closed, and no runtime path falls back to legacy
+JSONL. The old offset database is removed after validated cutover. See
+[conversation storage and migration](../dev/conversation-storage.md) for
+schema ownership, resume checkpoints, backups and rollback compatibility.
 
 Scheduled-task definitions live in each installed application’s host `DataDir`
 as `tasks.json`. The application atomically persists definitions and active run
@@ -162,7 +167,13 @@ claims before emitting due messages. Claims are retried after a backend restart;
 core acknowledges agent results. Stop/start and upgrades retain state; uninstall
 removes it.
 
-Rewind rewrites `events.jsonl` atomically with only events before the selected timestamp and best-effort rebuilds that chat's derived index rows. Chat deletion removes the chat directory and corresponding index rows.
+Rewind selects a new branch with a retained history prefix. Forks also share a
+prefix rather than copying the full event log. Their next runs prefer a native
+fork at a successful checkpoint retained in that history, then receive only
+the missing suffix. Without a usable checkpoint, they start fresh with retained
+history. Source native sessions stay intact, and workspace files are not rolled
+back. Deleting a chat removes its active database
+records; historical branches required by another fork must remain reachable.
 
 ## Agent quota snapshots
 
@@ -369,7 +380,7 @@ The initial snapshot is filtered to permitted projects for members. Current live
 ## Code map
 
 - Store composition: [`backend/internal/stores/stores.go`](../../backend/internal/stores/stores.go)
-- Chat store: [`backend/internal/stores/filechat/store.go`](../../backend/internal/stores/filechat/store.go)
+- Chat store: [`backend/internal/stores/sqlitechat/store.go`](../../backend/internal/stores/sqlitechat/store.go)
 - Project store: [`backend/internal/stores/fileproject/store.go`](../../backend/internal/stores/fileproject/store.go)
 - Scheduled-task persistence and clock: [`applications/scheduled-tasks/backend/api/`](../../applications/scheduled-tasks/backend/api/)
 - Workspace context: [`frontend/src/state/context/WorkspaceContext.tsx`](../../frontend/src/state/context/WorkspaceContext.tsx)

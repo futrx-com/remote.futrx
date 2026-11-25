@@ -120,6 +120,9 @@ export const CHAT_FIND_HIGHLIGHTS = {
 
 /** Opts a subtree out of find-in-chat's matches — the find bar itself, for one. */
 export const CHAT_FIND_SKIP_ATTRIBUTE = "data-find-skip";
+/** Marks each rendered message block with its start time, so find can locate
+ *  the block a search result belongs to. */
+export const CHAT_BLOCK_TIME_ATTRIBUTE = "data-chat-block-t";
 
 /**
  * What find-in-chat refuses to read: markup carrying no rendered text, hidden

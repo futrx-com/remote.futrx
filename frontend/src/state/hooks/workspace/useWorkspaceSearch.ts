@@ -1,5 +1,6 @@
 import { useMemo } from "preact/hooks";
 import { useStore } from "zustand";
+import type { WorkspaceSearchSelection } from "../../../api/chat/workspaceSearchApi.ts";
 import type { ChatMeta } from "../../../models/chat.ts";
 import type { ProjectMeta } from "../../../models/project.ts";
 import type {
@@ -18,6 +19,7 @@ import type { SearchSelectionCommands } from "../../../port/workspaceSearch.ts";
 import { useWorkspaceSearchContext } from "../../context/WorkspaceSearchContext.ts";
 import type { WorkspaceSearchSurface } from "../../context/WorkspaceSearchContext.ts";
 import { useWorkspaceContext } from "../../context/WorkspaceContext";
+import { useWorkspaceSearchResults } from "./useWorkspaceSearchResults.ts";
 
 /** The keyword box: the text, and how to change it. */
 export interface QueryControl extends Pick<WorkspaceSearchStoreActions, "setQuery"> {
@@ -46,6 +48,9 @@ export interface FilterControl extends Pick<
 /** What anything that renders results needs, and nothing more. */
 export interface ResultsView {
   outcome: SearchOutcome;
+  loading: boolean;
+  error: string | null;
+  selection: WorkspaceSearchSelection;
   /** True when a keyword or any filter is narrowing the list. */
   isSearching: boolean;
   /** Why a hit is in the list, when its title alone doesn't show it. */
@@ -72,33 +77,23 @@ const describeMatch = (hit: SearchHit) => workspaceSearchService.describeMatch(h
 export function useSidebarSearch(): WorkspaceSearch {
   const workspace = useWorkspaceContext();
   const { sidebar } = useWorkspaceSearchContext();
-  return useWorkspaceSearch(sidebar, workspace.chats, workspace.projects);
+  return useWorkspaceSearch(sidebar, workspace.chats, workspace.projects, workspace.loaded, false);
 }
 
 /** The palette's search, independent of the sidebar's and saved nowhere. */
-export function usePaletteSearch(): WorkspaceSearch {
+export function usePaletteSearch(open: boolean): WorkspaceSearch {
   const workspace = useWorkspaceContext();
   const { palette } = useWorkspaceSearchContext();
-  return useWorkspaceSearch(palette, workspace.chats, workspace.projects);
+  return useWorkspaceSearch(palette, workspace.chats, workspace.projects, workspace.loaded && open, true);
 }
 
-/**
- * Reads one search store and derives what the surfaces render from it.
- *
- * The selection lives in the store, so it survives the surface unmounting and
- * two components reading the same store agree. The index and the results do
- * not: they are a function of the selection and of the chats the feed is
- * pushing, cached per render pass here rather than duplicated into state that
- * could fall behind either input.
- *
- * The index is rebuilt only when chats or projects change, so keystrokes pay
- * for comparison alone. Facet counts are computed only while a filter menu is
- * open, since nothing else displays them.
- */
-export function useWorkspaceSearch(
-  { store, selection }: WorkspaceSearchSurface,
+/** Keep selection in the store and fetch matching chats and facet counts. */
+function useWorkspaceSearch(
+  { store, selection: commands }: WorkspaceSearchSurface,
   chats: readonly ChatMeta[],
   projects: readonly ProjectMeta[],
+  enabled: boolean,
+  includeRecent: boolean,
 ): WorkspaceSearch {
   const query = useStore(store, (state) => state.query);
   const filters = useStore(store, (state) => state.filters);
@@ -110,34 +105,30 @@ export function useWorkspaceSearch(
   const {
     setSort, toggleFacetValue, setFacetValues, clearFacet,
     setDateFilter, clearDate, resetFilters, clearAll,
-  } = selection;
+  } = commands;
 
-  const docs = useMemo(
-    () => workspaceSearchService.buildIndex(chats, projects),
-    [chats, projects],
+  const selection = useMemo<WorkspaceSearchSelection>(() => ({
+    facets: filters.facets,
+    dateField: filters.date.field,
+    ...searchFilterService.resolveDateRange(filters.date, Date.now()),
+  }), [filters]);
+  const activeFilterCount = searchFilterService.countActive(filters);
+  const isSearching = query.trim().length > 0 || activeFilterCount > 0;
+  const fetchResults = enabled && (includeRecent || isSearching || countsEnabled);
+  const request = useMemo(
+    () => ({ ...selection, query, sort, withCounts: countsEnabled }),
+    [selection, query, sort, countsEnabled],
   );
-
-  // `now` is pinned per render pass rather than read inside the search, so a
-  // date-bounded result set can't shift underneath a single render.
-  const outcome = useMemo(
-    () =>
-      workspaceSearchService.run(docs, filters, query, sort, Date.now(), {
-        withCounts: countsEnabled,
-      }),
-    [docs, filters, query, sort, countsEnabled],
-  );
-
+  const { outcome, loading, error } = useWorkspaceSearchResults(request, fetchResults, chats, projects);
   const facetViews = useMemo(
-    () => searchFacetService.facetViews(docs, filters, outcome),
-    [docs, filters, outcome],
+    () => searchFacetService.viewsFromValues(outcome.facetValues, filters.facets, outcome.counts, projects),
+    [outcome, filters.facets, projects],
   );
 
   const dateView: DateFilterView = {
     active: searchFilterService.isDateActive(filters.date),
     label: searchFilterService.describeDate(filters.date),
   };
-
-  const activeFilterCount = searchFilterService.countActive(filters);
 
   return {
     query,
@@ -150,7 +141,10 @@ export function useWorkspaceSearch(
     dateView,
     activeFilterCount,
     hasActiveFilters: activeFilterCount > 0,
-    isSearching: query.trim().length > 0 || activeFilterCount > 0,
+    isSearching,
+    loading,
+    error,
+    selection,
     describeMatch,
     toggleFacetValue,
     setFacetValues,

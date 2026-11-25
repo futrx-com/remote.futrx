@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fetchFullTranscriptContent, fetchTranscript } from "./chatTranscriptApi.ts";
+import { fetchFullTranscriptContent, fetchTranscript, searchTranscript } from "./chatTranscriptApi.ts";
 
 test("fetches and flattens transcript turns without changing cursor metadata", async (t) => {
   const page = {
@@ -78,4 +78,38 @@ test("loads oversized transcript content through complete cursor pages", async (
     "/api/chats/chat%2F1/transcript/content?id=content-1",
     "/api/chats/chat%2F1/transcript/content?id=content-1&after=6",
   ]);
+});
+
+test("searches saved history independently of loaded transcript pages", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const hits = [{ turnId: "old-turn", itemId: "item", startSeq: 1, endSeq: 3, text: "old result", highlights: [{ start: 0, end: 3 }] }];
+  globalThis.fetch = async (input, init) => {
+    assert.equal(input, "/api/chats/chat%2F1/search?q=old+result&limit=100");
+    assert.equal(init?.method, "GET");
+    return Response.json(hits);
+  };
+  assert.deepEqual(await searchTranscript("chat/1", "old result"), hits);
+});
+
+test("continues a search below the previous page's oldest match", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input) => {
+    assert.equal(input, "/api/chats/chat%2F1/search?q=test&limit=100&before=42");
+    return Response.json([]);
+  };
+  assert.deepEqual(await searchTranscript("chat/1", "test", 42), []);
+});
+
+test("requests a window of turns around an event and reports newer turns", async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (input) => {
+    assert.equal(input, "/api/chats/chat%2F1/transcript?limit=21&anchor=500&newer=10");
+    return Response.json({ turns: [], lastSeq: 900, hasMore: true, nextBefore: 400, newerFrom: 610 });
+  };
+  const page = await fetchTranscript("chat/1", { limit: 21, anchor: 500, newer: 10 });
+  assert.equal(page.newerFrom, 610);
+  assert.equal(page.nextBefore, 400);
 });

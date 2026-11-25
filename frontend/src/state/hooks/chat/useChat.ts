@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
-import {
-  CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
-  CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-} from "../../../config/api.ts";
+import { CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT } from "../../../config/api.ts";
 import type {
   ChatInteractionResponder,
   ChatStream,
@@ -15,12 +12,12 @@ import type {
   ChatRenderState,
   ChatStatus,
   PromptOutcome,
-  TranscriptIndexProgress,
 } from "../../../models/chat";
 import { chatEventStateProjector } from "./chatEventStateProjector";
 import type { ChatMessageBlock, HydratedTextPart } from "../../../models/chatMessage";
 import { isTerminalTurnStatus } from "../../../services/chat/turnStatus.ts";
 import { stopRunningChat } from "./stopRunningChat";
+import { useChatTranscriptWindow } from "./useChatTranscriptWindow";
 
 interface UseChatResult {
   meta: ChatMeta | null;
@@ -29,7 +26,6 @@ interface UseChatResult {
   eventCount: number;
   hasOlder: boolean;
   loadingOlder: boolean;
-  indexingProgress: TranscriptIndexProgress | null;
   status: ChatStatus;
   locallyStartedTurn: boolean;
   error: string | null;
@@ -41,6 +37,14 @@ interface UseChatResult {
   respondInteraction: ChatInteractionResponder;
   rewind: (beforeT: number) => Promise<ChatEventPage>;
   loadOlder: () => Promise<void>;
+  /** Newer messages exist below a window opened by `showAround`. */
+  hasNewer: boolean;
+  loadingNewer: boolean;
+  /** Load the turns around event `seq` when they are not loaded yet. */
+  showAround: (seq: number) => Promise<void>;
+  loadNewer: () => Promise<void>;
+  /** Leave a window of older messages for the live conversation. */
+  returnToLatest: () => Promise<void>;
   refreshMeta: (throwOnError?: boolean) => Promise<void>;
 }
 
@@ -62,21 +66,38 @@ export function useChat(chatId: string): UseChatResult {
   // state is unknown (the HTTP snapshot may be stale), so sends are held.
   const [synced, setSynced] = useState(false);
   const [promptOutcome, setPromptOutcome] = useState<PromptOutcome | null>(null);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [indexingProgress, setIndexingProgress] = useState<TranscriptIndexProgress | null>(null);
   const [historyReadyForStream, setHistoryReadyForStream] = useState(false);
   const streamRef = useRef<ChatStream | null>(null);
   const pendingEventsRef = useRef<ChatEvent[]>([]);
   const pendingFrameRef = useRef<number | null>(null);
   const lastSeqRef = useRef(0);
+  const historyVersionRef = useRef<string | null>(null);
+  const historyGenerationRef = useRef(0);
+  const historyNeedsRefreshRef = useRef(false);
+  const reloadHistoryRef = useRef<(() => Promise<void>) | null>(null);
   const hydratedTextPartRef = useRef<HydratedTextPart | null>(null);
 
-  // The batcher reaches state only through refs and setState updaters, so these
-  // three close over nothing that can go stale and take no dependencies. They
-  // are wrapped because callers already capture them: rewind's useCallback
-  // below pins whichever clearPendingEvents existed when it was created, and
-  // chatId never changes for a given instance (ChatContainer is keyed on it and
-  // remounts), so that capture lasts the whole session.
+  const {
+    loadingOlder,
+    loadOlder,
+    hasNewer,
+    loadingNewer,
+    showAround,
+    loadNewer,
+    isDetached,
+    bufferLiveEvents,
+    resetWindow,
+    resetOlderLoad,
+  } = useChatTranscriptWindow({
+    chatId,
+    renderState,
+    setRenderState,
+    historyGenerationRef,
+    historyNeedsRefreshRef,
+  });
+
+  // The socket keeps these callbacks for the life of its connection. Read
+  // mutable state through refs and apply changes with setState updaters.
   const clearPendingEvents = useCallback(() => {
     if (pendingFrameRef.current !== null) {
       cancelAnimationFrame(pendingFrameRef.current);
@@ -94,13 +115,15 @@ export function useChat(chatId: string): UseChatResult {
       lastSeqRef.current,
       chatEventStateProjector.latestSequence(events)
     );
-    setRenderState((current) => chatEventStateProjector.append(current, events));
+    if (!bufferLiveEvents(events)) {
+      setRenderState((current) => chatEventStateProjector.append(current, events));
+    }
     setStatus((current) => chatEventStateProjector.statusAfter(events[events.length - 1], current));
     if (events.some((event) => event.type === "user" || event.type === "complete" || event.type === "error"
       || (event.type === "turn_status" && isTerminalTurnStatus(event.status)))) {
       setLocallyStartedTurn(false);
     }
-  }, []);
+  }, [bufferLiveEvents]);
 
   const enqueueEvent = useCallback((event: ChatEvent) => {
     pendingEventsRef.current.push(event);
@@ -121,22 +144,19 @@ export function useChat(chatId: string): UseChatResult {
     setWsReady(false);
     setSynced(false);
     setPromptOutcome(null);
-    setLoadingOlder(false);
-    setIndexingProgress(null);
     setHistoryReadyForStream(false);
     lastSeqRef.current = 0;
     hydratedTextPartRef.current = null;
 
     (async () => {
       try {
-        const [m, initialPage] = await Promise.all([
+        const [m, page] = await Promise.all([
           chatApi.fetch(chatId),
           chatApi.fetchTranscript(chatId, {
             limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
           }),
         ]);
         if (cancelled) return;
-        let page = initialPage;
         lastSeqRef.current = Math.max(
           page.lastSeq,
           chatEventStateProjector.latestSequence(page.events)
@@ -148,32 +168,12 @@ export function useChat(chatId: string): UseChatResult {
           ? { assistantT: tail.t, partIndex }
           : null;
         setRenderState(initialState);
-        setIndexingProgress(page.indexing ?? null);
-        setHistoryReadyForStream(!page.indexing || page.indexing.tailSeqKnown);
+        setHistoryReadyForStream(true);
         setMeta(m);
         // The server reports whether a run holds the lock right now. Seeding
         // from it keeps queued prompts from firing into a mid-run chat before
         // the socket's sync event corrects the status.
         setStatus(m.running ? "streaming" : "ready");
-
-        while (page.indexing) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          if (cancelled) return;
-          page = await chatApi.fetchTranscript(chatId, {
-            limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT,
-          });
-          if (cancelled) return;
-          setIndexingProgress(page.indexing ?? null);
-          lastSeqRef.current = Math.max(
-            lastSeqRef.current,
-            page.lastSeq,
-            chatEventStateProjector.latestSequence(page.events),
-          );
-          if (!page.indexing) {
-            setRenderState((current) => chatEventStateProjector.prepend(current, page));
-            setHistoryReadyForStream(true);
-          }
-        }
       } catch (e) {
         if (!cancelled) {
           setError((e as Error).message);
@@ -185,13 +185,41 @@ export function useChat(chatId: string): UseChatResult {
     return () => { cancelled = true; };
   }, [chatId]);
 
-  // Open WS once the server knows the canonical tail sequence. Modern legacy
-  // logs can stream while their projection builds; unsequenced logs wait so a
-  // since=0 connection cannot replay the entire raw file.
+  // Open WS after the first transcript page establishes the latest sequence.
   useEffect(() => {
     if (!meta || meta.id !== chatId || !historyReadyForStream) return;
     const streamChatId = meta.id;
     setWsReady(false);
+
+    let refreshingHistory = false;
+    let eventsDuringRefresh: ChatEvent[] = [];
+    const refreshHistory = async () => {
+      const generation = ++historyGenerationRef.current;
+      historyNeedsRefreshRef.current = true;
+      resetOlderLoad();
+      refreshingHistory = true;
+      eventsDuringRefresh = [];
+      clearPendingEvents();
+      setSynced(false);
+      try {
+        const page = await chatApi.fetchTranscript(streamChatId, { limit: CHAT_INITIAL_TRANSCRIPT_TURN_LIMIT });
+        if (streamRef.current !== stream || generation !== historyGenerationRef.current) return;
+        const suffix = eventsDuringRefresh.filter((event) => !event.seq || event.seq > page.lastSeq);
+        lastSeqRef.current = Math.max(page.lastSeq, chatEventStateProjector.latestSequence(suffix));
+        // A reload always shows the latest messages, leaving any window.
+        resetWindow();
+        setRenderState(chatEventStateProjector.append(chatEventStateProjector.fromEvents(page.events, page), suffix));
+        hydratedTextPartRef.current = null;
+        historyNeedsRefreshRef.current = false;
+        setSynced(true);
+      } catch (error) {
+        if (streamRef.current === stream) setError((error as Error).message);
+      } finally {
+        if (generation === historyGenerationRef.current) refreshingHistory = false;
+      }
+    };
+
+    reloadHistoryRef.current = refreshHistory;
 
     const stream = chatApi.openStream(
       streamChatId,
@@ -206,8 +234,15 @@ export function useChat(chatId: string): UseChatResult {
         },
         onEvent: (event) => {
           if (streamRef.current !== stream) return;
+          if (event.type === "system" && event.subtype === "history_reset") {
+            void refreshHistory();
+            return;
+          }
           if (event.type === "sync") {
-            setSynced(true);
+            if (historyNeedsRefreshRef.current || (event.historyVersion && event.historyVersion !== historyVersionRef.current)) {
+              historyVersionRef.current = event.historyVersion ?? null;
+              void refreshHistory();
+            } else if (!refreshingHistory) setSynced(true);
             setStatus(event.running ? "streaming" : "ready");
             if (!event.running) setLocallyStartedTurn(false);
             return;
@@ -226,7 +261,8 @@ export function useChat(chatId: string): UseChatResult {
             if (event.subtype === "prompt_rejected") setLocallyStartedTurn(false);
             return;
           }
-          enqueueEvent(event);
+          if (refreshingHistory) eventsDuringRefresh.push(event);
+          else enqueueEvent(event);
         },
         onClose: () => {
           if (streamRef.current !== stream) return;
@@ -239,12 +275,14 @@ export function useChat(chatId: string): UseChatResult {
 
     return () => {
       if (streamRef.current === stream) streamRef.current = null;
+      reloadHistoryRef.current = null;
+      historyGenerationRef.current++;
       setWsReady(false);
       setSynced(false);
       clearPendingEvents();
       stream.close();
     };
-  }, [meta?.id, chatId, historyReadyForStream]);
+  }, [meta?.id, chatId, historyReadyForStream, resetOlderLoad, resetWindow]);
 
   const sendPrompt = useCallback((text: string, clientId?: string) => {
     const stream = streamRef.current;
@@ -252,9 +290,11 @@ export function useChat(chatId: string): UseChatResult {
     if (status !== "ready") return false;
     setStatus("streaming");
     setLocallyStartedTurn(true);
+    // A prompt belongs after the latest messages, not a window of old ones.
+    if (isDetached()) void reloadHistoryRef.current?.();
     stream.sendPrompt(text, clientId);
     return true;
-  }, [status, wsReady, synced]);
+  }, [status, wsReady, synced, isDetached]);
 
   const cancel = useCallback(() => {
     const stream = streamRef.current;
@@ -275,32 +315,26 @@ export function useChat(chatId: string): UseChatResult {
   }, [status, wsReady, synced]);
 
   const rewind = useCallback(async (rewindBeforeTimestamp: number) => {
-    const res = await chatApi.rewind(chatId, rewindBeforeTimestamp);
-    clearPendingEvents();
-    hydratedTextPartRef.current = null;
-    lastSeqRef.current = Math.max(
-      res.lastSeq,
-      chatEventStateProjector.latestSequence(res.events)
-    );
-    setRenderState(chatEventStateProjector.fromEvents(res.events, res));
-    setStatus("ready");
-    setLocallyStartedTurn(false);
-    return res;
+    historyGenerationRef.current++;
+    historyNeedsRefreshRef.current = true;
+    setSynced(false);
+    try {
+      const res = await chatApi.rewind(chatId, rewindBeforeTimestamp);
+      // The broadcast may already have refreshed this tab. Read the current
+      // branch again rather than applying a potentially older HTTP snapshot.
+      await reloadHistoryRef.current?.();
+      setLocallyStartedTurn(false);
+      return res;
+    } catch (error) {
+      await reloadHistoryRef.current?.();
+      throw error;
+    }
   }, [chatId]);
 
-  const loadOlder = useCallback(async () => {
-    if (loadingOlder || !renderState.hasOlder || !renderState.nextBefore) return;
-    setLoadingOlder(true);
-    try {
-      const page = await chatApi.fetchTranscript(chatId, {
-        limit: CHAT_TRANSCRIPT_TURN_PAGE_LIMIT,
-        before: renderState.nextBefore,
-      });
-      setRenderState((current) => chatEventStateProjector.prepend(current, page));
-    } finally {
-      setLoadingOlder(false);
-    }
-  }, [chatId, loadingOlder, renderState.hasOlder, renderState.nextBefore]);
+  const returnToLatest = useCallback(async () => {
+    if (!isDetached()) return;
+    await reloadHistoryRef.current?.();
+  }, [isDetached]);
 
   const refreshMeta = useCallback(async (throwOnError = false) => {
     if (!chatId) return;
@@ -320,12 +354,10 @@ export function useChat(chatId: string): UseChatResult {
     eventCount: renderState.eventCount,
     hasOlder: renderState.hasOlder,
     loadingOlder,
-    indexingProgress,
     status,
     locallyStartedTurn,
     error,
-    // A known canonical tail lets the socket synchronize safely even while
-    // older transcript items continue materializing in the background.
+    // Wait for the socket to synchronize before admitting a new prompt.
     canSendPrompt: wsReady && synced && status === "ready",
     sendPrompt,
     promptOutcome,
@@ -334,6 +366,11 @@ export function useChat(chatId: string): UseChatResult {
     respondInteraction,
     rewind,
     loadOlder,
+    hasNewer,
+    loadingNewer,
+    showAround,
+    loadNewer,
+    returnToLatest,
     refreshMeta,
   };
 }

@@ -32,18 +32,21 @@ func WithTranscriptEventWindowSource(source TranscriptEventWindowSource) Option 
 	}
 }
 
-// TranscriptPageQuery pages the user-visible transcript in whole turns. The
-// sequence cursor remains tied to the raw event log so existing chats need no
-// migration and live replay can keep its event-based contract.
+// TranscriptPageQuery bounds a history page by turn count and bytes. A large
+// turn may span pages; the cursor remains a sequence in the saved event stream.
 type TranscriptPageQuery struct {
 	Limit     int
 	BeforeSeq int64
 	ByteLimit int
+	// NewerTurns, with AnchorSeq, ends the page NewerTurns turns after the
+	// turn holding AnchorSeq instead of at BeforeSeq: a window around a
+	// message, such as a search result, without loading everything newer.
+	AnchorSeq  int64
+	NewerTurns int
 }
 
-// TranscriptTurn is a read projection of one prompt run. Events retain the
-// existing transport shape, but adjacent streaming deltas are compacted and a
-// page never begins inside the turn.
+// TranscriptTurn groups the events selected for one prompt run. Events retain
+// their transport shape; a byte-limited page may contain only part of a turn.
 type TranscriptTurn struct {
 	ID       string  `json:"id"`
 	StartSeq int64   `json:"startSeq"`
@@ -51,21 +54,15 @@ type TranscriptTurn struct {
 	Events   []Event `json:"events"`
 }
 
-// TranscriptPage is the bounded turn projection returned to history clients.
+// TranscriptPage contains the requested events grouped into turns for display.
 type TranscriptPage struct {
-	Turns      []TranscriptTurn         `json:"turns"`
-	NextBefore int64                    `json:"nextBefore,omitempty"`
-	LastSeq    int64                    `json:"lastSeq"`
-	HasMore    bool                     `json:"hasMore"`
-	Indexing   *TranscriptIndexProgress `json:"indexing,omitempty"`
-}
-
-// TranscriptIndexProgress lets clients keep the live stream connected while
-// a legacy JSONL file is projected in resumable background batches.
-type TranscriptIndexProgress struct {
-	IndexedBytes int64 `json:"indexedBytes"`
-	TotalBytes   int64 `json:"totalBytes"`
-	TailSeqKnown bool  `json:"tailSeqKnown"`
+	Turns      []TranscriptTurn `json:"turns"`
+	NextBefore int64            `json:"nextBefore,omitempty"`
+	LastSeq    int64            `json:"lastSeq"`
+	HasMore    bool             `json:"hasMore"`
+	// NewerFrom is the first sequence after an anchored page when newer turns
+	// exist beyond it; zero means the page reaches the end of the transcript.
+	NewerFrom int64 `json:"newerFrom,omitempty"`
 }
 
 // TranscriptContentPage is one valid UTF-8 chunk of an oversized transcript
@@ -78,18 +75,16 @@ type TranscriptContentPage struct {
 	Complete   bool   `json:"complete"`
 }
 
-// WithTranscriptProjectionSource selects the compact durable read model when
-// storage provides it, while retaining the scanner/window fallback for tests
-// and recovery.
-func WithTranscriptProjectionSource(source TranscriptProjectionSource) Option {
+// WithTranscriptReader supplies the indexed page and content reader. When no
+// reader is configured, pages are assembled from the event window or scanner.
+func WithTranscriptReader(source TranscriptReader) Option {
 	return func(service *Service) {
-		service.transcriptProjection = source
+		service.transcriptReader = source
 	}
 }
 
-// TranscriptPage projects the raw append-only stream into complete prompt
-// turns for history rendering. Raw events remain authoritative for live replay;
-// this read model only changes the unit used for backward pagination.
+// TranscriptPage reads saved events as a bounded page grouped into prompt
+// turns. The underlying event sequences also remain the live replay cursors.
 func (s *Service) TranscriptPage(
 	ctx context.Context,
 	id ID,
@@ -98,38 +93,38 @@ func (s *Service) TranscriptPage(
 	if !ValidID(id) {
 		return TranscriptPage{}, ErrInvalidID
 	}
-	if s.transcriptProjection != nil {
-		page, err := s.transcriptProjection.ReadTranscriptPage(ctx, id, query)
-		if err == nil || !errors.Is(err, ErrTranscriptProjectionUnavailable) {
+	if s.transcriptReader != nil {
+		page, err := s.transcriptReader.ReadTranscriptPage(ctx, id, query)
+		if err == nil || !errors.Is(err, ErrTranscriptUnavailable) {
 			return page, err
 		}
 	}
 
-	projection := newTranscriptProjection(query)
+	assembler := newTranscriptPageAssembler(query)
 	if s.transcriptWindow != nil {
 		window, err := s.transcriptWindow.ReadTranscriptEventWindow(
 			ctx,
 			id,
-			projection.beforeSeq,
-			projection.limit,
+			assembler.beforeSeq,
+			assembler.limit,
 		)
 		if err != nil {
 			return TranscriptPage{}, err
 		}
-		projection.lastSeq = window.LastSeq
+		assembler.lastSeq = window.LastSeq
 		for _, event := range window.Events {
-			projection.visit(event)
+			assembler.visit(event)
 		}
-		return projection.page(), nil
+		return assembler.page(), nil
 	}
-	err := s.transcriptEvents.ScanEvents(ctx, id, projection.visit)
+	err := s.transcriptEvents.ScanEvents(ctx, id, assembler.visit)
 	if err != nil {
 		return TranscriptPage{}, err
 	}
-	return projection.page(), nil
+	return assembler.page(), nil
 }
 
-// TranscriptContent retrieves an oversized projected field without exposing a
+// TranscriptContent retrieves an oversized event field without exposing a
 // filesystem path or requiring the client to download its containing event.
 func (s *Service) TranscriptContent(
 	ctx context.Context,
@@ -141,15 +136,15 @@ func (s *Service) TranscriptContent(
 	if !ValidID(id) {
 		return TranscriptContentPage{}, ErrInvalidID
 	}
-	if s.transcriptProjection == nil {
-		return TranscriptContentPage{}, ErrTranscriptProjectionUnavailable
+	if s.transcriptReader == nil {
+		return TranscriptContentPage{}, ErrTranscriptUnavailable
 	}
-	return s.transcriptProjection.ReadTranscriptContent(
+	return s.transcriptReader.ReadTranscriptContent(
 		ctx, id, contentID, afterBytes, limitBytes,
 	)
 }
 
-type transcriptProjection struct {
+type transcriptPageAssembler struct {
 	beforeSeq int64
 	limit     int
 	lastSeq   int64
@@ -158,7 +153,7 @@ type transcriptProjection struct {
 	current   transcriptTurnBuffer
 }
 
-func newTranscriptProjection(query TranscriptPageQuery) *transcriptProjection {
+func newTranscriptPageAssembler(query TranscriptPageQuery) *transcriptPageAssembler {
 	limit := query.Limit
 	if limit <= 0 {
 		limit = configconstants.DefaultChatTranscriptTurnLimit
@@ -166,52 +161,52 @@ func newTranscriptProjection(query TranscriptPageQuery) *transcriptProjection {
 	if limit > configconstants.MaxChatTranscriptTurnLimit {
 		limit = configconstants.MaxChatTranscriptTurnLimit
 	}
-	return &transcriptProjection{
+	return &transcriptPageAssembler{
 		beforeSeq: query.BeforeSeq,
 		limit:     limit,
 		turns:     make([]TranscriptTurn, 0, limit),
 	}
 }
 
-func (projection *transcriptProjection) visit(event Event) {
-	if event.Seq > projection.lastSeq {
-		projection.lastSeq = event.Seq
+func (assembler *transcriptPageAssembler) visit(event Event) {
+	if event.Seq > assembler.lastSeq {
+		assembler.lastSeq = event.Seq
 	}
-	if projection.beforeSeq > 0 && event.Seq >= projection.beforeSeq {
+	if assembler.beforeSeq > 0 && event.Seq >= assembler.beforeSeq {
 		return
 	}
-	if projection.current.startsNewTurn(event) {
-		projection.flushCurrent()
+	if assembler.current.startsNewTurn(event) {
+		assembler.flushCurrent()
 	}
-	projection.current.append(event)
+	assembler.current.append(event)
 }
 
-func (projection *transcriptProjection) flushCurrent() {
-	if len(projection.current.events) == 0 {
+func (assembler *transcriptPageAssembler) flushCurrent() {
+	if len(assembler.current.events) == 0 {
 		return
 	}
-	turn := projection.current.project()
-	if len(projection.turns) == projection.limit {
-		copy(projection.turns, projection.turns[1:])
-		projection.turns[len(projection.turns)-1] = turn
-		projection.hasMore = true
+	turn := assembler.current.project()
+	if len(assembler.turns) == assembler.limit {
+		copy(assembler.turns, assembler.turns[1:])
+		assembler.turns[len(assembler.turns)-1] = turn
+		assembler.hasMore = true
 	} else {
-		projection.turns = append(projection.turns, turn)
+		assembler.turns = append(assembler.turns, turn)
 	}
-	projection.current = transcriptTurnBuffer{}
+	assembler.current = transcriptTurnBuffer{}
 }
 
-func (projection *transcriptProjection) page() TranscriptPage {
-	projection.flushCurrent()
+func (assembler *transcriptPageAssembler) page() TranscriptPage {
+	assembler.flushCurrent()
 	var nextBefore int64
-	if projection.hasMore && len(projection.turns) > 0 {
-		nextBefore = projection.turns[0].StartSeq
+	if assembler.hasMore && len(assembler.turns) > 0 {
+		nextBefore = assembler.turns[0].StartSeq
 	}
 	return TranscriptPage{
-		Turns:      projection.turns,
+		Turns:      assembler.turns,
 		NextBefore: nextBefore,
-		LastSeq:    projection.lastSeq,
-		HasMore:    projection.hasMore,
+		LastSeq:    assembler.lastSeq,
+		HasMore:    assembler.hasMore,
 	}
 }
 

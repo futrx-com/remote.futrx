@@ -102,6 +102,9 @@ export const DEFAULT_SORT: SortId = "relevance";
 
 export const ANY_DATE: DateFilter = { preset: "any", field: "lastMessageAt" };
 
+/** Wait for typing to settle before fetching workspace search results. */
+export const WORKSPACE_SEARCH_DEBOUNCE_MS = 300;
+
 // ---------------------------------------------------------------------------
 // Ranking
 // ---------------------------------------------------------------------------

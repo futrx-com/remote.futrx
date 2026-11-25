@@ -88,7 +88,7 @@ export type ChatEvent = ChatEventBase & (
   | { type: "session"; sessionId?: string; claudeSessionId?: string; codexSessionId?: string; kimiSessionId?: string; antigravitySessionId?: string }
   | { type: "complete"; usage?: ChatUsagePayload }
   | { type: "error"; message: string }
-  | { type: "sync"; running?: boolean }
+  | { type: "sync"; running?: boolean; historyVersion?: string }
 );
 
 export interface ChatEventPage {
@@ -96,13 +96,8 @@ export interface ChatEventPage {
   nextBefore?: number;
   lastSeq: number;
   hasMore: boolean;
-  indexing?: TranscriptIndexProgress;
-}
-
-export interface TranscriptIndexProgress {
-  indexedBytes: number;
-  totalBytes: number;
-  tailSeqKnown: boolean;
+  /** Set on a window page when newer turns exist after it. */
+  newerFrom?: number;
 }
 
 export interface TranscriptContentPage {
