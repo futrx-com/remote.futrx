@@ -233,7 +233,9 @@ export function Sidebar({
             <SidebarEmptyState onNewProject={onNewProject} />
           )}
 
-          {searching && results.length === 0 && !messageSearch.loading && messageSearch.hits.length === 0 && (
+          {searching && search.loading && <p role="status" class="px-2 py-2 text-xs text-ink-400">Searching chats…</p>}
+          {searching && search.error && <p role="alert" class="px-2 py-2 text-xs text-accent-red">{search.error}</p>}
+          {searching && !search.loading && !search.error && results.length === 0 && !messageSearch.loading && messageSearch.hits.length === 0 && (
             <SidebarNoMatches />
           )}
 

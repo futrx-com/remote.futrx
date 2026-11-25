@@ -6,6 +6,7 @@ import type {
 } from "../../models/chat.ts";
 import type { MatchSpan } from "../../models/search.ts";
 import { requestJson } from "../apiRequest.ts";
+import type { WorkspaceSearchSelection } from "./workspaceSearchApi.ts";
 import { CHAT_SEARCH_PAGE_LIMIT } from "../../config/api.ts";
 
 interface ChatTranscriptTurnPayload {
@@ -110,9 +111,19 @@ export interface ChatSearchHit extends ConversationSearchHit {
 
 /** Messages across every chat the caller can read, newest first. Pass the
  *  last hit as `after` for the next page; a short page is the last. */
-export function searchChats(query: string, after?: ChatSearchHit): Promise<ChatSearchHit[]> {
+export function searchChats(
+  query: string,
+  after?: ChatSearchHit,
+  selection?: WorkspaceSearchSelection,
+): Promise<ChatSearchHit[]> {
+  const before = after ? `${after.t}:${after.chatId}:${after.startSeq}` : undefined;
+  if (selection) {
+    return requestJson<ChatSearchHit[]>("POST", API_ROUTES.chats.searchAll(""), {
+      ...selection, query, before, limit: CHAT_SEARCH_PAGE_LIMIT,
+    });
+  }
   const search = new URLSearchParams({ q: query, limit: String(CHAT_SEARCH_PAGE_LIMIT) });
-  if (after) search.set("before", `${after.t}:${after.chatId}:${after.startSeq}`);
+  if (before) search.set("before", before);
   return requestJson<ChatSearchHit[]>("GET", API_ROUTES.chats.searchAll(search.toString()));
 }
 

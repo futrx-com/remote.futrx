@@ -24,7 +24,7 @@ export function WorkspaceContainer() {
   // The one caller of `useCommandPalette`: it binds the chord that toggles the
   // palette, and this is what renders the palette it toggles.
   const palette = useCommandPalette();
-  const paletteSearch = usePaletteSearch();
+  const paletteSearch = usePaletteSearch(palette.open);
   // Two moments where there is no chat to render but one is still coming: the
   // snapshot has not landed, or it has and the initial-chat effect has not run
   // its pick yet. Both would otherwise flash the "Create your first project"

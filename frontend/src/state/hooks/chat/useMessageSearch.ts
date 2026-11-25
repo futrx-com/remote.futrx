@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { chatApi } from "../../../api/chatApi";
 import type { ChatSearchHit } from "../../../api/chat/chatTranscriptApi";
+import type { WorkspaceSearchSelection } from "../../../api/chat/workspaceSearchApi";
 import { CHAT_SEARCH_PAGE_LIMIT } from "../../../config/api.ts";
+import { WORKSPACE_SEARCH_DEBOUNCE_MS } from "../../../config/search.ts";
 
 export interface MessageSearch {
   hits: ChatSearchHit[];
@@ -13,57 +15,64 @@ export interface MessageSearch {
   loadMore: () => void;
 }
 
-/** Typing settles for this long before the server is asked. */
-const MESSAGE_SEARCH_DEBOUNCE_MS = 300;
+interface SearchRequest {
+  query: string;
+  selection: WorkspaceSearchSelection;
+}
+interface SearchPage {
+  request: SearchRequest;
+  hits: ChatSearchHit[];
+  hasMore: boolean;
+  error: string | null;
+}
 
-/**
- * Message content across every chat, for `query`, newest first and paged on
- * request. A new query discards the previous one's results.
- */
-export function useMessageSearch(query: string): MessageSearch {
-  const [hits, setHits] = useState<ChatSearchHit[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** Search transcripts across chats matching the sidebar's filters. */
+export function useMessageSearch(query: string, selection: WorkspaceSearchSelection): MessageSearch {
   const trimmed = query.trim();
-  const queryRef = useRef(trimmed);
-  queryRef.current = trimmed;
+  const request = useMemo(() => ({ query: trimmed, selection }), [trimmed, selection]);
+  const requestRef = useRef(request);
+  requestRef.current = request;
+  const [page, setPage] = useState<SearchPage | null>(null);
+  const current = page?.request === request ? page : null;
+  const pendingPage = useRef<SearchRequest | null>(null);
+  const [paging, setPaging] = useState<SearchRequest | null>(null);
 
   useEffect(() => {
+    if (!request.query) return;
     let cancelled = false;
-    setHits([]);
-    setHasMore(false);
-    setError(null);
-    if (!trimmed) { setLoading(false); return; }
-    setLoading(true);
     const timer = setTimeout(() => {
-      chatApi.searchChats(trimmed).then((page) => {
-        if (cancelled) return;
-        setHits(page);
-        setHasMore(page.length >= CHAT_SEARCH_PAGE_LIMIT);
-      }).catch((reason: Error) => {
-        if (!cancelled) setError(reason.message);
-      }).finally(() => {
-        if (!cancelled) setLoading(false);
+      chatApi.searchChats(request.query, undefined, request.selection).then((hits) => {
+        if (!cancelled) setPage({ request, hits, hasMore: hits.length >= CHAT_SEARCH_PAGE_LIMIT, error: null });
+      }).catch((error: Error) => {
+        if (!cancelled) setPage({ request, hits: [], hasMore: false, error: error.message });
       });
-    }, MESSAGE_SEARCH_DEBOUNCE_MS);
+    }, WORKSPACE_SEARCH_DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [trimmed]);
+  }, [request]);
 
   const loadMore = useCallback(() => {
-    const last = hits[hits.length - 1];
-    if (!last || !hasMore || loadingMore) return;
-    const forQuery = trimmed;
-    setLoadingMore(true);
-    chatApi.searchChats(forQuery, last).then((page) => {
-      if (queryRef.current !== forQuery) return;
-      setHits((current) => [...current, ...page]);
-      setHasMore(page.length >= CHAT_SEARCH_PAGE_LIMIT);
-    }).catch((reason: Error) => {
-      if (queryRef.current === forQuery) setError(reason.message);
-    }).finally(() => setLoadingMore(false));
-  }, [hasMore, hits, loadingMore, trimmed]);
+    if (!current?.hasMore || pendingPage.current === request) return;
+    const last = current.hits.at(-1);
+    if (!last) return;
+    pendingPage.current = request;
+    setPaging(request);
+    chatApi.searchChats(request.query, last, request.selection).then((hits) => {
+      if (requestRef.current !== request) return;
+      setPage({ request, hits: [...current.hits, ...hits], hasMore: hits.length >= CHAT_SEARCH_PAGE_LIMIT, error: null });
+    }).catch((error: Error) => {
+      if (requestRef.current === request) setPage({ ...current, error: error.message });
+    }).finally(() => {
+      if (pendingPage.current === request) pendingPage.current = null;
+      setPaging((active) => active === request ? null : active);
+    });
+  }, [current, request]);
 
-  return { hits, loading, hasMore, loadingMore, error, loadMore };
+  return {
+    hits: current?.hits ?? [],
+    loading: !!trimmed && !current,
+    hasMore: current?.hasMore ?? false,
+    loadingMore: paging === request,
+    error: current?.error ?? null,
+    loadMore,
+  };
 }

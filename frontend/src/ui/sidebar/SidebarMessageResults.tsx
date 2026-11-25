@@ -22,13 +22,13 @@ export function SidebarMessageResults({
 
   useEffect(() => {
     const end = endRef.current;
-    if (!end || !hasMore || typeof IntersectionObserver === "undefined") return;
+    if (!end || !hasMore || messages.error || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) loadMore();
     }, { rootMargin: "240px" });
     observer.observe(end);
     return () => observer.disconnect();
-  }, [hasMore, loadingMore, loadMore]);
+  }, [hasMore, loadingMore, loadMore, messages.error]);
 
   if (!messages.loading && messages.hits.length === 0 && !messages.error) return null;
 

@@ -25,7 +25,7 @@ export function SidebarContainer({ updateTag }: { updateTag: string | null }) {
   const signOut = useAccountSignOut(auth.email || auth.adminEmail);
   const search = useSidebarSearch();
   const openPalette = useOpenCommandPalette();
-  const messageSearch = useMessageSearch(search.query);
+  const messageSearch = useMessageSearch(search.query, search.selection);
   const titles = useMemo(
     () => new Map(workspace.chats.map((chat) => [chat.id, chat.title])),
     [workspace.chats],
