@@ -14,17 +14,19 @@ import (
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceworkspacefiles "github.com/futrx-com/remote.futrx.com/internal/service/workspacefiles"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type ChatHandler struct {
-	chats   *servicechat.Service
-	access  *servicechat.AccessService
-	auth    *serviceauth.Service
-	files   *serviceworkspacefiles.Service
-	history *servicegithistory.Service
-	audit   serviceaudit.Recorder
+	searchProjects *serviceproject.Service
+	chats          *servicechat.Service
+	access         *servicechat.AccessService
+	auth           *serviceauth.Service
+	files          *serviceworkspacefiles.Service
+	history        *servicegithistory.Service
+	audit          serviceaudit.Recorder
 }
 
 func NewChatHandler(
@@ -56,9 +58,15 @@ func auditWorkspaceTarget(meta servicechat.Meta) serviceaudit.Target {
 	return serviceaudit.Target{Type: serviceaudit.TargetChat, ID: string(meta.ID), Name: meta.Title}
 }
 
+func (h *ChatHandler) WithSearchProjects(projects *serviceproject.Service) *ChatHandler {
+	h.searchProjects = projects
+	return h
+}
+
 func (h *ChatHandler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/chats", h.HandleCollection)
 	mux.HandleFunc("/api/chats/search", h.HandleSearchAll)
+	mux.HandleFunc("/api/chats/search-metadata", h.handleSearchMetadata)
 	mux.HandleFunc("/api/chats/", h.HandleResource)
 }
 
@@ -192,40 +200,6 @@ func (h *ChatHandler) handleSearch(w http.ResponseWriter, r *http.Request, id se
 	}
 	if hits == nil {
 		hits = []servicechat.SearchHit{}
-	}
-	httptransport.SendJSON(w, http.StatusOK, hits)
-}
-
-// HandleSearchAll searches message content across every chat the caller can
-// list. Chat IDs are hexadecimal, so this route never shadows a chat.
-func (h *ChatHandler) HandleSearchAll(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		httptransport.SendErr(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	email, isAdmin, err := h.caller(r)
-	if err != nil {
-		httptransport.SendErr(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
-	cursor, err := servicechat.ParseChatSearchCursor(r.URL.Query().Get("before"))
-	if err != nil {
-		httptransport.SendErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	metas, err := h.access.List(r.Context(), email, isAdmin)
-	if err != nil {
-		sendChatError(w, err)
-		return
-	}
-	ids := make([]servicechat.ID, 0, len(metas))
-	for _, meta := range metas {
-		ids = append(ids, meta.ID)
-	}
-	hits, err := h.chats.SearchChats(r.Context(), ids, r.URL.Query().Get("q"), intQuery(r, "limit", 50), cursor)
-	if err != nil {
-		sendChatError(w, err)
-		return
 	}
 	httptransport.SendJSON(w, http.StatusOK, hits)
 }

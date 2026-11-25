@@ -93,7 +93,7 @@ func NewHTTPHandler(deps Dependencies) (http.Handler, error) {
 		deps.Services.Auth,
 		deps.Files,
 		deps.GitHistory,
-	).WithAudit(auditLog)
+	).WithAudit(auditLog).WithSearchProjects(deps.Services.Projects)
 
 	applicationsHandler := httphandlers.NewApplicationsHandler(
 		deps.Services.Applications,
