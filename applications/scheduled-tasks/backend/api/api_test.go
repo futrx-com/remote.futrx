@@ -179,6 +179,43 @@ func TestRecurringTaskReschedulesAndStopsAtMaxRuns(t *testing.T) {
 		}
 	}
 }
+func TestMissedRunsAreSkippedAfterDowntime(t *testing.T) {
+	events := &recordingEvents{}
+	a := testAPI(t, events)
+	once := createOnce(t, a)
+	r := call(t, a, "POST", "tasks", map[string]any{"name": "daily", "prompt": "remind me", "chatId": "chat", "kind": "cron", "cron": "0 15 * * *", "timezone": "UTC"}, owner)
+	var daily Task
+	_ = json.Unmarshal(r.Body, &daily)
+	// Remote is down for three days, then starts again.
+	now := a.now().Add(72 * time.Hour)
+	a.now = func() time.Time { return now }
+	if err := a.tick(); err != nil {
+		t.Fatal(err)
+	}
+	if len(events.calls) != 0 {
+		t.Fatalf("stale runs were delivered: %v", events.calls)
+	}
+	if got := a.tasks[once.ID]; got.Enabled || !got.Archived || got.ActiveRunID != "" || got.NextRunAt != 0 {
+		t.Fatalf("one-time task not archived: %+v", got)
+	}
+	got := a.tasks[daily.ID]
+	if !got.Enabled || got.ActiveRunID != "" || got.NextRunAt <= now.UnixMilli() {
+		t.Fatalf("recurring task not moved to a future run: %+v", got)
+	}
+}
+func TestRunWithinGraceStillFires(t *testing.T) {
+	events := &recordingEvents{}
+	a := testAPI(t, events)
+	createOnce(t, a)
+	now := a.now().Add(time.Minute)
+	a.now = func() time.Time { return now }
+	if err := a.tick(); err != nil {
+		t.Fatal(err)
+	}
+	if len(events.calls) != 1 {
+		t.Fatalf("on-time run was skipped: %v", events.calls)
+	}
+}
 func TestInitRejectsCorruptStorageAndGlobalScope(t *testing.T) {
 	a := New(&recordingEvents{}, nil)
 	if err := a.Init(applications.Instance{Scope: "global", DataDir: t.TempDir()}); err == nil {

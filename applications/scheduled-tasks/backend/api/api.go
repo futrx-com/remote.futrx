@@ -17,6 +17,9 @@ const (
 	maxTasks       = 100
 	maxPromptBytes = 32 << 10
 	retryInterval  = 15 * time.Second
+	// missedRunGrace is how late a run may start. Older runs were missed while
+	// Remote was stopped or updating and are skipped, not delivered stale.
+	missedRunGrace = 5 * time.Minute
 )
 
 type API struct {

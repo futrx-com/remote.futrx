@@ -40,12 +40,20 @@ func (a *API) claimDue() ([]Task, error) {
 	now := a.now()
 	updated := maps.Clone(a.tasks)
 	due := []Task{}
+	skipped := false
 	for id, t := range updated {
 		if !t.Enabled && t.ActiveRunID == "" {
 			continue
 		}
 		if t.ActiveRunID == "" {
 			if t.NextRunAt <= 0 || t.NextRunAt > now.UnixMilli() {
+				continue
+			}
+			if now.UnixMilli()-t.NextRunAt > missedRunGrace.Milliseconds() {
+				// The run was missed while Remote was stopped or updating. Running it
+				// now would deliver a stale prompt, so skip it instead.
+				updated[id] = a.skipMissed(t, now)
+				skipped = true
 				continue
 			}
 			runID, err := newID()
@@ -59,7 +67,7 @@ func (a *API) claimDue() ([]Task, error) {
 			due = append(due, t)
 		}
 	}
-	if len(due) > 0 {
+	if len(due) > 0 || skipped {
 		if err := a.commit(updated); err != nil {
 			return nil, err
 		}
@@ -68,4 +76,20 @@ func (a *API) claimDue() ([]Task, error) {
 		}
 	}
 	return due, nil
+}
+
+// skipMissed drops a run that is long overdue. A one-time task is archived; a
+// recurring task moves to its next future occurrence.
+func (a *API) skipMissed(t Task, now time.Time) Task {
+	t.LastError = "skipped: missed its scheduled time while Remote was not running"
+	if t.Kind == "cron" {
+		if next, err := nextOccurrence(t, now); err == nil {
+			t.NextRunAt = next.UnixMilli()
+			return t
+		}
+	}
+	t.Enabled = false
+	t.Archived = true
+	t.NextRunAt = 0
+	return t
 }
