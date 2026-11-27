@@ -1,10 +1,5 @@
 package application
 
-import (
-	"io"
-	"time"
-)
-
 type Node struct {
 	Name    string
 	Path    string
@@ -26,26 +21,14 @@ type SearchResult struct {
 	Truncated bool
 }
 
-type File struct {
-	Name    string
-	ModTime time.Time
-	content io.ReadSeekCloser
-}
-
-func (f *File) Content() io.ReadSeeker {
-	return f.content
-}
-
-func (f *File) Close() error {
-	return f.content.Close()
-}
-
 type Archive struct {
 	Name     string
 	Root     string
 	Relative string
 }
 
-func NewFile(name string, modTime time.Time, content io.ReadSeekCloser) *File {
-	return &File{Name: name, ModTime: modTime, content: content}
+// PublishedArchive is a finished ZIP waiting in the workspace for the browser.
+// Path is relative to the workspace.
+type PublishedArchive struct {
+	Path string
 }

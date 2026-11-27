@@ -270,6 +270,15 @@ func loadApplicationManifest(
 	// Container metadata is derived from backend/container/ below. A manifest
 	// cannot claim a build identity or commands that the package does not carry.
 	application.Container = nil
+	if err := validateInfraScriptPath(application.Preinstall, "preinstall"); err != nil {
+		return svc.Application{}, nil, err
+	}
+	var preinstall []byte
+	if application.Preinstall != "" {
+		if preinstall, err = fs.ReadFile(catalog, path.Join(root, application.Preinstall)); err != nil {
+			return svc.Application{}, nil, fmt.Errorf("read preinstall script %q: %w", application.Preinstall, err)
+		}
+	}
 	if err := validateInfraScriptPath(application.Install, "install"); err != nil {
 		return svc.Application{}, nil, err
 	}
@@ -300,7 +309,7 @@ func loadApplicationManifest(
 	application.Skills = skills
 
 	infrastructure, err := loadApplicationInfrastructure(
-		catalog, root, application.ID, application.Version, application.Install)
+		catalog, root, application.ID, application.Version, application.Install, preinstall)
 	if err != nil {
 		return svc.Application{}, nil, err
 	}

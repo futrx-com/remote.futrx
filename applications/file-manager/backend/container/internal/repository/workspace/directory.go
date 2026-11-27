@@ -32,6 +32,9 @@ func (s *WorkspaceFileStore) ListDir(root, relative string, maxEntries int) ([]*
 	for {
 		entries, readErr := directory.ReadDir(config.DirectoryReadBatchSize)
 		for _, entry := range entries {
+			if isDownloads(path.Join(resolved, entry.Name()), entry) {
+				continue
+			}
 			listing.consider(workspace, relative, entry)
 		}
 		if readErr != nil {

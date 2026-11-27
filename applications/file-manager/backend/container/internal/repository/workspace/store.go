@@ -1,10 +1,9 @@
 package workspace
 
 import (
-	"errors"
-	"io"
-	"os"
-	"time"
+	"io/fs"
+
+	"futrx.local/catalog/applications/file-manager/backend/container/internal/config"
 )
 
 type WorkspaceFileStore struct{}
@@ -25,22 +24,8 @@ func (s *WorkspaceFileStore) DirectoryExists(root, relative string) bool {
 	return err == nil && info.IsDir()
 }
 
-func (s *WorkspaceFileStore) OpenFile(root, relative string) (io.ReadSeekCloser, string, time.Time, error) {
-	workspace, err := newSecureWorkspace(root)
-	if err != nil {
-		return nil, "", time.Time{}, err
-	}
-	defer workspace.close()
-	resolved, err := workspace.resolve(relative)
-	if err != nil {
-		return nil, "", time.Time{}, err
-	}
-	file, info, err := workspace.openRegular(resolved)
-	if err != nil {
-		if errors.Is(err, errNotRegularFile) {
-			return nil, "", time.Time{}, os.ErrNotExist
-		}
-		return nil, "", time.Time{}, err
-	}
-	return file, info.Name(), info.ModTime(), nil
+// isDownloads reports the folder finished ZIPs wait in. It is File Manager's
+// own scratch space, so the browser never lists, searches or re-archives it.
+func isDownloads(rootRelative string, entry fs.DirEntry) bool {
+	return rootRelative == config.DownloadsDirectory && entry.IsDir()
 }

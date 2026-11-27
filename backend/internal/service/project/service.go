@@ -50,6 +50,15 @@ type Service struct {
 	// recovery. Different projects remain independent.
 	runState          keyedMutex
 	containerRestorer func(context.Context, string) error
+	containerUpgrader func(context.Context, string)
+}
+
+// SetContainerUpgrader attaches an optional catch-up for application copies
+// that went out of date while their project container was down. It runs in the
+// background after such a container starts, so a start never waits on an
+// application reinstall.
+func (s *Service) SetContainerUpgrader(upgrade func(context.Context, string)) {
+	s.containerUpgrader = upgrade
 }
 
 // SetContainerRestorer attaches optional application recovery after a missing
@@ -523,6 +532,11 @@ func (s *Service) startLocked(ctx context.Context, id ID) (Meta, bool, error) {
 				meta, startErr := s.setStartError(ctx, id, fmt.Errorf("restore applications: %w", err))
 				return meta, converged, startErr
 			}
+		}
+		// A restored container was just reinstalled in full; a running one has
+		// been up all along and was brought current when Remote started.
+		if s.containerUpgrader != nil && state != ContainerStateMissing && state != ContainerStateRunning {
+			go s.containerUpgrader(context.WithoutCancel(ctx), string(id))
 		}
 	}
 	meta, err := s.setSetupComplete(ctx, id)

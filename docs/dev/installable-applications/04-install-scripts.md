@@ -252,6 +252,29 @@ The fastest loop:
   has network by the time the script runs (the installer waits for an IPv4
   route), but nothing else is guaranteed.
 
+## Preinstall scripts
+
+An application may declare `"preinstall": "infra/preinstall.sh"`. Remote runs it
+at the start of every install, before building `backend/container/` (see
+[Container-side Go programs](#container-side-go-programs)) and before the install
+script, so it is the place to retire an earlier version: stop a service whose binary the
+build is about to replace, or delete files the new version no longer uses. The
+install script, by contrast, runs after the new programs are already in place.
+
+It runs as root in the same container, with the same environment and timeout as
+the install script, but in its own subshell: `exit 0` ends only the preinstall,
+and a changed directory, variable or shell option does not reach the install. A
+non-zero exit fails the install before anything is built or replaced.
+
+Like the install script it runs on every install, retry, upgrade and
+restoration, including fresh installs where there is nothing to retire, so every
+step must tolerate its target being absent. It must not remove what the build
+produces (the commands in `/usr/local/bin` or the build marker): when the source
+is unchanged, the build is skipped and would not put them back.
+
+The field must be explicit, stay under `infra/`, name a file that exists, and
+accompany a container capability.
+
 ## Uninstall scripts
 
 An application may also declare `"uninstall": "infra/uninstall.sh"`. For a

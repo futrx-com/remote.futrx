@@ -362,6 +362,9 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 			serviceapplications.WithAudit(auditLog),
 		)
 		projectService.SetContainerRestorer(applicationsService.RestoreProject)
+		projectService.SetContainerUpgrader(func(ctx context.Context, projectID string) {
+			applicationsService.UpgradeProject(ctx, projectID)
+		})
 	}
 
 	if applicationsService != nil {
@@ -370,6 +373,10 @@ func New(ctx context.Context, deps Dependencies) (Services, error) {
 		}
 		promptService.SetApplicationToolIssuer(applicationsService)
 		applicationsService.StartBackground(ctx)
+		// A Remote release may carry new container programs for copies that
+		// are already running; bring them current instead of waiting for a
+		// restart that may never come.
+		go applicationsService.UpgradeOutdated(ctx)
 	}
 
 	pushNotifier.push = pushService
@@ -432,6 +439,16 @@ func (a projectContainersAdapter) ContainerName(ctx context.Context, projectID s
 func (a projectContainersAdapter) EnsureRunning(ctx context.Context, projectID string) error {
 	_, err := a.projects.Start(servicepermission.ContextWithSystemActor(ctx), serviceproject.ID(projectID))
 	return err
+}
+
+// Running reports whether the project's container is up, so that upgrading
+// application copies at startup never wakes an idle project.
+func (a projectContainersAdapter) Running(ctx context.Context, projectID string) (bool, error) {
+	meta, err := a.projects.Get(ctx, serviceproject.ID(projectID))
+	if err != nil {
+		return false, err
+	}
+	return meta.Status == serviceproject.StatusRunning, nil
 }
 
 func (a projectContainersAdapter) ListProjectIDs(ctx context.Context) ([]string, error) {

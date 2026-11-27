@@ -1,6 +1,7 @@
 package applications
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -34,8 +35,8 @@ func validateInfraScriptPath(scriptPath, operation string) error {
 // loadApplicationInfrastructure discovers and prepares an application's
 // container-side capability. An explicit manifest path is required to exist.
 // backend/container/ generates a build script and may stand alone or run before
-// a custom infra script.
-func loadApplicationInfrastructure(catalog fs.FS, root, applicationID, applicationVersion, configuredPath string) (applicationInfrastructure, error) {
+// a custom infra script. A preinstall script runs before both.
+func loadApplicationInfrastructure(catalog fs.FS, root, applicationID, applicationVersion, configuredPath string, preinstall []byte) (applicationInfrastructure, error) {
 	installPath := configuredPath
 	if installPath == "" {
 		installPath = defaultInstallScriptPath
@@ -56,7 +57,7 @@ func loadApplicationInfrastructure(catalog fs.FS, root, applicationID, applicati
 		return applicationInfrastructure{}, fmt.Errorf("container source: %w", err)
 	}
 	if container == nil {
-		script, err = withInfraPayload(catalog, root, script)
+		script, err = withInfraPayload(catalog, root, withPreinstall(preinstall, script))
 		if err != nil {
 			return applicationInfrastructure{}, fmt.Errorf("infra payload: %w", err)
 		}
@@ -73,7 +74,7 @@ func loadApplicationInfrastructure(catalog fs.FS, root, applicationID, applicati
 
 	buildVersion := deriveContainerBuildVersion(applicationVersion, container.digest)
 	prologue := containerBuildScript(applicationID, buildVersion, container.commands)
-	combined := append(prologue, script...)
+	combined := withPreinstall(preinstall, append(prologue, script...))
 	return applicationInfrastructure{
 		installPath: installPath,
 		script:      stageInfraPayload(container.payload, combined),
@@ -90,4 +91,19 @@ func deriveContainerBuildVersion(applicationVersion, digest string) string {
 		return digest[:16]
 	}
 	return applicationVersion + "+" + digest[:16]
+}
+
+// withPreinstall runs preinstall ahead of script. It runs in a subshell so an
+// `exit 0` or a changed directory or shell option in it cannot end or alter
+// the install; a failure still stops the install before anything is built.
+func withPreinstall(preinstall, script []byte) []byte {
+	if len(preinstall) == 0 {
+		return script
+	}
+	var out bytes.Buffer
+	out.WriteString("set -euo pipefail\n(\n")
+	out.Write(preinstall)
+	out.WriteString("\n)\n")
+	out.Write(script)
+	return out.Bytes()
 }

@@ -28,6 +28,9 @@ func (s *WorkspaceFileStore) Search(root, query string, limit int) ([]*model.Nod
 		if walkPath == "." {
 			return nil
 		}
+		if isDownloads(walkPath, entry) {
+			return fs.SkipDir
+		}
 		visits++
 		if visits > config.MaxSearchVisits {
 			truncated = true

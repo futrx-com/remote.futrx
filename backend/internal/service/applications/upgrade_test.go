@@ -478,3 +478,96 @@ func TestInstallAcceptsEveryScopeTheApplicationDeclares(t *testing.T) {
 		t.Fatalf("project install of a project-scoped application: %v", err)
 	}
 }
+
+// runningProjectsFake reports which project containers are up.
+type runningProjectsFake struct {
+	staticProjects
+	up map[string]bool
+}
+
+func (p *runningProjectsFake) Running(_ context.Context, projectID string) (bool, error) {
+	return p.up[projectID], nil
+}
+
+func installedIDs(installer *failingInstaller) []string {
+	ids := make([]string, 0, len(installer.installed))
+	for _, spec := range installer.installed {
+		ids = append(ids, spec.Instance.ID)
+	}
+	return ids
+}
+
+// A Remote release can change a container program under a copy that keeps
+// running. Remote brings such copies current when it starts, but only where
+// the project container is already up: an idle project is not woken for it.
+func TestUpgradeOutdatedReinstallsRunningCopiesInRunningProjects(t *testing.T) {
+	store := &fakeStore{
+		global: []Instance{
+			installedAt("global-stale", "", "1.0.0", StatusRunning),
+			installedAt("global-stopped", "", "1.0.0", StatusStopped),
+		},
+		byProject: map[string][]Instance{
+			"up":   {installedAt("up-stale", "up", "1.0.0", StatusRunning), installedAt("up-current", "up", "2.0.0", StatusRunning)},
+			"idle": {installedAt("idle-stale", "idle", "1.0.0", StatusRunning)},
+		},
+	}
+	installer := &failingInstaller{}
+	projects := &runningProjectsFake{staticProjects: staticProjects{container: "project-container"}, up: map[string]bool{"up": true}}
+	service := New(&versionedRegistry{application: serviceApplicationAt("2.0.0")}, store, installer, projects, &countingAllocator{})
+
+	outcomes := service.UpgradeOutdated(context.Background())
+	got := installedIDs(installer)
+	if len(got) != 2 || !contains(got, "global-stale") || !contains(got, "up-stale") {
+		t.Fatalf("reinstalled %v, want global-stale and up-stale only", got)
+	}
+	if len(outcomes) != 2 {
+		t.Fatalf("outcomes = %+v", outcomes)
+	}
+	for _, id := range []string{"global-stale", "up-stale"} {
+		if stored, _, _ := store.Get(context.Background(), id); stored.ApplicationVersion != "2.0.0" {
+			t.Fatalf("%s recorded version %q, want 2.0.0", id, stored.ApplicationVersion)
+		}
+	}
+
+	// Without a way to tell which projects are up, project copies are left
+	// for their container's next start rather than risking a wake-up.
+	installer.installed = nil
+	store.byProject["up"][0].ApplicationVersion = "1.0.0"
+	blind := New(&versionedRegistry{application: serviceApplicationAt("2.0.0")}, store, installer, &staticProjects{container: "project-container"}, &countingAllocator{})
+	blind.UpgradeOutdated(context.Background())
+	if got := installedIDs(installer); len(got) != 0 {
+		t.Fatalf("reinstalled %v without knowing which projects run", got)
+	}
+}
+
+// When an idle project's container starts again, its outdated copies catch up.
+func TestUpgradeProjectReinstallsOutdatedCopiesInThatProject(t *testing.T) {
+	store := &fakeStore{byProject: map[string][]Instance{
+		"p1": {
+			installedAt("stale", "p1", "1.0.0", StatusRunning),
+			installedAt("stopped", "p1", "1.0.0", StatusStopped),
+			installedAt("current", "p1", "2.0.0", StatusRunning),
+		},
+		"p2": {installedAt("other", "p2", "1.0.0", StatusRunning)},
+	}}
+	installer := &failingInstaller{}
+	service := New(&versionedRegistry{application: serviceApplicationAt("2.0.0")}, store, installer, &staticProjects{container: "project-container"}, &countingAllocator{})
+
+	outcomes := service.UpgradeProject(context.Background(), "p1")
+	if got := installedIDs(installer); len(got) != 1 || got[0] != "stale" || len(outcomes) != 1 {
+		t.Fatalf("reinstalled %v (outcomes %+v), want only stale", got, outcomes)
+	}
+	installer.installed = nil
+	if service.UpgradeProject(context.Background(), "p1"); len(installer.installed) != 0 {
+		t.Fatalf("a current copy was reinstalled again: %v", installedIDs(installer))
+	}
+}
+
+func contains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}

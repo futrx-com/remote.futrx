@@ -61,77 +61,11 @@ Important behavior:
 
 ## File manager
 
-Install the [File Manager application](../../applications/file-manager/README.md)
-in the project to add its Files drawer, or install it globally from
-**Settings → Applications** to add a copy to every existing project. Repeat the
-global install to include projects created later. The drawer appears only while
-that project's copy is installed and running.
-Its service runs in the project container and is reached through Remote's
-authenticated application web gateway.
-
-```mermaid
-flowchart LR
-    Open["Open Files drawer"] --> Root["List workspace root"]
-    Root --> Expand["Lazy-load directories"]
-    Root --> Search["Recursive filename search"]
-    Expand --> Download["Download file"]
-    Expand --> Zip["Download folder as ZIP"]
-    Expand --> Media["Open supported media inline"]
-    Expand --> Editor["Open in installed application"]
-```
-
-The application service resolves paths inside the project's `/workspace` and
-uses rooted filesystem operations to prevent symlink escapes. Listings and search results can report truncation rather
-than returning unbounded data.
-
-Selecting a file routes by type:
-
-- supported image/audio/video/PDF opens in the full-screen media overlay;
-- a running project application may register a file opener for text and code;
-- when no opener is registered, those files download;
-- archives and unsupported media download.
-
-The same routing applies to validated absolute workspace links in chat. File
-openers receive optional `:line[:column]` suffixes. Inline media receives a
-restrictive content security policy.
+See the [File Manager architecture](../../applications/file-manager/docs/architecture.md).
 
 ## Terminal
 
-The terminal is the installable [Terminal application](../../applications/terminal/README.md),
-not a core route. Its shell runs in a service inside the project container, and
-the browser reaches that service through the project
-[application web route](../dev/installable-applications/19-project-application-web-routes.md).
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Terminal drawer (iframe)
-    participant Gateway as terminal--<slug>.<host>
-    participant Service as remote-terminal service
-    participant Bash as Login shell
-
-    User->>UI: Open the drawer
-    UI->>Gateway: Load page, then WebSocket /ws?session=<chat>&cwd=<path>
-    Gateway->>Gateway: Check session, project membership, running install
-    Gateway->>Service: Proxy to <slug>.lxd:8843
-    Service->>Bash: Start bash -l, or reattach to the chat's shell
-    UI->>Bash: Input and resize messages
-    Bash-->>UI: Replayed and live PTY output
-```
-
-The drawer exists only for chats attached to a project in which the application
-is installed and running. Each chat has one interactive `bash -l`, started in
-the chat's directory under `/workspace`. On desktop the drawer is a resizable
-pane beside the chat; its width is retained in browser `localStorage`. The
-drawer and the Files, History, and Browser panes are mutually exclusive.
-
-The shell belongs to the service, not to the WebSocket. A dropped connection,
-a reload, or a restart of Remote leaves it running; the page reconnects while
-the drawer is open and the service replays the most recent 256 KiB of output.
-A shell with no viewer is ended after 10 minutes, and every shell ends when the
-service stops. The gateway does not start a stopped project or installation.
-
-Chats can still carry a `tmuxSession` and resolve their working directory from it; the backend no longer exposes routes to create, attach to, or send input to host tmux sessions.
+See the [Terminal architecture](../../applications/terminal/docs/architecture.md).
 
 ## Git history
 
@@ -162,11 +96,7 @@ The checkout API supports the checkpoint message, but the current History drawer
 
 ## Scheduled tasks
 
-Install the Scheduled Tasks project application to add its clock action to the
-chat header. Ask the agent for future work; tasks are active immediately. The
-application UI lists the current chat’s tasks and supports pause, resume, run now,
-delete and refresh. Its host backend owns the clock and wakes normal agent turns.
-See [Scheduled tasks](06-scheduled-tasks.md).
+See the [Scheduled Tasks workspace integration](../../applications/scheduled-tasks/docs/architecture.md).
 
 ## Application web routes and workspace links
 

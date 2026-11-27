@@ -141,16 +141,7 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Scheduled tasks
 
-- Recurrence resumes the same provider session and consumes context and quota.
-  Use bounded `maxRuns` where appropriate.
-- The project application must be installed and running. Stop pauses delivery;
-  uninstall deletes instance tasks.
-- Missed cron occurrences are coalesced. Claims retry after host crashes, so
-  interrupted work may repeat; delivery is at least once across restarts.
-- Definitions are created through the agent. The application popup manages
-  existing tasks but has no definition editor.
-- Legacy built-in task definitions remain on disk and must be recreated through
-  the application.
+See the [Scheduled Tasks limitations](../applications/scheduled-tasks/docs/limitations.md).
 
 ## Previews, IDE, and the Agent Browser
 
@@ -162,9 +153,9 @@ These are the constraints worth understanding before you deploy or rely on remot
 
 ## Workspace tools and files
 
-- **Directory and search limits are fixed constants.** Listings truncate at 10,000 entries per directory; search is filename-substring only (no content search), returns at most 300 results, and gives up after visiting 200,000 entries. In-browser preview is limited to an image/audio/video/PDF allowlist; other types can't be opened inline.
-- **Archive downloads are capped.** Folder-ZIP downloads are limited to 1 GiB each with at most 2 concurrent downloads box-wide; a larger workspace simply fails.
-- **Escaping symlinks are silently omitted** from listings and downloads (a safety measure, but it can hide files).
+See application-owned limits for [File Manager](../applications/file-manager/docs/limitations.md)
+and [Terminal](../applications/terminal/docs/limitations.md).
+
 - **Git history detection is bounded.** Repository discovery skips a fixed directory blocklist at depth ≤ 6, so deeper or oddly-placed repos are invisible to the history UI. Commit lists cap at 200, diffs truncate at 768 KiB.
 - **The dirty-tree safety-checkpoint UI is incomplete.** The backend checkout route can stage all changes, create a `remote.futrx` checkpoint commit, and switch to a detached commit, but the current History drawer does not render the form that submits the checkpoint message. Clean the tree through Terminal or IDE before using **Switch**.
 
@@ -176,6 +167,4 @@ These are the constraints worth understanding before you deploy or rely on remot
   service worker caches only a self-contained offline status page, not the app
   shell, chats, API data, or project content. Work cannot continue without a
   connection.
-- **Terminal shells are not durable.** The Terminal application reconnects to the same shell after a dropped connection, but ends a shell that has had no viewer for 10 minutes, and ends every shell when the application is stopped, restarted, or upgraded.
-- **The Terminal application's port is not authenticated inside the container network.** Remote's gateway checks project membership, but the service itself listens on the project container's network without credentials, as other application web services do.
 - **Automated tests cover only pure state modules.** Hooks, transport, API clients, and UI components are untested by the frontend test suite.

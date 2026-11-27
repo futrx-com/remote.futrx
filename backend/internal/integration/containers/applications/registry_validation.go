@@ -40,6 +40,9 @@ func validateApplication(application svc.Application) error {
 	if application.Uninstall != "" && !application.NeedsContainer() {
 		return fmt.Errorf("uninstall script requires a provisioned application")
 	}
+	if application.Preinstall != "" && !application.NeedsContainer() {
+		return fmt.Errorf("preinstall script requires a provisioned application")
+	}
 	for _, tool := range application.HostTools {
 		if err := hosttools.Validate(tool); err != nil {
 			return fmt.Errorf("host tool %q: %w", tool.Name, err)

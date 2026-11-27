@@ -9,6 +9,5 @@ import (
 type Files interface {
 	List(relativePath string) (model.Listing, error)
 	Search(query string) (model.SearchResult, error)
-	OpenFile(relativePath string) (*model.File, error)
-	DownloadArchive(context.Context, string) (*model.File, error)
+	PublishArchive(context.Context, string) (model.PublishedArchive, error)
 }

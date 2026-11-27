@@ -1,7 +1,6 @@
 # Terminal
 
-Terminal opens a shell in your project container, beside the chat. It replaces
-the terminal that used to be built into Remote.
+Terminal opens a shell in your project container, beside the chat.
 
 Install Terminal from a project's Applications page, or install it globally
 to add it to every existing project. Run the global install again to add it
@@ -14,44 +13,93 @@ button in the header.
 
 | Part | Where | What it does |
 |---|---|---|
-| Service | `backend/container/cmd/remote-terminal/` | Runs inside the project container as `remote-terminal.service`, listening on `0.0.0.0:8843`. Manages the shells and serves the terminal page. |
-| Page | `backend/container/cmd/remote-terminal/web/` | xterm.js, embedded in the service binary. Connects over WebSocket, reconnects after a dropped connection, and searches terminal output. |
-| Extension | `ui/scripts/` | Registers a drawer with `remote.ui.registerDrawer` and loads the page in an iframe. |
+| Service | `backend/container/` | Built into the project container as `/usr/local/bin/remote-terminal`. `remote-terminal serve` runs as `remote-terminal.service`, owns every shell, and answers only on the root-only Unix socket `/run/remote-terminal/terminal.sock`. |
+| Bridge | `backend/container/internal/bridge/` | `remote-terminal bridge` relays requests from stdin to that socket, one JSON line each way, concurrently. |
+| Host backend | `backend/` | Registers the `sessions`, `output`, `input` and `resize` routes and relays them through one `lxc exec <container> -- remote-terminal bridge` process per installation. |
+| Extension | `ui/` | Registers a drawer with `remote.ui.registerDrawer` and renders xterm.js in it, talking to the backend through `remote.backend`. |
 
-The manifest declares `"web": { "port": 8843, "subdomain": "terminal" }`, so
-the page lives at `https://terminal--<project-slug>.<host>/`. Remote's gateway
-checks the session and project membership on every request, including the
-WebSocket upgrade, before proxying to the service. The page and its socket
-share the same origin. The drawer loads the page in an iframe so it can
-connect to its WebSocket from that origin.
+Nothing listens on a TCP port, and there is no web route or application
+hostname. The drawer calls its project installation's backend at
+`/api/projects/<project>/applications/<instance>/backend/<route>`, where Remote
+checks the session and project membership on every request, as for any
+application backend.
 
-Remote builds the service from source inside the container. It uses only the
-Go standard library, with custom WebSocket and PTY code. Installation needs
-no host backend, install script, or user input.
+```text
+backend/
+  main.go          composition: one bridge per installation
+  api/             routes, relayed to the container unchanged
+  containerio/     bridge lifecycle; process.go owns JSON lines and pending calls
+  config/          the container command path and call timeout
+  container/
+    cmd/remote-terminal/  `serve` and `bridge`
+    internal/config/      container defaults and resource limits
+    internal/sessions/    registry and reaping; session.go owns each shell and replay
+    internal/server/      request handlers; socket.go owns Unix socket setup
+    internal/bridge/      stdin/stdout to the socket
+    internal/shell/       bash -l, its environment and starting directory
+ui/
+  scripts/main.js                 drawer registration and dependency composition
+  scripts/controllers/           drawer lifecycle, header and connection bindings
+  scripts/terminalView.js         xterm.js, deferred creation, sizing and visibility
+  scripts/terminalFind.js         find controls and search-addon bindings
+  scripts/config/                drawer labels, theme and search options
+  scripts/connection.js           attach, read loop, input batching, reconnect
+  scripts/shellApi.js             backend routes
+  scripts/reconnect.js            retry policy
+  style/                         xterm.css and the drawer's scoped styles
+  vendor/                        xterm.js and its add-ons
+```
+
+## How the shell is reached
+
+The backend API does not carry WebSockets, so the stream is split into ordinary
+calls. Each is relayed to the service as is:
+
+- `POST sessions` with `{ session, cwd, cols, rows }` opens the chat's shell,
+  starting it if needed, and returns its `generation`.
+- `GET output?session=&generation=&offset=` returns output after `offset`. The
+  service waits up to 20 seconds for the shell to print, so an idle pane makes
+  one request at a time. `offset=-1` asks for the replay. A response with
+  `reset: true` starts again from the oldest retained output.
+- `POST input?session=&generation=` types its body into the shell. The drawer
+  sends keystrokes in order and batches what is typed while one is in flight.
+- `POST resize` with `{ session, generation, cols, rows }` resizes the
+  terminal.
+
+The bridge runs requests concurrently, so a waiting output read never holds up
+typing. A request for a generation the service no longer has answers 404, and
+the drawer opens the chat's shell again; input from a viewer of an ended shell
+can never reach its replacement. If the bridge exits, its waiting requests
+fail, the drawer retries, and the backend starts another bridge.
 
 ## Behaviour
 
-- **One shell per chat.** The page is opened with `?session=<chat id>`. The
-  shell is `bash -l` as root with `TERM=xterm-256color`.
-- **Working directory.** `?cwd=` names a path inside the container. The
-  extension maps the chat's host path
+- **One shell per chat.** The chat ID names the session. The shell is
+  `bash -l` as root with `TERM=xterm-256color`.
+- **Working directory.** The extension maps the chat's host path
   `/var/lib/remote/projects/<slug>/workspace[/sub]` to `/workspace[/sub]`, and
   the drawer's header shows that container path. The service starts the shell
-  there if the path resolves to a directory inside `/workspace`, including
-  through symlinks. Otherwise, it starts in `/workspace`. `cwd` is ignored
-  for a shell that is already running.
-- **Reconnect.** The service keeps the shell running when its WebSocket
-  disconnects. If the connection drops while the drawer is open, the page
-  retries after 1, 2, 4, 8
-  and then every 10 seconds. A closed drawer does not retry; it reconnects when
-  shown again. On every attach the service replays the last 256 KiB of output.
-- **Keepalive.** The service pings every 25 seconds and drops a connection
-  that has been silent for 80 seconds.
-- **Ending.** The service ends a shell after 10 minutes without a viewer.
-  When a shell exits, the page shows a notice and starts a new one on Enter
-  instead of
-  reconnecting. Stopping, restarting, or upgrading the application ends every
-  shell in the project. At most 64 shells run per project.
+  there if the path resolves to a directory inside `/workspace`,
+  including through symlinks. Otherwise, it starts in `/workspace`. The
+  directory is ignored for a shell that is already running.
+- **Reconnect.** The shell keeps running when a request fails or the page
+  reloads. If the connection drops while the drawer is open, the drawer retries
+  after 1, 2, 4, 8 and then every 10 seconds. A closed drawer does not retry; it
+  reconnects when shown again. On every attach the last 256 KiB of output is
+  replayed.
+- **Ending.** A shell nobody has read for 10 minutes is ended. A mounted drawer
+  keeps reading while it is closed, so its shell stays alive. When a shell
+  exits, the drawer shows a notice and starts a new one on Enter instead of
+  reconnecting. At most 64 shells run per project.
+- **Lifetime.** Shells belong to the container service, so a dropped bridge, a
+  restarted backend or a restarted Remote leaves them running. Stopping,
+  restarting or upgrading the application stops the service and ends every
+  shell in the project.
+- **Opening.** The drawer attaches to the shell straight away but builds xterm
+  only once Remote's pane has finished opening, so the opening animation does
+  not stall; output that arrives first is shown when the terminal appears. The
+  backend starts its bridge when it starts, and `backend.background` restores it
+  after Remote restarts, so the first open does not wait for `lxc exec`.
 - **Find.** Ctrl/Cmd+F searches the terminal's buffer.
 - **Drawer.** The pane, its header, the close button, the resize handle and the
   remembered width belong to Remote; see
@@ -59,16 +107,14 @@ no host backend, install script, or user input.
 
 ## Security
 
-- The shell runs as root in the project container, as the built-in terminal did.
+- The shell runs as root in the project container.
   Anyone who can use the project can use it.
-- Remote's gateway restricts the application host to project members and
-  excludes the port from public preview sharing. The service itself has no
-  authentication, so its port is reachable without credentials inside the
-  container network, like other application web services.
-- The service refuses a WebSocket whose `Origin` is not its own host, and its
-  pages may only be framed by the Remote origin that owns the application host.
-- The extension accepts status messages only from the frame it created, on the
-  project's application origin.
+- Remote's project backend routes admit only project members. The backend runs
+  one fixed command, and browser input travels only inside the bridge's JSON
+  lines. The bridge forwards only the four terminal routes, and the service
+  validates every request and keeps the starting directory inside `/workspace`.
+- The service listens only on a Unix socket in a root-only directory, so no
+  port is reachable on the container network.
 
 ## Verify an installation
 
@@ -77,21 +123,36 @@ no host backend, install script, or user input.
    should read `Connected - /workspace`.
 3. Run `MARKER=1`, reload the page, reopen the drawer, and run `echo $MARKER`.
    It should print `1`, confirming that you returned to the same shell.
-4. In the container, `systemctl status remote-terminal` shows the service and
-   `curl -fsS http://127.0.0.1:8843/health` prints `ok`.
+4. In the container, `systemctl status remote-terminal` shows the service, and
+   `/run/remote-terminal/terminal.sock` exists with mode `0600`.
+5. Restart Remote, reopen the drawer, and run `echo $MARKER` again. It still
+   prints `1`.
 
 ## Develop
 
 ```bash
 go test ./applications/terminal/...
-node --test applications/terminal/ui/scripts/main.test.mjs \
-  applications/terminal/backend/container/cmd/remote-terminal/web/reconnect.test.mjs
+node --test applications/terminal/ui/scripts/*.test.mjs
+FUTRX_BROWSER_TEST=1 go test -count=1 ./applications/terminal/backend/api/ -run TestTerminalBrowser -v
 ```
 
-The Go tests start real shells in pseudo-terminals, so they need Linux.
+The Go tests start real shells in pseudo-terminals, so they need Linux. The
+backend tests build the container command and run it locally as both service
+and bridge, leaving out only `lxc exec`; they include a shell surviving its
+bridge and a new backend process. The browser check drives the drawer in
+Chromium over the same path; it needs Node, Playwright and its Chromium
+installation. Running a shell in a real project container
+needs a live Remote/LXD installation.
 
-`web/vendor/` holds unmodified ESM builds of `@xterm/xterm` 6.0.0,
+`ui/vendor/` holds unmodified ESM builds of `@xterm/xterm` 6.0.0,
 `@xterm/addon-fit` 0.11.0 and `@xterm/addon-search` 0.16.0 under their MIT
-license (`web/vendor/LICENSE`). To update them, copy `lib/*.mjs` and
-`css/xterm.css` from the npm packages and bump `version` in `application.json`
-so installed copies rebuild.
+license (`ui/vendor/LICENSE`), with xterm's stylesheet at `ui/style/xterm.css`.
+To update them, copy `lib/*.mjs` and `css/xterm.css` from the npm packages and
+bump `version` in `application.json`.
+
+## Guides
+
+- [Architecture](docs/architecture.md)
+- [Limitations](docs/limitations.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Usage](docs/usage.md)

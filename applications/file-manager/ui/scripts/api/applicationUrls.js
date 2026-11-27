@@ -42,14 +42,3 @@ export function applicationOrigin(
   url.hash = "";
   return url;
 }
-
-/** The file manager page for one chat, on the project's application origin. */
-export function fileManagerUrl(
-  cwd,
-  chatId,
-  subdomain,
-  origin = window.location.origin,
-) {
-  if (!chatId) return null;
-  return applicationOrigin(cwd, subdomain, origin)?.toString() ?? null;
-}
