@@ -2,6 +2,7 @@ package kimi
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 	agentruntime "github.com/futrx-com/remote.futrx.com/internal/integration/agents/runtime"
 	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 )
+
+var errHeadlessPlanMode = errors.New("Kimi Plan mode requires an interactive terminal. Select Default for Remote chat or use Kimi in the workspace terminal")
 
 type Provider struct {
 	accountAuthorizer     agentauth.AccountAuthorizer
@@ -50,6 +53,9 @@ func (p *Provider) Run(ctx context.Context, req agent.RunRequest, emit func(agen
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
 		return agentauth.ErrAccountNotFound
+	}
+	if req.Mode == agent.RunModePlan {
+		return errHeadlessPlanMode
 	}
 	if emit == nil {
 		emit = func(agent.Event) {}

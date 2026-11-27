@@ -12,7 +12,7 @@ import (
 
 type rawObject map[string]json.RawMessage
 
-func parseProviderCatalog(raw []byte, help, defaults string) (agent.Capabilities, error) {
+func parseProviderCatalog(raw []byte, defaults string) (agent.Capabilities, error) {
 	models, err := parseProviderModels(raw, parseDefaultModel(defaults))
 	if err != nil {
 		return agent.Capabilities{}, err
@@ -22,7 +22,7 @@ func parseProviderCatalog(raw []byte, help, defaults string) (agent.Capabilities
 		Label:       "Kimi",
 		Source:      agent.CapabilitySourceLive,
 		Models:      agent.WithAutoModel(models, "Kimi default"),
-		Modes:       agent.ProviderModes(strings.Contains(help, "--plan")),
+		Modes:       agent.ProviderModes(false), // Kimi rejects --plan in print mode.
 		DefaultMode: agent.RunModeDefault,
 	}, nil
 }

@@ -32,27 +32,19 @@ func (p *Provider) Capabilities(ctx context.Context, req agent.CapabilityRequest
 		"list",
 	)
 	defaultsOutput, defaultsErr := defaultsCmd.Output()
-	helpCmd := agentruntime.NewCapabilityCommand(
-		ctx,
-		req,
-		[]string{"HOME=/root", "KIMI_CODE_HOME=" + kimiHome},
-		"kimi",
-		"--help",
-	)
-	helpOutput, helpErr := helpCmd.CombinedOutput()
 
 	if modelsErr != nil {
 		caps := fallbackCapabilities()
 		caps.Warning = "Kimi capabilities could not be read from the CLI"
 		return caps, fmt.Errorf("kimi capability discovery: models: %w", modelsErr)
 	}
-	caps, err := parseProviderCatalog(modelsOutput, string(helpOutput), string(defaultsOutput))
+	caps, err := parseProviderCatalog(modelsOutput, string(defaultsOutput))
 	if err != nil {
 		fallback := fallbackCapabilities()
 		fallback.Warning = "Kimi returned an unreadable provider catalog"
 		return fallback, err
 	}
-	if helpErr != nil || defaultsErr != nil {
+	if defaultsErr != nil {
 		caps.Warning = "Some Kimi capability defaults could not be read from the CLI"
 	}
 	return caps, nil

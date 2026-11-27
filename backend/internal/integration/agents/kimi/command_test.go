@@ -1,22 +1,28 @@
 package kimi
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/futrx-com/remote.futrx.com/internal/agent"
 )
 
-func TestArgsUseNativePlanModeWhenSelected(t *testing.T) {
-	provider := &Provider{}
-	plan := provider.args(agent.RunRequest{Prompt: "inspect", Mode: agent.RunModePlan})
-	if !slices.Contains(plan, "--plan") {
-		t.Fatalf("native Plan mode missing: %#v", plan)
+func TestRunRejectsHeadlessPlanMode(t *testing.T) {
+	authorizer := &runAccountAuthorizer{allowChecks: 1}
+	provider := &Provider{accountAuthorizer: authorizer}
+	err := provider.Run(context.Background(), agent.RunRequest{Prompt: "inspect", Mode: agent.RunModePlan}, nil)
+	if !errors.Is(err, errHeadlessPlanMode) {
+		t.Fatalf("plan request returned %v", err)
 	}
+}
 
-	defaults := provider.args(agent.RunRequest{Prompt: "implement", Mode: agent.RunModeDefault})
-	if slices.Contains(defaults, "--plan") {
-		t.Fatalf("default mode unexpectedly enabled Plan: %#v", defaults)
+func TestArgsUsePrintMode(t *testing.T) {
+	provider := &Provider{}
+	args := provider.args(agent.RunRequest{Prompt: "implement", Mode: agent.RunModeDefault})
+	if want := []string{"-p", "implement", "--output-format", "stream-json"}; !slices.Equal(args, want) {
+		t.Fatalf("args = %#v, want %#v", args, want)
 	}
 }
 
