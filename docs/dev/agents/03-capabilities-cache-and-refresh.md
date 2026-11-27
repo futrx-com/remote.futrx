@@ -7,17 +7,17 @@ normalizes those answers, and exposes one catalog to every client.
 
 The main contracts are:
 
-- [`agent.CapabilityProvider`](../../../backend/internal/agent/model.go) and the
+- [`harness.CapabilityProvider`](../../../backend/internal/service/harness/model.go) and the
   normalized models in
-  [`capability_model.go`](../../../backend/internal/agent/capability_model.go);
+  [`capability_model.go`](../../../backend/internal/service/harness/capability_model.go);
 - the host/container command boundary in
-  [`integration/agents/runtime/capability_command.go`](../../../backend/internal/integration/agents/runtime/capability_command.go);
+  [`integration/harnesses/runtime/capability_command.go`](../../../backend/internal/integration/harnesses/runtime/capability_command.go);
 - aggregation, authorization, deadlines, and descriptor decoration in
-  [`service/agent/capability/service.go`](../../../backend/internal/service/agent/capability/service.go);
+  [`service/harness/capability/service.go`](../../../backend/internal/service/harness/capability/service.go);
 - completed-result caching in
-  [`cache.go`](../../../backend/internal/service/agent/capability/cache.go) and
+  [`cache.go`](../../../backend/internal/service/harness/capability/cache.go) and
   in-flight request coalescing in
-  [`flight.go`](../../../backend/internal/service/agent/capability/flight.go).
+  [`flight.go`](../../../backend/internal/service/harness/capability/flight.go).
 
 ## Request and discovery flow
 
@@ -61,11 +61,11 @@ A project capability request does **not** start a stopped or missing container.
 The adapters still run their `lxc exec` probes, which normally produce
 fallback/degraded results. Start the project first, then refresh.
 
-Capability discovery deliberately bypasses `agent.ProjectPreparer` and
+Capability discovery deliberately bypasses `harness.ProjectPreparer` and
 `runtime.BuildContainerCommand`: it does not reconcile lifecycle, provision
 CLIs or credentials, publish workspace assets, or load project secrets.
 Provider probes use
-[`runtime.NewCapabilityCommand`](../../../backend/internal/integration/agents/runtime/capability_command.go)
+[`runtime.NewCapabilityCommand`](../../../backend/internal/integration/harnesses/runtime/capability_command.go)
 to run directly on the host or in the already-running selected container.
 
 The cache key is `host` or
@@ -119,7 +119,7 @@ to provisioning, not model discovery.
 uses Go duration syntax, defaults to `30s`, and accepts `0` to disable the
 catalog-level deadline. Invalid or negative values fall back to `30s`.
 [`config.Load`](../../../backend/internal/config/config.go) parses it into the
-global `AgentOptions`; service composition passes that value to the capability
+global `HarnessOptions`; service composition passes that value to the capability
 catalog once, rather than reading a timeout from each provider package.
 
 The deadline applies independently to each provider's **complete** discovery
@@ -148,7 +148,7 @@ in the database, on disk, or in Redis.
 | Every provider is `live` and warning-free | 24 hours |
 | Any provider is fallback or has a warning | 2 hours |
 
-These TTL defaults live in `config.AgentOptions` and are injected into the
+These TTL defaults live in `config.HarnessOptions` and are injected into the
 capability service at startup. The shorter TTL applies to the **whole scope
 catalog**, not only the degraded provider. Expiry is lazy: the next read
 deletes the expired entry and starts discovery. Values are cloned on both
@@ -198,9 +198,9 @@ the probe sees the container's new state.
 When changing discovery or cache behavior, keep tests close to the owning
 layer:
 
-- provider probe/parser tests under `backend/internal/integration/agents/<provider>/`;
+- provider probe/parser tests under `backend/internal/integration/harnesses/<provider>/`;
 - aggregation, timeout, fallback, cache, authorization, and flight tests under
-  `backend/internal/service/agent/capability/`;
+  `backend/internal/service/harness/capability/`;
 - HTTP query/error mapping in
   `backend/internal/transport/http/handlers/agent_capabilities_handler_test.go`;
 - page-memory coalescing and invalidation in

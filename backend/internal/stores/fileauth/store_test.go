@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 )
 
 func TestLocalAdminCredentialIsPrivateAndCreateOnly(t *testing.T) {
@@ -136,17 +136,17 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 	store := New(dir)
 	ctx := context.Background()
 
-	if key, err := store.AgentAPIKey(ctx, "minimax"); err != nil || key != "" {
-		t.Fatalf("initial AgentAPIKey = %q, %v", key, err)
+	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "" {
+		t.Fatalf("initial HarnessAPIKey = %q, %v", key, err)
 	}
-	if err := store.SaveAgentAPIKey(ctx, "minimax", "first-key"); err != nil {
-		t.Fatalf("SaveAgentAPIKey: %v", err)
+	if err := store.SaveHarnessAPIKey(ctx, "minimax", "first-key"); err != nil {
+		t.Fatalf("SaveHarnessAPIKey: %v", err)
 	}
-	if err := store.SaveAgentAPIKey(ctx, "minimax", "replacement-key"); err != nil {
-		t.Fatalf("replace AgentAPIKey: %v", err)
+	if err := store.SaveHarnessAPIKey(ctx, "minimax", "replacement-key"); err != nil {
+		t.Fatalf("replace HarnessAPIKey: %v", err)
 	}
-	if key, err := store.AgentAPIKey(ctx, "minimax"); err != nil || key != "replacement-key" {
-		t.Fatalf("stored AgentAPIKey = %q, %v", key, err)
+	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "replacement-key" {
+		t.Fatalf("stored HarnessAPIKey = %q, %v", key, err)
 	}
 
 	info, err := os.Stat(filepath.Join(dir, agentAPIKeysFile))
@@ -157,25 +157,25 @@ func TestAgentAPIKeysArePrivateAndReplaceable(t *testing.T) {
 		t.Fatalf("%s mode = %o, want 600", agentAPIKeysFile, got)
 	}
 
-	if err := store.DeleteAgentAPIKey(ctx, "minimax"); err != nil {
-		t.Fatalf("DeleteAgentAPIKey: %v", err)
+	if err := store.DeleteHarnessAPIKey(ctx, "minimax"); err != nil {
+		t.Fatalf("DeleteHarnessAPIKey: %v", err)
 	}
-	if key, err := store.AgentAPIKey(ctx, "minimax"); err != nil || key != "" {
-		t.Fatalf("AgentAPIKey after delete = %q, %v", key, err)
+	if key, err := store.HarnessAPIKey(ctx, "minimax"); err != nil || key != "" {
+		t.Fatalf("HarnessAPIKey after delete = %q, %v", key, err)
 	}
 }
 
 func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 	dir := t.TempDir()
 	store := New(dir)
-	want := agentauth.AccountSet{
+	want := harnessauth.AccountSet{
 		ActiveAccountID: "account-one",
-		Accounts: []agentauth.AccountRecord{{
+		Accounts: []harnessauth.AccountRecord{{
 			ID: "account-one", Label: "Personal", Email: "person@example.test",
 			Credential: []byte(`{"auth_mode":"chatgpt","token":"secret"}`),
 		}},
 	}
-	if err := store.SaveAgentAccounts(context.Background(), agent.ProviderCodex, want); err != nil {
+	if err := store.SaveHarnessAccounts(context.Background(), harness.ProviderCodex, want); err != nil {
 		t.Fatal(err)
 	}
 	info, err := os.Stat(filepath.Join(dir, agentAccountsFile))
@@ -185,7 +185,7 @@ func TestAgentAccountsArePrivateAndRoundTripOpaqueCredentials(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("%s mode = %o, want 600", agentAccountsFile, got)
 	}
-	got, err := store.AgentAccounts(context.Background(), agent.ProviderCodex)
+	got, err := store.HarnessAccounts(context.Background(), harness.ProviderCodex)
 	if err != nil {
 		t.Fatal(err)
 	}

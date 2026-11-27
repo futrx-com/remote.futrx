@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentcapability "github.com/futrx-com/remote.futrx.com/internal/service/agent/capability"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnesscapability "github.com/futrx-com/remote.futrx.com/internal/service/harness/capability"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	httptransport "github.com/futrx-com/remote.futrx.com/internal/transport/http"
 )
 
 type AgentCapabilitiesService interface {
-	List(context.Context, agentcapability.ListQuery) ([]agent.Capabilities, error)
+	List(context.Context, harnesscapability.ListQuery) ([]harness.Capabilities, error)
 }
 
 type AgentCapabilitiesHandler struct {
@@ -37,7 +37,7 @@ func (h *AgentCapabilitiesHandler) HandleCollection(w http.ResponseWriter, r *ht
 		httptransport.SendErr(w, http.StatusServiceUnavailable, "agent capabilities unavailable")
 		return
 	}
-	items, err := h.catalog.List(r.Context(), agentcapability.ListQuery{
+	items, err := h.catalog.List(r.Context(), harnesscapability.ListQuery{
 		ProjectID:     serviceproject.ID(strings.TrimSpace(r.URL.Query().Get("projectId"))),
 		SessionCookie: httptransport.SessionCookieValue(r),
 		Refresh:       r.URL.Query().Get("refresh") == "1",
@@ -46,18 +46,18 @@ func (h *AgentCapabilitiesHandler) HandleCollection(w http.ResponseWriter, r *ht
 		sendAgentCapabilitiesError(w, err)
 		return
 	}
-	httptransport.SendJSON(w, http.StatusOK, map[string][]agent.Capabilities{"providers": items})
+	httptransport.SendJSON(w, http.StatusOK, map[string][]harness.Capabilities{"providers": items})
 }
 
 func sendAgentCapabilitiesError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, agentcapability.ErrProjectLookupUnavailable):
+	case errors.Is(err, harnesscapability.ErrProjectLookupUnavailable):
 		httptransport.SendErr(w, http.StatusServiceUnavailable, err.Error())
-	case errors.Is(err, agentcapability.ErrProjectNotFound):
+	case errors.Is(err, harnesscapability.ErrProjectNotFound):
 		httptransport.SendErr(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, agentcapability.ErrAuthenticationRequired):
+	case errors.Is(err, harnesscapability.ErrAuthenticationRequired):
 		httptransport.SendErr(w, http.StatusUnauthorized, err.Error())
-	case errors.Is(err, agentcapability.ErrProjectAccessDenied):
+	case errors.Is(err, harnesscapability.ErrProjectAccessDenied):
 		httptransport.SendErr(w, http.StatusForbidden, err.Error())
 	default:
 		httptransport.SendErr(w, http.StatusInternalServerError, err.Error())

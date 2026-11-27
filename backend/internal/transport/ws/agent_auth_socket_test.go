@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/gorilla/websocket"
 )
 
 type socketDeviceStatus struct {
-	Authenticated bool                  `json:"authenticated"`
-	DeviceLogin   agentauth.DeviceState `json:"deviceLogin,omitempty"`
+	Authenticated bool                    `json:"authenticated"`
+	DeviceLogin   harnessauth.DeviceState `json:"deviceLogin,omitempty"`
 }
 
 func TestAgentAuthSocketInitialStatusPayloads(t *testing.T) {
@@ -107,15 +107,15 @@ func TestAgentAuthSocketExposesNormalizedProviderStream(t *testing.T) {
 }
 
 func TestAgentAuthSocketUnavailableRoutesKeepProviderError(t *testing.T) {
-	bindings := []agentauth.Binding{
-		agentauth.NewCodeBinding(agent.ProviderClaude, nil),
-		agentauth.NewDeviceBinding[socketDeviceStatus](agent.ProviderCodex, nil),
-		agentauth.NewDeviceBinding[socketDeviceStatus](agent.ProviderKimi, nil),
+	bindings := []harnessauth.Binding{
+		harnessauth.NewCodeBinding(harness.ProviderClaude, nil),
+		harnessauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderCodex, nil),
+		harnessauth.NewDeviceBinding[socketDeviceStatus](harness.ProviderKimi, nil),
 	}
 	mux := http.NewServeMux()
 	NewAgentAuthSocket(bindings).RegisterRoutes(mux, websocket.Upgrader{})
 
-	for _, id := range []agent.ProviderID{agent.ProviderClaude, agent.ProviderCodex, agent.ProviderKimi} {
+	for _, id := range []harness.ProviderID{harness.ProviderClaude, harness.ProviderCodex, harness.ProviderKimi} {
 		t.Run(string(id), func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ws/"+string(id)+"/auth-status", nil))
@@ -127,42 +127,42 @@ func TestAgentAuthSocketUnavailableRoutesKeepProviderError(t *testing.T) {
 	}
 }
 
-func newSocketTestBindings() ([]agentauth.Binding, *agentauth.CodeService) {
-	code := agentauth.NewCodeService(agentauth.CodeConfig{Authenticated: func() bool { return false }})
-	device := func() *agentauth.DeviceService[socketDeviceStatus] {
-		return agentauth.NewDeviceService(agentauth.DeviceConfig[socketDeviceStatus]{
+func newSocketTestBindings() ([]harnessauth.Binding, *harnessauth.CodeService) {
+	code := harnessauth.NewCodeService(harnessauth.CodeConfig{Authenticated: func() bool { return false }})
+	device := func() *harnessauth.DeviceService[socketDeviceStatus] {
+		return harnessauth.NewDeviceService(harnessauth.DeviceConfig[socketDeviceStatus]{
 			Authenticated: func() bool { return false },
-			BuildStatus: func() agentauth.DeviceStatusBuilder[socketDeviceStatus] {
-				return func(state agentauth.DeviceState) socketDeviceStatus {
+			BuildStatus: func() harnessauth.DeviceStatusBuilder[socketDeviceStatus] {
+				return func(state harnessauth.DeviceState) socketDeviceStatus {
 					return socketDeviceStatus{DeviceLogin: state}
 				}
 			},
 			NotFound: errors.New("not found"),
 		})
 	}
-	apiKeys, err := agentauth.NewAPIKeyService(context.Background(), agent.ProviderMiniMax, socketAPIKeyStore{}, nil, nil)
+	apiKeys, err := harnessauth.NewAPIKeyService(context.Background(), harness.ProviderMiniMax, socketAPIKeyStore{}, nil, nil)
 	if err != nil {
 		panic(err)
 	}
-	return []agentauth.Binding{
-		agentauth.NewCodeBinding(agent.ProviderClaude, code),
-		agentauth.NewDeviceBinding(agent.ProviderCodex, device()),
-		agentauth.NewDeviceBinding(agent.ProviderKimi, device()),
-		agentauth.NewAPIKeyBinding(agent.ProviderMiniMax, apiKeys),
+	return []harnessauth.Binding{
+		harnessauth.NewCodeBinding(harness.ProviderClaude, code),
+		harnessauth.NewDeviceBinding(harness.ProviderCodex, device()),
+		harnessauth.NewDeviceBinding(harness.ProviderKimi, device()),
+		harnessauth.NewAPIKeyBinding(harness.ProviderMiniMax, apiKeys),
 	}, code
 }
 
 type socketAPIKeyStore struct{}
 
-func (socketAPIKeyStore) AgentAPIKey(context.Context, agent.ProviderID) (string, error) {
+func (socketAPIKeyStore) HarnessAPIKey(context.Context, harness.ProviderID) (string, error) {
 	return "", nil
 }
 
-func (socketAPIKeyStore) SaveAgentAPIKey(context.Context, agent.ProviderID, string) error {
+func (socketAPIKeyStore) SaveHarnessAPIKey(context.Context, harness.ProviderID, string) error {
 	return nil
 }
 
-func (socketAPIKeyStore) DeleteAgentAPIKey(context.Context, agent.ProviderID) error {
+func (socketAPIKeyStore) DeleteHarnessAPIKey(context.Context, harness.ProviderID) error {
 	return nil
 }
 

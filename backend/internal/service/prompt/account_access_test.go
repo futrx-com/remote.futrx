@@ -7,23 +7,23 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
-	agentaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/agent/accountaccess"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessaccountaccess "github.com/futrx-com/remote.futrx.com/internal/service/harness/accountaccess"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
 )
 
 type promptAccountCheck struct {
 	mu         sync.Mutex
 	actors     []string
-	providers  []agent.ProviderID
+	providers  []harness.ProviderID
 	ids        []string
 	resolvedID string
 	denyAt     int
 }
 
-func (a *promptAccountCheck) Resolve(ctx context.Context, provider agent.ProviderID, id string) (string, error) {
+func (a *promptAccountCheck) Resolve(ctx context.Context, provider harness.ProviderID, id string) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	actor, ok := rbac.ActorFromContext(ctx)
@@ -41,32 +41,32 @@ func (a *promptAccountCheck) Resolve(ctx context.Context, provider agent.Provide
 
 type accountRecordingProvider struct {
 	usageProvider
-	provider agent.ProviderID
-	requests []agent.RunRequest
+	provider harness.ProviderID
+	requests []harness.RunRequest
 	actors   []string
 }
 
-func (p *accountRecordingProvider) ID() agent.ProviderID { return p.provider }
+func (p *accountRecordingProvider) ID() harness.ProviderID { return p.provider }
 
-func (p *accountRecordingProvider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *accountRecordingProvider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	p.requests = append(p.requests, req)
 	actor, _ := rbac.ActorFromContext(ctx)
 	p.actors = append(p.actors, actor.Email)
-	return p.usageProvider.Run(ctx, req, func(event agent.Event) {
+	return p.usageProvider.Run(ctx, req, func(event harness.Event) {
 		event.Provider = p.ID()
 		emit(event)
 	})
 }
 
 var promptAccountProviders = []struct {
-	provider  agent.ProviderID
+	provider  harness.ProviderID
 	accountID string
 }{
-	{agent.ProviderClaude, "team"},
-	{agent.ProviderCodex, "team"},
-	{agent.ProviderMiniMax, "team"},
-	{agent.ProviderKimi, ""},
-	{agent.ProviderAntigravity, ""},
+	{harness.ProviderClaude, "team"},
+	{harness.ProviderCodex, "team"},
+	{harness.ProviderMiniMax, "team"},
+	{harness.ProviderKimi, ""},
+	{harness.ProviderAntigravity, ""},
 }
 
 func TestPromptAccountChecksKeepScheduledActorAndPinResolvedAccount(t *testing.T) {
@@ -185,10 +185,10 @@ func (promptPolicyIdentities) IsRegistered(_ context.Context, email string) (boo
 	return email == "admin@example.com" || email == "owner@example.com", nil
 }
 
-type promptSavedAccounts struct{ agentauth.AccountController }
+type promptSavedAccounts struct{ harnessauth.AccountController }
 
-func (promptSavedAccounts) AccountsSnapshot() agentauth.AccountsSnapshot {
-	return agentauth.AccountsSnapshot{ActiveAccountID: "team", Items: []agentauth.Account{{ID: "team", Label: "Team", Active: true}}}
+func (promptSavedAccounts) AccountsSnapshot() harnessauth.AccountsSnapshot {
+	return harnessauth.AccountsSnapshot{ActiveAccountID: "team", Items: []harnessauth.Account{{ID: "team", Label: "Team", Active: true}}}
 }
 
 func TestPromptProviderAccountPolicyEnforcesGrantsAndRevocation(t *testing.T) {
@@ -199,15 +199,15 @@ func TestPromptProviderAccountPolicyEnforcesGrantsAndRevocation(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				policy, err := rbac.NewService(context.Background(), rbac.MustRegistry(rbac.ManagementDefinitions(), agentauth.PermissionDefinitions()), repo, promptPolicyIdentities{}, nil)
+				policy, err := rbac.NewService(context.Background(), rbac.MustRegistry(rbac.ManagementDefinitions(), harnessauth.PermissionDefinitions()), repo, promptPolicyIdentities{}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
-				binding := agentauth.NewExternalBinding(tc.provider)
+				binding := harnessauth.NewExternalBinding(tc.provider)
 				if tc.accountID != "" {
 					binding = binding.WithAccounts(promptSavedAccounts{})
 				}
-				access := agentaccountaccess.New(policy, []agentauth.Binding{binding})
+				access := harnessaccountaccess.New(policy, []harnessauth.Binding{binding})
 				provider := &accountRecordingProvider{provider: tc.provider}
 				service, store, meta := newUsagePromptService(t, provider, nil, WithAccountAccess(access), WithApplicationToolIssuer(stubApplicationTools{}))
 				// Neither a trusted parent context nor an unverified IsAdmin hint may
@@ -226,7 +226,7 @@ func TestPromptProviderAccountPolicyEnforcesGrantsAndRevocation(t *testing.T) {
 					t.Fatalf("denied admission produced effects: events=%v requests=%v err=%v", events, provider.requests, err)
 				}
 				admin := rbac.ContextWithActor(context.Background(), rbac.UserActor("admin@example.com"))
-				assignment := rbac.AssignmentInput{UserEmail: "owner@example.com", Permission: agentauth.PermissionAccountUse, Scope: rbac.ProviderAccountScope(string(tc.provider), tc.accountID), Effect: rbac.Allow}
+				assignment := rbac.AssignmentInput{UserEmail: "owner@example.com", Permission: harnessauth.PermissionAccountUse, Scope: rbac.ProviderAccountScope(string(tc.provider), tc.accountID), Effect: rbac.Allow}
 				if _, err := policy.SetAssignment(admin, assignment); err != nil {
 					t.Fatal(err)
 				}

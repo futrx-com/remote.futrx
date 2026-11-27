@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 )
 
@@ -71,7 +71,7 @@ func (s *Service) recordFromRun(ctx context.Context, event RunEvent) (Record, bo
 	if at <= 0 {
 		at = time.Now().UnixMilli()
 	}
-	usage, _ := agent.ParseUsage(event.Usage)
+	usage, _ := harness.ParseUsage(event.Usage)
 
 	model := strings.TrimSpace(usage.Model)
 	if model == "" {

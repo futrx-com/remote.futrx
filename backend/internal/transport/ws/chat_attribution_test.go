@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceprompt "github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -33,7 +33,7 @@ func (r attributionRunner) Start(input serviceprompt.StartInput, _ func(servicec
 	return serviceprompt.RunHandle{}, nil
 }
 func (attributionRunner) CancelPrompt(context.Context, servicechat.ID) bool { return false }
-func (attributionRunner) RespondInteraction(servicechat.ID, agent.InteractionResponse) error {
+func (attributionRunner) RespondInteraction(servicechat.ID, harness.InteractionResponse) error {
 	return nil
 }
 

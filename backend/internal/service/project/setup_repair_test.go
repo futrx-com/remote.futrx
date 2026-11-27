@@ -16,12 +16,12 @@ func TestAgentStartBypassesOnlyConfirmedSetupFailure(t *testing.T) {
 			return nil
 		})
 		service := New(repo, ContainerDependencies{Lifecycle: lifecycle, Setup: setup}, nil, nil)
-		got, err := service.StartForAgent(context.Background(), "abcd")
+		got, err := service.StartForHarness(context.Background(), "abcd")
 		if err != nil || !got.NeedsSetupRepair() {
 			t.Fatalf("agent was blocked or error hidden: %+v %v", got, err)
 		}
 		lifecycle.launchErr = errors.New("mount validation failed")
-		if _, err := service.StartForAgent(context.Background(), "abcd"); !errors.Is(err, lifecycle.launchErr) {
+		if _, err := service.StartForHarness(context.Background(), "abcd"); !errors.Is(err, lifecycle.launchErr) {
 			t.Fatalf("infrastructure failure bypassed: %v", err)
 		}
 	}
@@ -37,7 +37,7 @@ func TestAgentStartAllowsFirstSetupFailureButNotStoppedContainer(t *testing.T) {
 			}
 			return ErrSetupFailed
 		})}, nil, nil)
-		got, err := service.StartForAgent(context.Background(), "abcd")
+		got, err := service.StartForHarness(context.Background(), "abcd")
 		if (err != nil) != stop || !got.SetupFailed {
 			t.Fatalf("stop=%v got=%+v err=%v", stop, got, err)
 		}

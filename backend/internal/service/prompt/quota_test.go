@@ -5,21 +5,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 )
 
 type recordedQuota struct {
 	ctx       context.Context
-	provider  agent.ProviderID
+	provider  harness.ProviderID
 	accountID string
-	quota     agent.Quota
+	quota     harness.Quota
 }
 
 type recordingQuota struct {
 	readings []recordedQuota
 }
 
-func (r *recordingQuota) Record(ctx context.Context, provider agent.ProviderID, accountID string, quota agent.Quota) {
+func (r *recordingQuota) Record(ctx context.Context, provider harness.ProviderID, accountID string, quota harness.Quota) {
 	r.readings = append(r.readings, recordedQuota{ctx: ctx, provider: provider, accountID: accountID, quota: quota})
 }
 
@@ -28,18 +28,18 @@ func (r *recordingQuota) Record(ctx context.Context, provider agent.ProviderID, 
 type quotaProvider struct {
 	usageProvider
 	accountID string
-	reading   agent.Quota
+	reading   harness.Quota
 }
 
-func (p *quotaProvider) Run(ctx context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *quotaProvider) Run(ctx context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	reading := p.reading
-	emit(agent.Event{T: time.Now().UnixMilli(), Type: agent.EventQuotaUpdated, AccountID: p.accountID, Quota: &reading})
+	emit(harness.Event{T: time.Now().UnixMilli(), Type: harness.EventQuotaUpdated, AccountID: p.accountID, Quota: &reading})
 	return p.usageProvider.Run(ctx, req, emit)
 }
 
 func TestStartFilesPlanLimitsUnderTheAccountThatRan(t *testing.T) {
 	recorder := &recordingQuota{}
-	reading := agent.Quota{Window: agent.QuotaWindowSession, Status: "allowed", MeasuredAt: 123}
+	reading := harness.Quota{Window: harness.QuotaWindowSession, Status: "allowed", MeasuredAt: 123}
 	provider := &quotaProvider{accountID: "work", reading: reading}
 	service, _, meta := newUsagePromptService(t, provider, &recordingLedger{}, WithQuotaRecorder(recorder))
 
@@ -58,7 +58,7 @@ func TestStartFilesPlanLimitsUnderTheAccountThatRan(t *testing.T) {
 		t.Fatalf("recorded = %+v", recorder.readings)
 	}
 	got := recorder.readings[0]
-	if got.provider != agent.ProviderClaude || got.accountID != "work" || got.quota != reading {
+	if got.provider != harness.ProviderClaude || got.accountID != "work" || got.quota != reading {
 		t.Fatalf("recorded = %+v; want claude/work %+v", got, reading)
 	}
 }
@@ -72,15 +72,15 @@ func TestRecordQuotaPreservesValuesWithoutCancellation(t *testing.T) {
 	for _, ctx := range []context.Context{live, cancelled} {
 		recorder := &recordingQuota{}
 		service := &Service{quota: recorder}
-		reading := agent.Quota{Window: agent.QuotaWindowSession, MeasuredAt: 123}
-		service.recordQuota(ctx, agent.Event{
-			Type: agent.EventQuotaUpdated, Provider: agent.ProviderCodex, AccountID: "work", Quota: &reading,
+		reading := harness.Quota{Window: harness.QuotaWindowSession, MeasuredAt: 123}
+		service.recordQuota(ctx, harness.Event{
+			Type: harness.EventQuotaUpdated, Provider: harness.ProviderCodex, AccountID: "work", Quota: &reading,
 		})
 		if len(recorder.readings) != 1 {
 			t.Fatalf("recorded = %+v", recorder.readings)
 		}
 		got := recorder.readings[0]
-		if got.quota != reading || got.provider != agent.ProviderCodex || got.accountID != "work" {
+		if got.quota != reading || got.provider != harness.ProviderCodex || got.accountID != "work" {
 			t.Fatalf("recorded = %+v", got)
 		}
 		if got.ctx.Err() != nil {
@@ -98,15 +98,15 @@ func TestRecordQuotaPreservesValuesWithoutCancellation(t *testing.T) {
 func TestRecordQuotaDropsOtherEventsAndMissingReadings(t *testing.T) {
 	recorder := &recordingQuota{}
 	service := &Service{quota: recorder}
-	reading := &agent.Quota{Window: agent.QuotaWindowWeekly}
-	service.recordQuota(context.Background(), agent.Event{Type: agent.EventRunCompleted, Quota: reading})
-	service.recordQuota(context.Background(), agent.Event{Type: agent.EventQuotaUpdated})
+	reading := &harness.Quota{Window: harness.QuotaWindowWeekly}
+	service.recordQuota(context.Background(), harness.Event{Type: harness.EventRunCompleted, Quota: reading})
+	service.recordQuota(context.Background(), harness.Event{Type: harness.EventQuotaUpdated})
 	if len(recorder.readings) != 0 {
 		t.Fatalf("unexpected readings: %+v", recorder.readings)
 	}
 	service.quota = nil
-	service.recordQuota(context.Background(), agent.Event{Type: agent.EventQuotaUpdated, Quota: reading})
-	if _, ok := chatEventFromAgentEvent(agent.Event{Type: agent.EventQuotaUpdated, Quota: reading}); ok {
+	service.recordQuota(context.Background(), harness.Event{Type: harness.EventQuotaUpdated, Quota: reading})
+	if _, ok := chatEventFromAgentEvent(harness.Event{Type: harness.EventQuotaUpdated, Quota: reading}); ok {
 		t.Fatal("quota observation must not become a persisted chat event")
 	}
 }

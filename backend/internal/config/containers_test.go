@@ -18,7 +18,7 @@ func (stubContainerRunner) RunStdin(context.Context, io.Reader, ...string) (stri
 
 func TestContainerStackExposesCompleteCapabilityBundles(t *testing.T) {
 	stack := NewContainerStack(stubContainerRunner{}, nil, ContainerStackOptions{
-		AgentInstructions: []byte("test instructions"),
+		HarnessInstructions: []byte("test instructions"),
 	})
 
 	projects := stack.ProjectDependencies()
@@ -32,7 +32,7 @@ func TestContainerStackExposesCompleteCapabilityBundles(t *testing.T) {
 		t.Fatal("project dependencies do not match the composed container capabilities")
 	}
 
-	agents := stack.AgentDependencies()
+	agents := stack.HarnessDependencies()
 	if err := agents.Validate(); err != nil {
 		t.Fatalf("agent dependencies are incomplete: %v", err)
 	}

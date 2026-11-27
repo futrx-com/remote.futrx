@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
 
 const skillFileName = "SKILL.md"
@@ -27,14 +27,14 @@ type Service struct {
 
 type ProviderCatalog interface {
 	HasProvider(provider string) bool
-	Descriptor(provider string) (agentmodule.Descriptor, bool)
-	SupportsScope(provider string, scope agentmodule.ExecutionScope) bool
+	Descriptor(provider string) (harnessmodule.Descriptor, bool)
+	SupportsScope(provider string, scope harnessmodule.ExecutionScope) bool
 	LegacySkillRoots(provider string) []string
 	WorkspaceSkillHome(provider string) string
 }
 
 type defaultProviderCatalog interface {
-	DefaultProvider(scope agentmodule.ExecutionScope) agent.ProviderID
+	DefaultProvider(scope harnessmodule.ExecutionScope) harness.ProviderID
 }
 
 type Option func(*Service)
@@ -74,20 +74,20 @@ func NewWithSkillHomes(agentsHome, claudeHome, codexHome string, options ...Opti
 }
 
 func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace string) ([]Skill, error) {
-	if !agent.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
+	if !harness.ValidProviderID(provider) || (s.providers != nil && !s.providers.HasProvider(string(provider))) {
 		return nil, ErrInvalidProvider
 	}
-	descriptor := agentmodule.Descriptor{}
+	descriptor := harnessmodule.Descriptor{}
 	if s.providers != nil {
 		descriptor, _ = s.providers.Descriptor(string(provider))
-		scope := agentmodule.ScopeHost
+		scope := harnessmodule.ScopeHost
 		if projectWorkspace != "" {
-			scope = agentmodule.ScopeProject
+			scope = harnessmodule.ScopeProject
 		}
 		if !s.providers.SupportsScope(string(provider), scope) {
 			return nil, ErrInvalidProvider
 		}
-		if descriptor.Features.Skills == agentmodule.SkillsNone {
+		if descriptor.Features.Skills == harnessmodule.SkillsNone {
 			return []Skill{}, nil
 		}
 	}
@@ -129,7 +129,7 @@ func (s *Service) List(ctx context.Context, provider Provider, projectWorkspace 
 	return skills, nil
 }
 
-func (s *Service) DefaultProvider(scope agentmodule.ExecutionScope) Provider {
+func (s *Service) DefaultProvider(scope harnessmodule.ExecutionScope) Provider {
 	if providers, ok := s.providers.(defaultProviderCatalog); ok {
 		if provider := providers.DefaultProvider(scope); provider != "" {
 			return provider

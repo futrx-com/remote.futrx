@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	serviceaudit "github.com/futrx-com/remote.futrx.com/internal/service/audit"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceprompt "github.com/futrx-com/remote.futrx.com/internal/service/prompt"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
@@ -26,7 +26,7 @@ type ChatLookup interface {
 type PromptRunner interface {
 	Start(serviceprompt.StartInput, func(servicechat.Event)) (serviceprompt.RunHandle, error)
 	CancelPrompt(ctx context.Context, id servicechat.ID) bool
-	RespondInteraction(id servicechat.ID, response agent.InteractionResponse) error
+	RespondInteraction(id servicechat.ID, response harness.InteractionResponse) error
 }
 
 // ProjectAccessChecker is the subset of the auth gate the chat WS needs:
@@ -181,7 +181,7 @@ func (s *ChatSocket) handle(upgrader websocket.Upgrader, w http.ResponseWriter, 
 				})
 			}
 		case "interaction_response":
-			err := s.runner.RespondInteraction(id, agent.InteractionResponse{
+			err := s.runner.RespondInteraction(id, harness.InteractionResponse{
 				ID: msg.InteractionID, Result: msg.Result, Error: msg.Error,
 			})
 			if err != nil {

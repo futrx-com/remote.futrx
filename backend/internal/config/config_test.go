@@ -7,18 +7,18 @@ import (
 
 func TestLoadUsesGlobalAgentCapabilityTimeout(t *testing.T) {
 	t.Setenv("AGENT_CAPABILITY_TIMEOUT", "42s")
-	if got := Load().Agent.CapabilityTimeout; got != 42*time.Second {
+	if got := Load().Harness.CapabilityTimeout; got != 42*time.Second {
 		t.Fatalf("capability timeout = %s, want 42s", got)
 	}
 
 	t.Setenv("AGENT_CAPABILITY_TIMEOUT", "invalid")
-	if got := Load().Agent.CapabilityTimeout; got != 30*time.Second {
+	if got := Load().Harness.CapabilityTimeout; got != 30*time.Second {
 		t.Fatalf("invalid capability timeout fallback = %s, want 30s", got)
 	}
 }
 
 func TestLoadUsesGlobalAgentPolicyDefaults(t *testing.T) {
-	options := Load().Agent
+	options := Load().Harness
 	if options.CapabilityCacheTTL != 24*time.Hour {
 		t.Fatalf("live capability cache TTL = %s, want 24h", options.CapabilityCacheTTL)
 	}

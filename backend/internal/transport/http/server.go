@@ -20,33 +20,33 @@ type Middleware interface {
 }
 
 type Handlers struct {
-	Chats             RouteRegistrar
-	Projects          RouteRegistrar
-	Applications      RouteRegistrar
-	Users             RouteRegistrar
-	AgentAuth         RouteRegistrar
-	AgentCapabilities RouteRegistrar
-	UserSettings      RouteRegistrar
-	Security          RouteRegistrar
-	Push              RouteRegistrar
-	EmailSettings     RouteRegistrar
-	ServerInfo        RouteRegistrar
-	SelfUpdate        RouteRegistrar
-	Skills            RouteRegistrar
-	BrowserInspector  RouteRegistrar
-	AgentApplications RouteRegistrar
-	Uploads           RouteRegistrar
-	ChatWS            WebSocketRegistrar
-	WorkspaceWS       WebSocketRegistrar
-	AgentAuthWS       WebSocketRegistrar
-	Auth              RouteRegistrar
-	Workspace         Middleware
-	Middleware        Middleware
-	Static            http.Handler
-	Usage             RouteRegistrar
-	AgentQuota        RouteRegistrar
-	Permissions       RouteRegistrar
-	Audit             RouteRegistrar
+	Chats               RouteRegistrar
+	Projects            RouteRegistrar
+	Applications        RouteRegistrar
+	Users               RouteRegistrar
+	AgentAuth           RouteRegistrar
+	HarnessCapabilities RouteRegistrar
+	UserSettings        RouteRegistrar
+	Security            RouteRegistrar
+	Push                RouteRegistrar
+	EmailSettings       RouteRegistrar
+	ServerInfo          RouteRegistrar
+	SelfUpdate          RouteRegistrar
+	Skills              RouteRegistrar
+	BrowserInspector    RouteRegistrar
+	AgentApplications   RouteRegistrar
+	Uploads             RouteRegistrar
+	ChatWS              WebSocketRegistrar
+	WorkspaceWS         WebSocketRegistrar
+	AgentAuthWS         WebSocketRegistrar
+	Auth                RouteRegistrar
+	Workspace           Middleware
+	Middleware          Middleware
+	Static              http.Handler
+	Usage               RouteRegistrar
+	HarnessQuota        RouteRegistrar
+	Permissions         RouteRegistrar
+	Audit               RouteRegistrar
 }
 
 func NewHandler(handlers Handlers) http.Handler {
@@ -63,7 +63,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.Applications)
 	register(handlers.Users)
 	register(handlers.AgentAuth)
-	register(handlers.AgentCapabilities)
+	register(handlers.HarnessCapabilities)
 	register(handlers.UserSettings)
 	register(handlers.Security)
 	register(handlers.Push)
@@ -74,7 +74,7 @@ func NewHandler(handlers Handlers) http.Handler {
 	register(handlers.BrowserInspector)
 	register(handlers.AgentApplications)
 	register(handlers.Usage)
-	register(handlers.AgentQuota)
+	register(handlers.HarnessQuota)
 	register(handlers.Permissions)
 	register(handlers.Audit)
 	register(handlers.Uploads)

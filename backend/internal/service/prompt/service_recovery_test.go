@@ -6,34 +6,34 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 type recoveryProvider struct {
-	requests  []agent.RunRequest
+	requests  []harness.RunRequest
 	failFirst bool
 }
 
-func (p *recoveryProvider) ID() agent.ProviderID                     { return agent.ProviderCodex }
-func (p *recoveryProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
-func (p *recoveryProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+func (p *recoveryProvider) ID() harness.ProviderID                       { return harness.ProviderCodex }
+func (p *recoveryProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
+func (p *recoveryProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: harness.ProviderCodex}, nil
 }
-func (p *recoveryProvider) Run(_ context.Context, req agent.RunRequest, emit func(agent.Event)) error {
+func (p *recoveryProvider) Run(_ context.Context, req harness.RunRequest, emit func(harness.Event)) error {
 	p.requests = append(p.requests, req)
 	if p.failFirst && len(p.requests) == 1 {
-		return agent.ErrSessionNotFound
+		return harness.ErrSessionNotFound
 	}
-	emit(agent.Event{
-		T: time.Now().UnixMilli(), Type: agent.EventSessionUpdated,
-		Provider: agent.ProviderCodex, SessionID: "new-thread",
+	emit(harness.Event{
+		T: time.Now().UnixMilli(), Type: harness.EventSessionUpdated,
+		Provider: harness.ProviderCodex, SessionID: "new-thread",
 	})
-	emit(agent.Event{T: time.Now().UnixMilli(), Type: agent.EventAssistantTextDelta, Text: "recovered"})
-	emit(agent.Event{T: time.Now().UnixMilli(), Type: agent.EventRunCompleted})
+	emit(harness.Event{T: time.Now().UnixMilli(), Type: harness.EventAssistantTextDelta, Text: "recovered"})
+	emit(harness.Event{T: time.Now().UnixMilli(), Type: harness.EventRunCompleted})
 	return nil
 }
 
@@ -61,7 +61,7 @@ func TestRunPromptRecoversMissingCodexSessionFromVisibleTranscript(t *testing.T)
 	}
 
 	provider := &recoveryProvider{failFirst: true}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -129,16 +129,16 @@ func TestRunPromptDoesNotResumeWhenModuleDisablesSessions(t *testing.T) {
 	}
 
 	provider := &recoveryProvider{}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
-		ID: agent.ProviderCodex, Label: "Codex",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
-		Features:        agentmodule.Features{Skills: agentmodule.SkillsNone},
+	policy := testHarnessPolicy{"codex": {
+		ID: harness.ProviderCodex, Label: "Codex",
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
+		Features:        harnessmodule.Features{Skills: harnessmodule.SkillsNone},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	service.runPrompt(ctx, meta.ID, "continue", func(ChatEvent) {}, func(ChatEvent) {})
 
 	if len(provider.requests) != 1 {
@@ -173,16 +173,16 @@ func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
 	}
 
 	provider := &recoveryProvider{}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
-		ID:              agent.ProviderCodex,
+	policy := testHarnessPolicy{"codex": {
+		ID:              harness.ProviderCodex,
 		Label:           "Codex",
-		ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeProject},
+		ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeProject},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	if err := service.runPrompt(ctx, meta.ID, "use the browser", func(ChatEvent) {}, func(ChatEvent) {}); err != nil {
 		t.Fatal(err)
 	}
@@ -190,8 +190,8 @@ func TestProjectRunUsesContainerWorkspaceInsteadOfHostPath(t *testing.T) {
 	if len(provider.requests) != 1 {
 		t.Fatalf("requests = %d, want 1", len(provider.requests))
 	}
-	if got := provider.requests[0].Cwd; got != agent.ProjectWorkspacePath {
-		t.Fatalf("project run cwd = %q, want %q", got, agent.ProjectWorkspacePath)
+	if got := provider.requests[0].Cwd; got != harness.ProjectWorkspacePath {
+		t.Fatalf("project run cwd = %q, want %q", got, harness.ProjectWorkspacePath)
 	}
 }
 
@@ -202,7 +202,7 @@ func TestClearSessionIDForProvider(t *testing.T) {
 		CodexSessionID:  "o",
 		KimiSessionID:   "k",
 	}
-	clearSessionIDForProvider(meta, agent.ProviderCodex)
+	clearSessionIDForProvider(meta, harness.ProviderCodex)
 	if meta.CodexSessionID != "" || meta.ClaudeSessionID != "c" || meta.KimiSessionID != "k" || meta.Sessions["future-agent"] != "future" {
 		t.Fatalf("wrong provider session cleared: %#v", meta)
 	}
@@ -221,17 +221,17 @@ func TestRunPromptRejectsProviderOutsideChatScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	provider := &recoveryProvider{}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
-	policy := testAgentPolicy{"codex": {
-		ID: agent.ProviderCodex, Label: "Codex", ExecutionScopes: []agentmodule.ExecutionScope{agentmodule.ScopeHost},
+	policy := testHarnessPolicy{"codex": {
+		ID: harness.ProviderCodex, Label: "Codex", ExecutionScopes: []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
 	}}
-	service := New(store, nil, nil, runhub.New(store), registry, WithAgentPolicy(policy))
+	service := New(store, nil, nil, runhub.New(store), registry, WithHarnessPolicy(policy))
 	err = service.runPrompt(ctx, meta.ID, "do work", func(ChatEvent) {}, func(ChatEvent) {})
-	if err != ErrUnsupportedAgentScope {
-		t.Fatalf("runPrompt error = %v, want ErrUnsupportedAgentScope", err)
+	if err != ErrUnsupportedHarnessScope {
+		t.Fatalf("runPrompt error = %v, want ErrUnsupportedHarnessScope", err)
 	}
 	if len(provider.requests) != 0 {
 		t.Fatalf("provider ran outside its scope: %#v", provider.requests)

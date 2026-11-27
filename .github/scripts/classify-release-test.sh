@@ -58,44 +58,44 @@ fi
 grep -Fq "backend/cmd/install-host-agents/main.go" <<<"$error" || \
     fail "host installer rejection did not identify the protected path"
 
-commit_file backend/internal/integration/agents/future/profile.go future-profile protected-future-profile
+commit_file backend/internal/integration/harnesses/future/profile.go future-profile protected-future-profile
 git -C "$TEST_REPO" tag 0.3.5
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.5 2>&1)"; then
     fail "future agent profile was accepted as an application release"
 fi
-grep -Fq "backend/internal/integration/agents/future/profile.go" <<<"$error" || \
+grep -Fq "backend/internal/integration/harnesses/future/profile.go" <<<"$error" || \
     fail "future agent profile rejection did not identify the protected path"
 
-commit_file backend/internal/integration/agents/future/install_linux.go future-installer protected-future-installer
+commit_file backend/internal/integration/harnesses/future/install_linux.go future-installer protected-future-installer
 git -C "$TEST_REPO" tag 0.3.6
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.6 2>&1)"; then
     fail "future agent install helper was accepted as an application release"
 fi
-grep -Fq "backend/internal/integration/agents/future/install_linux.go" <<<"$error" || \
+grep -Fq "backend/internal/integration/harnesses/future/install_linux.go" <<<"$error" || \
     fail "future agent install-helper rejection did not identify the protected path"
 
-commit_file backend/internal/integration/agents/future/factory.go future-factory protected-future-factory
+commit_file backend/internal/integration/harnesses/future/factory.go future-factory protected-future-factory
 git -C "$TEST_REPO" tag 0.3.7
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.7 2>&1)"; then
     fail "future agent factory was accepted as an application release"
 fi
-grep -Fq "backend/internal/integration/agents/future/factory.go" <<<"$error" || \
+grep -Fq "backend/internal/integration/harnesses/future/factory.go" <<<"$error" || \
     fail "future agent factory rejection did not identify the protected path"
 
-commit_file backend/internal/service/agent/module/catalog.go module-contract protected-module-contract
+commit_file backend/internal/service/harness/module/catalog.go module-contract protected-module-contract
 git -C "$TEST_REPO" tag 0.3.8
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.8 2>&1)"; then
     fail "agent module contract was accepted as an application release"
 fi
-grep -Fq "backend/internal/service/agent/module/catalog.go" <<<"$error" || \
+grep -Fq "backend/internal/service/harness/module/catalog.go" <<<"$error" || \
     fail "agent module rejection did not identify the protected path"
 
-commit_file backend/internal/config/agents.go agent-composition protected-agent-composition
+commit_file backend/internal/config/harnesses.go agent-composition protected-agent-composition
 git -C "$TEST_REPO" tag 0.3.9
 if error="$(cd "$TEST_REPO" && "$CLASSIFIER" 0.3.9 2>&1)"; then
     fail "agent composition was accepted as an application release"
 fi
-grep -Fq "backend/internal/config/agents.go" <<<"$error" || \
+grep -Fq "backend/internal/config/harnesses.go" <<<"$error" || \
     fail "agent composition rejection did not identify the protected path"
 
 commit_file README.md next-minor minor

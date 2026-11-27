@@ -18,7 +18,6 @@ import (
 	"path/filepath"
 
 	remote "github.com/futrx-com/remote.futrx.com"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/config"
 	configconstants "github.com/futrx-com/remote.futrx.com/internal/config/constants"
 	applicationbackends "github.com/futrx-com/remote.futrx.com/internal/integration/applications"
@@ -33,10 +32,11 @@ import (
 	"github.com/futrx-com/remote.futrx.com/internal/lifecycle"
 	"github.com/futrx-com/remote.futrx.com/internal/rbac"
 	service "github.com/futrx-com/remote.futrx.com/internal/service"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
 	serviceauth "github.com/futrx-com/remote.futrx.com/internal/service/auth"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
 	servicegithistory "github.com/futrx-com/remote.futrx.com/internal/service/githistory"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	servicemaintenance "github.com/futrx-com/remote.futrx.com/internal/service/maintenance"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceselfupdate "github.com/futrx-com/remote.futrx.com/internal/service/selfupdate"
@@ -76,7 +76,7 @@ func main() {
 	////////////////////////////////////////
 	// Container and workspace capabilities
 	////////////////////////////////////////
-	agentModules, err := config.NewAgentModules()
+	harnessModules, err := config.NewHarnessModules()
 	if err != nil {
 		log.Fatalf("configure agent modules: %v", err)
 	}
@@ -120,11 +120,11 @@ func main() {
 
 	containerStack := config.NewContainerStack(
 		lxc.New(),
-		agentModules.Profiles(),
+		harnessModules.Profiles(),
 		config.ContainerStackOptions{
-			AgentInstructions: provisioning.InstructionsTemplate(publicHostname),
-			AppRegistry:       appRegistry,
-			DataDir:           cfg.DataDir,
+			HarnessInstructions: provisioning.InstructionsTemplate(publicHostname),
+			AppRegistry:         appRegistry,
+			DataDir:             cfg.DataDir,
 		},
 	)
 
@@ -189,19 +189,19 @@ func main() {
 		Push:              storeSet.Push,
 		Usage:             storeSet.Usage,
 		Email:             storeSet.Email,
-		AgentQuota:        storeSet.AgentQuota,
+		HarnessQuota:      storeSet.HarnessQuota,
 		AuthBaseURL:       cfg.BaseURL,
 		ProjectContainers: containerStack.ProjectDependencies(),
-		AgentContainers:   containerStack.AgentDependencies(),
-		AgentModules:      agentModules,
-		AgentAPIKeys:      storeSet.AgentAPIKeys,
-		AgentAccounts:     storeSet.AgentAccounts,
-		AgentOptions: service.AgentOptions{
-			CapabilityTimeout:          cfg.Agent.CapabilityTimeout,
-			CapabilityCacheTTL:         cfg.Agent.CapabilityCacheTTL,
-			DegradedCapabilityCacheTTL: cfg.Agent.DegradedCapabilityCacheTTL,
-			CredentialSyncTimeout:      cfg.Agent.CredentialSyncTimeout,
-			BrowserIdleTTL:             cfg.Agent.BrowserIdleTTL,
+		HarnessContainers: containerStack.HarnessDependencies(),
+		HarnessModules:    harnessModules,
+		HarnessAPIKeys:    storeSet.HarnessAPIKeys,
+		HarnessAccounts:   storeSet.HarnessAccounts,
+		HarnessOptions: service.HarnessOptions{
+			CapabilityTimeout:          cfg.Harness.CapabilityTimeout,
+			CapabilityCacheTTL:         cfg.Harness.CapabilityCacheTTL,
+			DegradedCapabilityCacheTTL: cfg.Harness.DegradedCapabilityCacheTTL,
+			CredentialSyncTimeout:      cfg.Harness.CredentialSyncTimeout,
+			BrowserIdleTTL:             cfg.Harness.BrowserIdleTTL,
 		},
 		TmuxClient:           tmuxClient,
 		ValidTmuxName:        tmuxcli.ValidName,
@@ -332,7 +332,7 @@ func permissionDefinitions() [][]rbac.Definition {
 		workspaceide.PermissionDefinitions(),
 		workspaceaccess.PermissionDefinitions(),
 		servicechat.PermissionDefinitions(),
-		agentauth.PermissionDefinitions(),
+		harnessauth.PermissionDefinitions(),
 	}
 }
 
@@ -352,7 +352,7 @@ func newPermissionService(
 	return rbac.NewService(
 		ctx, registry, policy, identity, members,
 		rbac.WithBuiltinAdminRole(),
-		rbac.WithBuiltinMemberRole(agentauth.PermissionAccountUse),
+		rbac.WithBuiltinMemberRole(harnessauth.PermissionAccountUse),
 	)
 }
 

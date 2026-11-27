@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicepermission "github.com/futrx-com/remote.futrx.com/internal/rbac"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	serviceproject "github.com/futrx-com/remote.futrx.com/internal/service/project"
 	serviceuser "github.com/futrx-com/remote.futrx.com/internal/service/user"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filepermissions"
@@ -88,8 +88,8 @@ func realAuthorizerProjects(t *testing.T) (*serviceproject.Service, *systemCalle
 func TestTrustedInternalCallersStartProjectsWithoutAnActor(t *testing.T) {
 	t.Run("agent runs", func(t *testing.T) {
 		projects, repo := realAuthorizerProjects(t)
-		project, err := agentProjectResolver{projects: projects}.Start(context.Background(), agent.ProjectID(systemCallerProjectID))
-		if err != nil || project.Status != agent.ProjectStatus(serviceproject.StatusRunning) {
+		project, err := harnessProjectResolver{projects: projects}.Start(context.Background(), harness.ProjectID(systemCallerProjectID))
+		if err != nil || project.Status != harness.ProjectStatus(serviceproject.StatusRunning) {
 			t.Fatalf("Start() = %+v, %v; want a running project", project, err)
 		}
 		if repo.status != serviceproject.StatusRunning {

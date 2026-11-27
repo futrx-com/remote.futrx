@@ -3,7 +3,7 @@
 This chapter follows one prompt from the chat WebSocket to a provider CLI and
 back into Remote's persisted event stream. Provider packages own CLI syntax and
 wire-protocol parsing. The service layer sees only the contracts in
-[`internal/agent`](../../../backend/internal/agent/model.go).
+[`internal/service/harness`](../../../backend/internal/service/harness/model.go).
 
 ## End-to-end run path
 
@@ -14,9 +14,9 @@ sequenceDiagram
     participant Hub as runhub.Hub
     participant Prompt as prompt.Service
     participant Runtime as module.Runtime
-    participant Provider as agent.Provider
+    participant Provider as harness.Provider
     participant Prep as execution.Preparer
-    participant Cmd as integration/agents/runtime
+    participant Cmd as integration/harnesses/runtime
     participant CLI as Provider CLI
     participant Store as Chat repository
 
@@ -35,7 +35,7 @@ sequenceDiagram
     end
     Provider->>CLI: execute host process or lxc exec
     CLI-->>Provider: provider-native output
-    Provider-->>Prompt: normalized agent.Event values
+    Provider-->>Prompt: normalized harness.Event values
     Prompt->>Store: update session metadata and persist ChatEvent
     Prompt-->>Browser: broadcast sequenced ChatEvent
     Prompt->>Hub: FinishRun(chatID, runID)
@@ -56,7 +56,7 @@ The concrete entry points are:
    resolves chat state, prepares a provider-neutral request, looks up the
    registered runtime, and calls `Provider.Run`.
 4. The provider launches and parses its own CLI. It emits
-   [`agent.Event`](../../../backend/internal/agent/model.go) values without
+   [`harness.Event`](../../../backend/internal/service/harness/model.go) values without
    importing chat, transport, store, or frontend types.
 5. [`emitAgentEvent`](../../../backend/internal/service/prompt/agent_events.go)
    persists session identity, projects recognized agent events into chat
@@ -69,7 +69,7 @@ that survives the backend.
 
 ## How `RunRequest` is built
 
-[`agent.RunRequest`](../../../backend/internal/agent/model.go) is the only run
+[`harness.RunRequest`](../../../backend/internal/service/harness/model.go) is the only run
 input a provider receives.
 
 | Field | Source and meaning |
@@ -108,20 +108,20 @@ Every built-in provider has a provider-local command builder. A factory and
 profile declare policy, but they do **not** automatically implement the
 provider's native run command. A new adapter must translate `RunRequest`; for
 project execution it receives the shared
-[`agent.ProjectPreparer`](../../../backend/internal/agent/project.go) port
+[`harness.ProjectPreparer`](../../../backend/internal/service/harness/project.go) port
 constructed by `module.Factory` through
-[`service/agent/execution`](../../../backend/internal/service/agent/execution).
+[`service/harness/execution`](../../../backend/internal/service/harness/execution).
 
 For a loose chat, built-ins execute the provider binary directly on the host
 with the requested working directory and a filtered/augmented environment.
 
 For a project chat, `execution.Preparer` owns this common workflow:
 
-1. Resolve the project through [`agent.ProjectResolver`](../../../backend/internal/agent/project.go)
+1. Resolve the project through [`harness.ProjectResolver`](../../../backend/internal/service/harness/project.go)
    and reject a missing container name.
 2. Call `ProjectResolver.Start` even when stored state says `running`. This
    reconciles a container deleted or replaced outside the process.
-3. Validate that [`provisioning.ContainerDependencies`](../../../backend/internal/agent/provisioning/container_dependencies.go)
+3. Validate that [`provisioning.ContainerDependencies`](../../../backend/internal/service/harness/provisioning/container_dependencies.go)
    is either completely wired or completely zero. Production supplies the
    complete set.
 4. Use the exact validated provider profile to ensure the CLI and, where
@@ -138,7 +138,7 @@ container ports enters the provisioning phase.
 
 The preparer returns only the stable project/container target and secrets. The
 adapter then calls
-[`runtime.BuildContainerCommand`](../../../backend/internal/integration/agents/runtime/container_command.go)
+[`runtime.BuildContainerCommand`](../../../backend/internal/integration/harnesses/runtime/container_command.go)
 to assemble `lxc exec`, normally from `/workspace`. Provider-owned fixed
 environment entries come first, then project secrets, provider-forced entries,
 and finally sorted backend runtime variables. Runtime keys mask same-named
@@ -148,7 +148,7 @@ protocol.
 
 After a successful run, Claude, Codex, and Kimi make a best-effort credential
 sync from the container. Its application-wide timeout currently defaults to
-30 seconds through `config.AgentOptions`; Antigravity has no credential sync
+30 seconds through `config.HarnessOptions`; Antigravity has no credential sync
 contract.
 
 Factories express only real policy differences:
@@ -172,20 +172,20 @@ for the current readiness-check limitation.
 
 The provider-specific implementations are in:
 
-- [`claude/command.go`](../../../backend/internal/integration/agents/claude/command.go)
-- [`codex/command.go`](../../../backend/internal/integration/agents/codex/command.go)
-- [`minimax/command.go`](../../../backend/internal/integration/agents/minimax/command.go)
-- [`kimi/command.go`](../../../backend/internal/integration/agents/kimi/command.go)
-- [`antigravity/command.go`](../../../backend/internal/integration/agents/antigravity/command.go)
+- [`claude/command.go`](../../../backend/internal/integration/harnesses/claude/command.go)
+- [`codex/command.go`](../../../backend/internal/integration/harnesses/codex/command.go)
+- [`minimax/command.go`](../../../backend/internal/integration/harnesses/minimax/command.go)
+- [`kimi/command.go`](../../../backend/internal/integration/harnesses/kimi/command.go)
+- [`antigravity/command.go`](../../../backend/internal/integration/harnesses/antigravity/command.go)
 
 The shared orchestration and command construction are in:
 
-- [`service/agent/execution/preparer.go`](../../../backend/internal/service/agent/execution/preparer.go)
-- [`integration/agents/runtime/container_command.go`](../../../backend/internal/integration/agents/runtime/container_command.go)
+- [`service/harness/execution/preparer.go`](../../../backend/internal/service/harness/execution/preparer.go)
+- [`integration/harnesses/runtime/container_command.go`](../../../backend/internal/integration/harnesses/runtime/container_command.go)
 
 ## Runtime and parser contracts
 
-[`agent.Provider`](../../../backend/internal/agent/model.go) deliberately has
+[`harness.Provider`](../../../backend/internal/service/harness/model.go) deliberately has
 only three responsibilities:
 
 ```go
@@ -196,9 +196,9 @@ type Provider interface {
 }
 ```
 
-`Parser(req)` is **not** part of `agent.Provider`. Structured-stream adapters
-may implement [`agent.LineParser`](../../../backend/internal/agent/parser.go)
-and use [`runtime.RunProcess`](../../../backend/internal/integration/agents/runtime/process.go),
+`Parser(req)` is **not** part of `harness.Provider`. Structured-stream adapters
+may implement [`harness.LineParser`](../../../backend/internal/service/harness/parser.go)
+and use [`runtime.RunProcess`](../../../backend/internal/integration/harnesses/runtime/process.go),
 but a provider may own a different protocol loop.
 
 `RunProcess` scans non-empty stdout lines, logs and skips individual parse
@@ -206,18 +206,18 @@ errors, emits every parsed event, and stops accepting additional stderr lines
 for its `ProcessError` capture after the buffer reaches 64 KiB. Its default
 stdout line limit is 16 MiB and stderr line limit is 1 MiB. Cancellation is
 treated as a normal stop and returns `nil`. If the parser emitted `run.failed`
-and the process then exits non-zero, it returns `agent.ErrRunFailed`;
+and the process then exits non-zero, it returns `harness.ErrRunFailed`;
 otherwise a non-zero exit is returned as a process error.
 
 An adapter must ensure that a successful native run produces a normalized
 `run.completed` event. The shared line runner does not synthesize one merely
 because a process exits zero. An adapter that already emitted `run.failed`
-should return an error wrapping `agent.ErrRunFailed`; this prevents the prompt
+should return an error wrapping `harness.ErrRunFailed`; this prevents the prompt
 service from appending a second generic `<provider> exit` error.
 
 ## Normalized agent events
 
-The provider boundary uses [`agent.Event`](../../../backend/internal/agent/model.go).
+The provider boundary uses [`harness.Event`](../../../backend/internal/service/harness/model.go).
 The prompt projection currently recognizes the following types:
 
 | Agent event | Persisted chat event | Required fields or behavior |
@@ -240,17 +240,17 @@ The prompt projection currently recognizes the following types:
 `run.started` exists in the agent enum but is not projected by
 [`chatEventFromAgentEvent`](../../../backend/internal/service/prompt/agent_events.go),
 so current adapters must not rely on it for user-visible state.
-`agent.Event.Raw` remains diagnostic-only. A provider that needs native data to
+`harness.Event.Raw` remains diagnostic-only. A provider that needs native data to
 survive persistence must put a bounded, safe payload and its correlation IDs
-in `agent.Event.Native`.
+in `harness.Event.Native`.
 
 ## Provider parsing behavior
 
 ### Claude
 
-[`claude.Provider.Run`](../../../backend/internal/integration/agents/claude/provider.go)
+[`claude.Provider.Run`](../../../backend/internal/integration/harnesses/claude/provider.go)
 launches `claude -p --output-format stream-json --include-partial-messages
---verbose` and uses [`claude.Parser`](../../../backend/internal/integration/agents/claude/parser.go)
+--verbose` and uses [`claude.Parser`](../../../backend/internal/integration/harnesses/claude/parser.go)
 through `runtime.RunProcess`.
 
 The parser maps:
@@ -269,11 +269,11 @@ from that line.
 ### Codex and MiniMax: production app-server path
 
 Production Codex or MiniMax runs do **not** use
-[`codex/parser.go`](../../../backend/internal/integration/agents/codex/parser.go).
-[`codex.Provider.Run`](../../../backend/internal/integration/agents/codex/provider.go) starts
+[`codex/parser.go`](../../../backend/internal/integration/harnesses/codex/parser.go).
+[`codex.Provider.Run`](../../../backend/internal/integration/harnesses/codex/provider.go) starts
 one fresh `codex app-server` process per turn and delegates to
-[`codexharness.Run`](../../../backend/internal/integration/agents/codexharness/app_server_run.go).
-[`minimax.Provider.Run`](../../../backend/internal/integration/agents/minimax/provider.go)
+[`codexharness.Run`](../../../backend/internal/integration/harnesses/codexharness/app_server_run.go).
+[`minimax.Provider.Run`](../../../backend/internal/integration/harnesses/minimax/provider.go)
 uses the same neutral harness with MiniMax's provider ID and label, while its
 own adapter retains the endpoint, key environment variable, model catalog,
 and isolated `CODEX_HOME`.
@@ -294,7 +294,7 @@ The normal JSON-RPC sequence is:
    `run.failed`, or `run.interrupted`; close stdin after that authoritative
    terminal notification.
 
-[`appServerEventParser`](../../../backend/internal/integration/agents/codexharness/app_server_events.go)
+[`appServerEventParser`](../../../backend/internal/integration/harnesses/codexharness/app_server_events.go)
 maps agent/plan deltas, reasoning deltas, command execution, file changes, MCP
 and dynamic tools, collaboration tools, web search, last-turn token usage, and
 terminal turn state. It retains a versioned native envelope on typed events and
@@ -302,7 +302,7 @@ emits `provider.native` for unknown valid methods or item types. It tracks text
 already emitted for each item so completed whole-text snapshots contribute
 only the missing suffix.
 
-[`appServerRequestHandler`](../../../backend/internal/integration/agents/codexharness/app_server_requests.go)
+[`appServerRequestHandler`](../../../backend/internal/integration/harnesses/codexharness/app_server_requests.go)
 keeps every server-to-client request pending by its original string or numeric
 JSON-RPC ID. The request is persisted and rendered as an interaction card.
 The browser sends an explicit `interaction_response` WebSocket message, the
@@ -316,23 +316,23 @@ process alive after the Remote context is cancelled, the harness sends
 protocol failure or interrupt timeout.
 
 A failed `thread/resume` or `thread/fork` whose message contains `not found` or
-`no rollout` becomes `agent.ErrSessionNotFound`. Other protocol errors are
+`no rollout` becomes `harness.ErrSessionNotFound`. Other protocol errors are
 wrapped in `runtime.ProcessError` with captured stderr.
 
 See [Codex App Server architecture](08-codex-app-server-architecture.md) for
 the complete component, interaction, persistence, cancellation, subagent, and
 capability-discovery flows.
 
-[`codex/parser.go`](../../../backend/internal/integration/agents/codex/parser.go) parses the
+[`codex/parser.go`](../../../backend/internal/integration/harnesses/codex/parser.go) parses the
 older `codex exec --json` JSONL shape and remains covered by focused tests, but
 it is currently a compatibility parser rather than the production run path.
 Do not use it as the reference when changing app-server event handling.
 
 ### Kimi
 
-[`kimi.Provider.Run`](../../../backend/internal/integration/agents/kimi/provider.go) runs
+[`kimi.Provider.Run`](../../../backend/internal/integration/harnesses/kimi/provider.go) runs
 `kimi -p <prompt> --output-format stream-json` through `RunProcess` and parses
-it with [`kimi.Parser`](../../../backend/internal/integration/agents/kimi/parser.go).
+it with [`kimi.Parser`](../../../backend/internal/integration/harnesses/kimi/parser.go).
 
 Kimi's OpenAI-chat-shaped JSONL maps assistant content and tool calls, tool
 results, and the final `role=meta,type=session.resume_hint` record. That final
@@ -344,7 +344,7 @@ when `Fork` is true.
 ### Antigravity
 
 Antigravity print mode is unstructured. Production
-[`antigravity.Provider.Run`](../../../backend/internal/integration/agents/antigravity/provider.go)
+[`antigravity.Provider.Run`](../../../backend/internal/integration/harnesses/antigravity/provider.go)
 therefore bypasses `RunProcess` and streams raw stdout chunks as assistant
 deltas so blank lines and Markdown paragraphs survive. It captures a 4 KiB
 combined output tail for errors, maps sign-in-looking failures to a focused
@@ -354,8 +354,8 @@ Because print mode does not report a new conversation ID, the adapter snapshots
 the provider's `brain` directory before and after a fresh run. Exactly one new,
 valid directory becomes `session.updated`; zero or multiple candidates are
 treated as ambiguous and no session is saved. See
-[`antigravity/session.go`](../../../backend/internal/integration/agents/antigravity/session.go).
-Its [`parser.go`](../../../backend/internal/integration/agents/antigravity/parser.go) is a
+[`antigravity/session.go`](../../../backend/internal/integration/harnesses/antigravity/session.go).
+Its [`parser.go`](../../../backend/internal/integration/harnesses/antigravity/parser.go) is a
 line-oriented test/helper parser, not the production chunk-streaming path.
 Antigravity and Kimi both clear resume state for requested forks because their
 descriptors do not declare native fork support.
@@ -377,7 +377,7 @@ The module descriptor controls orchestration:
 - a `session.updated` event clears `ForkPending` and may populate an empty chat
   model from the provider's reported model.
 
-Any adapter may return `agent.ErrSessionNotFound`. When it does so during a
+Any adapter may return `harness.ErrSessionNotFound`. When it does so during a
 resume, the prompt service clears only that provider's saved session, clears
 the pending fork, persists a `system/session_recovered` event, rebuilds a
 bounded visible transcript, and retries the turn once without `ResumeID`.
@@ -390,10 +390,10 @@ bounded visible transcript, and retries the turn once without `ResumeID`.
 - A cancellation is not persisted as an error by the shared process runner.
 - Parser errors for individual structured lines are logged and skipped so one
   malformed provider message does not discard the rest of the turn.
-- If a provider returns an error other than `agent.ErrRunFailed`, the prompt
+- If a provider returns an error other than `harness.ErrRunFailed`, the prompt
   service persists `<provider> exit: <error>`.
 - A provider-emitted `run.failed`/`error` is already persisted through the
-  normal event projection. Return `agent.ErrRunFailed` to avoid duplicating it.
+  normal event projection. Return `harness.ErrRunFailed` to avoid duplicating it.
 - `run.completed` and provider error events are persisted. Run-hub `sync`
   state and prompt accepted/rejected acknowledgements are transient.
 
@@ -410,19 +410,19 @@ In the concrete provider package, pin the behavior the adapter owns:
 - text/reasoning deltas, tool start/end correlation, completion with usage, and
   failure parsing;
 - malformed/unknown native records and cancellation;
-- compile-time `var _ agent.Provider = (*Provider)(nil)` in `factory.go`.
+- compile-time `var _ harness.Provider = (*Provider)(nil)` in `factory.go`.
 
 Keep shared workflow tests in their owning packages: project reconciliation,
 provisioning order, error text, and best-effort branches belong under
-`internal/service/agent/execution`; common container command and environment
-precedence belong under `internal/integration/agents/runtime`; factory projection and
-validation belong under `internal/service/agent/module`.
+`internal/service/harness/execution`; common container command and environment
+precedence belong under `internal/integration/harnesses/runtime`; factory projection and
+validation belong under `internal/service/harness/module`.
 
 Run focused tests first, then from `backend/` run:
 
 ```bash
-go test ./internal/integration/agents/<id> ./internal/integration/agents/runtime ./internal/service/agent/execution ./internal/service/agent/module ./internal/service/prompt
-go test -race ./internal/integration/agents/<id> ./internal/integration/agents/runtime ./internal/service/agent/execution ./internal/service/prompt
+go test ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/harness/execution ./internal/service/harness/module ./internal/service/prompt
+go test -race ./internal/integration/harnesses/<id> ./internal/integration/harnesses/runtime ./internal/service/harness/execution ./internal/service/prompt
 go test ./...
 go vet ./...
 ```

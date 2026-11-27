@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	"github.com/futrx-com/remote.futrx.com/internal/agent/provisioning"
-	agentauth "github.com/futrx-com/remote.futrx.com/internal/service/agent/auth"
-	agentmodule "github.com/futrx-com/remote.futrx.com/internal/service/agent/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
+	harnessmodule "github.com/futrx-com/remote.futrx.com/internal/service/harness/module"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/fileauth"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filesessions"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filetwofactor"
@@ -21,16 +21,16 @@ type stubCLIProvisioner struct{}
 func (stubCLIProvisioner) Ensure(context.Context, string, provisioning.CLISpec) error { return nil }
 
 type serviceTestProvider struct {
-	id agent.ProviderID
+	id harness.ProviderID
 }
 
-func (p serviceTestProvider) ID() agent.ProviderID { return p.id }
+func (p serviceTestProvider) ID() harness.ProviderID { return p.id }
 
-func (p serviceTestProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: p.id}, nil
+func (p serviceTestProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: p.id}, nil
 }
 
-func (p serviceTestProvider) Run(context.Context, agent.RunRequest, func(agent.Event)) error {
+func (p serviceTestProvider) Run(context.Context, harness.RunRequest, func(harness.Event)) error {
 	return nil
 }
 
@@ -71,7 +71,7 @@ func TestNewAuthAllowsLocalAdminWithoutGoogleOAuth(t *testing.T) {
 
 func TestNewRejectsPartialAgentContainerDependencies(t *testing.T) {
 	_, err := New(context.Background(), Dependencies{
-		AgentContainers: provisioning.ContainerDependencies{CLI: stubCLIProvisioner{}},
+		HarnessContainers: provisioning.ContainerDependencies{CLI: stubCLIProvisioner{}},
 	})
 	if err == nil {
 		t.Fatal("expected partial agent container dependencies to fail")
@@ -82,17 +82,17 @@ func TestNewRejectsPartialAgentContainerDependencies(t *testing.T) {
 }
 
 func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
-	descriptor := agentmodule.Descriptor{
+	descriptor := harnessmodule.Descriptor{
 		ID:               "external-agent",
 		Label:            "External Agent",
-		ExecutionScopes:  []agentmodule.ExecutionScope{agentmodule.ScopeHost},
-		Auth:             agentmodule.AuthExternal,
+		ExecutionScopes:  []harnessmodule.ExecutionScope{harnessmodule.ScopeHost},
+		Auth:             harnessmodule.AuthExternal,
 		AuthInstructions: "Authenticate outside Remote.",
-		Features:         agentmodule.Features{Skills: agentmodule.SkillsNone},
+		Features:         harnessmodule.Features{Skills: harnessmodule.SkillsNone},
 	}
-	factory, err := agentmodule.NewFactory(descriptor, nil, func(agentmodule.Dependencies, *provisioning.Profile) (agentmodule.Components, error) {
-		binding := agentauth.NewExternalBinding(descriptor.ID)
-		return agentmodule.Components{
+	factory, err := harnessmodule.NewFactory(descriptor, nil, func(harnessmodule.Dependencies, *provisioning.Profile) (harnessmodule.Components, error) {
+		binding := harnessauth.NewExternalBinding(descriptor.ID)
+		return harnessmodule.Components{
 			Provider: serviceTestProvider{id: descriptor.ID},
 			Auth:     &binding,
 		}, nil
@@ -100,7 +100,7 @@ func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog, err := agentmodule.NewCatalog(factory)
+	catalog, err := harnessmodule.NewCatalog(factory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,10 +124,10 @@ func TestNewRejectsAuthenticatedDeploymentWithoutAgentAccessGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = New(context.Background(), Dependencies{
-		Auth:         auth,
-		AgentModules: catalog,
+		Auth:           auth,
+		HarnessModules: catalog,
 	})
-	if !errors.Is(err, agentmodule.ErrNoAccessGate) {
+	if !errors.Is(err, harnessmodule.ErrNoAccessGate) {
 		t.Fatalf("New error = %v, want ErrNoAccessGate", err)
 	}
 }

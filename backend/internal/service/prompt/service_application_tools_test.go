@@ -10,33 +10,33 @@ import (
 	"testing"
 	"time"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
 	servicechat "github.com/futrx-com/remote.futrx.com/internal/service/chat"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
 	"github.com/futrx-com/remote.futrx.com/internal/service/runhub"
 	"github.com/futrx-com/remote.futrx.com/internal/stores/filechat"
 )
 
 type applicationPromptProvider struct {
 	mu       sync.Mutex
-	requests []agent.RunRequest
+	requests []harness.RunRequest
 	started  chan struct{}
 	release  <-chan struct{}
 	once     sync.Once
 	output   []string
 }
 
-func (p *applicationPromptProvider) ID() agent.ProviderID { return agent.ProviderCodex }
+func (p *applicationPromptProvider) ID() harness.ProviderID { return harness.ProviderCodex }
 
-func (p *applicationPromptProvider) Parser(agent.RunRequest) agent.LineParser { return nil }
+func (p *applicationPromptProvider) Parser(harness.RunRequest) harness.LineParser { return nil }
 
-func (p *applicationPromptProvider) Capabilities(context.Context, agent.CapabilityRequest) (agent.Capabilities, error) {
-	return agent.Capabilities{Provider: agent.ProviderCodex}, nil
+func (p *applicationPromptProvider) Capabilities(context.Context, harness.CapabilityRequest) (harness.Capabilities, error) {
+	return harness.Capabilities{Provider: harness.ProviderCodex}, nil
 }
 
 func (p *applicationPromptProvider) Run(
 	ctx context.Context,
-	req agent.RunRequest,
-	emit func(agent.Event),
+	req harness.RunRequest,
+	emit func(harness.Event),
 ) error {
 	p.mu.Lock()
 	p.requests = append(p.requests, req)
@@ -52,13 +52,13 @@ func (p *applicationPromptProvider) Run(
 		}
 	}
 	for _, text := range p.output {
-		emit(agent.Event{Type: agent.EventAssistantTextDelta, Text: text})
+		emit(harness.Event{Type: harness.EventAssistantTextDelta, Text: text})
 	}
-	emit(agent.Event{Type: agent.EventRunCompleted})
+	emit(harness.Event{Type: harness.EventRunCompleted})
 	return nil
 }
 
-func (p *applicationPromptProvider) request(t *testing.T, index int) agent.RunRequest {
+func (p *applicationPromptProvider) request(t *testing.T, index int) harness.RunRequest {
 	t.Helper()
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -118,7 +118,7 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 	}
 
 	provider := &applicationPromptProvider{output: []string{"deployment healthy\n", "TASK_COMPLETE"}}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestStartWithScheduledTasksSkillIssuesManageCapabilityAndReturnsOutput(t *t
 		runhub.New(store),
 		registry,
 		WithApplicationToolIssuer(issuer),
-		WithAgentPolicy(codexTestAgentPolicy()),
+		WithHarnessPolicy(codexTestHarnessPolicy()),
 	)
 
 	actor := Actor{Email: "owner@example.com", IsAdmin: true}
@@ -201,7 +201,7 @@ func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 	}
 
 	provider := &applicationPromptProvider{}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestStartScheduledTaskRequestsCompletionOnlyCapability(t *testing.T) {
 		runhub.New(store),
 		registry,
 		WithApplicationToolIssuer(issuer),
-		WithAgentPolicy(codexTestAgentPolicy()),
+		WithHarnessPolicy(codexTestHarnessPolicy()),
 	)
 
 	const scheduledTaskID = "task-123"
@@ -274,7 +274,7 @@ func TestStartReturnsBusyWhilePriorRunIsActive(t *testing.T) {
 		started: make(chan struct{}),
 		release: release,
 	}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestStartCancelsRunWithParentContext(t *testing.T) {
 		started: make(chan struct{}),
 		release: make(chan struct{}),
 	}
-	registry := agent.NewRegistry()
+	registry := harness.NewRegistry()
 	if err := registry.Register(provider); err != nil {
 		t.Fatal(err)
 	}
@@ -385,12 +385,12 @@ func TestInstalledSchedulerInjectsAccessWithoutSelectedSkill(t *testing.T) {
 				t.Fatal(err)
 			}
 			provider := &applicationPromptProvider{}
-			registry := agent.NewRegistry()
+			registry := harness.NewRegistry()
 			if err := registry.Register(provider); err != nil {
 				t.Fatal(err)
 			}
 			issuer := installedScheduleIssuer{recordingApplicationIssuer: &recordingApplicationIssuer{access: ApplicationToolAccess{Env: map[string]string{"REMOTE_APPLICATION_API": "https://remote.test/agent-api/applications", "REMOTE_APPLICATION_GRANT": "grant"}, Skills: []servicechat.SkillRef{{Name: "Example App", Command: "example-app", Source: "remote"}}}}, available: installed}
-			service := New(store, nil, nil, runhub.New(store), registry, WithApplicationToolIssuer(issuer), WithAgentPolicy(codexTestAgentPolicy()))
+			service := New(store, nil, nil, runhub.New(store), registry, WithApplicationToolIssuer(issuer), WithHarnessPolicy(codexTestHarnessPolicy()))
 			handle, err := service.Start(StartInput{ChatID: meta.ID, Prompt: "notify me daily at 15:00 UTC", Actor: Actor{Email: "owner@example.com"}}, nil)
 			if err != nil {
 				t.Fatal(err)

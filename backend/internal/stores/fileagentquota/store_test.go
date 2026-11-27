@@ -7,8 +7,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/futrx-com/remote.futrx.com/internal/agent"
-	agentquota "github.com/futrx-com/remote.futrx.com/internal/service/agent/quota"
+	"github.com/futrx-com/remote.futrx.com/internal/service/harness"
+	harnessquota "github.com/futrx-com/remote.futrx.com/internal/service/harness/quota"
 )
 
 func TestLoadFallbacks(t *testing.T) {
@@ -52,12 +52,12 @@ func TestSaveRoundTripAndPermissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	zero := 0.0
-	want := []agentquota.AccountQuota{
-		{Provider: "codex", Session: &agent.Quota{
-			Window: agent.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123,
+	want := []harnessquota.AccountQuota{
+		{Provider: "codex", Session: &harness.Quota{
+			Window: harness.QuotaWindowSession, UsedPercent: &zero, MeasuredAt: 123,
 		}},
-		{Provider: "codex", AccountID: "work", Weekly: &agent.Quota{
-			Window: agent.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456,
+		{Provider: "codex", AccountID: "work", Weekly: &harness.Quota{
+			Window: harness.QuotaWindowWeekly, Status: "allowed", MeasuredAt: 456,
 		}},
 	}
 	if err := store.Save(context.Background(), want); err != nil {
