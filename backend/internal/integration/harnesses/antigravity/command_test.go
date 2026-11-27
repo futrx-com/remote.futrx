@@ -294,6 +294,15 @@ func TestInstallScriptPinsVersionedRelease(t *testing.T) {
 	}
 }
 
+func TestIsSignInError(t *testing.T) {
+	if !isSignInError("Authentication required. Please visit the URL to log in:") {
+		t.Fatal("missed Antigravity's headless login message")
+	}
+	if isSignInError("Command rejected by the enterprise policy") {
+		t.Fatal("policy rejection should retain the original error")
+	}
+}
+
 func TestParserEmitsTextDeltas(t *testing.T) {
 	parser := NewParser(harness.RunRequest{ConversationID: "c1"})
 	events, err := parser.ParseLine([]byte("hello world"))

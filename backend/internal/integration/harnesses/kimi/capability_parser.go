@@ -12,7 +12,7 @@ import (
 
 type rawObject map[string]json.RawMessage
 
-func parseProviderCatalog(raw []byte, help, defaults string) (harness.Capabilities, error) {
+func parseProviderCatalog(raw []byte, defaults string) (harness.Capabilities, error) {
 	models, err := parseProviderModels(raw, parseDefaultModel(defaults))
 	if err != nil {
 		return harness.Capabilities{}, err
@@ -22,7 +22,7 @@ func parseProviderCatalog(raw []byte, help, defaults string) (harness.Capabiliti
 		Label:       "Kimi",
 		Source:      harness.CapabilitySourceLive,
 		Models:      harness.WithAutoModel(models, "Kimi default"),
-		Modes:       harness.ProviderModes(strings.Contains(help, "--plan")),
+		Modes:       harness.ProviderModes(false), // Kimi rejects --plan in print mode.
 		DefaultMode: harness.RunModeDefault,
 	}, nil
 }

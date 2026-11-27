@@ -2,6 +2,7 @@ package kimi
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 	harnessauth "github.com/futrx-com/remote.futrx.com/internal/service/harness/auth"
 	"github.com/futrx-com/remote.futrx.com/internal/service/harness/provisioning"
 )
+
+var errHeadlessPlanMode = errors.New("Kimi Plan mode requires an interactive terminal. Select Default for Remote chat or use Kimi in the workspace terminal")
 
 type Provider struct {
 	accountAuthorizer     harnessauth.AccountAuthorizer
@@ -50,6 +53,9 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 	}
 	if strings.TrimSpace(req.AccountID) != "" {
 		return harnessauth.ErrAccountNotFound
+	}
+	if req.Mode == harness.RunModePlan {
+		return errHeadlessPlanMode
 	}
 	if emit == nil {
 		emit = func(harness.Event) {}

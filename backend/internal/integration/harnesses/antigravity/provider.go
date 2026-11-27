@@ -111,5 +111,5 @@ func (p *Provider) Run(ctx context.Context, req harness.RunRequest, emit func(ha
 func isSignInError(output string) bool {
 	lowered := strings.ToLower(output)
 	return strings.Contains(lowered, "sign in") || strings.Contains(lowered, "signed out") ||
-		strings.Contains(lowered, "not authenticated")
+		strings.Contains(lowered, "not authenticated") || strings.Contains(lowered, "authentication required")
 }
